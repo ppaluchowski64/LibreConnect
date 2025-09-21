@@ -20,10 +20,10 @@ public:
     static std::vector<DeviceInfo> GetDiscoveredDevices();
 
 private:
-    static asio::awaitable<void> Co_JoinMulticastGroup();
-    static asio::awaitable<void> Co_LeaveMulticastGroup();
-    static asio::awaitable<void> Co_SendProbes();
-    static asio::awaitable<void> Co_ReceiveResponses();
+    asio::awaitable<void> Co_JoinMulticastGroup();
+    asio::awaitable<void> Co_LeaveMulticastGroup();
+    asio::awaitable<void> Co_SendProbes();
+    asio::awaitable<void> Co_ReceiveResponses();
 
     enum class DeviceScannerPackageType : uint16_t {
         None = 0
