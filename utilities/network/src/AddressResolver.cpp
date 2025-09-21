@@ -105,6 +105,28 @@ IPAddress AddressResolver::GetPrivateIPv4() {
     return {};
 }
 
+std::vector<IPAddress> AddressResolver::GetAllPrivateIPv4() {
+    std::vector<IPAddress> addresses;
+
+    try {
+        asio::io_context ioContext;
+        asio::ip::tcp::resolver resolver(ioContext);
+
+        const std::string hostname = asio::ip::host_name();
+
+        for (const asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(hostname, ""); const auto& entry : endpoints) {
+            if (const IPAddress entryAddress = entry.endpoint().address(); entryAddress.is_v4() && IsAddressPrivate(entryAddress)) {
+                addresses.push_back(entryAddress);
+            }
+        }
+    } catch (const std::exception& e) {
+        Debug::LogError(e.what());
+        return {};
+    }
+
+    return addresses;
+}
+
 IPAddress AddressResolver::GetPrivateIPv6() {
     try {
         asio::io_context ctx;
@@ -124,4 +146,25 @@ IPAddress AddressResolver::GetPrivateIPv6() {
 
     Debug::LogError("No address found");
     return {};
+}
+
+std::vector<IPAddress> AddressResolver::GetAllPrivateIPv6() {
+    std::vector<IPAddress> addresses;
+    try {
+        asio::io_context ctx;
+        asio::ip::tcp::resolver resolver(ctx);
+
+        const std::string hostname = asio::ip::host_name();
+
+        for (const asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(hostname, ""); const auto& entry : endpoints) {
+            if (const IPAddress entryAddress = entry.endpoint().address(); entryAddress.is_v6() && IsAddressPrivate(entryAddress)) {
+                addresses.push_back(entryAddress);
+            }
+        }
+    } catch (const std::exception& e) {
+        Debug::LogError(e.what());
+        return {};
+    }
+
+    return addresses;
 }
