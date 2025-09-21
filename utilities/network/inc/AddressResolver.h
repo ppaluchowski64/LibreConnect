@@ -16,6 +16,9 @@ public:
 
     static IPAddress GetPrivateIPv4();
     static IPAddress GetPrivateIPv6();
+
+    static std::vector<IPAddress> GetAllPrivateIPv4();
+    static std::vector<IPAddress> GetAllPrivateIPv6();
 };
 
 #endif //ADDRESS_RESOLVER_H

@@ -1,5 +1,6 @@
 #include <Scanner.h>
 #include <DebugLog.h>
+#include <AddressResolver.h>
 #include <Package.h>
 #include <coroutine>
 
@@ -32,8 +33,6 @@ void LanDeviceScanner::BeginScan() {
         return;
     }
 
-    Debug::Log("sent");
-
     asio::co_spawn(s_instance->m_context, s_instance->Co_JoinMulticastGroup(), asio::detached);
 }
 
@@ -47,10 +46,16 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
 
 asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
     try {
+        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
+
         m_receiverSocket.open(asio::ip::udp::v4());
         m_receiverSocket.set_option(asio::socket_base::reuse_address(true));
         m_receiverSocket.bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), DEVICE_DISCOVERY_MULTICAST_PORT));
-        m_receiverSocket.set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS));
+
+        for (const auto& address : addresses) {
+            m_receiverSocket.set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
+        }
+
         m_receiverSocket.set_option(asio::ip::multicast::enable_loopback(false));
 
         m_senderSocket.open(asio::ip::udp::v4());
@@ -89,6 +94,7 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
 
 asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
+        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
         const DeviceInfo device = {};
 
         std::vector<uint8_t> buffer(sizeof(device));
@@ -98,7 +104,10 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
 
         do {
-            co_await m_senderSocket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
+            for (const auto& address : addresses) {
+                m_senderSocket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
+                co_await m_senderSocket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
+            }
 
             asio::steady_timer timer(m_context);
             timer.expires_after(std::chrono::seconds(1));
