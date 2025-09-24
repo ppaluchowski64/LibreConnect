@@ -24,6 +24,7 @@ typedef asio::ip::address IPAddress;
 typedef asio::ip::udp::endpoint UDPEndpoint;
 typedef asio::ip::udp::resolver UDPResolver;
 typedef asio::ip::udp::socket UDPSocket;
+typedef asio::io_context::strand IOContextStrand;
 
 constexpr PackageSizeInt MAX_NON_FILE_PACKAGE_SIZE = 1024 * 32;
 constexpr PackageSizeInt MAX_FULL_PACKAGE_SIZE = 1024 * 64;

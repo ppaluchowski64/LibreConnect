@@ -129,6 +129,7 @@ public:
             }
 
             std::memcpy(&stringSize, m_rawBody + m_readOffset, sizeof(PackageSizeInt));
+            boost::endian::big_to_native_inplace(stringSize);
             m_readOffset += sizeof(PackageSizeInt);
 
             if (m_readOffset + stringSize > m_header.size) {
@@ -150,6 +151,7 @@ public:
             }
 
             std::memcpy(&vectorSize, m_rawBody + m_readOffset, sizeof(PackageSizeInt));
+            boost::endian::big_to_native_inplace(vectorSize);
             m_readOffset += sizeof(PackageSizeInt);
             const PackageSizeInt dataSize = vectorSize * sizeof(typename T1::value_type);
 
@@ -162,6 +164,10 @@ public:
             std::memcpy(element.data(), m_rawBody + m_readOffset, dataSize);
             m_readOffset += dataSize;
 
+            for (auto& item : element) {
+                boost::endian::big_to_native_inplace(item);
+            }
+
             return std::move(element);
         } else {
             const PackageSizeInt size = sizeof(T1);
@@ -172,6 +178,7 @@ public:
             }
 
             std::memcpy(&element, m_rawBody + m_readOffset, size);
+            boost::endian::big_to_native_inplace(element);
             m_readOffset += size;
 
             return std::move(element);
