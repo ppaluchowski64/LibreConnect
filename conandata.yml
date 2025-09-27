@@ -10,3 +10,4 @@ requirements:
   - "benchmark/1.9.4"
   - "concurrentqueue/1.0.4"
   - "fmt/11.2.0"
+  - "magic_enum/0.9.7"

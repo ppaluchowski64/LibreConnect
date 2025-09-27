@@ -1,5 +1,6 @@
 #include <Scanner.h>
 #include <thread>
+#include <ConnectionManager.h>
 
 int main() {
     LanDeviceScanner::BeginScan();
