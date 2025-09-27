@@ -1,37 +1,25 @@
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
 
-PrimaryConnection::PrimaryConnection(IOContext& context, SSLContext& sslContext, std::atomic<bool>& shutdownRequested)
+PrimaryConnection::PrimaryConnection(IOContext& context, SSLContext& sslContext)
     : m_context(context), m_sslContext(sslContext), m_strand(asio::make_strand(context)), m_socket(context, sslContext),
-      m_sendFlag(context.get_executor()), m_shutdownRequested(shutdownRequested), m_isRunning(false) {
+      m_sendFlag(context.get_executor()) {
 }
 
 void PrimaryConnection::Connect(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback) {
-    if (m_socket.lowest_layer().is_open()) {
-        return;
-    }
-
-    Debug::Log("PrimaryConnection::Connect");
-
     asio::co_spawn(m_strand, CoConnect({endpoint}, callback), asio::detached);
 }
 
 void PrimaryConnection::Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback) {
-    if (m_socket.lowest_layer().is_open()) {
-        return;
-    }
-
-    Debug::Log("PrimaryConnection::Seek");
-
     asio::co_spawn(m_strand, CoSeek({endpoint}, callback), asio::detached);
 }
 
-void PrimaryConnection::Disconnect() {
-    if (!m_socket.lowest_layer().is_open()) {
+void PrimaryConnection::Disconnect(const std::function<void(bool)>& callback) {
+    if (m_connectionState != ConnectionState::CONNECTED) {
         return;
     }
 
-    asio::co_spawn(m_strand, CoDisconnect(), asio::detached);
+    asio::co_spawn(m_strand, CoDisconnect(callback), asio::detached);
 }
 
 std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPackage() {
@@ -51,13 +39,25 @@ bool PrimaryConnection::HasPendingPackages() const {
 asio::awaitable<void> PrimaryConnection::CoConnect(const TCPEndpoint endpoint, const std::function<void(bool)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
+    asio::steady_timer timer(m_context.get_executor());
+    while (m_connectionState != ConnectionState::DISCONNECTED) {
+        timer.expires_after(std::chrono::milliseconds(50));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+
+    m_connectionState = ConnectionState::CONNECTING;
+
     try {
+        if (!m_socket.lowest_layer().is_open()) {
+            m_socket = SSLSocket(m_context, m_sslContext);
+        }
+
         co_await asio::async_connect(m_socket.lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
         co_await m_socket.async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
         Debug::Log("Accepted TLS primary connection to {}:{}", m_socket.lowest_layer().remote_endpoint().address().to_string(), m_socket.lowest_layer().remote_endpoint().port());
 
-        m_isRunning = true;
+        m_connectionState = ConnectionState::CONNECTED;
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -70,7 +70,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const TCPEndpoint endpoint, c
             Debug::LogError("PrimaryConnection connection error: {}", error.what());
         }
 
-        m_shutdownRequested.store(true);
+        Disconnect();
         callback(false);
     }
 
@@ -80,14 +80,26 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const TCPEndpoint endpoint, c
 asio::awaitable<void> PrimaryConnection::CoSeek(const TCPEndpoint endpoint, const std::function<void(bool)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
+    asio::steady_timer timer(m_context.get_executor());
+    while (m_connectionState != ConnectionState::DISCONNECTED) {
+        timer.expires_after(std::chrono::milliseconds(50));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+
+    m_connectionState = ConnectionState::CONNECTING;
+
     try {
+        if (!m_socket.lowest_layer().is_open()) {
+            m_socket = SSLSocket(m_context, m_sslContext);
+        }
+
         TCPAcceptor acceptor(m_context, endpoint);
         co_await acceptor.async_accept(m_socket.lowest_layer(), asio::use_awaitable);
         co_await m_socket.async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
         Debug::Log("Accepted TLS primary connection to {}:{}", m_socket.lowest_layer().remote_endpoint().address().to_string(), m_socket.lowest_layer().remote_endpoint().port());
 
-        m_isRunning = true;
+        m_connectionState = ConnectionState::CONNECTED;
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -100,16 +112,16 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const TCPEndpoint endpoint, cons
             Debug::LogError("PrimaryConnection connection seek error: {}", error.what());
         }
 
-        m_shutdownRequested.store(true);
+        Disconnect();
         callback(false);
     }
 
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoDisconnect() {
+asio::awaitable<void> PrimaryConnection::CoDisconnect(std::function<void(bool)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-    m_isRunning = false;
+    m_connectionState = ConnectionState::DISCONNECTING;
 
     try {
         m_socket.lowest_layer().cancel();
@@ -121,9 +133,9 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect() {
         } else {
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
-
-        m_shutdownRequested.store(true);
     }
+
+    m_connectionState = ConnectionState::DISCONNECTED;
 }
 
 asio::awaitable<void> PrimaryConnection::CoSend() {
@@ -134,7 +146,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
         co_await m_sendFlag.Wait();
         m_sendFlag.Reset();
 
-        while (m_isRunning) {
+        while (m_connectionState == ConnectionState::CONNECTED) {
             if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {\
                 PackageHeader& header = package->GetHeader();
 
@@ -157,7 +169,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
             Debug::LogError("PrimaryConnection send error: {}", error.what());
         }
 
-        m_shutdownRequested.store(true);
+        Disconnect();
     }
 }
 
@@ -167,12 +179,12 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
         moodycamel::ProducerToken token(m_packageIn);
         PackageHeader header{};
 
-        while (m_isRunning) {
+        while (m_connectionState == ConnectionState::CONNECTED) {
             asio::mutable_buffer headerBuffer(&header, sizeof(PackageHeader));
             co_await asio::async_read(m_socket, headerBuffer, asio::use_awaitable);
             header.FromBigEndianToNative();
 
-            if (!m_isRunning) break;
+            if (m_connectionState != ConnectionState::CONNECTED) break;
 
             if (header.size > MAX_PACKAGE_SIZE) {
                 throw std::runtime_error("PrimaryConnection receive package size too large");
@@ -183,7 +195,7 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
 
             co_await asio::async_read(m_socket, packageBuffer, asio::use_awaitable);
 
-            if (!m_isRunning) break;
+            if (m_connectionState != ConnectionState::CONNECTED) break;
 
             m_packageIn.enqueue(std::move(package));
         }
@@ -194,7 +206,7 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             Debug::LogError("PrimaryConnection receive error: {}", error.what());
         }
 
-        m_shutdownRequested.store(true);
+        Disconnect();
     }
 }
 

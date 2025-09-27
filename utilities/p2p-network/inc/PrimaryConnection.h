@@ -10,6 +10,7 @@
 #include <asio/awaitable.hpp>
 #include <AwaitableFlag.h>
 #include <optional>
+#include <functional>
 
 enum class PC_PackageType : PackageTypeInt {
     NONE = 0,
@@ -19,10 +20,10 @@ constexpr size_t MAX_PACKAGE_SIZE = 8192;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
-    explicit PrimaryConnection(IOContext& context, SSLContext& sslContext, std::atomic<bool>& shutdownRequested);
-    void Connect(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback);
-    void Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback);
-    void Disconnect();
+    explicit PrimaryConnection(IOContext& context, SSLContext& sslContext);
+    void Connect(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback = nullptr);
+    void Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback = nullptr);
+    void Disconnect(const std::function<void(bool)>& callback = nullptr);
 
     template <StdLayoutOrVecOrString... Args>
     void Send(PC_PackageType type, Args&&... args) {
@@ -50,7 +51,7 @@ public:
 private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::function<void(bool)> callback);
     asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::function<void(bool)> callback);
-    asio::awaitable<void> CoDisconnect();
+    asio::awaitable<void> CoDisconnect(std::function<void(bool)> callback);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
@@ -64,8 +65,7 @@ private:
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;
 
-    std::atomic<bool>& m_shutdownRequested;
-    bool               m_isRunning;
+    ConnectionState    m_connectionState{ConnectionState::DISCONNECTED};
 
 };
 
