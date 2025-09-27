@@ -9,6 +9,7 @@
 #include <concurrentqueue.h>
 #include <asio/awaitable.hpp>
 #include <AwaitableFlag.h>
+#include <optional>
 
 enum class PC_PackageType : PackageTypeInt {
     NONE = 0,
@@ -18,9 +19,9 @@ constexpr size_t MAX_PACKAGE_SIZE = 8192;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
-    explicit PrimaryConnection(IOContext& context, SSLContext& sslContext, std::atomic<bool>& shutdownRequested, moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>& packageIn);
-    void Connect(TCPEndpoint endpoint, const std::function<void(bool)>& callback);
-    void Seek(TCPEndpoint endpoint, const std::function<void(bool)>& callback);
+    explicit PrimaryConnection(IOContext& context, SSLContext& sslContext, std::atomic<bool>& shutdownRequested);
+    void Connect(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback);
+    void Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback);
     void Disconnect();
 
     template <StdLayoutOrVecOrString... Args>
@@ -29,6 +30,9 @@ public:
         m_packageOut.enqueue(token, Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...));
         m_sendFlag.Signal();
     }
+
+    std::optional<std::unique_ptr<Package<PC_PackageType>>> GetPackage();
+    bool HasPendingPackages() const;
 
 
 private:
@@ -45,8 +49,8 @@ private:
 
     AwaitableFlag  m_sendFlag;
 
-    moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>  m_packageOut;
-    moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>& m_packageIn;
+    moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
+    moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;
 
     std::atomic<bool>& m_shutdownRequested;
     bool               m_isRunning;

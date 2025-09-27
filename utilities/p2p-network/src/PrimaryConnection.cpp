@@ -1,12 +1,12 @@
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
 
-PrimaryConnection::PrimaryConnection(IOContext& context, SSLContext& sslContext, std::atomic<bool>& shutdownRequested, moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>& packageIn)
+PrimaryConnection::PrimaryConnection(IOContext& context, SSLContext& sslContext, std::atomic<bool>& shutdownRequested)
     : m_context(context), m_sslContext(sslContext), m_strand(asio::make_strand(context)), m_socket(context, sslContext),
-      m_sendFlag(context.get_executor()), m_packageIn(packageIn), m_shutdownRequested(shutdownRequested), m_isRunning(false) {
+      m_sendFlag(context.get_executor()), m_shutdownRequested(shutdownRequested), m_isRunning(false) {
 }
 
-void PrimaryConnection::Connect(TCPEndpoint endpoint, const std::function<void(bool)>& callback) {
+void PrimaryConnection::Connect(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback) {
     if (m_socket.lowest_layer().is_open()) {
         return;
     }
@@ -16,7 +16,7 @@ void PrimaryConnection::Connect(TCPEndpoint endpoint, const std::function<void(b
     asio::co_spawn(m_strand, CoConnect({endpoint}, callback), asio::detached);
 }
 
-void PrimaryConnection::Seek(TCPEndpoint endpoint, const std::function<void(bool)>& callback) {
+void PrimaryConnection::Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback) {
     if (m_socket.lowest_layer().is_open()) {
         return;
     }
@@ -32,6 +32,20 @@ void PrimaryConnection::Disconnect() {
     }
 
     asio::co_spawn(m_strand, CoDisconnect(), asio::detached);
+}
+
+std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPackage() {
+    static thread_local moodycamel::ConsumerToken token(m_packageIn);
+
+    if (std::unique_ptr<Package<PC_PackageType>> package; m_packageIn.try_dequeue(token, package)) {
+        return std::move(package);
+    }
+
+    return std::nullopt;
+}
+
+bool PrimaryConnection::HasPendingPackages() const {
+    return m_packageIn.size_approx() > 0;
 }
 
 asio::awaitable<void> PrimaryConnection::CoConnect(const TCPEndpoint endpoint, const std::function<void(bool)> callback) {
