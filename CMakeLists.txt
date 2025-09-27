@@ -12,6 +12,7 @@ include(cmake/Build.cmake)
 
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
+find_package(magic_enum      REQUIRED)
 find_package(Tracy           REQUIRED)
 find_package(concurrentqueue REQUIRED)
 find_package(GTest           REQUIRED)
@@ -31,14 +32,14 @@ target_compile_definitions(project_defaults INTERFACE
         $<$<CONFIG:Debug>:TRACY_ENABLE>
 )
 
-BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue)
-BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue )
-BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc concurrentqueue::concurrentqueue)
+BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
+BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
+BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
 BuildStaticLibrary(device-scanner-pc utilities/device-scanner project_defaults network-component-pc system-component-pc)
 
 
 if (ENABLE_TESTS)
-    BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp device-scanner-pc)
+    BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp p2p-network-component-pc device-scanner-pc)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc p2p-component-pc)
     #BuildTests(Asio_Abstractions_Test asio-abstractions network-component-pc system-component-pc p2p-component-pc)
 endif()

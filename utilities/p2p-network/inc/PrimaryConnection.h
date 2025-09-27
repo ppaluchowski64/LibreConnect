@@ -27,7 +27,19 @@ public:
     template <StdLayoutOrVecOrString... Args>
     void Send(PC_PackageType type, Args&&... args) {
         static thread_local moodycamel::ProducerToken token(m_packageOut);
+
         m_packageOut.enqueue(token, Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...));
+        m_sendFlag.Signal();
+    }
+
+    template <StdLayoutOrVecOrString... Args>
+    void SendWithFlag(const PC_PackageType type, const uint8_t flag, Args&&... args) {
+        static thread_local moodycamel::ProducerToken token(m_packageOut);
+
+        std::unique_ptr<Package<PC_PackageType>> package = Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...);
+        package->GetHeader().flags = flag;
+
+        m_packageOut.enqueue(token, std::move(package));
         m_sendFlag.Signal();
     }
 
