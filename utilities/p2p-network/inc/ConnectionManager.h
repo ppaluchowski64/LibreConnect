@@ -11,10 +11,9 @@
 class ConnectionManager final {
 public:
     typedef std::function<void(std::unique_ptr<Package<PC_PackageType>>&&)> RequestCallbackType;
-    typedef std::function<void(bool)> ConnectionCallbackType;
 
-    static void Connect(const TCPEndpoint& endpoint, const ConnectionCallbackType& callback);
-    static void Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback );
+    static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
+    static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
 
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
 
@@ -31,7 +30,7 @@ public:
     }
 
     template <StdLayoutOrVecOrString... Args>
-    static void SendRequestWithResponse(PC_PackageType type, Args&&... args, RequestCallbackType requestResponseCallback) {
+    static void SendRequestWithResponse(PC_PackageType type, Args&&... args, RequestCallbackType&& requestResponseCallback) {
         std::call_once(s_initFlag, Initialize);
 
         if (!s_instance->m_isConnected.load()) {

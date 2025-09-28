@@ -2,8 +2,9 @@
 #include <CertificateManager.h>
 
 ConnectionManager* ConnectionManager::s_instance = nullptr;
+std::once_flag     ConnectionManager::s_initFlag{};
 
-void ConnectionManager::Connect(const TCPEndpoint& endpoint, const ConnectionCallbackType& callback) {
+void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
     std::call_once(s_initFlag, Initialize);
     if (s_instance->m_isConnected.load()) {
         Debug::LogWarning("ConnectionManager::Connect: existing connection terminated before starting new one");
@@ -14,10 +15,10 @@ void ConnectionManager::Connect(const TCPEndpoint& endpoint, const ConnectionCal
         s_instance->m_sslContext = CreateSSLContext(false);
     }
 
-    s_instance->m_primaryConnection->Connect(endpoint, s_instance->m_sslContext, callback);
+    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
 }
 
-void ConnectionManager::Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback) {
+void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
     std::call_once(s_initFlag, Initialize);
     if (s_instance->m_isConnected.load()) {
         Debug::LogWarning("ConnectionManager::Connect: existing connection terminated before starting new one");
@@ -28,7 +29,7 @@ void ConnectionManager::Seek(const TCPEndpoint& endpoint, const std::function<vo
         s_instance->m_sslContext = CreateSSLContext(true);
     }
 
-    s_instance->m_primaryConnection->Seek(endpoint, s_instance->m_sslContext, callback);
+    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {
@@ -61,6 +62,8 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
 }
 
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
+    s_instance = this;
+
     for (int i = 0; i < 1; i++) {
         m_threads.emplace_back(RunContext);
     }

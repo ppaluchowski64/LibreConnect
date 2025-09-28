@@ -40,6 +40,7 @@ BuildStaticLibrary(device-scanner-pc utilities/device-scanner project_defaults n
 
 if (ENABLE_TESTS)
     BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp p2p-network-component-pc device-scanner-pc)
+    BuildTestProgram(TestProject asio-abstractions-programs/TestProject.cpp p2p-network-component-pc)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc p2p-component-pc)
     #BuildTests(Asio_Abstractions_Test asio-abstractions network-component-pc system-component-pc p2p-component-pc)
 endif()

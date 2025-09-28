@@ -26,6 +26,9 @@ typedef asio::ip::udp::resolver UDPResolver;
 typedef asio::ip::udp::socket UDPSocket;
 typedef asio::io_context::strand IOContextStrand;
 
+typedef std::function<void(bool)> ConnectionCallbackType;
+typedef std::function<void()> DisconnectionCallbackType;
+
 constexpr PackageSizeInt MAX_NON_FILE_PACKAGE_SIZE = 1024 * 32;
 constexpr PackageSizeInt MAX_FULL_PACKAGE_SIZE = 1024 * 64;
 constexpr PackageSizeInt MAX_FILE_NAME_SIZE = 255;
