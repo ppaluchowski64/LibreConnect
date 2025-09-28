@@ -2,7 +2,7 @@
 #include <asio/buffer.hpp>
 
 PrimaryConnection::PrimaryConnection(IOContext& context)
-    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr), m_sendFlag(context.get_executor()) {}
+    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr), m_sendFlag(context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(context.get_executor())) {}
 
 std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context) {
     return std::make_shared<PrimaryConnection>(context);
@@ -34,6 +34,10 @@ std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPa
     }
 
     return std::nullopt;
+}
+
+std::shared_ptr<AwaitableFlag> PrimaryConnection::GetReceiveFlag() const {
+    return m_receiveFlag;
 }
 
 bool PrimaryConnection::HasPendingPackages() const {
@@ -131,6 +135,10 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType 
         m_socket->lowest_layer().cancel();
         co_await m_socket->async_shutdown(asio::use_awaitable);
         m_socket->lowest_layer().close();
+
+        m_packageOut = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
+        m_packageIn  = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
+
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
             Debug::Log("Connection closed by peer");
@@ -203,6 +211,7 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             if (m_connectionState != ConnectionState::CONNECTED) break;
 
             m_packageIn.enqueue(std::move(package));
+            m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {

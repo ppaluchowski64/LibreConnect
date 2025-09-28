@@ -20,7 +20,8 @@ public:
     template <StdLayoutOrVecOrString... Args>
     static void SendRequest(PC_PackageType type, Args&&... args) {
         if (!s_isInitialized.load()) {
-            return;
+            std::lock_guard<std::mutex> lock(s_mutex);
+            Initialize();
         }
 
         s_instance->m_primaryConnection->Send(type, std::forward<Args>(args)...);
@@ -29,7 +30,8 @@ public:
     template <StdLayoutOrVecOrString... Args>
     static void SendRequestWithResponse(PC_PackageType type, Args&&... args, RequestCallbackType&& requestResponseCallback) {
         if (!s_isInitialized.load()) {
-            return;
+            std::lock_guard<std::mutex> lock(s_mutex);
+            Initialize();
         }
 
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_WITH_RESPONSE);
@@ -44,6 +46,8 @@ private:
     static void Initialize();
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer);
     static void RunContext();
+
+    asio::awaitable<void> CoProcessPackages();
 
     enum class SSLContextCurrentMode : uint8_t {
         NONE   = 0,
