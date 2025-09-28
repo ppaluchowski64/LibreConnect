@@ -20,11 +20,14 @@ constexpr size_t MAX_PACKAGE_SIZE = 8192;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
+    explicit PrimaryConnection(IOContext& context);
+
+    PrimaryConnection() = delete;
     static std::shared_ptr<PrimaryConnection> Create(IOContext& context);
 
-    void Connect(const TCPEndpoint& endpoint, std::shared_ptr<SSLContext> sslContext, const std::function<void(bool)>& callback = nullptr);
-    void Seek(const TCPEndpoint& endpoint, std::shared_ptr<SSLContext> sslContext, const std::function<void(bool)>& callback = nullptr);
-    void Disconnect(const std::function<void(bool)>& callback = nullptr);
+    void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
+    void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
+    void Disconnect(DisconnectionCallbackType&& callback = nullptr);
 
     template <StdLayoutOrVecOrString... Args>
     void Send(PC_PackageType type, Args&&... args) {
@@ -50,11 +53,9 @@ public:
 
 
 private:
-    explicit PrimaryConnection(IOContext& context);
-
-    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::function<void(bool)> callback);
-    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::function<void(bool)> callback);
-    asio::awaitable<void> CoDisconnect(std::function<void(bool)> callback);
+    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, ConnectionCallbackType callback);
+    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, ConnectionCallbackType callback);
+    asio::awaitable<void> CoDisconnect(DisconnectionCallbackType callback);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
