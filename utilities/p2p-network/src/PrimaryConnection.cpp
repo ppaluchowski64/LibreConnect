@@ -4,6 +4,10 @@
 PrimaryConnection::PrimaryConnection(IOContext& context)
     : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr), m_sendFlag(context.get_executor()) {}
 
+std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context) {
+    return std::make_shared<PrimaryConnection>(context);
+}
+
 void PrimaryConnection::Connect(const TCPEndpoint& endpoint, std::shared_ptr<SSLContext> sslContext, const std::function<void(bool)>& callback) {
     m_sslContext = sslContext;
     asio::co_spawn(m_strand, CoConnect({endpoint}, callback), asio::detached);

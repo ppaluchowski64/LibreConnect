@@ -64,6 +64,8 @@ ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_con
     for (int i = 0; i < 1; i++) {
         m_threads.emplace_back(RunContext);
     }
+
+    m_primaryConnection = PrimaryConnection::Create(m_context);
 }
 
 void ConnectionManager::Initialize() {
