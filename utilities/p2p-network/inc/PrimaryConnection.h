@@ -20,9 +20,9 @@ constexpr size_t MAX_PACKAGE_SIZE = 8192;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
-    explicit PrimaryConnection(IOContext& context, SSLContext& sslContext);
-    void Connect(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback = nullptr);
-    void Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback = nullptr);
+    explicit PrimaryConnection(IOContext& context);
+    void Connect(const TCPEndpoint& endpoint, std::shared_ptr<SSLContext> sslContext, const std::function<void(bool)>& callback = nullptr);
+    void Seek(const TCPEndpoint& endpoint, std::shared_ptr<SSLContext> sslContext, const std::function<void(bool)>& callback = nullptr);
     void Disconnect(const std::function<void(bool)>& callback = nullptr);
 
     template <StdLayoutOrVecOrString... Args>
@@ -56,9 +56,10 @@ private:
     asio::awaitable<void> CoReceive();
 
     IOContext&      m_context;
-    SSLContext&     m_sslContext;
     asio::strand<asio::io_context::executor_type> m_strand;
-    SSLSocket       m_socket;
+
+    std::shared_ptr<SSLContext> m_sslContext;
+    std::unique_ptr<SSLSocket>  m_socket;
 
     AwaitableFlag  m_sendFlag;
 

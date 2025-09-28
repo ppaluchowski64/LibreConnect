@@ -18,7 +18,7 @@ namespace TLS {
         std::filesystem::create_directories(path);
 
         const unsigned char *C_value = reinterpret_cast<const unsigned char *>("PL");
-        const unsigned char* O_value = reinterpret_cast<const unsigned char*>("PabloConnect");
+        const unsigned char* O_value = reinterpret_cast<const unsigned char*>("LibreConnect");
         const unsigned char* CN_value = reinterpret_cast<const unsigned char*>("localhost");
         constexpr int exp  = 60 * 60 * 24 * 30;
 
