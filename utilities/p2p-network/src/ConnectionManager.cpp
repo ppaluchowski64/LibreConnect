@@ -65,9 +65,48 @@ void ConnectionManager::RunContext() {
     s_instance->m_context.run();
 }
 
+asio::awaitable<void> ConnectionManager::CoProcessPackages() {
+    const std::shared_ptr<AwaitableFlag> receiveFlag = m_primaryConnection->GetReceiveFlag();
+
+    while (true) {
+        co_await receiveFlag->Wait();
+        receiveFlag->Reset();
+
+        std::optional<std::unique_ptr<Package<PC_PackageType>>> packageOptional = m_primaryConnection->GetPackage();
+        while (packageOptional.has_value()) {
+            std::unique_ptr<Package<PC_PackageType>> value = std::move(packageOptional.value());
+            const PackageHeader header = value->GetHeader();
+
+            if ((header.flags & PackageFlag::REQUEST_WITH_RESPONSE) != 0) {
+                size_t requestID = value->GetValue<size_t>();
+                std::optional<RequestCallbackType> callbackOptional = m_requestCallbackMap.Get(requestID);
+
+                if (callbackOptional.has_value()) {
+                    asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
+                        callback(std::move(package));
+                    });
+                }
+
+            } else {
+                PC_PackageType type = static_cast<PC_PackageType>(header.type);
+                std::optional<RequestCallbackType> callbackOptional = m_responseHandlerMap.Get(type);
+
+                if (callbackOptional.has_value()) {
+                    asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
+                        callback(std::move(package));
+                    });
+                }
+            }
+
+            packageOptional = m_primaryConnection->GetPackage();
+        }
+    }
+}
+
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
     if (!s_isInitialized.load()) {
-        return;
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
     }
 
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
@@ -76,11 +115,12 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
     s_instance = this;
 
-    for (int i = 0; i < 1; i++) {
+    for (int i = 0; i < 2; i++) {
         m_threads.emplace_back(RunContext);
     }
 
     m_primaryConnection = PrimaryConnection::Create(m_context);
+    asio::co_spawn(m_context, CoProcessPackages(), asio::detached);
 }
 
 void ConnectionManager::Initialize() {

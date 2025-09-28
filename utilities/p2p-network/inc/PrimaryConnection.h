@@ -14,6 +14,7 @@
 
 enum class PC_PackageType : PackageTypeInt {
     NONE = 0,
+    MESSAGE = 1
 };
 
 constexpr size_t MAX_PACKAGE_SIZE = 8192;
@@ -49,6 +50,7 @@ public:
     }
 
     std::optional<std::unique_ptr<Package<PC_PackageType>>> GetPackage();
+    std::shared_ptr<AwaitableFlag> GetReceiveFlag() const;
     bool HasPendingPackages() const;
 
 
@@ -66,6 +68,7 @@ private:
     std::unique_ptr<SSLSocket>  m_socket;
 
     AwaitableFlag  m_sendFlag;
+    std::shared_ptr<AwaitableFlag> m_receiveFlag;
 
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;
