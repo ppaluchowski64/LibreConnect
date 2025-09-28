@@ -14,6 +14,7 @@ public:
 
     static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
     static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
+    static void Disconnect(DisconnectionCallbackType&& callback = nullptr);
 
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
 

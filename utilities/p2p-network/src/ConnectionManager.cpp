@@ -32,6 +32,11 @@ void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& ca
     s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
 }
 
+void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
+    std::call_once(s_initFlag, Initialize);
+    s_instance->m_primaryConnection->Disconnect(std::forward<DisconnectionCallbackType>(callback));
+}
+
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {
     if (!TLS::CertificateManager::IsCertificateValid("certs")) {
         TLS::CertificateManager::GenerateCertificate("certs");

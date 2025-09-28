@@ -65,7 +65,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, Connect
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        callback(true);
+        asio::post(m_context,std::bind(callback, true));
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -74,7 +74,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, Connect
             Debug::LogError("PrimaryConnection connection error: {}", error.what());
         }
 
-        callback(false);
+        asio::post(m_context,std::bind(callback, false));
         Disconnect();
     }
 
@@ -107,7 +107,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, Connection
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        callback(true);
+        asio::post(m_context, std::bind(callback, true));
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::ssl::error::stream_truncated || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -116,7 +116,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, Connection
             Debug::LogError("PrimaryConnection connection seek error: {}", error.what());
         }
 
-        callback(false);
+        asio::post(m_context,std::bind(callback, false));
         Disconnect();
     }
 
@@ -140,7 +140,7 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType 
     }
 
     m_connectionState = ConnectionState::DISCONNECTED;
-    callback();
+    asio::post(m_context,callback);
 }
 
 asio::awaitable<void> PrimaryConnection::CoSend() {
