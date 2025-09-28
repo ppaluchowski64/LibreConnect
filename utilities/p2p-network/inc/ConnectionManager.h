@@ -2,6 +2,8 @@
 #define CONNECTION_MANAGER_H
 
 #include <atomic>
+#include <filesystem>
+
 #include <PrimaryConnection.h>
 #include <ConcurrentUnorderedMap.h>
 #include <magic_enum/magic_enum.hpp>
@@ -12,6 +14,8 @@ public:
     typedef std::function<void(bool)> ConnectionCallbackType;
 
     static void Connect(const TCPEndpoint& endpoint, const ConnectionCallbackType& callback);
+    static void Seek(const TCPEndpoint& endpoint, const std::function<void(bool)>& callback );
+
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
 
     template <StdLayoutOrVecOrString... Args>
@@ -42,18 +46,37 @@ public:
     }
 
 private:
+    ConnectionManager();
+
     static void Initialize();
+    static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer);
+    static void RunContext();
+
+    enum class SSLContextCurrentMode : uint8_t {
+        NONE   = 0,
+        SERVER = 1,
+        CLIENT = 2
+    };
 
     static ConnectionManager* s_instance;
     static std::once_flag s_initFlag;
 
+    IOContext  m_context;
+    std::shared_ptr<SSLContext> m_sslContext;
+    IOWorkGuard m_workGuard;
+
     std::atomic<size_t> m_currentRequestID{0};
     std::atomic<bool>   m_shutdownRequested{false};
     std::atomic<bool>   m_isConnected{false};
+    std::atomic<SSLContextCurrentMode> m_currentSSLContextCurrentMode{SSLContextCurrentMode::NONE};
+
+    std::vector<std::thread> m_threads;
 
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
     ConcurrentUnorderedMap<size_t, RequestCallbackType> m_requestCallbackMap;
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
+
+
 };
 
 #endif //CONNECTION_MANAGER_H
