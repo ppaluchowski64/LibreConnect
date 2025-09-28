@@ -1,14 +1,15 @@
 #include <ConnectionManager.h>
 #include <CertificateManager.h>
 
-ConnectionManager* ConnectionManager::s_instance = nullptr;
-std::once_flag     ConnectionManager::s_initFlag{};
+ConnectionManager* ConnectionManager::s_instance{nullptr};
+std::mutex         ConnectionManager::s_mutex{};
+std::atomic<bool>  ConnectionManager::s_isInitialized{false};
+
 
 void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
-    std::call_once(s_initFlag, Initialize);
-    if (s_instance->m_isConnected.load()) {
-        Debug::LogWarning("ConnectionManager::Connect: existing connection terminated before starting new one");
-        s_instance->m_primaryConnection->Disconnect();
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!s_isInitialized.load()) {
+        Initialize();
     }
 
     if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::CLIENT) {
@@ -19,10 +20,9 @@ void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&&
 }
 
 void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
-    std::call_once(s_initFlag, Initialize);
-    if (s_instance->m_isConnected.load()) {
-        Debug::LogWarning("ConnectionManager::Connect: existing connection terminated before starting new one");
-        s_instance->m_primaryConnection->Disconnect();
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!s_isInitialized.load()) {
+        Initialize();
     }
 
     if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::SERVER) {
@@ -33,7 +33,11 @@ void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& ca
 }
 
 void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
-    std::call_once(s_initFlag, Initialize);
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!s_isInitialized.load()) {
+        Initialize();
+    }
+
     s_instance->m_primaryConnection->Disconnect(std::forward<DisconnectionCallbackType>(callback));
 }
 
@@ -62,7 +66,10 @@ void ConnectionManager::RunContext() {
 }
 
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
-    std::call_once(s_initFlag, Initialize);
+    if (!s_isInitialized.load()) {
+        return;
+    }
+
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
 }
 
@@ -78,4 +85,5 @@ ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_con
 
 void ConnectionManager::Initialize() {
     s_instance = new ConnectionManager();
+    s_isInitialized.store(true);
 }

@@ -15,15 +15,11 @@ public:
     static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
     static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
     static void Disconnect(DisconnectionCallbackType&& callback = nullptr);
-
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
 
     template <StdLayoutOrVecOrString... Args>
     static void SendRequest(PC_PackageType type, Args&&... args) {
-        std::call_once(s_initFlag, Initialize);
-
-        if (!s_instance->m_isConnected.load()) {
-            Debug::LogWarning("Failed to send request of type \'{}\': primary connection is inactive.", magic_enum::enum_name(type));
+        if (!s_isInitialized.load()) {
             return;
         }
 
@@ -32,10 +28,7 @@ public:
 
     template <StdLayoutOrVecOrString... Args>
     static void SendRequestWithResponse(PC_PackageType type, Args&&... args, RequestCallbackType&& requestResponseCallback) {
-        std::call_once(s_initFlag, Initialize);
-
-        if (!s_instance->m_isConnected.load()) {
-            Debug::LogWarning("Failed to send request of type \'{}\': primary connection is inactive.", magic_enum::enum_name(type));
+        if (!s_isInitialized.load()) {
             return;
         }
 
@@ -59,19 +52,17 @@ private:
     };
 
     static ConnectionManager* s_instance;
-    static std::once_flag s_initFlag;
+    static std::mutex         s_mutex;
+    static std::atomic<bool>  s_isInitialized;
 
     IOContext  m_context;
     std::shared_ptr<SSLContext> m_sslContext;
     IOWorkGuard m_workGuard;
 
     std::atomic<size_t> m_currentRequestID{0};
-    std::atomic<bool>   m_shutdownRequested{false};
-    std::atomic<bool>   m_isConnected{false};
     std::atomic<SSLContextCurrentMode> m_currentSSLContextCurrentMode{SSLContextCurrentMode::NONE};
 
     std::vector<std::thread> m_threads;
-
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
     ConcurrentUnorderedMap<size_t, RequestCallbackType> m_requestCallbackMap;
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
