@@ -121,9 +121,9 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
 asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
     try {
         DeviceInfo device = {};
-        Package<DeviceScannerPackageType> package(PackageHeader{0, 1024, 0});
 
         do {
+            Package<DeviceScannerPackageType> package(PackageHeader{0, 1024, 0});
             asio::mutable_buffer buffer(package.GetRawBody(), package.GetHeader().size);
             UDPEndpoint senderEndpoint;
 
