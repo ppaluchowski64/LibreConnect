@@ -8,7 +8,7 @@
 #include <vector>
 
 struct DeviceInfo {
-
+    std::string deviceName;
 };
 
 class LanDeviceScanner {
@@ -24,6 +24,8 @@ private:
     asio::awaitable<void> Co_LeaveMulticastGroup();
     asio::awaitable<void> Co_SendProbes();
     asio::awaitable<void> Co_ReceiveResponses();
+
+    static DeviceInfo GetDeviceInfo();
 
     enum class DeviceScannerPackageType : uint16_t {
         None = 0

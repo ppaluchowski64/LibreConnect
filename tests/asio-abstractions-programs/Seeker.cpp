@@ -9,7 +9,7 @@ int main(){
 
     ConnectionManager::Seek(TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), 9000), [](const bool result) {
         Debug::Log("Seek result: {}", result ? "Success" : "Failure");
-        ConnectionManager::SendRequest(PC_PackageType::MESSAGE, std::string("hello from seeker"));
+        ConnectionManager::Send(PC_PackageType::MESSAGE, std::string("hello from seeker"));
     });
 
     while (true) {
