@@ -18,7 +18,7 @@ public:
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
 
     template <StdLayoutOrVecOrString... Args>
-    static void SendRequest(PC_PackageType type, Args&&... args) {
+    static void Send(PC_PackageType type, Args&&... args) {
         if (!s_isInitialized.load()) {
             std::lock_guard<std::mutex> lock(s_mutex);
             Initialize();
@@ -28,7 +28,7 @@ public:
     }
 
     template <StdLayoutOrVecOrString... Args>
-    static void SendRequestWithResponse(PC_PackageType type, Args&&... args, RequestCallbackType&& requestResponseCallback) {
+    static void SendRequest(PC_PackageType type, Args&&... args, RequestCallbackType&& requestResponseCallback) {
         if (!s_isInitialized.load()) {
             std::lock_guard<std::mutex> lock(s_mutex);
             Initialize();

@@ -95,12 +95,10 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
 asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
         const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
-        const DeviceInfo device = {};
+        auto [deviceName] = GetDeviceInfo();
 
-        std::vector<uint8_t> buffer(sizeof(device));
-        std::memcpy(buffer.data(), &device, sizeof(device));
-
-        const asio::const_buffer constBuffer(buffer.data(), buffer.size());
+        Package<DeviceScannerPackageType> package = Package<DeviceScannerPackageType>::Create(DeviceScannerPackageType::None, std::move(deviceName));
+        const asio::const_buffer constBuffer(package.GetRawBody(), package.GetHeader().size);
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
 
         do {
@@ -123,26 +121,31 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
 asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
     try {
         DeviceInfo device = {};
+        Package<DeviceScannerPackageType> package(PackageHeader{0, 1024, 0});
 
         do {
-            asio::mutable_buffer buffer(&device, sizeof(device));
+            asio::mutable_buffer buffer(package.GetRawBody(), package.GetHeader().size);
             UDPEndpoint senderEndpoint;
 
             // IGNORE THIS ERROR
             std::size_t bytesReceived = co_await m_receiverSocket.async_receive_from(buffer, senderEndpoint, asio::use_awaitable);
+            package.GetValue<std::string>(device.deviceName);
 
-            if (bytesReceived != sizeof(device)) {
-                Debug::Log("Received a packet with incorrect size.");
-                continue;
-            }
-
-            Debug::Log("Received from {}", senderEndpoint.address().to_string());
+            Debug::Log("Device, name: {}", device.deviceName);
 
         } while (m_isScanning);
 
     } catch (const std::system_error& errorCode) {
         Debug::LogError(errorCode.what());
     }
+}
+
+DeviceInfo LanDeviceScanner::GetDeviceInfo() {
+    DeviceInfo device = {
+        asio::ip::host_name()
+    };
+
+    return device;
 }
 
 
