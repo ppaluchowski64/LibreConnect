@@ -9,6 +9,7 @@
 #include <type_traits>
 #include <string>
 #include <AsioCommon.h>
+#include <Packable.h>
 #include <boost/endian/conversion.hpp>
 #include <tracy/Tracy.hpp>
 #include <fmt/ostream.h>
@@ -40,21 +41,24 @@ inline uint8_t operator|(PackageFlag l, PackageFlag r) {
     return static_cast<uint8_t>(l) | static_cast<uint8_t>(r);
 }
 
-struct PackageHeader {
+struct PackageHeader final {
     PackageTypeInt type{};
     PackageSizeInt size{};
     uint8_t        flags{};
 
-    void FromNativeToBigEndian() {
-        boost::endian::native_to_big_inplace(type);
-        boost::endian::native_to_big_inplace(size);
-        boost::endian::native_to_big_inplace(flags);
+    void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const{
+        SerializePrimitive(type, buffer, offset);
+        SerializePrimitive(size, buffer, offset);
+        SerializePrimitive(flags, buffer, offset);
+    }
+    void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
+        DeserializePrimitive(type, buffer, offset);
+        DeserializePrimitive(size, buffer, offset);
+        DeserializePrimitive(flags, buffer, offset);
     }
 
-    void FromBigEndianToNative() {
-        boost::endian::big_to_native_inplace(type);
-        boost::endian::big_to_native_inplace(size);
-        boost::endian::big_to_native_inplace(flags);
+    constexpr size_t GetObjectSerializedSize() const {
+        return sizeof(type) + sizeof(size) + sizeof(flags);
     }
 };
 
@@ -312,7 +316,6 @@ private:
 
     template <typename T0>
     static void CalculateElementSize(const T0& arg, PackageHeader& packageHeader) {
-        ZoneScoped;
         using T1 = std::decay_t<T0>;
         if constexpr (std::is_same_v<T1, std::string>) {
             packageHeader.size += arg.size() + sizeof(PackageSizeInt);
