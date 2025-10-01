@@ -168,7 +168,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
         m_sendFlag.Reset();
 
         std::vector<uint8_t> buffer;
-        buffer.resize(PackageHeader::GetObjectSerializedSize());
+        buffer.resize(PackageHeader::GetSerializedSize());
 
         while (m_connectionState == ConnectionState::CONNECTED) {
             if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {
@@ -205,7 +205,7 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
         moodycamel::ProducerToken token(m_packageIn);
         std::vector<uint8_t> headerBuffer;
 
-        headerBuffer.resize(PackageHeader::GetObjectSerializedSize());
+        headerBuffer.resize(PackageHeader::GetSerializedSize());
         PackageHeader header{};
 
         while (m_connectionState == ConnectionState::CONNECTED) {
