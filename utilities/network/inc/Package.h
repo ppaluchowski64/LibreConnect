@@ -57,7 +57,7 @@ struct PackageHeader final {
         DeserializeObject(flags, buffer, offset);
     }
 
-    constexpr size_t GetObjectSerializedSize() const {
+    static constexpr size_t GetObjectSerializedSize() {
         return sizeof(type) + sizeof(size) + sizeof(flags);
     }
 };
@@ -75,36 +75,31 @@ class Package final {
 public:
     Package() {
         m_header = {0, 0};
-        m_rawBody = nullptr;
-    };
+    }
 
     Package(const Package&) = delete;
     Package& operator=(const Package&) = delete;
 
-    Package(Package&& other) noexcept
-        : m_header(other.m_header), m_rawBody(other.m_rawBody), m_readOffset(other.m_readOffset) {
-        other.m_rawBody = nullptr;
+    Package(Package&& other) noexcept : m_buffer(std::move(other.m_buffer)), m_header(other.m_header), m_readOffset(other.m_readOffset) {
+        other.m_buffer.clear();
     }
 
     Package& operator=(Package&& other) noexcept {
         if (this != &other) {
-            delete[] m_rawBody;
-
+            m_buffer = std::move(other.m_buffer);
             m_header = other.m_header;
-            m_rawBody = other.m_rawBody;
             m_readOffset = other.m_readOffset;
 
-            other.m_rawBody = nullptr;
+            other.m_buffer.clear();
         }
+
         return *this;
     }
 
-    ~Package() {
-        delete[] m_rawBody;
-    }
+    ~Package() = default;
 
-    explicit Package(const PackageHeader header) : m_header(header) {
-        m_rawBody = new uint8_t[m_header.size];
+    explicit Package(const PackageHeader& header) : m_header(header) {
+        m_buffer.resize(header.size);
     }
 
     NO_DISCARD PackageHeader& GetHeader() {
@@ -115,144 +110,34 @@ public:
         return m_header;
     }
 
-    NO_DISCARD uint8_t* GetRawBody() const {
-        return m_rawBody;
+    NO_DISCARD uint8_t* GetRawBody() {
+        return m_buffer.data();
     }
 
-    template <StdLayoutOrVecOrString T0>
+    template <Serializable T0>
     NO_DISCARD T0 GetValue() {
-        ZoneScoped;
-        using T1 = std::decay_t<T0>;
-        T1 element{};
+        T0 value{};
 
-        if constexpr (std::is_same_v<T1, std::string>) {
-            PackageSizeInt stringSize;
-
-            if (m_readOffset + sizeof(PackageSizeInt) > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-                return element;
-            }
-
-            std::memcpy(&stringSize, m_rawBody + m_readOffset, sizeof(PackageSizeInt));
-            boost::endian::big_to_native_inplace(stringSize);
-            m_readOffset += sizeof(PackageSizeInt);
-
-            if (m_readOffset + stringSize > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-                return element;
-            }
-
-            element.resize(stringSize);
-            std::memcpy(element.data(), m_rawBody + m_readOffset, stringSize);
-            m_readOffset += stringSize;
-
-            return std::move(element);
-        } else if constexpr (is_std_layout_vector<T1>::value) {
-            PackageSizeInt vectorSize;
-
-            if (m_readOffset + sizeof(PackageSizeInt) > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-                return element;
-            }
-
-            std::memcpy(&vectorSize, m_rawBody + m_readOffset, sizeof(PackageSizeInt));
-            boost::endian::big_to_native_inplace(vectorSize);
-            m_readOffset += sizeof(PackageSizeInt);
-            const PackageSizeInt dataSize = vectorSize * sizeof(typename T1::value_type);
-
-            if (m_readOffset + dataSize > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-                return element;
-            }
-
-            element.resize(vectorSize);
-            std::memcpy(element.data(), m_rawBody + m_readOffset, dataSize);
-            m_readOffset += dataSize;
-
-            for (auto& item : element) {
-                boost::endian::big_to_native_inplace(item);
-            }
-
-            return std::move(element);
+        if constexpr (Packable<T0>) {
+            value.Deserialize(m_buffer, m_readOffset);
         } else {
-            const PackageSizeInt size = sizeof(T1);
+            DeserializeObject(value, m_buffer, m_readOffset);
+        }
 
-            if (m_readOffset + size > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-                return element;
-            }
+        return value;
+    }
 
-            std::memcpy(&element, m_rawBody + m_readOffset, size);
-            boost::endian::big_to_native_inplace(element);
-            m_readOffset += size;
-
-            return std::move(element);
+    template <Serializable T0>
+    void GetValue(T0& value) {
+        if constexpr (Packable<T0>) {
+            value.Deserialize(m_buffer, m_readOffset);
+        } else {
+            DeserializeObject(value, m_buffer, m_readOffset);
         }
     }
 
-    template <StdLayoutOrVecOrString T0>
-    void GetValue(T0& element) {
-        ZoneScoped;
-        using T1 = std::decay_t<T0>;
-
-        if constexpr (std::is_same_v<T1, std::string>) {
-            PackageSizeInt stringSize;
-
-            if (m_readOffset + sizeof(PackageSizeInt) > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-            }
-
-            std::memcpy(&stringSize, m_rawBody + m_readOffset, sizeof(PackageSizeInt));
-            boost::endian::big_to_native_inplace(stringSize);
-            m_readOffset += sizeof(PackageSizeInt);
-
-            if (m_readOffset + stringSize > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-            }
-
-            element.resize(stringSize);
-            std::memcpy(element.data(), m_rawBody + m_readOffset, stringSize);
-            m_readOffset += stringSize;
-        } else if constexpr (is_std_layout_vector<T1>::value) {
-            PackageSizeInt vectorSize;
-
-            if (m_readOffset + sizeof(PackageSizeInt) > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-            }
-
-            std::memcpy(&vectorSize, m_rawBody + m_readOffset, sizeof(PackageSizeInt));
-            boost::endian::big_to_native_inplace(vectorSize);
-            m_readOffset += sizeof(PackageSizeInt);
-            const PackageSizeInt dataSize = vectorSize * sizeof(typename T1::value_type);
-
-            if (m_readOffset + dataSize > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-            }
-
-            element.resize(vectorSize);
-            std::memcpy(element.data(), m_rawBody + m_readOffset, dataSize);
-
-            for (auto& item : element) {
-                boost::endian::big_to_native_inplace(item);
-            }
-
-            m_readOffset += dataSize;
-        } else {
-            const PackageSizeInt size = sizeof(T1);
-
-            if (m_readOffset + size > m_header.size) {
-                Debug::LogError("m_readOffset out of body scope");
-            }
-
-            std::memcpy(&element, m_rawBody + m_readOffset, size);
-            boost::endian::big_to_native_inplace(element);
-            m_readOffset += size;
-        }
-    }
-
-    template <StdLayoutOrVecOrString... Args>
-    static Package Create(T type, Args&&... args) {
-        ZoneScoped;
+    template <Serializable... Args>
+    static Package Create(T type, Args... args) {
         PackageHeader header {
             static_cast<PackageTypeInt>(type),
             0,
@@ -261,15 +146,14 @@ public:
 
         (CalculateElementSize(args, header), ...);
         Package newPackage(header);
-        PackageSizeInt offset = 0;
+        size_t offset = 0;
         (InsertElementToBody(args, newPackage, offset), ...);
 
         return newPackage;
     }
 
-    template <StdLayoutOrVecOrString... Args>
-    static std::unique_ptr<Package> CreateUnique(T type, Args&&... args) {
-        ZoneScoped;
+    template <Serializable... Args>
+    static std::unique_ptr<Package> CreateUnique(T type, Args... args) {
         PackageHeader header {
             static_cast<PackageTypeInt>(type),
             0,
@@ -277,58 +161,37 @@ public:
         };
 
         (CalculateElementSize(args, header), ...);
-        auto newPackage = std::make_unique<Package>(header);
-        PackageSizeInt offset = 0;
+        std::unique_ptr<Package> newPackage = std::make_unique<Package>(header);
+        size_t offset = 0;
         (InsertElementToBody(args, *newPackage, offset), ...);
 
         return newPackage;
     }
 
+
+
 private:
-    template <typename T0>
-    static void InsertElementToBody(T0& arg, Package& package, PackageSizeInt& offset) {
-        ZoneScoped;
-        using T1 = std::decay_t<T0>;
-
-        if constexpr (std::is_same_v<T1, std::string>) {
-            auto size = static_cast<PackageSizeInt>(arg.size());
-            boost::endian::native_to_big_inplace(size);
-            std::memcpy(package.m_rawBody + offset, &size, sizeof(PackageSizeInt));
-            std::memcpy(package.m_rawBody + offset + sizeof(PackageSizeInt), arg.data(), arg.size());
-            offset += sizeof(PackageSizeInt) + arg.size();
-        } else if constexpr (is_std_layout_vector<T1>::value) {
-            auto size = static_cast<PackageSizeInt>(arg.size());
-            boost::endian::native_to_big_inplace(size);
-
-            for (auto& element : arg) {
-                boost::endian::native_to_big_inplace(element);
-            }
-
-            std::memcpy(package.m_rawBody + offset, &size, sizeof(PackageSizeInt));
-            std::memcpy(package.m_rawBody + offset + sizeof(PackageSizeInt), arg.data(), arg.size() * sizeof(typename T1::value_type));
-            offset += sizeof(PackageSizeInt) + arg.size() * sizeof(typename T1::value_type);
+    template <Serializable T0>
+    static void InsertElementToBody(T0& arg, Package& package, size_t& offset) {
+        if constexpr (Packable<T0>) {
+            arg.Serialize(package.m_buffer, offset);
         } else {
-            boost::endian::native_to_big_inplace(arg);
-            std::memcpy(package.m_rawBody + offset, &arg, sizeof(T1));
-            offset += sizeof(T1);
+            SerializeObject(arg, package.m_buffer, offset);
         }
     }
 
-    template <typename T0>
-    static void CalculateElementSize(const T0& arg, PackageHeader& packageHeader) {
-        using T1 = std::decay_t<T0>;
-        if constexpr (std::is_same_v<T1, std::string>) {
-            packageHeader.size += arg.size() + sizeof(PackageSizeInt);
-        } else if constexpr (is_std_layout_vector<T1>::value) {
-            packageHeader.size += arg.size() * sizeof(typename T1::value_type) + sizeof(PackageSizeInt);
+    template <Serializable T0>
+    static void CalculateElementSize(const T0& arg, PackageHeader& header) {
+        if constexpr (Packable<T0>) {
+            header.size += arg.GetObjectSerializedSize();
         } else {
-            packageHeader.size += sizeof(T1);
+            header.size += GetObjectSerializedSize(arg);
         }
     }
 
-    PackageHeader  m_header{};
-    uint8_t*       m_rawBody{nullptr};
-    PackageSizeInt m_readOffset{0};
+    std::vector<uint8_t> m_buffer;
+    PackageHeader        m_header{};
+    size_t               m_readOffset{0};
 
 };
 

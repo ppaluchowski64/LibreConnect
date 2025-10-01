@@ -69,7 +69,9 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, Connect
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::post(m_context,std::bind(callback, true));
+        asio::post(m_context, [callback = std::move(callback)]() mutable {
+            callback(true);
+        });
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -78,7 +80,9 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, Connect
             Debug::LogError("PrimaryConnection connection error: {}", error.what());
         }
 
-        asio::post(m_context,std::bind(callback, false));
+        asio::post(m_context, [callback = std::move(callback)]() mutable {
+            callback(false);
+        });
         Disconnect();
     }
 
@@ -111,7 +115,9 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, Connection
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::post(m_context, std::bind(callback, true));
+        asio::post(m_context, [callback = std::move(callback)]() mutable {
+            callback(true);
+        });
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::ssl::error::stream_truncated || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -120,7 +126,9 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, Connection
             Debug::LogError("PrimaryConnection connection seek error: {}", error.what());
         }
 
-        asio::post(m_context,std::bind(callback, false));
+        asio::post(m_context, [callback = std::move(callback)]() mutable {
+            callback(false);
+        });
         Disconnect();
     }
 
@@ -159,16 +167,21 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
         co_await m_sendFlag.Wait();
         m_sendFlag.Reset();
 
+        std::vector<uint8_t> buffer;
+        buffer.resize(PackageHeader::GetObjectSerializedSize());
+
         while (m_connectionState == ConnectionState::CONNECTED) {
-            if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {\
+            if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {
                 PackageHeader& header = package->GetHeader();
 
+                std::size_t offset = 0;
+                header.Serialize(buffer, offset);
+
                 std::vector<asio::const_buffer> constBuffers {
-                    asio::const_buffer(&header, sizeof(PackageHeader)),
+                    asio::const_buffer(buffer.data(), buffer.size()),
                     asio::const_buffer(package->GetRawBody(), header.size)
                 };
 
-                header.FromNativeToBigEndian();
                 co_await asio::async_write(*m_socket, constBuffers, asio::use_awaitable);
             } else {
                 co_await m_sendFlag.Wait();
@@ -190,12 +203,17 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
     try {
         const std::shared_ptr<PrimaryConnection> self = shared_from_this();
         moodycamel::ProducerToken token(m_packageIn);
+        std::vector<uint8_t> headerBuffer;
+
+        headerBuffer.resize(PackageHeader::GetObjectSerializedSize());
         PackageHeader header{};
 
         while (m_connectionState == ConnectionState::CONNECTED) {
-            asio::mutable_buffer headerBuffer(&header, sizeof(PackageHeader));
-            co_await asio::async_read(*m_socket, headerBuffer, asio::use_awaitable);
-            header.FromBigEndianToNative();
+            asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
+            co_await asio::async_read(*m_socket, headerMutableBuffer, asio::use_awaitable);
+
+            size_t offset = 0;
+            header.Deserialize(headerBuffer, offset);
 
             if (m_connectionState != ConnectionState::CONNECTED) break;
 
