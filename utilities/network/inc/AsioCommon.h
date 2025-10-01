@@ -39,7 +39,7 @@ const asio::ip::address_v4 DEVICE_DISCOVERY_MULTICAST_ADDRESS = asio::ip::make_a
 constexpr uint16_t DEVICE_DISCOVERY_MULTICAST_PORT            = 5430;
 
 template <typename T>
-concept PackageType = std::is_same_v<std::underlying_type_t<T>, PackageTypeInt>;
+concept PackageTypeConcept = std::is_same_v<std::underlying_type_t<T>, PackageTypeInt>;
 
 template <typename T>
 concept StandardLayaut = std::is_standard_layout_v<T>;

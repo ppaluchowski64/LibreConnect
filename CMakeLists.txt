@@ -43,5 +43,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(Seeker asio-abstractions-programs/Seeker.cpp p2p-network-component-pc)
     BuildTestProgram(Connector asio-abstractions-programs/Connector.cpp p2p-network-component-pc)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
+    BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
+
     #BuildTests(Asio_Abstractions_Test asio-abstractions network-component-pc system-component-pc p2p-component-pc)
 endif()

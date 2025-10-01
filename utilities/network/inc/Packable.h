@@ -14,7 +14,7 @@ template <typename T>
 concept Packable = requires(T a, std::vector<uint8_t>& buf, size_t& offset) {
     { a.Serialize(buf, offset) };
     { a.Deserialize(buf, offset) };
-    { a.GetObjectSerializedSize() } -> std::convertible_to<size_t>;
+    { a.GetSerializedSize() } -> std::convertible_to<size_t>;
 };
 
 template <typename T>
@@ -42,6 +42,11 @@ inline void DeserializeObject(T& object, const std::vector<uint8_t>& buffer, siz
     std::memcpy(&object, &buffer[offset], sizeof(object));
     boost::endian::big_to_native_inplace(object);
     offset += sizeof(object);
+}
+
+template <Primitive T>
+constexpr size_t GetObjectSerializedSize(T& object) {
+    return sizeof(object);
 }
 
 inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buffer, size_t& offset) {

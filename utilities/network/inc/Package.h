@@ -57,7 +57,7 @@ struct PackageHeader final {
         DeserializeObject(flags, buffer, offset);
     }
 
-    static constexpr size_t GetObjectSerializedSize() {
+    static constexpr size_t GetSerializedSize() {
         return sizeof(type) + sizeof(size) + sizeof(flags);
     }
 };
@@ -70,7 +70,7 @@ inline std::ostream& operator<<(std::ostream& os, const PackageHeader& object) {
 template <>
 struct fmt::formatter<PackageHeader> : fmt::ostream_formatter {};
 
-template <PackageType T>
+template <PackageTypeConcept T>
 class Package final {
 public:
     Package() {
@@ -183,7 +183,7 @@ private:
     template <Serializable T0>
     static void CalculateElementSize(const T0& arg, PackageHeader& header) {
         if constexpr (Packable<T0>) {
-            header.size += arg.GetObjectSerializedSize();
+            header.size += arg.GetSerializedSize();
         } else {
             header.size += GetObjectSerializedSize(arg);
         }
