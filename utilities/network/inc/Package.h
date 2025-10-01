@@ -47,14 +47,14 @@ struct PackageHeader final {
     uint8_t        flags{};
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const{
-        SerializePrimitive(type, buffer, offset);
-        SerializePrimitive(size, buffer, offset);
-        SerializePrimitive(flags, buffer, offset);
+        SerializeObject(type, buffer, offset);
+        SerializeObject(size, buffer, offset);
+        SerializeObject(flags, buffer, offset);
     }
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
-        DeserializePrimitive(type, buffer, offset);
-        DeserializePrimitive(size, buffer, offset);
-        DeserializePrimitive(flags, buffer, offset);
+        DeserializeObject(type, buffer, offset);
+        DeserializeObject(size, buffer, offset);
+        DeserializeObject(flags, buffer, offset);
     }
 
     constexpr size_t GetObjectSerializedSize() const {
