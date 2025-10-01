@@ -17,9 +17,11 @@ concept Packable = requires(T a, std::vector<uint8_t>& buf, size_t& offset) {
     { a.GetObjectSerializedSize() } -> std::convertible_to<size_t>;
 };
 
+template <typename T>
+struct is_packable_vector : std::false_type {};
+
 template<typename T>
-struct is_packable_vector<std::vector<T>>
-    : std::bool_constant<Primitive<T> || Packable<T> || std::is_same_v<std::string, T>> {};
+struct is_packable_vector<std::vector<T>> : std::bool_constant<Primitive<T> || Packable<T> || std::is_same_v<std::string, T>> {};
 
 template <typename T>
 concept Serializable =
