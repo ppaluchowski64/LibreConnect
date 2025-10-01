@@ -1,8 +1,8 @@
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "*" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "*" ]
 
 jobs:
   build:
@@ -46,3 +46,4 @@ jobs:
         working-directory: ./build/build/Release
         run: |
           ./Concurrent_Structures_Test -C Release --output-on-failure
+          ./Asio_Abstractions_Package_Test -C Release --output-on-failure
