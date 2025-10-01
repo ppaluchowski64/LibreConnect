@@ -2,6 +2,7 @@
 #define PACKABLE_H
 
 #include <concepts>
+#include <type_traits>
 #include <vector>
 #include <string>
 #include <boost/endian/conversion.hpp>
@@ -16,65 +17,76 @@ concept Packable = requires(T a, std::vector<uint8_t>& buf, size_t& offset) {
     { a.GetObjectSerializedSize() } -> std::convertible_to<size_t>;
 };
 
+template<typename T>
+struct is_packable_vector<std::vector<T>>
+    : std::bool_constant<Primitive<T> || Packable<T> || std::is_same_v<std::string, T>> {};
+
+template <typename T>
+concept Serializable =
+    Primitive<T> ||
+    Packable<T> ||
+    std::is_same_v<T, std::string> ||
+    is_packable_vector<T>::value;
+
 template <Primitive T>
-inline void SerializePrimitive(T object, std::vector<uint8_t>& buffer, size_t& offset) {
+inline void SerializeObject(T object, std::vector<uint8_t>& buffer, size_t& offset) {
     boost::endian::native_to_big_inplace(object);
-    memcpy(&buffer[offset], &object, sizeof(object));
+    std::memcpy(&buffer[offset], &object, sizeof(object));
     offset += sizeof(object);
 }
 
 template <Primitive T>
-inline void DeserializePrimitive(T& object, const std::vector<uint8_t>& buffer, size_t& offset) {
-    memcpy(&object, &buffer[offset], sizeof(object));
+inline void DeserializeObject(T& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+    std::memcpy(&object, &buffer[offset], sizeof(object));
     boost::endian::big_to_native_inplace(object);
     offset += sizeof(object);
 }
 
-inline void SerializeString(const std::string& object, std::vector<uint8_t>& buffer, size_t& offset) {
+inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size = object.size();
     boost::endian::native_to_big_inplace(size);
 
-    memcpy(&buffer[offset], &size, sizeof(size));
+    std::memcpy(&buffer[offset], &size, sizeof(size));
     offset += sizeof(size);
 
-    memcpy(&buffer[offset], object.c_str(), object.size());
+    std::memcpy(&buffer[offset], object.c_str(), object.size());
     offset += object.size();
 }
 
-inline void DeserializeString(std::string& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+inline void DeserializeObject(std::string& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    memcpy(&size, &buffer[offset], sizeof(size));
+    std::memcpy(&size, &buffer[offset], sizeof(size));
     boost::endian::big_to_native_inplace(size);
     offset += sizeof(size);
 
     object.resize(size);
-    memcpy(&object[0], &buffer[offset], size);
+    std::memcpy(&object[0], &buffer[offset], size);
     offset += size;
 }
 
-constexpr size_t GetStringSerializedSize(const std::string& object) {
+constexpr size_t GetObjectSerializedSize(const std::string& object) {
     return sizeof(size_t) + object.size();
 }
 
 template <Primitive T>
-inline void SerializeVector(const std::vector<T>& object, std::vector<uint8_t>& buffer, size_t& offset) {
+inline void SerializeObject(const std::vector<T>& object, std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size = object.size();
     boost::endian::native_to_big_inplace(size);
 
-    memcpy(&buffer[offset], &size, sizeof(size));
+    std::memcpy(&buffer[offset], &size, sizeof(size));
     offset += sizeof(size);
 
     for (const auto element : object) {
-        SerializePrimitive(element, buffer, offset);
+        SerializeObject(element, buffer, offset);
     }
 }
 
 template <Packable T>
-inline void SerializeVector(const std::vector<T>& object, std::vector<uint8_t>& buffer, size_t& offset) {
+inline void SerializeObject(const std::vector<T>& object, std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size = object.size();
     boost::endian::native_to_big_inplace(size);
 
-    memcpy(&buffer[offset], &size, sizeof(size));
+    std::memcpy(&buffer[offset], &size, sizeof(size));
     offset += sizeof(size);
 
     for (const auto& element : object) {
@@ -82,35 +94,35 @@ inline void SerializeVector(const std::vector<T>& object, std::vector<uint8_t>& 
     }
 }
 
-inline void SerializeVector(const std::vector<std::string>& object, std::vector<uint8_t>& buffer, size_t& offset) {
+inline void SerializeObject(const std::vector<std::string>& object, std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size = object.size();
     boost::endian::native_to_big_inplace(size);
 
-    memcpy(&buffer[offset], &size, sizeof(size));
+    std::memcpy(&buffer[offset], &size, sizeof(size));
     offset += sizeof(size);
 
     for (const auto& element : object) {
-        SerializeString(element, buffer, offset);
+        SerializeObject(element, buffer, offset);
     }
 }
 
 template <Primitive T>
-inline void DeserializeVector(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    memcpy(&size, &buffer[offset], sizeof(size));
+    std::memcpy(&size, &buffer[offset], sizeof(size));
     boost::endian::big_to_native_inplace(size);
     offset += sizeof(size);
     object.resize(size);
 
     for (auto& element : object) {
-        DeserializePrimitive(element, buffer, offset);
+        DeserializeObject(element, buffer, offset);
     }
 }
 
 template <Packable T>
-inline void DeserializeVector(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    memcpy(&size, &buffer[offset], sizeof(size));
+    std::memcpy(&size, &buffer[offset], sizeof(size));
     boost::endian::big_to_native_inplace(size);
     offset += sizeof(size);
     object.resize(size);
@@ -120,25 +132,25 @@ inline void DeserializeVector(std::vector<T>& object, const std::vector<uint8_t>
     }
 }
 
-inline void DeserializeVector(std::vector<std::string>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+inline void DeserializeObject(std::vector<std::string>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    memcpy(&size, &buffer[offset], sizeof(size));
+    std::memcpy(&size, &buffer[offset], sizeof(size));
     boost::endian::big_to_native_inplace(size);
     offset += sizeof(size);
     object.resize(size);
 
     for (auto& element : object) {
-        DeserializeString(element, buffer, offset);
+        DeserializeObject(element, buffer, offset);
     }
 }
 
 template <Primitive T>
-constexpr size_t GetVectorSerializedSize(const std::vector<T>& object) {
+constexpr size_t GetObjectSerializedSize(const std::vector<T>& object) {
     return sizeof(size_t) + sizeof(T) * object.size();
 }
 
 template <Packable T>
-constexpr size_t GetVectorSerializedSize(const std::vector<T>& object) {
+constexpr size_t GetObjectSerializedSize(const std::vector<T>& object) {
     size_t result = sizeof(size_t);
     for (const auto& element : object) {
         result += element.GetObjectSerializedSize();
@@ -147,10 +159,10 @@ constexpr size_t GetVectorSerializedSize(const std::vector<T>& object) {
     return result;
 }
 
-constexpr size_t GetVectorSerializedSize(const std::vector<std::string>& object) {
+constexpr size_t GetObjectSerializedSize(const std::vector<std::string>& object) {
     size_t result = sizeof(size_t);
     for (const auto& element : object) {
-        result += GetStringSerializedSize(element);
+        result += GetObjectSerializedSize(element);
     }
 
     return result;
