@@ -6,9 +6,22 @@
 #include <AsioCommon.h>
 #include <AwaitableFlag.h>
 #include <vector>
+#include <Packable.h>
 
 struct DeviceInfo {
     std::string deviceName;
+
+    void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
+        SerializeObject(deviceName, buffer, offset);
+    }
+
+    void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
+        DeserializeObject(deviceName, buffer, offset);
+    }
+
+    constexpr size_t GetSerializedSize() const {
+        return GetObjectSerializedSize(deviceName);
+    }
 };
 
 class LanDeviceScanner {
