@@ -160,7 +160,7 @@ template <Packable T>
 constexpr size_t GetObjectSerializedSize(const std::vector<T>& object) {
     size_t result = sizeof(size_t);
     for (const auto& element : object) {
-        result += element.GetObjectSerializedSize();
+        result += element.GetSerializedSize();
     }
 
     return result;

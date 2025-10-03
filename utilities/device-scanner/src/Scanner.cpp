@@ -95,10 +95,15 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
 asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
         const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
-        auto [deviceName] = GetDeviceInfo();
+        DeviceInfo deviceInfo = GetDeviceInfo();
 
-        Package<DeviceScannerPackageType> package = Package<DeviceScannerPackageType>::Create(DeviceScannerPackageType::None, std::move(deviceName));
-        const asio::const_buffer constBuffer(package.GetRawBody(), package.GetHeader().size);
+        std::vector<uint8_t> buffer;
+        size_t offset = 0;
+
+        buffer.resize(deviceInfo.GetSerializedSize());
+        deviceInfo.Serialize(buffer, offset);
+
+        const asio::const_buffer constBuffer(buffer.data(), buffer.size());
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
 
         do {
@@ -121,15 +126,17 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
 asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
     try {
         DeviceInfo device = {};
+        std::vector<uint8_t> buffer;
+        buffer.resize(1024);
 
         do {
-            Package<DeviceScannerPackageType> package(PackageHeader{0, 1024, 0});
-            asio::mutable_buffer buffer(package.GetRawBody(), package.GetHeader().size);
+            asio::mutable_buffer mutableBuffer(buffer.data(), buffer.size());
             UDPEndpoint senderEndpoint;
 
-            // IGNORE THIS ERROR
-            std::size_t bytesReceived = co_await m_receiverSocket.async_receive_from(buffer, senderEndpoint, asio::use_awaitable);
-            package.GetValue<std::string>(device.deviceName);
+            co_await m_receiverSocket.async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
+
+            std::size_t offset = 0;
+            device.Deserialize(buffer, offset);
 
             Debug::Log("Device, name: {}", device.deviceName);
 
