@@ -4,6 +4,11 @@
 #include <AsioCommon.h>
 #include <DebugLog.h>
 
+struct NetworkInterfaceData {
+    std::string macAddress;
+    IPAddress   ipAddress;
+};
+
 class AddressResolver final {
 public:
     static bool IsAddressPublic(const asio::ip::address_v6& address);
@@ -19,6 +24,12 @@ public:
 
     static std::vector<IPAddress> GetAllPrivateIPv4();
     static std::vector<IPAddress> GetAllPrivateIPv6();
+    static std::vector<NetworkInterfaceData> GetAllNetworkInterfaces();
+
+private:
+#ifdef _WIN32
+    static bool IsInterfaceValid(const void* adapterPtr);
+#endif
 };
 
 #endif //ADDRESS_RESOLVER_H

@@ -10,19 +10,23 @@
 
 struct DeviceInfo {
     std::string deviceName;
+    std::string macAddress;
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
         SerializeObject(deviceName, buffer, offset);
+        SerializeObject(macAddress, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
         DeserializeObject(deviceName, buffer, offset);
+        DeserializeObject(macAddress, buffer, offset);
     }
 
     constexpr size_t GetSerializedSize() const {
-        return GetObjectSerializedSize(deviceName);
+        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(macAddress);
     }
 };
+
 
 class LanDeviceScanner {
 public:
@@ -39,11 +43,6 @@ private:
     asio::awaitable<void> Co_ReceiveResponses();
 
     static DeviceInfo GetDeviceInfo();
-
-    enum class DeviceScannerPackageType : uint16_t {
-        None = 0
-    };
-
     static LanDeviceScanner* s_instance;
 
     IOContext m_context;
@@ -51,8 +50,7 @@ private:
     AwaitableFlag m_awaitableFlag;
     IOWorkGuard m_workGuard;
 
-    UDPSocket m_senderSocket;
-    UDPSocket m_receiverSocket;
+    UDPSocket m_socket;
 
     std::thread m_contextThread;
     bool m_isScanning{false};
