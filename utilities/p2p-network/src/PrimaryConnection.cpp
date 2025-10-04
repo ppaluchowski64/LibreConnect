@@ -47,10 +47,12 @@ bool PrimaryConnection::HasPendingPackages() const {
 asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, ConnectionCallbackType callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
-    asio::steady_timer timer(m_context.get_executor());
-    while (m_connectionState != ConnectionState::DISCONNECTED) {
-        timer.expires_after(std::chrono::milliseconds(50));
-        co_await timer.async_wait(asio::use_awaitable);
+    {
+        asio::steady_timer timer(m_context.get_executor());
+        while (m_connectionState != ConnectionState::DISCONNECTED) {
+            timer.expires_after(std::chrono::milliseconds(50));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
     }
 
     m_connectionState = ConnectionState::CONNECTING;
@@ -92,10 +94,12 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, Connect
 asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, ConnectionCallbackType callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
-    asio::steady_timer timer(m_context.get_executor());
-    while (m_connectionState != ConnectionState::DISCONNECTED) {
-        timer.expires_after(std::chrono::milliseconds(50));
-        co_await timer.async_wait(asio::use_awaitable);
+    {
+        asio::steady_timer timer(m_context.get_executor());
+        while (m_connectionState != ConnectionState::DISCONNECTED) {
+            timer.expires_after(std::chrono::milliseconds(50));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
     }
 
     m_connectionState = ConnectionState::CONNECTING;

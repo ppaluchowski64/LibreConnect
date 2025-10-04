@@ -6,7 +6,7 @@
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
-LanDeviceScanner::LanDeviceScanner() : m_awaitableFlag(m_context.get_executor()), m_workGuard(asio::make_work_guard(m_context.get_executor())), m_senderSocket(m_context), m_receiverSocket(m_context) {
+LanDeviceScanner::LanDeviceScanner() : m_awaitableFlag(m_context.get_executor()), m_workGuard(asio::make_work_guard(m_context.get_executor())), m_socket(m_context) {
     m_contextThread = std::thread([this]() {
         m_context.run();
     });
@@ -48,18 +48,14 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
     try {
         const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
 
-        m_receiverSocket.open(asio::ip::udp::v4());
-        m_receiverSocket.set_option(asio::socket_base::reuse_address(true));
-        m_receiverSocket.bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), DEVICE_DISCOVERY_MULTICAST_PORT));
+        m_socket.open(asio::ip::udp::v4());
+        m_socket.set_option(asio::socket_base::reuse_address(true));
+        m_socket.bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), DEVICE_DISCOVERY_MULTICAST_PORT));
+        m_socket.set_option(asio::ip::multicast::enable_loopback(false));
 
         for (const auto& address : addresses) {
-            m_receiverSocket.set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
+            m_socket.set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
         }
-
-        m_receiverSocket.set_option(asio::ip::multicast::enable_loopback(false));
-
-        m_senderSocket.open(asio::ip::udp::v4());
-        m_senderSocket.set_option(asio::ip::multicast::enable_loopback(false));
 
         m_isScanning = true;
 
@@ -75,13 +71,9 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
 
 asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
     try {
-        m_receiverSocket.set_option(asio::ip::multicast::leave_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS));
-
-        m_receiverSocket.cancel();
-        m_senderSocket.cancel();
-
-        m_receiverSocket.close();
-        m_senderSocket.close();
+        m_socket.set_option(asio::ip::multicast::leave_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS));
+        m_socket.cancel();
+        m_socket.close();
 
         m_isScanning = false;
 
@@ -94,22 +86,29 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
 
 asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
-        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
+        const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
+        const std::vector<NetworkInterfaceData> interfacesData = AddressResolver::GetAllNetworkInterfaces();
         DeviceInfo deviceInfo = GetDeviceInfo();
 
-        std::vector<uint8_t> buffer;
-        size_t offset = 0;
+        std::vector<std::vector<uint8_t>> buffers;
+        std::vector<asio::const_buffer> constBuffers;
 
-        buffer.resize(deviceInfo.GetSerializedSize());
-        deviceInfo.Serialize(buffer, offset);
+        buffers.resize(interfacesData.size());
+        constBuffers.resize(interfacesData.size());
 
-        const asio::const_buffer constBuffer(buffer.data(), buffer.size());
-        const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
+        for (int i = 0; i < interfacesData.size(); i++) {
+            deviceInfo.macAddress = interfacesData[i].macAddress;
+            size_t offset = 0;
+
+            buffers[i].resize(deviceInfo.GetSerializedSize());
+            deviceInfo.Serialize(buffers[i], offset);
+            constBuffers[i] = asio::const_buffer(buffers[i].data(), buffers[i].size());
+        }
 
         do {
-            for (const auto& address : addresses) {
-                m_senderSocket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
-                co_await m_senderSocket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
+            for (int i = 0; i < interfacesData.size(); i++) {
+                m_socket.set_option(asio::ip::multicast::outbound_interface(interfacesData[i].ipAddress.to_v4()));
+                co_await m_socket.async_send_to(constBuffers[i], multicastEndpoint, asio::use_awaitable);
             }
 
             asio::steady_timer timer(m_context);
@@ -133,12 +132,12 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
             asio::mutable_buffer mutableBuffer(buffer.data(), buffer.size());
             UDPEndpoint senderEndpoint;
 
-            co_await m_receiverSocket.async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
+            co_await m_socket.async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
 
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
 
-            Debug::Log("Device, name: {}", device.deviceName);
+            Debug::Log("Device, name: {}, mac: {}, endpoint: {}", device.deviceName, device.macAddress, senderEndpoint.address().to_string());
 
         } while (m_isScanning);
 
