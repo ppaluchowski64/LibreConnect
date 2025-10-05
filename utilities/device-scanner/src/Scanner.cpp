@@ -49,8 +49,15 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
 
     std::lock_guard<std::mutex> lock(s_instance->m_mutex);
 
+    Debug::Log(s_instance->m_discoveredDevices.size());
+
     std::erase_if(s_instance->m_discoveredDevices, [&](const DeviceInfo& deviceInfo) {
-        return currentTime - s_instance->m_devicesLastProbe[deviceInfo.deviceID] >= minimalLastProbe;
+        if (currentTime - s_instance->m_devicesLastProbe[deviceInfo.deviceID] >= minimalLastProbe) {
+            s_instance->m_devicesLastProbe.erase(deviceInfo.deviceID);
+            return true;
+        }
+
+        return false;
     });
 
     return s_instance->m_discoveredDevices;
@@ -99,7 +106,7 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
 asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
-        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv6();
+        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
         const DeviceInfo deviceInfo = GetDeviceInfo();
 
         std::vector<uint8_t> buffer;
@@ -149,8 +156,6 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
 
                 m_devicesLastProbe[device.deviceID] = GetTimeMS();
             }
-
-            //Debug::Log("Device, name: {}, endpoint: {}", device.deviceName, senderEndpoint.address().to_string());
 
         } while (m_isScanning);
 
