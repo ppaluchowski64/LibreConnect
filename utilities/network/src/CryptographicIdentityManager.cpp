@@ -80,12 +80,12 @@ bool CryptographicIdentityManager::IsCertificateValid(const std::filesystem::pat
     constexpr int certificateMinimalTimeLeft = 60 * 10;
 
     const std::string certPath = (path / "certificate.crt").string();
-    FILE * fp = fopen(certPath.c_str(), "r");
+    FILE* fp = fopen(certPath.c_str(), "r");
     if (!fp) {
         return false;
     }
 
-    X509 * cert = PEM_read_X509(fp, nullptr, nullptr, nullptr);
+    X509* cert = PEM_read_X509(fp, nullptr, nullptr, nullptr);
     fclose(fp);
 
     if (!cert) {
@@ -95,14 +95,23 @@ bool CryptographicIdentityManager::IsCertificateValid(const std::filesystem::pat
     time_t now = time(nullptr);
     time_t future = now + certificateMinimalTimeLeft;
 
-    const bool valid = (X509_cmp_time(X509_get_notBefore(cert), & now) <= 0 &&
-        X509_cmp_time(X509_get_notAfter(cert), & future) >= 0);
+    const bool valid = (X509_cmp_time(X509_get_notBefore(cert), &now) <= 0 &&
+        X509_cmp_time(X509_get_notAfter(cert), &future) >= 0);
 
     X509_free(cert);
     return valid;
 }
 
 void CryptographicIdentityManager::LoadOrGenerateKeyPair(const std::filesystem::path& path) {
+    const std::string keysPath = (path / "keys.crt").string();
+
+    if (std::filesystem::exists(keysPath)) {
+        FILE* file = fopen(keysPath.c_str(), "r");
+        m_keyPair = PEM_read_PrivateKey(file, nullptr, nullptr, nullptr);
+        fclose(file);
+        if (m_keyPair) return;
+    }
+
     std::lock_guard<std::mutex> lock(m_mutex);
     constexpr int bits = 2048;
 
@@ -129,10 +138,12 @@ std::string CryptographicIdentityManager::GetPublicKey() {
     }
 
 
+
     BUF_MEM* buffer = nullptr;
     BIO_get_mem_ptr(publicKeyBio, &buffer);
 
     std::string publicKeyString = std::string(buffer->data, buffer->length);
+    BIO_free(publicKeyBio);
     return publicKeyString;
 }
 
@@ -149,7 +160,7 @@ std::string CryptographicIdentityManager::GenerateRandomChallenge(const size_t s
     return challengeString;
 }
 
-std::string CryptographicIdentityManager::SingChallenge(const std::string& challengeString) {
+std::string CryptographicIdentityManager::SignChallenge(const std::string& challengeString) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
     EVP_MD_CTX* context = EVP_MD_CTX_new();
@@ -179,12 +190,16 @@ std::string CryptographicIdentityManager::SingChallenge(const std::string& chall
     return result;
 }
 
-bool CryptographicIdentityManager::VerifySignature(const std::string& publicKey, std::string challenge, std::string signature) {
+bool CryptographicIdentityManager::VerifySignature(const std::string& publicKeyString, const std::string& challenge, const std::string& signature) {
     std::lock_guard<std::mutex> lock(m_mutex);
+
+    BIO* bio = BIO_new_mem_buf(publicKeyString.data(), static_cast<int>(publicKeyString.size()));
+    EVP_PKEY* publicKey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
+    BIO_free(bio);
 
     EVP_MD_CTX* context = EVP_MD_CTX_new();
     if (!context ||
-        EVP_DigestVerifyInit(context, nullptr, EVP_sha256(), nullptr, m_keyPair) <= 0 ||
+        EVP_DigestVerifyInit(context, nullptr, EVP_sha256(), nullptr, publicKey) <= 0 ||
         EVP_DigestVerifyUpdate(context, challenge.data(), challenge.size()) <= 0) {
         Debug::LogError("OpenSSL error: {}", GetOpenSSLError());
         EVP_MD_CTX_free(context);

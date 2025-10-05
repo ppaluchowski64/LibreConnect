@@ -21,8 +21,8 @@ public:
 
     static std::string GetPublicKey();
     static std::string GenerateRandomChallenge(size_t size = 32);
-    static std::string SingChallenge(const std::string& challengeString);
-    static bool VerifySignature(const std::string& publicKey, std::string challenge, std::string signature);
+    static std::string SignChallenge(const std::string& challengeString);
+    static bool VerifySignature(const std::string& publicKeyString, const std::string& challenge, const std::string& signature);
 
 private:
     static std::mutex m_mutex;
