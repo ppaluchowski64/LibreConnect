@@ -49,8 +49,6 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
 
     std::lock_guard<std::mutex> lock(s_instance->m_mutex);
 
-    Debug::Log(s_instance->m_discoveredDevices.size());
-
     std::erase_if(s_instance->m_discoveredDevices, [&](const DeviceInfo& deviceInfo) {
         if (currentTime - s_instance->m_devicesLastProbe[deviceInfo.deviceID] >= minimalLastProbe) {
             s_instance->m_devicesLastProbe.erase(deviceInfo.deviceID);
