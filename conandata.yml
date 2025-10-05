@@ -11,3 +11,4 @@ requirements:
   - "concurrentqueue/1.0.4"
   - "fmt/11.2.0"
   - "magic_enum/0.9.7"
+  - "sqlitecpp/3.3.2"
