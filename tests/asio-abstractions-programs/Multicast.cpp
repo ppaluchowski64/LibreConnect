@@ -1,6 +1,8 @@
 #include <Scanner.h>
 #include <thread>
 #include <ConnectionManager.h>
+#include <CryptographicIdentityManager.h>
+#include <iostream>
 
 int main() {
     LanDeviceScanner::BeginScan();

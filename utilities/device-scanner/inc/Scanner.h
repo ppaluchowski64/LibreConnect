@@ -10,20 +10,17 @@
 
 struct DeviceInfo {
     std::string deviceName;
-    std::string macAddress;
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
         SerializeObject(deviceName, buffer, offset);
-        SerializeObject(macAddress, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
         DeserializeObject(deviceName, buffer, offset);
-        DeserializeObject(macAddress, buffer, offset);
     }
 
     constexpr size_t GetSerializedSize() const {
-        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(macAddress);
+        return GetObjectSerializedSize(deviceName);
     }
 };
 

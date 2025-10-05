@@ -103,13 +103,18 @@ bool CryptographicIdentityManager::IsCertificateValid(const std::filesystem::pat
 }
 
 void CryptographicIdentityManager::LoadOrGenerateKeyPair(const std::filesystem::path& path) {
-    const std::string keysPath = (path / "keys.crt").string();
+    const std::string keysPath = (path / "keys.pem").string();
 
     if (std::filesystem::exists(keysPath)) {
-        FILE* file = fopen(keysPath.c_str(), "r");
-        m_keyPair = PEM_read_PrivateKey(file, nullptr, nullptr, nullptr);
-        fclose(file);
-        if (m_keyPair) return;
+        FILE* file = fopen(keysPath.c_str(), "rb");
+        if (file) {
+            m_keyPair = PEM_read_PrivateKey(file, nullptr, nullptr, nullptr);
+            fclose(file);
+            if (m_keyPair) {
+                return;
+            }
+            Debug::LogError("Failed to read private key: {}", GetOpenSSLError());
+        }
     }
 
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -121,6 +126,17 @@ void CryptographicIdentityManager::LoadOrGenerateKeyPair(const std::filesystem::
     }
 
     EVP_PKEY_CTX_free(context);
+
+    if (m_keyPair) {
+        std::filesystem::create_directories(path);
+        FILE* file = fopen(keysPath.c_str(), "wb");
+        if (file) {
+            PEM_write_PrivateKey(file, m_keyPair, nullptr, nullptr, 0, nullptr, nullptr);
+            fclose(file);
+        } else {
+            Debug::LogError("Failed to save private key");
+        }
+    }
 }
 
 std::string CryptographicIdentityManager::GetPublicKey() {

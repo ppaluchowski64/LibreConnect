@@ -87,28 +87,20 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
 asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
-        const std::vector<NetworkInterfaceData> interfacesData = AddressResolver::GetAllNetworkInterfaces();
-        DeviceInfo deviceInfo = GetDeviceInfo();
+        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv6();
+        const DeviceInfo deviceInfo = GetDeviceInfo();
 
-        std::vector<std::vector<uint8_t>> buffers;
-        std::vector<asio::const_buffer> constBuffers;
+        std::vector<uint8_t> buffer;
+        size_t offset = 0;
 
-        buffers.resize(interfacesData.size());
-        constBuffers.resize(interfacesData.size());
-
-        for (int i = 0; i < interfacesData.size(); i++) {
-            deviceInfo.macAddress = interfacesData[i].macAddress;
-            size_t offset = 0;
-
-            buffers[i].resize(deviceInfo.GetSerializedSize());
-            deviceInfo.Serialize(buffers[i], offset);
-            constBuffers[i] = asio::const_buffer(buffers[i].data(), buffers[i].size());
-        }
+        buffer.resize(deviceInfo.GetSerializedSize());
+        deviceInfo.Serialize(buffer, offset);
+        const asio::const_buffer constBuffer = asio::const_buffer(buffer.data(), buffer.size());
 
         do {
-            for (int i = 0; i < interfacesData.size(); i++) {
-                m_socket.set_option(asio::ip::multicast::outbound_interface(interfacesData[i].ipAddress.to_v4()));
-                co_await m_socket.async_send_to(constBuffers[i], multicastEndpoint, asio::use_awaitable);
+            for (const auto& address : addresses) {
+                m_socket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
+                co_await m_socket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
             }
 
             asio::steady_timer timer(m_context);
@@ -137,7 +129,7 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
 
-            Debug::Log("Device, name: {}, mac: {}, endpoint: {}", device.deviceName, device.macAddress, senderEndpoint.address().to_string());
+            Debug::Log("Device, name: {}, endpoint: {}", device.deviceName, senderEndpoint.address().to_string());
 
         } while (m_isScanning);
 
