@@ -2,7 +2,7 @@
 #include <DebugLog.h>
 #include <AddressResolver.h>
 #include <Package.h>
-#include <coroutine>
+#include <chrono>
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
@@ -33,6 +33,9 @@ void LanDeviceScanner::BeginScan() {
         return;
     }
 
+    s_instance->m_discoveredDevices.clear();
+    s_instance->m_devicesLastProbe.clear();
+
     asio::co_spawn(s_instance->m_context, s_instance->Co_JoinMulticastGroup(), asio::detached);
 }
 
@@ -40,6 +43,15 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
     if (s_instance == nullptr) {
         s_instance = new LanDeviceScanner();
     }
+
+    const size_t currentTime = GetTimeMS();
+    constexpr size_t minimalLastProbe = 2500;
+
+    std::lock_guard<std::mutex> lock(s_instance->m_mutex);
+
+    std::erase_if(s_instance->m_discoveredDevices, [&](const DeviceInfo& deviceInfo) {
+        return currentTime - s_instance->m_devicesLastProbe[deviceInfo.deviceID] >= minimalLastProbe;
+    });
 
     return s_instance->m_discoveredDevices;
 }
@@ -129,7 +141,16 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
 
-            Debug::Log("Device, name: {}, endpoint: {}", device.deviceName, senderEndpoint.address().to_string());
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (!m_devicesLastProbe.contains(device.deviceID)) {
+                    m_discoveredDevices.push_back(device);
+                }
+
+                m_devicesLastProbe[device.deviceID] = GetTimeMS();
+            }
+
+            //Debug::Log("Device, name: {}, endpoint: {}", device.deviceName, senderEndpoint.address().to_string());
 
         } while (m_isScanning);
 
@@ -139,11 +160,18 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
 }
 
 DeviceInfo LanDeviceScanner::GetDeviceInfo() {
+    boost::uuids::random_generator generator;
+
     DeviceInfo device = {
-        asio::ip::host_name()
+        asio::ip::host_name(),
+        generator()
     };
 
     return device;
+}
+
+size_t LanDeviceScanner::GetTimeMS() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
 

@@ -6,6 +6,9 @@
 #include <vector>
 #include <string>
 #include <boost/endian/conversion.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/string_generator.hpp>
 
 template <typename T>
 concept Primitive = std::integral<T> || std::floating_point<T>;
@@ -50,11 +53,8 @@ constexpr size_t GetObjectSerializedSize(T& object) {
 }
 
 inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buffer, size_t& offset) {
-    size_t size = object.size();
-    boost::endian::native_to_big_inplace(size);
-
-    std::memcpy(&buffer[offset], &size, sizeof(size));
-    offset += sizeof(size);
+    const size_t size = object.size();
+    SerializeObject(size, buffer, offset);
 
     std::memcpy(&buffer[offset], object.c_str(), object.size());
     offset += object.size();
@@ -62,9 +62,7 @@ inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buf
 
 inline void DeserializeObject(std::string& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    std::memcpy(&size, &buffer[offset], sizeof(size));
-    boost::endian::big_to_native_inplace(size);
-    offset += sizeof(size);
+    DeserializeObject(size, buffer, offset);
 
     object.resize(size);
     std::memcpy(&object[0], &buffer[offset], size);
@@ -77,11 +75,8 @@ constexpr size_t GetObjectSerializedSize(const std::string& object) {
 
 template <Primitive T>
 inline void SerializeObject(const std::vector<T>& object, std::vector<uint8_t>& buffer, size_t& offset) {
-    size_t size = object.size();
-    boost::endian::native_to_big_inplace(size);
-
-    std::memcpy(&buffer[offset], &size, sizeof(size));
-    offset += sizeof(size);
+    const size_t size = object.size();
+    SerializeObject(size, buffer, offset);
 
     for (const auto element : object) {
         SerializeObject(element, buffer, offset);
@@ -90,11 +85,8 @@ inline void SerializeObject(const std::vector<T>& object, std::vector<uint8_t>& 
 
 template <Packable T>
 inline void SerializeObject(const std::vector<T>& object, std::vector<uint8_t>& buffer, size_t& offset) {
-    size_t size = object.size();
-    boost::endian::native_to_big_inplace(size);
-
-    std::memcpy(&buffer[offset], &size, sizeof(size));
-    offset += sizeof(size);
+    const size_t size = object.size();
+    SerializeObject(size, buffer, offset);
 
     for (const auto& element : object) {
         element.Serialize(buffer, offset);
@@ -102,23 +94,31 @@ inline void SerializeObject(const std::vector<T>& object, std::vector<uint8_t>& 
 }
 
 inline void SerializeObject(const std::vector<std::string>& object, std::vector<uint8_t>& buffer, size_t& offset) {
-    size_t size = object.size();
-    boost::endian::native_to_big_inplace(size);
-
-    std::memcpy(&buffer[offset], &size, sizeof(size));
-    offset += sizeof(size);
+    const size_t size = object.size();
+    SerializeObject(size, buffer, offset);
 
     for (const auto& element : object) {
         SerializeObject(element, buffer, offset);
     }
 }
 
+inline void SerializeObject(const boost::uuids::uuid& object, std::vector<uint8_t>& buffer, size_t& offset) {
+    const std::string uuid = boost::uuids::to_string(object);
+    SerializeObject(uuid, buffer, offset);
+}
+
+inline void DeserializeObject(boost::uuids::uuid& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+    std::string uuid;
+    DeserializeObject(uuid, buffer, offset);
+
+    static boost::uuids::string_generator generator;
+    object = generator(uuid);
+}
+
 template <Primitive T>
 inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    std::memcpy(&size, &buffer[offset], sizeof(size));
-    boost::endian::big_to_native_inplace(size);
-    offset += sizeof(size);
+    DeserializeObject(size, buffer, offset);
     object.resize(size);
 
     for (auto& element : object) {
@@ -129,9 +129,7 @@ inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>
 template <Packable T>
 inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    std::memcpy(&size, &buffer[offset], sizeof(size));
-    boost::endian::big_to_native_inplace(size);
-    offset += sizeof(size);
+    DeserializeObject(size, buffer, offset);
     object.resize(size);
 
     for (auto& element : object) {
@@ -141,9 +139,7 @@ inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>
 
 inline void DeserializeObject(std::vector<std::string>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
-    std::memcpy(&size, &buffer[offset], sizeof(size));
-    boost::endian::big_to_native_inplace(size);
-    offset += sizeof(size);
+    DeserializeObject(size, buffer, offset);
     object.resize(size);
 
     for (auto& element : object) {
@@ -175,5 +171,8 @@ constexpr size_t GetObjectSerializedSize(const std::vector<std::string>& object)
     return result;
 }
 
+constexpr size_t GetObjectSerializedSize(const boost::uuids::uuid&) {
+    return sizeof(size_t) + 36; // UUID string size
+}
 
 #endif //PACKABLE_H
