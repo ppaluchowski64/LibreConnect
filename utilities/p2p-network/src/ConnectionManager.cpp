@@ -1,5 +1,5 @@
 #include <ConnectionManager.h>
-#include <CertificateManager.h>
+#include <CryptographicIdentityManager.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -42,8 +42,8 @@ void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {
-    if (!TLS::CertificateManager::IsCertificateValid("certs")) {
-        TLS::CertificateManager::GenerateCertificate("certs");
+    if (!CryptographicIdentityManager::IsCertificateValid("certs")) {
+        CryptographicIdentityManager::GenerateCertificate("certs");
     }
 
     std::shared_ptr<SSLContext> context = std::make_shared<SSLContext>(isServer ? SSLContext::tlsv13_server : SSLContext::tlsv13_client);
