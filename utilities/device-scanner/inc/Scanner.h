@@ -7,20 +7,24 @@
 #include <AwaitableFlag.h>
 #include <vector>
 #include <Packable.h>
+#include <boost/uuid.hpp>
 
 struct DeviceInfo {
     std::string deviceName;
+    boost::uuids::uuid deviceID;
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
         SerializeObject(deviceName, buffer, offset);
+        SerializeObject(deviceID, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
-        DeserializeObject(deviceName, buffer, offset);
+        DeserializeObject(deviceName, buffer,offset);
+        DeserializeObject(deviceID, buffer, offset);
     }
 
     constexpr size_t GetSerializedSize() const {
-        return GetObjectSerializedSize(deviceName);
+        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceID);
     }
 };
 
@@ -39,7 +43,10 @@ private:
     asio::awaitable<void> Co_SendProbes();
     asio::awaitable<void> Co_ReceiveResponses();
 
+    std::mutex m_mutex;
+
     static DeviceInfo GetDeviceInfo();
+    static size_t GetTimeMS();
     static LanDeviceScanner* s_instance;
 
     IOContext m_context;
@@ -52,6 +59,7 @@ private:
     std::thread m_contextThread;
     bool m_isScanning{false};
 
+    std::unordered_map<boost::uuids::uuid, size_t> m_devicesLastProbe;
     std::vector<DeviceInfo> m_discoveredDevices;
 };
 
