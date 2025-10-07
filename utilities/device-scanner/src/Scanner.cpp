@@ -3,6 +3,7 @@
 #include <AddressResolver.h>
 #include <Package.h>
 #include <chrono>
+#include <DeviceData.h>
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
@@ -163,11 +164,9 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
 }
 
 DeviceInfo LanDeviceScanner::GetDeviceInfo() {
-    boost::uuids::random_generator generator;
-
     DeviceInfo device = {
         asio::ip::host_name(),
-        generator()
+        DeviceData::GetDeviceUUID(),
     };
 
     return device;
