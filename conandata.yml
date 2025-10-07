@@ -9,3 +9,4 @@ requirements:
   - "fmt/11.2.0"
   - "magic_enum/0.9.7"
   - "sqlitecpp/3.3.2"
+  - "qt/6.8.3"
