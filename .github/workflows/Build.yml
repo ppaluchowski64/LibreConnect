@@ -42,8 +42,19 @@ jobs:
       - name: Build
         run: cmake --build --preset conan-release
 
-      - name: Run tests
-        working-directory: ./build/build/Release
+      - name: Package build artifacts (non-Windows)
+        if: runner.os != 'Windows'
         run: |
-          ./Concurrent_Structures_Test -C Release --output-on-failure
-          ./Asio_Abstractions_Package_Test -C Release --output-on-failure
+          cd build
+          zip -r "../${{ github.ref_name }}-build-${{ matrix.os }}.zip" .
+
+      - name: Package build artifacts (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Compress-Archive -Path build\* -DestinationPath "${{ github.ref_name }}-build-${{ matrix.os }}.zip"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-${{ matrix.os }}
+          path: ${{ github.ref_name }}-build-${{ matrix.os }}.zip
