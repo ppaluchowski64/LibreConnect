@@ -1,8 +1,11 @@
-# This file is managed by Conan, contents will be overwritten.
-# To keep your changes, remove these comment lines, but the plugin won't be able to modify your requirements
-
 requirements:
   - "tracy/0.12.1"
   - "boost/1.87.0"
   - "openssl/3.5.0"
   - "asio/1.34.2"
+  - "gtest/1.17.0"
+  - "benchmark/1.9.4"
+  - "concurrentqueue/1.0.4"
+  - "fmt/11.2.0"
+  - "magic_enum/0.9.7"
+  - "sqlitecpp/3.3.2"
