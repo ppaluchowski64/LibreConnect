@@ -39,7 +39,53 @@ class ConanApplication(ConanFile):
         "boost/*:without_timer": True,
         "boost/*:without_type_erasure": True,
         "boost/*:without_unit_test_framework": True,
-        "boost/*:without_wave": True
+        "boost/*:without_wave": True,
+        "qt/*:gui": True,                # GUI support
+        "qt/*:widgets": True,            # QWidget-based UI
+        "qt/*:network": False,           # QtNetwork module
+        "qt/*:concurrent": True,         # QtConcurrent
+        "qt/*:dbus": False,              # D-Bus (Linux-only usually)
+        "qt/*:sql": False,               # Qt SQL module (disable to avoid libpq)
+	    "qt/*:with_pq": False,
+        "qt/*:svg": True,                # SVG rendering
+        "qt/*:xml": True,                # XML parsing
+        "qt/*:xmlpatterns": False,       # XPath/XQuery (deprecated, rarely needed)
+        "qt/*:testlib": False,           # QtTest (disable if using gtest)
+        "qt/*:printsupport": False,      # QPrinter support (needs CUPS)
+        "qt/*:opengl": "no",             # OpenGL integration
+        "qt/*:quick": True,              # QtQuick / QML (heavy)
+        "qt/*:qml": True ,               # QML engine (heavy)
+        "qt/*:quickcontrols2": False,    # QML UI toolkit (depends on qtquick)
+        "qt/*:positioning": False,       # GPS/Geo APIs
+        "qt/*:location": False,          # Mapping / location APIs
+        "qt/*:multimedia": False,        # Audio/video
+        "qt/*:sensors": False,           # Accelerometer, etc.
+        "qt/*:bluetooth": False,         # Bluetooth stack
+        "qt/*:serialport": False,        # RS232/serial
+        "qt/*:serialbus": False,         # CAN bus, Modbus
+        "qt/*:websockets": False,        # WebSocket API
+        "qt/*:webchannel": False,        # WebChannel bridge (JS ↔ C++)
+        "qt/*:remoteobjects": False,     # Inter-process object replication
+        "qt/*:3d": False,                # Qt3D module
+        "qt/*:charts": False,            # QtCharts
+        "qt/*:datavis3d": False,         # 3D data visualization
+        "qt/*:imageformats": True,       # PNG, JPEG, etc.
+        "qt/*:wayland": False,           # Wayland compositor
+        "qt/*:shadertools": True,        # Required for modern QML/Quick builds
+        "qt/*:openssl": False,           # Use OpenSSL for SSL
+        "qt/*:with_dbus": False,         # Extra dbus-related bits
+        "qt/*:with_harfbuzz": True,      # Font shaping
+        "qt/*:with_freetype": True,      # Font rendering
+        "qt/*:with_glib": False,         # GLib event loop integration
+        "qt/*:with_icu": False,          # Unicode library (large dependency)
+        "qt/*:with_pcre2": True,         # Regex engine
+        "qt/*:shared": False,            # Build shared libs
+        "qt/*:gui_tools": False,         # Disable Qt Creator tools (designer, linguist)
+        "qt/*:qttools": False,           # Disable dev tools module
+        "qt/*:qttranslations": False,    # Disable translations
+        "qt/*:qtdeclarative": False,     # Disable QML engine
+        "qt/*:qtwebengine": False,       # Disable WebEngine (Chromium)
+        "qt/*:qtwebsockets": True        # Disable WebSockets (redundant, just in case)
     }
 
     def layout(self):
