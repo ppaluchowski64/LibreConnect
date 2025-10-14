@@ -3,6 +3,7 @@
 #include <ConnectionManager.h>
 #include <CryptographicIdentityManager.h>
 #include <iostream>
+#include <DeviceData.h>
 
 int main() {
     LanDeviceScanner::BeginScan();

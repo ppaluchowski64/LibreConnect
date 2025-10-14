@@ -17,6 +17,7 @@ find_package(Tracy           REQUIRED)
 find_package(concurrentqueue REQUIRED)
 find_package(GTest           REQUIRED)
 find_package(benchmark       REQUIRED)
+find_package(SQLiteCpp       REQUIRED)
 
 FetchContent_Declare(
         debug-log
@@ -35,7 +36,7 @@ target_compile_definitions(project_defaults INTERFACE
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
-BuildStaticLibrary(device-scanner-pc utilities/device-scanner project_defaults network-component-pc system-component-pc)
+BuildStaticLibrary(device-scanner-pc utilities/device-scanner project_defaults network-component-pc system-component-pc SQLiteCpp)
 
 
 if (ENABLE_TESTS)
