@@ -64,4 +64,8 @@ enum class ConnectionState : uint8_t {
     DISCONNECTING
 };
 
+inline bool PackageTypeIntHasFlag(const PackageTypeInt type, const PackageTypeInt flag) {
+    return (type & flag) != 0;
+}
+
 #endif //ASIO_COMMON_H

@@ -4,10 +4,23 @@
 #include <vector>
 #include <Packable.h>
 #include <boost/uuid.hpp>
+#include <asio.hpp>
+#include <DeviceData.h>
+
+class DeviceData;
 
 struct DeviceInfo {
     std::string deviceName;
     boost::uuids::uuid deviceID;
+
+    static DeviceInfo GetThisDeviceInfo() {
+        DeviceInfo device = {
+            asio::ip::host_name(),
+            DeviceData::GetDeviceUUID(),
+        };
+
+        return device;
+    }
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
         SerializeObject(deviceName, buffer, offset);

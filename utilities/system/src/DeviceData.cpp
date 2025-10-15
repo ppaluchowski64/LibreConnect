@@ -5,6 +5,7 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <filesystem>
 #include <fstream>
+#include <DeviceInfo.h>
 
 std::mutex DeviceData::m_mutex{};
 SQLite::Database DeviceData::m_dataBase{"DeviceData.db", SQLite::OPEN_READWRITE | SQLite::OPEN_CREATE};

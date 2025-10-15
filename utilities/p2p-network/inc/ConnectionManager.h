@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <filesystem>
+#include <Packable.h>
 
 #include <PrimaryConnection.h>
 #include <ConcurrentUnorderedMap.h>
@@ -11,13 +12,15 @@
 class ConnectionManager final {
 public:
     typedef std::function<void(std::unique_ptr<Package<PC_PackageType>>&&)> RequestCallbackType;
+    typedef std::function<void(bool)> CallbackWithResult;
 
     static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
     static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
     static void Disconnect(DisconnectionCallbackType&& callback = nullptr);
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
+    static void PairDevice(CallbackWithResult&& callback);
 
-    template <StdLayoutOrVecOrString... Args>
+    template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {
         if (!s_isInitialized.load()) {
             std::lock_guard<std::mutex> lock(s_mutex);
@@ -27,8 +30,8 @@ public:
         s_instance->m_primaryConnection->Send(type, std::forward<Args>(args)...);
     }
 
-    template <StdLayoutOrVecOrString... Args>
-    static void SendRequest(PC_PackageType type, Args&&... args, RequestCallbackType&& requestResponseCallback) {
+    template <Serializable... Args>
+    static void SendRequest(PC_PackageType type, RequestCallbackType&& requestResponseCallback, Args&&... args) {
         if (!s_isInitialized.load()) {
             std::lock_guard<std::mutex> lock(s_mutex);
             Initialize();
@@ -36,7 +39,7 @@ public:
 
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_WITH_RESPONSE);
         const size_t requestID = s_instance->m_currentRequestID.fetch_add(1);
-        s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, requestID, std::forward<Args>(args)...);
+        s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
         s_instance->m_requestCallbackMap.InsertOrAssign(requestID, std::forward<RequestCallbackType>(requestResponseCallback));
     }
 
