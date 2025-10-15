@@ -5,6 +5,7 @@
 #include <asio/ssl.hpp>
 
 #include <Package.h>
+#include <Packable.h>
 #include <AsioCommon.h>
 #include <concurrentqueue.h>
 #include <asio/awaitable.hpp>
@@ -14,7 +15,10 @@
 
 enum class PC_PackageType : PackageTypeInt {
     NONE = 0,
-    MESSAGE = 1
+    MESSAGE = 1,
+    PAIR_REQUEST = 2,
+    PAIR_REQUEST_DENIED = 3,
+    PAIR_REQUEST_ACCEPTED = 4
 };
 
 constexpr size_t MAX_PACKAGE_SIZE = 8192;
@@ -30,7 +34,7 @@ public:
     void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
     void Disconnect(DisconnectionCallbackType&& callback = nullptr);
 
-    template <StdLayoutOrVecOrString... Args>
+    template <Serializable... Args>
     void Send(PC_PackageType type, Args&&... args) {
         static thread_local moodycamel::ProducerToken token(m_packageOut);
 
@@ -38,7 +42,7 @@ public:
         m_sendFlag.Signal();
     }
 
-    template <StdLayoutOrVecOrString... Args>
+    template <Serializable... Args>
     void SendWithFlag(const PC_PackageType type, const uint8_t flag, Args&&... args) {
         static thread_local moodycamel::ProducerToken token(m_packageOut);
 

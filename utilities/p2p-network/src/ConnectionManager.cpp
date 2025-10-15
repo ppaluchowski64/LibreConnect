@@ -1,5 +1,6 @@
 #include <ConnectionManager.h>
 #include <CryptographicIdentityManager.h>
+#include <DeviceInfo.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -110,6 +111,27 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
     }
 
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
+}
+
+void ConnectionManager::PairDevice(CallbackWithResult&& callback) {
+    if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
+    }
+
+    SendRequest(PC_PackageType::PAIR_REQUEST, [callback = std::move(callback)](std::unique_ptr<Package<PC_PackageType>>&& package) mutable {
+        const PackageTypeInt type = package->GetHeader().type;
+
+        if (PackageTypeIntHasFlag(type, static_cast<PackageTypeInt>(PC_PackageType::PAIR_REQUEST_ACCEPTED))) {
+            std::string publicKey = package->GetValue<std::string>();
+            DeviceInfo  deviceInfo = package->GetValue<DeviceInfo>();
+
+            callback(true);
+        } else {
+            callback(false);
+        }
+
+    }, std::move(CryptographicIdentityManager::GetPublicKey()), DeviceInfo::GetThisDeviceInfo());
 }
 
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
