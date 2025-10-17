@@ -5,9 +5,6 @@
 
 int main() {
     LanDeviceScanner::BeginScan();
-
-
-
     ConnectionManager::Seek(TCPEndpoint(asio::ip::tcp::v4(), 5000));
     std::vector<DeviceInfo> devices;
 
@@ -44,13 +41,14 @@ int main() {
                     ConnectionManager::Connect(std::move(endpoint), [](const bool result) {
                         if (!result) {
                             Debug::LogError("Failed to connect to device");
-                            return;
                         }
+
+                        Debug::Log("Here3");
                     });
                 });
 
             } catch (const std::invalid_argument& e) {
-                Debug::LogError(e.what());
+                Debug::LogError(std::string(e.what()));
             }
         }
 
