@@ -156,9 +156,6 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType 
     try {
         m_socket->lowest_layer().cancel();
 
-        m_packageOut = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
-        m_packageIn  = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
-
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
             Debug::Log("Connection closed by peer");
@@ -178,11 +175,12 @@ asio::awaitable<void> PrimaryConnection::CoAbortSeek(DisconnectionCallbackType c
         co_return;
     }
 
-    try {
-        m_socket->lowest_layer().cancel();
+    Debug::Log("hit2");
 
-        m_packageOut = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
-        m_packageIn  = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
+    try {
+        Debug::Log("hit2");
+        m_socket->lowest_layer().cancel();
+        Debug::Log("hit3");
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -193,6 +191,7 @@ asio::awaitable<void> PrimaryConnection::CoAbortSeek(DisconnectionCallbackType c
     }
 
     m_connectionState = ConnectionState::DISCONNECTED;
+    Debug::Log("hit");
     asio::post(m_context, callback);
     co_return;
 }

@@ -5,7 +5,10 @@
 
 int main() {
     LanDeviceScanner::BeginScan();
-    ConnectionManager::Seek(TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), 5000));
+
+
+
+    ConnectionManager::Seek(TCPEndpoint(asio::ip::tcp::v4(), 5000));
     std::vector<DeviceInfo> devices;
 
     while (true) {
@@ -24,8 +27,9 @@ int main() {
             for (int i = 0; i < devices.size(); i++) {
                 std::cout << i + 1 << ": name=" << devices[i].deviceName << " uuid=" << boost::uuids::to_string(devices[i].deviceID) << "\n";
             }
-        } else if (command.starts_with("cd")) {
+        } else if (command.starts_with("cn")) {
             try {
+                command += ' ';
                 const size_t spacePosition = command.find(' ', 3);
                 std::string portStr = command.substr(3, spacePosition - 3);
                 const size_t id = static_cast<size_t>(std::stoi(portStr));
@@ -35,8 +39,11 @@ int main() {
                     continue;
                 }
 
+                Debug::Log("hit1");
+
                 ConnectionManager::AbortSeek([info = devices[id-1]]() {
                     TCPEndpoint endpoint(asio::ip::make_address_v4(info.deviceAddress), info.deviceAddressPort);
+                    Debug::Log(endpoint.address().to_string());
                     ConnectionManager::Connect(std::move(endpoint), [](const bool result) {
                        if (!result) {
                            Debug::LogError("Failed to connect to device");
