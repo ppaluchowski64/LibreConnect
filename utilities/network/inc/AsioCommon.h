@@ -27,6 +27,7 @@ typedef asio::ip::udp::socket UDPSocket;
 typedef asio::io_context::strand IOContextStrand;
 
 typedef std::function<void(bool)> ConnectionCallbackType;
+typedef std::function<void(std::string, uint16_t)> SeekReadyCallbackType;
 typedef std::function<void()> DisconnectionCallbackType;
 
 constexpr PackageSizeInt MAX_NON_FILE_PACKAGE_SIZE = 1024 * 32;

@@ -16,9 +16,12 @@ public:
 
     static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
     static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
+
+    static void AbortSeek(DisconnectionCallbackType&& callback = nullptr);
     static void Disconnect(DisconnectionCallbackType&& callback = nullptr);
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
     static void PairDevice(CallbackWithResult&& callback);
+    static TCPEndpoint GetSeekEndpoint();
 
     template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {
@@ -65,6 +68,7 @@ private:
     IOContext  m_context;
     std::shared_ptr<SSLContext> m_sslContext;
     IOWorkGuard m_workGuard;
+    TCPEndpoint m_seekingEndpoint;
 
     std::atomic<size_t> m_currentRequestID{0};
     std::atomic<SSLContextCurrentMode> m_currentSSLContextCurrentMode{SSLContextCurrentMode::NONE};

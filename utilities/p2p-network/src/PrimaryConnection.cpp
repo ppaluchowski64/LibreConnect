@@ -2,7 +2,9 @@
 #include <asio/buffer.hpp>
 
 PrimaryConnection::PrimaryConnection(IOContext& context)
-    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr), m_sendFlag(context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(context.get_executor())) {}
+    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr),
+      m_sendFlag(context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(context.get_executor())) {
+}
 
 std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context) {
     return std::make_shared<PrimaryConnection>(context);
@@ -18,6 +20,14 @@ void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLCo
     asio::co_spawn(m_strand, CoSeek(std::move(endpoint), std::move(callback)), asio::detached);
 }
 
+void PrimaryConnection::AbortSeek(DisconnectionCallbackType&& callback) {
+    if (m_connectionState != ConnectionState::CONNECTING) {
+        return;
+    }
+
+    asio::co_spawn(m_strand, CoAbortSeek(std::move(callback)), asio::detached);
+}
+
 void PrimaryConnection::Disconnect(DisconnectionCallbackType&& callback) {
     if (m_connectionState != ConnectionState::CONNECTED) {
         return;
@@ -27,9 +37,9 @@ void PrimaryConnection::Disconnect(DisconnectionCallbackType&& callback) {
 }
 
 std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPackage() {
-    static thread_local moodycamel::ConsumerToken token(m_packageIn);
+    static thread_local moodycamel::ConsumerToken consumerToken(m_packageIn);
 
-    if (std::unique_ptr<Package<PC_PackageType>> package; m_packageIn.try_dequeue(token, package)) {
+    if (std::unique_ptr<Package<PC_PackageType>> package; m_packageIn.try_dequeue(consumerToken, package)) {
         return std::move(package);
     }
 
@@ -145,8 +155,6 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType 
 
     try {
         m_socket->lowest_layer().cancel();
-        co_await m_socket->async_shutdown(asio::use_awaitable);
-        m_socket->lowest_layer().close();
 
         m_packageOut = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
         m_packageIn  = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
@@ -161,6 +169,32 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType 
 
     m_connectionState = ConnectionState::DISCONNECTED;
     asio::post(m_context,callback);
+    co_return;
+}
+
+asio::awaitable<void> PrimaryConnection::CoAbortSeek(DisconnectionCallbackType callback) {
+    const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+    if (m_connectionState != ConnectionState::CONNECTING) {
+        co_return;
+    }
+
+    try {
+        m_socket->lowest_layer().cancel();
+
+        m_packageOut = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
+        m_packageIn  = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
+
+    } catch (std::system_error& error) {
+        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
+            Debug::Log("Connection closed by peer");
+        } else {
+            Debug::Log("PrimaryConnection::CoAbortSeek error: {}", error.what());
+        }
+    }
+
+    m_connectionState = ConnectionState::DISCONNECTED;
+    asio::post(m_context, callback);
+    co_return;
 }
 
 asio::awaitable<void> PrimaryConnection::CoSend() {
