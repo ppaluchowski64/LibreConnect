@@ -12,7 +12,7 @@ enum class DeviceType {
 
 class DeviceTypeDetector {
     public:
-        static DeviceType GetDeviceType();
+        static constexpr DeviceType GetDeviceType();
 };
 
 #endif // DEVICE_TYPE_DETECTOR_H
