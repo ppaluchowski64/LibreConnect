@@ -59,8 +59,8 @@ public:
 
 
 private:
-    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, ConnectionCallbackType callback);
-    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, ConnectionCallbackType callback);
+    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback);
+    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback);
     asio::awaitable<void> CoDisconnect(DisconnectionCallbackType callback);
     asio::awaitable<void> CoAbortSeek(DisconnectionCallbackType callback);
     asio::awaitable<void> CoSend();
@@ -78,7 +78,7 @@ private:
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;
 
-    ConnectionState    m_connectionState{ConnectionState::DISCONNECTED};
+    std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
 
 };
 

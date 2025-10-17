@@ -39,15 +39,13 @@ int main() {
                     continue;
                 }
 
-                Debug::Log("hit1");
-
                 ConnectionManager::AbortSeek([info = devices[id-1]]() {
                     TCPEndpoint endpoint(asio::ip::make_address_v4(info.deviceAddress), info.deviceAddressPort);
-                    Debug::Log(endpoint.address().to_string());
                     ConnectionManager::Connect(std::move(endpoint), [](const bool result) {
-                       if (!result) {
-                           Debug::LogError("Failed to connect to device");
-                       }
+                        if (!result) {
+                            Debug::LogError("Failed to connect to device");
+                            return;
+                        }
                     });
                 });
 
