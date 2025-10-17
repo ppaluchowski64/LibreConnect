@@ -4,7 +4,7 @@
     #include <TargetConditionals.h>
 #endif
 
-DeviceType DeviceTypeDetector::GetDeviceType() {
+constexpr DeviceType DeviceTypeDetector::GetDeviceType() {
     #ifdef __ANDROID__
         return DeviceType::Android;
     #elif defined(__APPLE__)
