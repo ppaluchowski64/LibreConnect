@@ -36,11 +36,10 @@ target_compile_definitions(project_defaults INTERFACE
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
-BuildStaticLibrary(device-scanner-pc utilities/device-scanner project_defaults network-component-pc system-component-pc SQLiteCpp)
 
 
 if (ENABLE_TESTS)
-    BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp p2p-network-component-pc device-scanner-pc)
+    BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp p2p-network-component-pc)
     BuildTestProgram(Seeker asio-abstractions-programs/Seeker.cpp p2p-network-component-pc)
     BuildTestProgram(Connector asio-abstractions-programs/Connector.cpp p2p-network-component-pc)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)

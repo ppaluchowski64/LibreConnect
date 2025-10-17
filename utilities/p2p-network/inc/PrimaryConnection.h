@@ -32,24 +32,24 @@ public:
 
     void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
     void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
+    void AbortSeek(DisconnectionCallbackType&& callback = nullptr);
     void Disconnect(DisconnectionCallbackType&& callback = nullptr);
 
     template <Serializable... Args>
     void Send(PC_PackageType type, Args&&... args) {
-        static thread_local moodycamel::ProducerToken token(m_packageOut);
+        static thread_local moodycamel::ProducerToken producerToken(m_packageOut);
 
-        m_packageOut.enqueue(token, Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...));
+        m_packageOut.enqueue(producerToken, Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...));
         m_sendFlag.Signal();
     }
 
     template <Serializable... Args>
     void SendWithFlag(const PC_PackageType type, const uint8_t flag, Args&&... args) {
-        static thread_local moodycamel::ProducerToken token(m_packageOut);
-
+        static thread_local moodycamel::ProducerToken producerToken(m_packageOut);
         std::unique_ptr<Package<PC_PackageType>> package = Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...);
         package->GetHeader().flags = flag;
 
-        m_packageOut.enqueue(token, std::move(package));
+        m_packageOut.enqueue(producerToken, std::move(package));
         m_sendFlag.Signal();
     }
 
@@ -62,6 +62,7 @@ private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, ConnectionCallbackType callback);
     asio::awaitable<void> CoSeek(TCPEndpoint endpoint, ConnectionCallbackType callback);
     asio::awaitable<void> CoDisconnect(DisconnectionCallbackType callback);
+    asio::awaitable<void> CoAbortSeek(DisconnectionCallbackType callback);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 

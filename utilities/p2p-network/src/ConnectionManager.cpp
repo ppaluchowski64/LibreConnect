@@ -1,6 +1,6 @@
 #include <ConnectionManager.h>
 #include <CryptographicIdentityManager.h>
-#include <DeviceInfo.h>
+#include <../inc/DeviceInfo.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -8,8 +8,8 @@ std::atomic<bool>  ConnectionManager::s_isInitialized{false};
 
 
 void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
-    std::lock_guard<std::mutex> lock(s_mutex);
     if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -21,8 +21,8 @@ void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&&
 }
 
 void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
-    std::lock_guard<std::mutex> lock(s_mutex);
     if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -30,12 +30,22 @@ void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& ca
         s_instance->m_sslContext = CreateSSLContext(true);
     }
 
+    s_instance->m_seekingEndpoint = endpoint;
     s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
 }
 
-void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
-    std::lock_guard<std::mutex> lock(s_mutex);
+void ConnectionManager::AbortSeek(DisconnectionCallbackType&& callback) {
     if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
+    }
+
+    s_instance->m_primaryConnection->AbortSeek(std::forward<DisconnectionCallbackType>(callback));
+}
+
+void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
+    if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -124,14 +134,22 @@ void ConnectionManager::PairDevice(CallbackWithResult&& callback) {
 
         if (PackageTypeIntHasFlag(type, static_cast<PackageTypeInt>(PC_PackageType::PAIR_REQUEST_ACCEPTED))) {
             std::string publicKey = package->GetValue<std::string>();
-            DeviceInfo  deviceInfo = package->GetValue<DeviceInfo>();
-
+            DeviceInfo deviceInfo = package->GetValue<DeviceInfo>();
             callback(true);
         } else {
             callback(false);
         }
 
     }, std::move(CryptographicIdentityManager::GetPublicKey()), DeviceInfo::GetThisDeviceInfo());
+}
+
+TCPEndpoint ConnectionManager::GetSeekEndpoint() {
+    if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
+    }
+
+    return s_instance->m_seekingEndpoint;
 }
 
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {

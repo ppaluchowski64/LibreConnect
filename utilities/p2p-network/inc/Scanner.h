@@ -26,7 +26,6 @@ private:
 
     std::mutex m_mutex;
 
-    static DeviceInfo GetDeviceInfo();
     static size_t GetTimeMS();
     static LanDeviceScanner* s_instance;
 
