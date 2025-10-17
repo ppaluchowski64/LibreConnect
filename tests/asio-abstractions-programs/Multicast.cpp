@@ -8,6 +8,14 @@ int main() {
     ConnectionManager::Seek(TCPEndpoint(asio::ip::tcp::v4(), 5000));
     std::vector<DeviceInfo> devices;
 
+    ConnectionManager::AddResponseHandler(PC_PackageType::MESSAGE, [](std::unique_ptr<Package<PC_PackageType>>&& package) {
+        std::string value;
+        package->GetValue(value);
+        Debug::Log(value);
+    });
+
+    std::atomic<bool> connected = false;
+
     while (true) {
         std::cout << "============= COMMANDS =============\n\n"
                      "> rf - refresh devices\n"
@@ -36,16 +44,23 @@ int main() {
                     continue;
                 }
 
-                ConnectionManager::AbortSeek([info = devices[id-1]]() {
+                ConnectionManager::AbortSeek([info = devices[id-1], &connected]() {
                     TCPEndpoint endpoint(asio::ip::make_address_v4(info.deviceAddress), info.deviceAddressPort);
-                    ConnectionManager::Connect(std::move(endpoint), [](const bool result) {
+                    ConnectionManager::Connect(std::move(endpoint), [&connected](const bool result) {
                         if (!result) {
                             Debug::LogError("Failed to connect to device");
+                        } else {
+                            connected.store(true);
                         }
-
-                        Debug::Log("Here3");
                     });
                 });
+
+                while (connected.load()) {
+                    std::string text;
+                    std::getline(std::cin, text);
+
+                    ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
+                }
 
             } catch (const std::invalid_argument& e) {
                 Debug::LogError(std::string(e.what()));
