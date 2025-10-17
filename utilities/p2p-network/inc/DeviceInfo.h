@@ -22,7 +22,6 @@ struct DeviceInfo {
 
         device.deviceName = asio::ip::host_name();
         device.deviceID   = DeviceData::GetDeviceUUID();
-        device.deviceAddress = endpoint.address().to_string();
         device.deviceAddressPort = endpoint.port();
 
         return device;
@@ -30,21 +29,18 @@ struct DeviceInfo {
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
         SerializeObject(deviceName, buffer, offset);
-        SerializeObject(deviceAddress, buffer, offset);
         SerializeObject(deviceAddressPort, buffer, offset);
         SerializeObject(deviceID, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
         DeserializeObject(deviceName, buffer,offset);
-        DeserializeObject(deviceAddress, buffer,offset);
         DeserializeObject(deviceAddressPort, buffer,offset);
         DeserializeObject(deviceID, buffer, offset);
     }
 
     constexpr size_t GetSerializedSize() const {
-        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceAddress) +
-            GetObjectSerializedSize(deviceAddressPort) + GetObjectSerializedSize(deviceID);
+        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceAddressPort) + GetObjectSerializedSize(deviceID);
     }
 };
 

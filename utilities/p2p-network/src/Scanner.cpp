@@ -147,6 +147,7 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
 
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
+            device.deviceAddress = senderEndpoint.address().to_string();
 
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
