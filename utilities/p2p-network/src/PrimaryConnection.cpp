@@ -64,9 +64,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-        asio::post(m_context, [callback = std::move(callback)]() {
-            callback(true);
-        });
+        callback(true);
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -75,10 +73,8 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
             Debug::LogError("PrimaryConnection connection error: {}", std::string(error.what()));
         }
 
-        asio::post(m_context, [callback = std::move(callback)]() {
-            callback(false);
-        });
         Disconnect();
+        callback(false);
     }
 
     co_return;
@@ -104,12 +100,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::post(m_context, [callback = std::move(callback)]() {
-            Debug::Log("Here2");
-            callback(true);
-        });
 
-        Debug::Log("Here");
+        callback(true);
 
     } catch (std::system_error& error) {
         if (error.code() == asio::error::eof || error.code() == asio::ssl::error::stream_truncated || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
@@ -118,11 +110,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
             Debug::LogError("PrimaryConnection connection seek error: {}", std::string(error.what()));
         }
 
-        asio::post(m_context, [callback = std::move(callback)]() {
-            callback(false);
-        });
-
         Disconnect();
+        callback(false);
     }
 
     co_return;
@@ -153,14 +142,14 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType 
     }
 
     m_connectionState.store(ConnectionState::DISCONNECTED);
-    asio::post(m_context,callback);
+    callback();
     co_return;
 }
 
 asio::awaitable<void> PrimaryConnection::CoAbortSeek(DisconnectionCallbackType callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     if (m_connectionState.load() != ConnectionState::CONNECTING) {
-        asio::post(m_context, callback);
+        callback();
         co_return;
     }
 
@@ -178,7 +167,7 @@ asio::awaitable<void> PrimaryConnection::CoAbortSeek(DisconnectionCallbackType c
     }
 
     m_connectionState.store(ConnectionState::DISCONNECTED);
-    asio::post(m_context, callback);
+    callback();
     co_return;
 }
 
