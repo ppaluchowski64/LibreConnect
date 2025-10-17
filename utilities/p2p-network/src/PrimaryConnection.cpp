@@ -179,7 +179,10 @@ asio::awaitable<void> PrimaryConnection::CoAbortSeek(DisconnectionCallbackType c
 
     try {
         Debug::Log("hit2");
-        m_socket->lowest_layer().cancel();
+        if (m_socket->lowest_layer().is_open()) {
+            Debug::Log("hit2");
+            m_socket->lowest_layer().cancel();
+        }
         Debug::Log("hit3");
 
     } catch (std::system_error& error) {
