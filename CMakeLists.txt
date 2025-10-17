@@ -36,12 +36,13 @@ BuildStaticLibrary(network-component-pc utilities/network project_defaults opens
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
 BuildStaticLibrary(device-scanner-pc utilities/device-scanner project_defaults network-component-pc system-component-pc)
-
+BuildStaticLibrary(device-type utilities/device-type project_defaults)
 
 if (ENABLE_TESTS)
     BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp p2p-network-component-pc device-scanner-pc)
     BuildTestProgram(Seeker asio-abstractions-programs/Seeker.cpp p2p-network-component-pc)
     BuildTestProgram(Connector asio-abstractions-programs/Connector.cpp p2p-network-component-pc)
+    BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp device-type)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
 
