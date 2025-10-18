@@ -44,16 +44,14 @@ int main() {
                     continue;
                 }
 
-                ConnectionManager::Disconnect([info = devices[id-1], &connected]() {
-                    TCPEndpoint endpoint(asio::ip::make_address_v4(info.deviceAddress), info.deviceAddressPort);
-                    Debug::Log("dd");
-                    ConnectionManager::Connect(std::move(endpoint), [&connected](const bool result) {
-                        if (!result) {
-                            Debug::LogError("Failed to connect to device");
-                        } else {
-                            connected.store(true);
-                        }
-                    });
+                TCPEndpoint endpoint(asio::ip::make_address_v4(devices[id-1].deviceAddress), devices[id-1].deviceAddressPort);
+                Debug::Log("dd");
+                ConnectionManager::Connect(std::move(endpoint), [&connected](const bool result) {
+                    if (!result) {
+                        Debug::LogError("Failed to connect to device");
+                    } else {
+                        connected.store(true);
+                    }
                 });
 
             } catch (const std::invalid_argument& e) {
