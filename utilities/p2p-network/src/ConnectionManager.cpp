@@ -34,15 +34,6 @@ void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& ca
     s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
 }
 
-void ConnectionManager::AbortSeek(DisconnectionCallbackType&& callback) {
-    if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
-        Initialize();
-    }
-
-    s_instance->m_primaryConnection->AbortSeek(std::forward<DisconnectionCallbackType>(callback));
-}
-
 void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
     if (!s_isInitialized.load()) {
         std::lock_guard<std::mutex> lock(s_mutex);

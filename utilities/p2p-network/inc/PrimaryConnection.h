@@ -32,7 +32,6 @@ public:
 
     void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
     void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr);
-    void AbortSeek(DisconnectionCallbackType&& callback = nullptr);
     void Disconnect(DisconnectionCallbackType&& callback = nullptr);
 
     template <Serializable... Args>
@@ -62,7 +61,6 @@ private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback);
     asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback);
     asio::awaitable<void> CoDisconnect(DisconnectionCallbackType callback);
-    asio::awaitable<void> CoAbortSeek(DisconnectionCallbackType callback);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
@@ -70,7 +68,7 @@ private:
     asio::strand<asio::io_context::executor_type> m_strand;
 
     std::shared_ptr<SSLContext> m_sslContext;
-    std::unique_ptr<SSLSocket>  m_socket;
+    SSLSocket m_socket;
 
     AwaitableFlag  m_sendFlag;
     std::shared_ptr<AwaitableFlag> m_receiveFlag;

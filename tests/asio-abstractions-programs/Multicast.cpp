@@ -44,8 +44,9 @@ int main() {
                     continue;
                 }
 
-                ConnectionManager::AbortSeek([info = devices[id-1], &connected]() {
+                ConnectionManager::Disconnect([info = devices[id-1], &connected]() {
                     TCPEndpoint endpoint(asio::ip::make_address_v4(info.deviceAddress), info.deviceAddressPort);
+                    Debug::Log("dd");
                     ConnectionManager::Connect(std::move(endpoint), [&connected](const bool result) {
                         if (!result) {
                             Debug::LogError("Failed to connect to device");
@@ -55,17 +56,16 @@ int main() {
                     });
                 });
 
-                while (connected.load()) {
-                    std::string text;
-                    std::getline(std::cin, text);
-
-                    ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
-                }
-
             } catch (const std::invalid_argument& e) {
                 Debug::LogError(std::string(e.what()));
             }
         }
 
+        while (connected.load()) {
+            std::string text;
+            std::getline(std::cin, text);
+
+            ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
+        }
     }
 }
