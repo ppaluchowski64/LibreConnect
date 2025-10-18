@@ -14,10 +14,10 @@ public:
     typedef std::function<void(std::unique_ptr<Package<PC_PackageType>>&&)> RequestCallbackType;
     typedef std::function<void(bool)> CallbackWithResult;
 
-    static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
-    static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr);
+    static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr, DisconnectionCallbackType&& disconnectCallback = nullptr);
+    static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr, DisconnectionCallbackType&& disconnectCallback = nullptr);
 
-    static void Disconnect(DisconnectionCallbackType&& callback = nullptr);
+    static void Disconnect();
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
     static void PairDevice(CallbackWithResult&& callback);
     static TCPEndpoint GetSeekEndpoint();
