@@ -68,7 +68,7 @@ private:
     asio::strand<asio::io_context::executor_type> m_strand;
 
     std::shared_ptr<SSLContext> m_sslContext;
-    SSLSocket m_socket;
+    std::unique_ptr<SSLSocket> m_socket;
 
     AwaitableFlag  m_sendFlag;
     std::shared_ptr<AwaitableFlag> m_receiveFlag;
