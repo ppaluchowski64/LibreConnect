@@ -7,7 +7,7 @@ std::mutex         ConnectionManager::s_mutex{};
 std::atomic<bool>  ConnectionManager::s_isInitialized{false};
 
 
-void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
+void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback, DisconnectionCallbackType&& disconnectCallback) {
     if (!s_isInitialized.load()) {
         std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
@@ -17,10 +17,10 @@ void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&&
         s_instance->m_sslContext = CreateSSLContext(false);
     }
 
-    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
+    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback), std::forward<DisconnectionCallbackType>(disconnectCallback));
 }
 
-void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
+void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback, DisconnectionCallbackType&& disconnectCallback) {
     if (!s_isInitialized.load()) {
         std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
@@ -31,16 +31,16 @@ void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& ca
     }
 
     s_instance->m_seekingEndpoint = endpoint;
-    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
+    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback), std::forward<DisconnectionCallbackType>(disconnectCallback));
 }
 
-void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
+void ConnectionManager::Disconnect() {
     if (!s_isInitialized.load()) {
         std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
-    s_instance->m_primaryConnection->Disconnect(std::forward<DisconnectionCallbackType>(callback));
+    s_instance->m_primaryConnection->Disconnect();
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {

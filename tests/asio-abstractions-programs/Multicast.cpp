@@ -52,6 +52,8 @@ int main() {
                     } else {
                         connected.store(true);
                     }
+                }, [&connected]() {
+                    connected.store(false);
                 });
 
             } catch (const std::invalid_argument& e) {
