@@ -17,6 +17,13 @@ int main() {
     std::atomic<bool> connected = false;
 
     while (true) {
+        while (connected.load()) {
+            std::string text;
+            std::getline(std::cin, text);
+
+            ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
+        }
+
         std::cout << "============= COMMANDS =============\n\n"
                      "> rf - refresh devices\n"
                      "> pd - print devices\n"
@@ -45,7 +52,6 @@ int main() {
                 }
 
                 TCPEndpoint endpoint(asio::ip::make_address_v4(devices[id-1].deviceAddress), devices[id-1].deviceAddressPort);
-                Debug::Log("dd");
                 ConnectionManager::Connect(std::move(endpoint), [&connected](const bool result) {
                     if (!result) {
                         Debug::LogError("Failed to connect to device");
@@ -54,18 +60,12 @@ int main() {
                     }
                 }, [&connected]() {
                     connected.store(false);
+                    ConnectionManager::Seek(TCPEndpoint(asio::ip::tcp::v4(), 5000));
                 });
 
             } catch (const std::invalid_argument& e) {
                 Debug::LogError(std::string(e.what()));
             }
-        }
-
-        while (connected.load()) {
-            std::string text;
-            std::getline(std::cin, text);
-
-            ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
         }
     }
 }
