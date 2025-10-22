@@ -18,8 +18,14 @@ int main() {
 
     while (true) {
         while (connected.load()) {
+            Debug::Log("Send message (write disconnect to disconnect)");
             std::string text;
             std::getline(std::cin, text);
+
+            if (text == "disconnect") {
+                ConnectionManager::Disconnect();
+                break;
+            }
 
             ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
         }
@@ -46,7 +52,7 @@ int main() {
                 std::string portStr = command.substr(3, spacePosition - 3);
                 const size_t id = static_cast<size_t>(std::stoi(portStr));
 
-                if (devices.size() > id) {
+                if (devices.size() < id || id == 0) {
                     Debug::LogError("Invalid id");
                     continue;
                 }
