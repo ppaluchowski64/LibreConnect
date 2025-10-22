@@ -64,10 +64,8 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
         callback(true);
 
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection connection error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
         Disconnect();
@@ -100,10 +98,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
         callback(true);
 
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::ssl::error::stream_truncated || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection connection seek error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
         Disconnect();
@@ -128,9 +124,7 @@ asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
 
         m_socket.reset();
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
     }
@@ -174,10 +168,8 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
             }
         }
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection send error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
         Disconnect();
@@ -215,10 +207,8 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection receive error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
         Disconnect();

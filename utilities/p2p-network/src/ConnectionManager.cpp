@@ -13,6 +13,8 @@ void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&&
         Initialize();
     }
 
+    Debug::Log("Started Connecting");
+
     if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::CLIENT) {
         s_instance->m_sslContext = CreateSSLContext(false);
     }
@@ -25,6 +27,8 @@ void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& ca
         std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
+
+    Debug::Log("Started Seeking");
 
     if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::SERVER) {
         s_instance->m_sslContext = CreateSSLContext(true);
