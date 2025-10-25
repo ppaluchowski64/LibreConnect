@@ -9,6 +9,11 @@ include(FetchContent)
 
 include(cmake/Tests.cmake)
 include(cmake/Build.cmake)
+include(cmake/ENV_Loader.cmake)
+
+load_env_file(.env)
+
+list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR})
 
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
@@ -18,6 +23,7 @@ find_package(concurrentqueue REQUIRED)
 find_package(GTest           REQUIRED)
 find_package(benchmark       REQUIRED)
 find_package(SQLiteCpp       REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Quick Qml)
 
 FetchContent_Declare(
         debug-log
@@ -35,7 +41,7 @@ target_compile_definitions(project_defaults INTERFACE
 
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
-BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
+BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
 
 
 if (ENABLE_TESTS)

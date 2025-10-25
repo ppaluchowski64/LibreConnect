@@ -155,3 +155,6 @@ vcpkg_out/
 
 # Ignore CLion-generated Conan provider file
 **/conan_provider.cmake
+
+# === Environment Files ===
+*.env
