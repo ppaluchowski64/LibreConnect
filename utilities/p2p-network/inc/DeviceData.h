@@ -2,6 +2,7 @@
 #define DEVICE_DATA_H
 
 #include <mutex>
+#include <vector>
 #include <boost/uuid/uuid.hpp>
 #include <SQLiteCpp/SQLiteCpp.h>
 

@@ -2,6 +2,8 @@
 #include <thread>
 #include <ConnectionManager.h>
 #include <iostream>
+#include <QCoreApplication>
+
 
 int main() {
     LanDeviceScanner::BeginScan();
