@@ -20,7 +20,7 @@ struct TestPackable {
         DeserializeObject(name, buffer, offset);
     }
 
-    constexpr size_t GetSerializedSize() const {
+    size_t GetSerializedSize() const {
         return GetObjectSerializedSize(id) + GetObjectSerializedSize(name);
     }
 

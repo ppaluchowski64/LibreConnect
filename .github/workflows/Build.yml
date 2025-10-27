@@ -34,11 +34,13 @@ jobs:
         run: conan profile detect --force
 
       - name: Write Qt path to .env for CMake
+        shell: pwsh
         run: |
-          echo "QT_DIR=C:\Users\runneradmin\Qt\6.8.3\msvc2022_64" >> .env
+          "QT_DIR=$env:QT_ROOT_DIR" >> .env
+          "DISABLE_DEBUG=true" >> .env
 
       - name: Install Conan deps
-        run: conan install . --output-folder=build --build=missing -g CMakeToolchain -g CMakeDeps -s compiler.cppstd=20 -s build_type=Release
+        run: python configure_project.py
 
       - name: Configure CMake
         run: cmake --preset conan-default
@@ -52,9 +54,9 @@ jobs:
           name: ${{ github.ref_name }}-build-Windows-Latest
           path: build
 
-  build-ubuntu-latest:
-    name: Build Linux-Latest
-    runs-on: ubuntu-latest
+  build-ubuntu:
+    name: Build Linux
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -101,11 +103,10 @@ jobs:
         run: conan profile detect --force
 
       - name: Write Qt path to .env for CMake
-        run: |
-          echo "QT_DIR=/home/runner/work/_temp/Qt/6.8.3/linux_gcc_64" >> .env
+        run: echo QT_DIR=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env
 
       - name: Install Conan deps
-        run: conan install . --output-folder=build --build=missing -g CMakeToolchain -g CMakeDeps -s compiler.cppstd=gnu20 -s build_type=Release -c tools.system.package_manager:mode=install -c tools.system.package_manager:sudo=True
+        run: python configure_project.py
 
       - name: Configure CMake
         run: cmake --preset conan-release
@@ -136,10 +137,6 @@ jobs:
         with:
           cache_packages: true
 
-      - name: Write Qt path to .env for CMake
-        run: |
-          echo "QT_DIR=/Users/runner/work/_temp/Qt/6.8.3/clang_64" >> .env
-
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
         with:
@@ -148,11 +145,14 @@ jobs:
           target: 'desktop'
           arch: 'clang_64'
 
+      - name: Write Qt path to .env for CMake
+        run: echo "QT_DIR=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env
+
       - name: Create Conan profile
         run: conan profile detect --force
 
       - name: Install Conan deps
-        run: conan install . --output-folder=build --build=missing -g CMakeToolchain -g CMakeDeps -s compiler.cppstd=20 -s build_type=Release
+        run: python configure_project.py
 
       - name: Configure CMake
         run: cmake --preset conan-release

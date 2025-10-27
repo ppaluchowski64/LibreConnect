@@ -1,26 +1,43 @@
 import os
+import shutil
 import sys
 import subprocess
+from pathlib import Path
 
 # Environment variables
 env_file_path = ".env"
-default_env_content = """# ==============================
+default_env_content = """
+# ==============================
 # Project Environment Variables
 # ==============================
-
-# QT_DIR: Full path to your Qt installation
-# Example for Windows with Qt 6.8.3 and MSVC 2022 64-bit:
-# QT_DIR=C:\\Qt\\6.8.3\\msvc2022_64
+#
+# QT_DIR:
+#   Full path to your Qt installation.
+#   Used by CMake and deployment tools to locate Qt libraries, plugins, and utilities (e.g., windeployqt).
+#   Example (Windows, Qt 6.8.3, MSVC 2022 64-bit):
+#       QT_DIR=C:\\Qt\\6.8.3\\msvc2022_64
+#
+# DISABLE_DEBUG:
+#   Set this to disable the Conan "Debug" configuration step in the build script.
+#   Accepts: 1 / true / yes / on (case-insensitive) to skip Debug build.
+#   Leave empty or set to 0 / false / no / off to enable both Debug and Release builds.
+#
+# Example:
+#   DISABLE_DEBUG=false
+#
+# ==============================================
+# Fill in the values below and save this file.
+# ==============================================
 
 QT_DIR=
-
+DISABLE_DEBUG=
 """
 
 # Check for environment variables file 
 if not os.path.exists(env_file_path):
     with open(env_file_path, "w") as f:
         f.write(default_env_content)
-    print(f"Fill env properties in: {env_file_path}.")
+    print(f"Fill env properties in: \"{env_file_path}\".")
     input("Press Enter to continue...")
     exit(-1)
 
@@ -34,7 +51,13 @@ with open(env_file_path, "r") as f:
 
 # Check if QT_DIR is set
 if not os.environ.get("QT_DIR"):
-    print("QT_DIR is not set in .env! Fill it before running this script.")
+    print(f"QT_DIR is not set in \"{env_file_path}\"! Fill it before running this script.")
+    input("Press Enter to continue...")
+    exit(-1)
+
+# Check if DISABLE_DEBUG is set
+if not os.environ.get("DISABLE_DEBUG"):
+    print(f"DISABLE_DEBUG is not set in \"{env_file_path}\"! Fill it before running this script.")
     input("Press Enter to continue...")
     exit(-1)
 
@@ -54,14 +77,12 @@ else:
 
 common_generator_flags = "-g CMakeToolchain -g CMakeDeps"
 common_build_missing = "--build=missing"
-output_folder = "--output-folder=build"
 
 def run_conan_install(build_type: str):
     cmd_parts = [
         "conan",
         "install",
         ".",
-        output_folder,
         common_build_missing,
         common_generator_flags,
         f"-s compiler.cppstd={cppstd}",
@@ -78,5 +99,33 @@ def run_conan_install(build_type: str):
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
 
-run_conan_install("Debug")
+disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "true", "yes", "on"]
+
+if platform.startswith("linux"):
+    tools_dir = Path("~/.local/bin").expanduser()
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    target = tools_dir / "linuxdeployqt"
+
+    if not target.exists():
+        print("Installing linuxdeployqt globally...")
+        url = "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
+        subprocess.run(["wget", "-q", "-O", str(target), url], check=True)
+        subprocess.run(["chmod", "+x", str(target)], check=True)
+
+        path_str = str(tools_dir)
+        home = Path.home()
+        profiles = [home / ".bashrc", home / ".zshrc", home / ".profile"]
+        for profile in profiles:
+            if profile.exists():
+                content = profile.read_text()
+                if path_str in content:
+                    break
+        else:
+            export_line = f'\n# Added by Qt setup script\nexport PATH="{path_str}:$PATH"\n'
+            target = home / ".bashrc"
+            with open(target, "a") as f:
+                f.write(export_line)
+
+if not disable_debug:
+    run_conan_install("Debug")
 run_conan_install("Release")

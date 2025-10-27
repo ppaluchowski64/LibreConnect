@@ -39,7 +39,7 @@ struct DeviceInfo {
         DeserializeObject(deviceID, buffer, offset);
     }
 
-    constexpr size_t GetSerializedSize() const {
+    inline size_t GetSerializedSize() const {
         return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceAddressPort) + GetObjectSerializedSize(deviceID);
     }
 };

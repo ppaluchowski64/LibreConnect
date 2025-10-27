@@ -5,6 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ENABLE_TESTS ON)
 
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
+set(CMAKE_AUTOUIC ON)
+
 include(FetchContent)
 
 include(cmake/Tests.cmake)
@@ -13,7 +17,7 @@ include(cmake/ENV_Loader.cmake)
 
 load_env_file(.env)
 
-list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR})
+list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR}/lib/cmake)
 
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
@@ -41,11 +45,12 @@ target_compile_definitions(project_defaults INTERFACE
 
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
-BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
+BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
 
 
 if (ENABLE_TESTS)
-    BuildTestProgram(MultiCast_Test asio-abstractions-programs/Multicast.cpp p2p-network-component-pc)
+    #BuildQTProgram(MulticastConnection tests/asio-abstractions-programs/MulticastConnection p2p-network-component-pc Qt6::Core Qt6::Quick)
+    BuildQTProgram(QT-Quick-Test tests/qt-quick-test Qt6::Quick p2p-network-component-pc)
     BuildTestProgram(Seeker asio-abstractions-programs/Seeker.cpp p2p-network-component-pc)
     BuildTestProgram(Connector asio-abstractions-programs/Connector.cpp p2p-network-component-pc)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
