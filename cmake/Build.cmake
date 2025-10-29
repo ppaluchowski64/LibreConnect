@@ -1,6 +1,8 @@
 function(BuildStaticLibrary StaticLibraryName RootPath)
     file(GLOB_RECURSE SOURCE_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
     )
 
     file(GLOB_RECURSE HEADER_FILES
@@ -13,6 +15,38 @@ function(BuildStaticLibrary StaticLibraryName RootPath)
     target_include_directories(${StaticLibraryName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/)
 endfunction()
 
+function(BuildQTModule Target RootPath)
+    file(GLOB_RECURSE SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
+    )
+
+    file(GLOB_RECURSE HEADER_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
+    )
+
+    file(GLOB_RECURSE QML_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml/*.qml
+    )
+
+    qt_add_executable(${Target}
+            ${SOURCE_FILES}
+            ${HEADER_FILES}
+    )
+
+    qt_add_resources(${Target} ${ETarget}
+            PREFIX "/${Target}"
+            BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml
+            FILES
+                ${QML_FILES}
+    )
+
+    target_include_directories(${Target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc)
+    target_link_libraries(${Target} PRIVATE ${ARGN})
+endfunction()
+
 
 function(BuildTestProgram ExecutableName Path)
     add_executable(${ExecutableName} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${Path})
@@ -22,6 +56,8 @@ endfunction()
 function(BuildProgram ExecutableName RootPath)
     file(GLOB_RECURSE SOURCE_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
     )
 
     file(GLOB_RECURSE HEADER_FILES
@@ -37,6 +73,8 @@ endfunction()
 function(BuildQTProgram ExecutableName RootPath)
     file(GLOB_RECURSE SOURCE_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
     )
 
     file(GLOB_RECURSE HEADER_FILES
@@ -44,7 +82,22 @@ function(BuildQTProgram ExecutableName RootPath)
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
     )
 
-    qt_add_executable(${ExecutableName} ${SOURCE_FILES} ${HEADER_FILES})
+    file(GLOB_RECURSE QML_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml/*.qml
+    )
+
+    qt_add_executable(${ExecutableName}
+        ${SOURCE_FILES}
+        ${HEADER_FILES}
+    )
+
+    qt_add_resources(${ExecutableName} ${ExecutableName}
+            PREFIX "/"
+            BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml
+            FILES
+                ${QML_FILES}
+    )
+
     target_include_directories(${ExecutableName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
 

@@ -1,44 +1,20 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QQmlComponent>
-#include <QDebug>
+#include <QUrl>
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
+    engine.addImportPath("qrc:/");
+    const QUrl url(QStringLiteral("qrc:/main.qml"));
 
-    // Inline QML source as a string
-    const char *qmlData = R"(
-        import QtQuick
-        import QtQuick.Controls
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
+                     &app, [url](QObject *obj, const QUrl &objUrl) {
+        if (!obj && url == objUrl)
+            QCoreApplication::exit(-1);
+    }, Qt::QueuedConnection);
 
-        ApplicationWindow {
-            width: 400
-            height: 300
-            visible: true
-            title: qsTr("Inline Qt Quick Test")
-
-            Rectangle {
-                anchors.fill: parent
-                color: "#2b2b2b"
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "Hello from Inline QML!"
-                    color: "white"
-                    font.pixelSize: 22
-                }
-            }
-        }
-    )";
-
-    QQmlComponent component(&engine);
-    component.setData(qmlData, QUrl());
-    QObject *object = component.create();
-
-    if (!object)
-        qWarning() << component.errors();
-
+    engine.load(url);
     return app.exec();
 }
