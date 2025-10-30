@@ -1,9 +1,7 @@
 #include <Scanner.h>
-#include <thread>
 #include <ConnectionManager.h>
 #include <iostream>
 #include <QCoreApplication>
-
 
 int main() {
     LanDeviceScanner::BeginScan();
@@ -60,16 +58,7 @@ int main() {
                 }
 
                 TCPEndpoint endpoint(asio::ip::make_address_v4(devices[id-1].deviceAddress), devices[id-1].deviceAddressPort);
-                ConnectionManager::Connect(std::move(endpoint), [&connected](const bool result) {
-                    if (!result) {
-                        Debug::LogError("Failed to connect to device");
-                    } else {
-                        connected.store(true);
-                    }
-                }, [&connected]() {
-                    connected.store(false);
-                    ConnectionManager::Seek(TCPEndpoint(asio::ip::tcp::v4(), 5000));
-                });
+                ConnectionManager::Connect(std::move(endpoint));
 
             } catch (const std::invalid_argument& e) {
                 Debug::LogError(std::string(e.what()));

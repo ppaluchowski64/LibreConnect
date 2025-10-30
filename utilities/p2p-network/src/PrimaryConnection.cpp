@@ -1,5 +1,9 @@
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
+#include <Events.h>
+#include <ConnectionManager.h>
+
+class ConnectionManager;
 
 PrimaryConnection::PrimaryConnection(IOContext& context)
     : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr),
@@ -10,18 +14,16 @@ std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context)
     return std::make_shared<PrimaryConnection>(context);
 }
 
-void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback, DisconnectionCallbackType&& disconnectCallback) {
-    m_disconnectionCallback = std::move(disconnectCallback);
-    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext, std::move(callback)), asio::detached);
+void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext) {
+    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext), asio::detached);
 }
 
-void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback, DisconnectionCallbackType&& disconnectCallback) {
-    m_disconnectionCallback = std::move(disconnectCallback);
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext, std::move(callback)), asio::detached);
+void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext) {
+    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext), asio::detached);
 }
 
-void PrimaryConnection::Disconnect() {
-    asio::co_spawn(m_strand, CoDisconnect(), asio::detached);
+void PrimaryConnection::Disconnect(const bool callConnectionManagerDisconnect) {
+    asio::co_spawn(m_strand, CoDisconnect(callConnectionManagerDisconnect), asio::detached);
 }
 
 std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPackage() {
@@ -42,7 +44,7 @@ bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
-asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback) {
+asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
     m_connectionState.store(ConnectionState::CONNECTING);
@@ -61,7 +63,8 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-        callback(true);
+        ConnectedEvent* event = new ConnectedEvent(EventResult::SUCCESS);
+        ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
@@ -69,13 +72,14 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
         }
 
         Disconnect();
-        callback(false);
+        ConnectedEvent* event = new ConnectedEvent(EventResult::FAILURE);
+        ConnectionManager::SendEvent(event);
     }
 
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback) {
+asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_connectionState.store(ConnectionState::CONNECTING);
     m_sslContext = sslContext;
@@ -95,7 +99,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-        callback(true);
+        ConnectedEvent* event = new ConnectedEvent(EventResult::SUCCESS);
+        ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
@@ -103,7 +108,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
         }
 
         Disconnect();
-        callback(false);
+        ConnectedEvent* event = new ConnectedEvent(EventResult::FAILURE);
+        ConnectionManager::SendEvent(event);
     }
 
     co_return;
@@ -130,12 +136,20 @@ asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoDisconnect() {
+asio::awaitable<void> PrimaryConnection::CoDisconnect(const bool callConnectionManagerDisconnect) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+
+    if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
+        co_return;
+    }
+
     m_connectionState.store(ConnectionState::DISCONNECTING);
     co_await CoCleanupConnection();
     m_connectionState.store(ConnectionState::DISCONNECTED);
-    m_disconnectionCallback();
+
+    if (callConnectionManagerDisconnect) {
+        ConnectionManager::Disconnect();
+    }
 }
 
 asio::awaitable<void> PrimaryConnection::CoSend() {

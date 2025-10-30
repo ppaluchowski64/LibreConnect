@@ -16,5 +16,17 @@ int main(int argc, char *argv[])
     }, Qt::QueuedConnection);
 
     engine.load(url);
+
+    QObject *root = engine.rootObjects().first();
+
+    qDebug() << (root == nullptr);
+
+    QObject *dashboard = root->findChild<QObject*>("dashboard");
+    QObject *increaseButton = root->findChild<QObject*>("IncreaseButton");
+
+    if (increaseButton) {
+        increaseButton->setProperty("color", "#ff9800");
+    }
+
     return app.exec();
 }

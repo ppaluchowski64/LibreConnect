@@ -30,9 +30,9 @@ public:
     PrimaryConnection() = delete;
     static std::shared_ptr<PrimaryConnection> Create(IOContext& context);
 
-    void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr, DisconnectionCallbackType&& disconnectCallback = nullptr);
-    void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback = nullptr, DisconnectionCallbackType&& disconnectCallback = nullptr);
-    void Disconnect();
+    void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext);
+    void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext);
+    void Disconnect(bool callConnectionManagerDisconnect = true);
 
     template <Serializable... Args>
     void Send(PC_PackageType type, Args&&... args) {
@@ -58,10 +58,10 @@ public:
 
 
 private:
-    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback);
-    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, ConnectionCallbackType callback);
+    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext);
+    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext);
     asio::awaitable<void> CoCleanupConnection();
-    asio::awaitable<void> CoDisconnect();
+    asio::awaitable<void> CoDisconnect(bool callConnectionManagerDisconnect = true);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
@@ -73,8 +73,6 @@ private:
 
     AwaitableFlag  m_sendFlag;
     std::shared_ptr<AwaitableFlag> m_receiveFlag;
-
-    DisconnectionCallbackType m_disconnectionCallback;
 
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;

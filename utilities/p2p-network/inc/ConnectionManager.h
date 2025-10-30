@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <Packable.h>
 
+#include <QObject>
 #include <PrimaryConnection.h>
 #include <ConcurrentUnorderedMap.h>
 #include <magic_enum/magic_enum.hpp>
@@ -14,10 +15,10 @@ public:
     typedef std::function<void(std::unique_ptr<Package<PC_PackageType>>&&)> RequestCallbackType;
     typedef std::function<void(bool)> CallbackWithResult;
 
-    static void Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr, DisconnectionCallbackType&& disconnectCallback = nullptr);
-    static void Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback = nullptr, DisconnectionCallbackType&& disconnectCallback = nullptr);
+    static void Connect(TCPEndpoint&& endpoint);
+    static void Seek(TCPEndpoint&& endpoint);
 
-    static void Disconnect();
+    static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
     static void PairDevice(CallbackWithResult&& callback);
     static TCPEndpoint GetSeekEndpoint();
@@ -48,7 +49,10 @@ public:
 private:
     ConnectionManager();
 
+    friend class PrimaryConnection;
+
     static void Initialize();
+    static void SendEvent(QEvent* event);
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer);
     static void RunContext();
 
@@ -64,6 +68,7 @@ private:
     static std::mutex         s_mutex;
     static std::atomic<bool>  s_isInitialized;
 
+
     IOContext  m_context;
     std::shared_ptr<SSLContext> m_sslContext;
     IOWorkGuard m_workGuard;
@@ -77,6 +82,7 @@ private:
     ConcurrentUnorderedMap<size_t, RequestCallbackType> m_requestCallbackMap;
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
 
+    std::vector<QObject*> m_eventObjects;
 
 };
 
