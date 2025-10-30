@@ -5,9 +5,9 @@ on:
     branches: [ "*" ]
 
 jobs:
-  build-windows-latest:
-    name: Build Windows-Latest
-    runs-on: windows-latest
+  build-windows:
+    name: Build Windows
+    runs-on: windows-2019
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -120,9 +120,9 @@ jobs:
           name: ${{ github.ref_name }}-build-Ubuntu-Latest
           path: build
 
-  build-macOS-latest:
-    name: Build MacOS-Latest
-    runs-on: macos-latest
+  build-macOS:
+    name: Build MacOS
+    runs-on: macos-14
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

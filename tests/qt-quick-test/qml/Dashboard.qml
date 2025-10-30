@@ -19,12 +19,14 @@ Item {
         }
 
         ButtonCard {
+            objectName: "IncreaseButton"
             label: "Increase"
             color: "#90caf9"
             onClicked: dashboard.counter++
         }
 
         ButtonCard {
+            objectName: "ResetButton"
             label: "Reset"
             color: "#ef9a9a"
             onClicked: dashboard.counter = 0

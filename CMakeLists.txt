@@ -45,11 +45,11 @@ target_compile_definitions(project_defaults INTERFACE
 
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
-BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue)
+BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
 
 
 if (ENABLE_TESTS)
-    #BuildQTProgram(MulticastConnection tests/asio-abstractions-programs/MulticastConnection p2p-network-component-pc Qt6::Core Qt6::Quick)
+    BuildQTProgram(MulticastConnection tests/asio-abstractions-programs/MulticastConnection p2p-network-component-pc Qt6::Core)
     BuildQTProgram(QT-Quick-Test tests/qt-quick-test Qt6::Quick p2p-network-component-pc)
     BuildTestProgram(Seeker asio-abstractions-programs/Seeker.cpp p2p-network-component-pc)
     BuildTestProgram(Connector asio-abstractions-programs/Connector.cpp p2p-network-component-pc)
