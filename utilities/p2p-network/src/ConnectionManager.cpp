@@ -80,7 +80,7 @@ void ConnectionManager::RunContext() {
     s_instance->m_context.run();
 }
 
-[[noreturn]] asio::awaitable<void> ConnectionManager::CoProcessPackages() {
+asio::awaitable<void> ConnectionManager::CoProcessPackages() {
     const std::shared_ptr<AwaitableFlag> receiveFlag = m_primaryConnection->GetReceiveFlag();
 
     while (true) {

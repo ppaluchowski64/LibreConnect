@@ -51,8 +51,6 @@ BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaul
 if (ENABLE_TESTS)
     BuildQTProgram(MulticastConnection tests/asio-abstractions-programs/MulticastConnection p2p-network-component-pc Qt6::Core)
     BuildQTProgram(QT-Quick-Test tests/qt-quick-test Qt6::Quick p2p-network-component-pc)
-    BuildTestProgram(Seeker asio-abstractions-programs/Seeker.cpp p2p-network-component-pc)
-    BuildTestProgram(Connector asio-abstractions-programs/Connector.cpp p2p-network-component-pc)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
 
