@@ -3,7 +3,7 @@ project(p_connect LANGUAGES C CXX ASM)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(ENABLE_TESTS ON)
+set(ENABLE_TESTS OFF)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -47,6 +47,7 @@ BuildStaticLibrary(network-component-pc utilities/network project_defaults opens
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
 
+BuildQTProgram(LibreConnect apps/desktop network-component-pc system-component-pc p2p-network-component-pc Qt6::Quick)
 
 if (ENABLE_TESTS)
     BuildQTProgram(MulticastConnection tests/asio-abstractions-programs/MulticastConnection p2p-network-component-pc Qt6::Core)

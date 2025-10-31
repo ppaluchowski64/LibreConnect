@@ -86,16 +86,31 @@ function(BuildQTProgram ExecutableName RootPath)
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml/*.qml
     )
 
+    file(GLOB_RECURSE RESOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.png
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.jpg
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.jpeg
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.svg
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.ttf
+    )
+
     qt_add_executable(${ExecutableName}
         ${SOURCE_FILES}
         ${HEADER_FILES}
     )
 
-    qt_add_resources(${ExecutableName} ${ExecutableName}
+    qt_add_resources(${ExecutableName} ${ExecutableName}_qml_resources
             PREFIX "/"
             BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml
             FILES
                 ${QML_FILES}
+    )
+
+    qt_add_resources(${ExecutableName} ${ExecutableName}_app_resources
+            PREFIX "/"
+            BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res
+            FILES
+                ${RESOURCE_FILES}
     )
 
     target_include_directories(${ExecutableName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc)
