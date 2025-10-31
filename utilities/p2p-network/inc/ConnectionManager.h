@@ -20,6 +20,7 @@ public:
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
+    static void AddEventListener(const QPointer<QObject>& object);
     static void PairDevice(CallbackWithResult&& callback);
     static TCPEndpoint GetSeekEndpoint();
 
@@ -46,13 +47,14 @@ public:
         s_instance->m_requestCallbackMap.InsertOrAssign(requestID, std::forward<RequestCallbackType>(requestResponseCallback));
     }
 
+
 private:
     ConnectionManager();
 
     friend class PrimaryConnection;
 
     static void Initialize();
-    static void SendEvent(QEvent* event);
+    static void SendEvent(const std::unique_ptr<QEvent>& event);
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer);
     static void RunContext();
 
@@ -82,7 +84,7 @@ private:
     ConcurrentUnorderedMap<size_t, RequestCallbackType> m_requestCallbackMap;
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
 
-    std::vector<QObject*> m_eventObjects;
+    std::vector<QPointer<QObject>> m_eventObjects;
 
 };
 

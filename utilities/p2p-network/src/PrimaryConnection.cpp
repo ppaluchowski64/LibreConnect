@@ -22,8 +22,8 @@ void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLCo
     asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext), asio::detached);
 }
 
-void PrimaryConnection::Disconnect(const bool callConnectionManagerDisconnect) {
-    asio::co_spawn(m_strand, CoDisconnect(callConnectionManagerDisconnect), asio::detached);
+void PrimaryConnection::Disconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
+    asio::co_spawn(m_strand, CoDisconnect(errorCode, callConnectionManagerDisconnect), asio::detached);
 }
 
 std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPackage() {
@@ -63,7 +63,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-        ConnectedEvent* event = new ConnectedEvent(EventResult::SUCCESS);
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
@@ -71,8 +71,8 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        Disconnect();
-        ConnectedEvent* event = new ConnectedEvent(EventResult::FAILURE);
+        Disconnect(error.code());
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
     }
 
@@ -99,7 +99,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-        ConnectedEvent* event = new ConnectedEvent(EventResult::SUCCESS);
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
@@ -107,8 +107,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        Disconnect();
-        ConnectedEvent* event = new ConnectedEvent(EventResult::FAILURE);
+        Disconnect(error.code());
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
     }
 
@@ -136,7 +136,7 @@ asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoDisconnect(const bool callConnectionManagerDisconnect) {
+asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
     if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
@@ -148,7 +148,7 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const bool callConnectionM
     m_connectionState.store(ConnectionState::DISCONNECTED);
 
     if (callConnectionManagerDisconnect) {
-        ConnectionManager::Disconnect();
+        ConnectionManager::Disconnect(errorCode);
     }
 }
 
@@ -186,7 +186,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        Disconnect();
+        Disconnect(error.code());
     }
 }
 
@@ -225,8 +225,6 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        Disconnect();
+        Disconnect(error.code());
     }
 }
-
-

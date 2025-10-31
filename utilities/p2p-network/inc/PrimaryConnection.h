@@ -32,7 +32,7 @@ public:
 
     void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext);
     void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext);
-    void Disconnect(bool callConnectionManagerDisconnect = true);
+    void Disconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
 
     template <Serializable... Args>
     void Send(PC_PackageType type, Args&&... args) {
@@ -61,7 +61,7 @@ private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext);
     asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext);
     asio::awaitable<void> CoCleanupConnection();
-    asio::awaitable<void> CoDisconnect(bool callConnectionManagerDisconnect = true);
+    asio::awaitable<void> CoDisconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
