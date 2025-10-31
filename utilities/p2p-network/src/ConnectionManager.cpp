@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <Events.h>
 #include <DeviceInfo.h>
+#include <QPointer>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -46,10 +47,10 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
         Initialize();
     }
 
-    s_instance->m_primaryConnection->Disconnect(false);
+    s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
 
-    DisconnectedEvent* event = new DisconnectedEvent(errorCode);
-    SendEvent(event);
+    const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
+    ConnectionManager::SendEvent(event);
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {
@@ -127,6 +128,16 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
 }
 
+void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
+    if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
+    }
+
+    std::lock_guard<std::mutex> lock(s_mutex);
+    s_instance->m_eventObjects.push_back(object);
+}
+
 void ConnectionManager::PairDevice(CallbackWithResult&& callback) {
     // if (!s_isInitialized.load()) {
     //     std::lock_guard<std::mutex> lock(s_mutex);
@@ -172,22 +183,32 @@ void ConnectionManager::Initialize() {
     s_isInitialized.store(true);
 }
 
-void ConnectionManager::SendEvent(QEvent* event) {
-    if (!s_isInitialized.load()) {
+void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
+    std::vector<QPointer<QObject>> targets;
+
+    {
         std::lock_guard<std::mutex> lock(s_mutex);
-        Initialize();
+
+        if (!s_isInitialized.load()) {
+            Initialize();
+        }
+
+        auto& objects = s_instance->m_eventObjects;
+        std::erase_if(objects, [](const QPointer<QObject>& obj) {
+            return obj.isNull();
+        });
+
+        if (objects.empty()) {
+            return;
+        }
+
+        targets = objects;
     }
 
-    std::lock_guard<std::mutex> lock(s_mutex);
-
-    const std::vector<QObject*>& objects = s_instance->m_eventObjects;
-
-    if (objects.empty()) {
-        delete event;
-    }
-
-    QCoreApplication::postEvent(objects[0], event);
-    for (int i = 1; i < objects.size(); i++) {
-        QCoreApplication::postEvent(objects[i], event->clone());
+    for (const auto& obj : targets) {
+        QMetaObject::invokeMethod(obj, [event = event->clone(), obj]() {
+            if (obj.isNull()) return;
+            obj->event(event);
+        });
     }
 }
