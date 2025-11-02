@@ -2,10 +2,10 @@
 #define DEVICE_INFO_H
 
 #include <vector>
-#include <../../system/inc/Packable.h>
+#include <Packable.h>
 #include <boost/uuid.hpp>
 #include <asio.hpp>
-#include <../../p2p-network/inc/DeviceData.h>
+#include <DeviceData.h>
 #include <ConnectionManager.h>
 
 class DeviceData;

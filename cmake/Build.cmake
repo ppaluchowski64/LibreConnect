@@ -15,39 +15,6 @@ function(BuildStaticLibrary StaticLibraryName RootPath)
     target_include_directories(${StaticLibraryName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/)
 endfunction()
 
-function(BuildQTModule Target RootPath)
-    file(GLOB_RECURSE SOURCE_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
-    )
-
-    file(GLOB_RECURSE HEADER_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
-    )
-
-    file(GLOB_RECURSE QML_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml/*.qml
-    )
-
-    qt_add_executable(${Target}
-            ${SOURCE_FILES}
-            ${HEADER_FILES}
-    )
-
-    qt_add_resources(${Target} ${ETarget}
-            PREFIX "/${Target}"
-            BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml
-            FILES
-                ${QML_FILES}
-    )
-
-    target_include_directories(${Target} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc)
-    target_link_libraries(${Target} PRIVATE ${ARGN})
-endfunction()
-
-
 function(BuildTestProgram ExecutableName Path)
     add_executable(${ExecutableName} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${Path})
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
@@ -70,66 +37,75 @@ function(BuildProgram ExecutableName RootPath)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
 endfunction()
 
-function(BuildQTProgram ExecutableName RootPath)
+function(BuildQTExecutable ExecutableName RootPath ModuleURI)
     file(GLOB_RECURSE SOURCE_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
+            ${RootPath}/src/*.cpp
+            ${RootPath}/src/*.cxx
+            ${RootPath}/src/*.cc
     )
 
     file(GLOB_RECURSE HEADER_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
+            ${RootPath}/inc/*.h
+            ${RootPath}/inc/*.hpp
     )
 
-    file(GLOB_RECURSE QML_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml/*.qml
+    FILE(GLOB_RECURSE QML_FILES
+            RELATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}
+            ${RootPath}/qml/*.qml
     )
 
-    file(GLOB_RECURSE RESOURCE_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.png
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.jpg
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.jpeg
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.svg
-            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res/*.ttf
+    file(GLOB_RECURSE RESOURCES
+            RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+            ${RootPath}/res/*.png
+            ${RootPath}/res/*.jpg
+            ${RootPath}/res/*.jpeg
+            ${RootPath}/res/*.gif
+            ${RootPath}/res/*.svg
+            ${RootPath}/res/*.ico
+            ${RootPath}/res/*.webp
     )
 
     qt_add_executable(${ExecutableName}
-        ${SOURCE_FILES}
-        ${HEADER_FILES}
+            ${SOURCE_FILES}
+            ${HEADER_FILES}
     )
 
-    qt_add_resources(${ExecutableName} ${ExecutableName}_qml_resources
-            PREFIX "/"
-            BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/qml
-            FILES
+    foreach(FILE ${QML_FILES} ${RESOURCES})
+        string(REGEX REPLACE "^[^/]+/" "" REL_PATH "${FILE}")
+        set_source_files_properties("${FILE}" PROPERTIES
+                QT_RESOURCE_ALIAS "${REL_PATH}"
+        )
+    endforeach()
+
+    qt_add_qml_module(${ExecutableName}
+            URI ${ModuleURI}
+            VERSION 1.0
+            QML_FILES
                 ${QML_FILES}
+            RESOURCES
+                ${RESOURCES}
+            SOURCES
+                ${SOURCE_FILES}
+                ${HEADER_FILES}
     )
 
-    qt_add_resources(${ExecutableName} ${ExecutableName}_app_resources
-            PREFIX "/"
-            BASE ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/res
-            FILES
-                ${RESOURCE_FILES}
-    )
-
-    target_include_directories(${ExecutableName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc)
+    target_include_directories(${ExecutableName} PUBLIC ${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
 
+    DeployQT(${ExecutableName})
+endfunction()
+
+function(DeployQT Target)
     if(WIN32)
-        add_custom_command(TARGET ${ExecutableName} POST_BUILD
-                COMMAND "$ENV{QT_DIR}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR}/qml" "$<TARGET_FILE:${ExecutableName}>"
-                COMMENT "Deploying Qt dependencies for ${ExecutableName}..."
+        add_custom_command(TARGET ${Target} POST_BUILD
+                COMMAND "$ENV{QT_DIR}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR}/qml" "$<TARGET_FILE:${Target}>"
+                COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
     elseif(APPLE)
-        set_target_properties(${ExecutableName} PROPERTIES
-                MACOSX_BUNDLE TRUE
-        )
-
-        add_custom_command(TARGET ${ExecutableName} POST_BUILD
-                COMMAND "$ENV{QT_DIR}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${ExecutableName}>" -qmldir=$ENV{QT_DIR}/qml -dmg
-                COMMENT "Running macdeployqt on ${ExecutableName}..."
+        add_custom_command(TARGET ${Target} POST_BUILD
+                COMMAND "$ENV{QT_DIR}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${Target}>" -qmldir=$ENV{QT_DIR}/qml -dmg
+                COMMENT "Running macdeployqt on ${Target}..."
                 VERBATIM
         )
     elseif(UNIX)
@@ -139,12 +115,12 @@ function(BuildQTProgram ExecutableName RootPath)
             message(FATAL_ERROR "linuxdeployqt not found. Please ensure it's in your PATH or set its path manually.")
         endif()
 
-        add_custom_command(TARGET ${ExecutableName} POST_BUILD
-                COMMAND ${LINUXDEPLOYQT_EXECUTABLE} "$<TARGET_FILE:${ExecutableName}>"
+        add_custom_command(TARGET ${Target} POST_BUILD
+                COMMAND ${LINUXDEPLOYQT_EXECUTABLE} "$<TARGET_FILE:${Target}>"
                 -qmldir=$ENV{QT_DIR}/qml
                 -qmake=$ENV{QT_DIR}/bin/qmake
                 -exclude-libs=libqsqlmimer
-                COMMENT "Deploying Qt dependencies for ${ExecutableName}..."
+                COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
     endif()

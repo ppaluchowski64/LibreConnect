@@ -1,27 +1,33 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-#include <QDir>
-#include <QDebug>
+#include <QDirIterator>
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     QQmlApplicationEngine engine;
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreationFailed,
+        &app,
+        []() { QCoreApplication::exit(-1); },
+        Qt::QueuedConnection);
 
-    const QUrl url(QStringLiteral("qrc:/MainWindow.qml"));
-    engine.addImportPath("qrc:");
-    QDir resDir(":");
+    const QUrl url = QUrl("qrc:/LibreConnect/desktop/MainWindow.qml");
 
-    qDebug() << "gtfs";
-    foreach (const QString &entry, resDir.entryList(QDir::AllDirs | QDir::Files | QDir::NoDotAndDotDot)) {
-        qDebug() << "  - " << entry;
-    }
+    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &app,
+                 [url](QObject *obj, const QUrl& urld) {
+                     if (!obj) {
+                         qDebug() << "Failed to load QML at" << urld;
+                     }
 
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated,
-                 &app, [url](const QObject *obj, const QUrl &objUrl) {
-    if (!obj && url == objUrl)
-        QCoreApplication::exit(-1);
-    }, Qt::QueuedConnection);
+                     if (url != urld) {
+                         qDebug() << "Qml url does not match url" << url;
+                     }
+
+                     qDebug() << "Qml object created";
+                 },
+                 Qt::QueuedConnection);
 
     engine.load(url);
 

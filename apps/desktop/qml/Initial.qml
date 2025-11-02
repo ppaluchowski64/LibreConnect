@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import LibreConnect.desktop 1.0
 
 Page {
     id: root
     Image {
         id: logo
-        source: "qrc:/libreconnect_logo.png"
+        source: "qrc:/LibreConnect/desktop/libreconnect_logo.png"
         width: 140
         height: 140
         fillMode: Image.PreserveAspectFit
@@ -58,6 +59,6 @@ Page {
         height: 56
         font.pixelSize: 20
         onClicked: root.StackView.view.push(
-                       "qrc:/DevicePicker.qml")
+                       "qrc:/LibreConnect/desktop/DevicePicker.qml")
     }
 }
