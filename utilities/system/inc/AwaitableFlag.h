@@ -21,10 +21,14 @@ public:
     }
 
     asio::awaitable<void> Wait() {
+        if (m_flag.load(std::memory_order_acquire))
+            co_return;
+
+        m_timer.expires_at(std::chrono::steady_clock::time_point::max());
+
         asio::error_code errorCode;
-        while (!m_flag.load(std::memory_order_acquire)) {
-            co_await m_timer.async_wait(asio::redirect_error(asio::use_awaitable, errorCode));
-        }
+        co_await m_timer.async_wait(asio::redirect_error(asio::use_awaitable, errorCode));
+
         co_return;
     }
 

@@ -6,6 +6,6 @@ requirements:
   - "gtest/1.17.0"
   - "benchmark/1.9.4"
   - "concurrentqueue/1.0.4"
-  - "fmt/11.2.0"
+  - "fmt/12.0.0"
   - "magic_enum/0.9.7"
   - "sqlitecpp/3.3.2"

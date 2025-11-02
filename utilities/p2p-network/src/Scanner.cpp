@@ -3,6 +3,7 @@
 #include <AddressResolver.h>
 #include <Package.h>
 #include <chrono>
+#include <../inc/DeviceData.h>
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
@@ -105,16 +106,17 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     try {
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
         const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
-        const DeviceInfo deviceInfo = GetDeviceInfo();
-
-        std::vector<uint8_t> buffer;
-        size_t offset = 0;
-
-        buffer.resize(deviceInfo.GetSerializedSize());
-        deviceInfo.Serialize(buffer, offset);
-        const asio::const_buffer constBuffer = asio::const_buffer(buffer.data(), buffer.size());
 
         do {
+            const DeviceInfo deviceInfo = DeviceInfo::GetThisDeviceInfo();
+
+            std::vector<uint8_t> buffer;
+            size_t offset = 0;
+
+            buffer.resize(deviceInfo.GetSerializedSize());
+            deviceInfo.Serialize(buffer, offset);
+
+            const asio::const_buffer constBuffer = asio::const_buffer(buffer.data(), buffer.size());
             for (const auto& address : addresses) {
                 m_socket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
                 co_await m_socket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
@@ -145,10 +147,14 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
 
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
+            device.deviceAddress = senderEndpoint.address().to_string();
 
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
-                if (!m_devicesLastProbe.contains(device.deviceID)) {
+                auto it = std::ranges::find_if(m_discoveredDevices, [&](const auto& d) { return d.deviceID == device.deviceID; });
+                if (it != m_discoveredDevices.end()) {
+                    *it = device;
+                } else {
                     m_discoveredDevices.push_back(device);
                 }
 
@@ -160,17 +166,6 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
     } catch (const std::system_error& errorCode) {
         Debug::LogError(errorCode.what());
     }
-}
-
-DeviceInfo LanDeviceScanner::GetDeviceInfo() {
-    boost::uuids::random_generator generator;
-
-    DeviceInfo device = {
-        asio::ip::host_name(),
-        generator()
-    };
-
-    return device;
 }
 
 size_t LanDeviceScanner::GetTimeMS() {

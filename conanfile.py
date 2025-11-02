@@ -39,7 +39,7 @@ class ConanApplication(ConanFile):
         "boost/*:without_timer": True,
         "boost/*:without_type_erasure": True,
         "boost/*:without_unit_test_framework": True,
-        "boost/*:without_wave": True
+        "boost/*:without_wave": True,
     }
 
     def layout(self):

@@ -5,14 +5,9 @@ on:
     branches: [ "*" ]
 
 jobs:
-  build:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-
+  build-windows:
+    name: Build Windows
+    runs-on: windows-2022
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,37 +19,149 @@ jobs:
 
       - name: Install Conan
         uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
 
-      - name: Create default Conan profile
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+
+      - name: Create Conan profile
         run: conan profile detect --force
 
-      - name: Install Conan deps and generate presets
-        run: conan install . --output-folder=build --build=missing -g CMakeToolchain -g CMakeDeps -s compiler.cppstd=20 -s build_type=Release
+      - name: Write Qt path to .env for CMake
+        shell: pwsh
+        run: |
+          "QT_DIR=$env:QT_ROOT_DIR" >> .env
+          "DISABLE_DEBUG=true" >> .env
 
-      - name: Configure CMake (conan-release)
-        if: runner.os != 'Windows'
-        run: cmake --preset conan-release
+      - name: Install Conan deps
+        run: python configure_project.py
 
-      - name: Configure CMake (conan-default)
-        if: runner.os == 'Windows'
+      - name: Configure CMake
         run: cmake --preset conan-default
 
-      - name: Build
+      - name: Build CMake
         run: cmake --build --preset conan-release
-
-      - name: Package build artifacts (non-Windows)
-        if: runner.os != 'Windows'
-        run: |
-          cd build
-          zip -r "../${{ github.ref_name }}-build-${{ matrix.os }}.zip" .
-
-      - name: Package build artifacts (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          Compress-Archive -Path build\* -DestinationPath "${{ github.ref_name }}-build-${{ matrix.os }}.zip"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-${{ matrix.os }}
-          path: ${{ github.ref_name }}-build-${{ matrix.os }}.zip
+          name: ${{ github.ref_name }}-build-Windows-Latest
+          path: build
+
+  build-ubuntu:
+    name: Build Linux
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install Conan
+        uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+          build-essential \
+          libgl1-mesa-dev \
+          libxkbcommon-x11-0 \
+          libdbus-1-dev \
+          libfontconfig1 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-shape0 \
+          libxcb-xinerama0 \
+          libxcb-xkb1 \
+          libxkbcommon-dev \
+          libxkbcommon-x11-dev
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'linux_gcc_64'
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Write Qt path to .env for CMake
+        run: echo QT_DIR=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env
+
+      - name: Install Conan deps
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-Ubuntu-Latest
+          path: build
+
+  build-macOS:
+    name: Build MacOS
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install Conan
+        uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+
+      - name: Write Qt path to .env for CMake
+        run: echo "QT_DIR=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Install Conan deps
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-MacOS-Latest
+          path: build

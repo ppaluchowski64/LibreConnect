@@ -69,7 +69,7 @@ inline void DeserializeObject(std::string& object, const std::vector<uint8_t>& b
     offset += size;
 }
 
-constexpr size_t GetObjectSerializedSize(const std::string& object) {
+inline size_t GetObjectSerializedSize(const std::string& object) {
     return sizeof(size_t) + object.size();
 }
 
@@ -148,12 +148,12 @@ inline void DeserializeObject(std::vector<std::string>& object, const std::vecto
 }
 
 template <Primitive T>
-constexpr size_t GetObjectSerializedSize(const std::vector<T>& object) {
+inline size_t GetObjectSerializedSize(const std::vector<T>& object) {
     return sizeof(size_t) + sizeof(T) * object.size();
 }
 
 template <Packable T>
-constexpr size_t GetObjectSerializedSize(const std::vector<T>& object) {
+inline size_t GetObjectSerializedSize(const std::vector<T>& object) {
     size_t result = sizeof(size_t);
     for (const auto& element : object) {
         result += element.GetSerializedSize();
@@ -162,7 +162,7 @@ constexpr size_t GetObjectSerializedSize(const std::vector<T>& object) {
     return result;
 }
 
-constexpr size_t GetObjectSerializedSize(const std::vector<std::string>& object) {
+inline size_t GetObjectSerializedSize(const std::vector<std::string>& object) {
     size_t result = sizeof(size_t);
     for (const auto& element : object) {
         result += GetObjectSerializedSize(element);
