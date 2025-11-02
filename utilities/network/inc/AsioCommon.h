@@ -27,6 +27,7 @@ typedef asio::ip::udp::socket UDPSocket;
 typedef asio::io_context::strand IOContextStrand;
 
 typedef std::function<void(bool)> ConnectionCallbackType;
+typedef std::function<void(std::string, uint16_t)> SeekReadyCallbackType;
 typedef std::function<void()> DisconnectionCallbackType;
 
 constexpr PackageSizeInt MAX_NON_FILE_PACKAGE_SIZE = 1024 * 32;
@@ -63,5 +64,9 @@ enum class ConnectionState : uint8_t {
     CONNECTED,
     DISCONNECTING
 };
+
+inline bool PackageTypeIntHasFlag(const PackageTypeInt type, const PackageTypeInt flag) {
+    return (type & flag) != 0;
+}
 
 #endif //ASIO_COMMON_H

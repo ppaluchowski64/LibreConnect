@@ -1,49 +1,65 @@
 #include <ConnectionManager.h>
 #include <CryptographicIdentityManager.h>
+#include <QCoreApplication>
+#include <Events.h>
+#include <DeviceInfo.h>
+#include <QPointer>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
 std::atomic<bool>  ConnectionManager::s_isInitialized{false};
 
 
-void ConnectionManager::Connect(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
-    std::lock_guard<std::mutex> lock(s_mutex);
+void ConnectionManager::Connect(TCPEndpoint&& endpoint) {
     if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
+
+    Debug::Log("Started Connecting");
 
     if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::CLIENT) {
         s_instance->m_sslContext = CreateSSLContext(false);
     }
 
-    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
+    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext);
 }
 
-void ConnectionManager::Seek(TCPEndpoint&& endpoint, ConnectionCallbackType&& callback) {
-    std::lock_guard<std::mutex> lock(s_mutex);
+void ConnectionManager::Seek(TCPEndpoint&& endpoint) {
     if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
+
+    Debug::Log("Started Seeking");
 
     if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::SERVER) {
         s_instance->m_sslContext = CreateSSLContext(true);
     }
 
-    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<ConnectionCallbackType>(callback));
+    s_instance->m_seekingEndpoint = endpoint;
+    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext);
 }
 
-void ConnectionManager::Disconnect(DisconnectionCallbackType&& callback) {
-    std::lock_guard<std::mutex> lock(s_mutex);
+void ConnectionManager::Disconnect(const std::error_code errorCode) {
     if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
-    s_instance->m_primaryConnection->Disconnect(std::forward<DisconnectionCallbackType>(callback));
+    s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
+
+    const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
+    ConnectionManager::SendEvent(event);
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {
-    if (!CryptographicIdentityManager::IsCertificateValid("certs")) {
-        CryptographicIdentityManager::GenerateCertificate("certs");
+    const std::filesystem::path rootPath{"certs"};
+    const std::string privateKeyPath{"certs/privateKey.key"};
+    const std::string certificatePath{"certs/certificate.crt"};
+
+    if (!CryptographicIdentityManager::IsCertificateValid(rootPath)) {
+        CryptographicIdentityManager::GenerateCertificate(rootPath);
     }
 
     std::shared_ptr<SSLContext> context = std::make_shared<SSLContext>(isServer ? SSLContext::tlsv13_server : SSLContext::tlsv13_client);
@@ -55,8 +71,8 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         SSLContext::no_tlsv1_1
     );
 
-    context->use_certificate_chain_file("certs/certificate.crt");
-    context->use_private_key_file("certs/privateKey.key", SSLContext::pem);
+    context->use_certificate_chain_file(certificatePath);
+    context->use_private_key_file(privateKeyPath, SSLContext::pem);
 
     return context;
 }
@@ -112,6 +128,45 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
 }
 
+void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
+    if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
+    }
+
+    std::lock_guard<std::mutex> lock(s_mutex);
+    s_instance->m_eventObjects.push_back(object);
+}
+
+void ConnectionManager::PairDevice(CallbackWithResult&& callback) {
+    // if (!s_isInitialized.load()) {
+    //     std::lock_guard<std::mutex> lock(s_mutex);
+    //     Initialize();
+    // }
+    //
+    // SendRequest(PC_PackageType::PAIR_REQUEST, [callback = std::move(callback)](std::unique_ptr<Package<PC_PackageType>>&& package) mutable {
+    //     const PackageTypeInt type = package->GetHeader().type;
+    //
+    //     if (PackageTypeIntHasFlag(type, static_cast<PackageTypeInt>(PC_PackageType::PAIR_REQUEST_ACCEPTED))) {
+    //         std::string publicKey = package->GetValue<std::string>();
+    //         DeviceInfo deviceInfo = package->GetValue<DeviceInfo>();
+    //         callback(true);
+    //     } else {
+    //         callback(false);
+    //     }
+    //
+    // }, std::move(CryptographicIdentityManager::GetPublicKey()), DeviceInfo::GetThisDeviceInfo());
+}
+
+TCPEndpoint ConnectionManager::GetSeekEndpoint() {
+    if (!s_isInitialized.load()) {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        Initialize();
+    }
+
+    return s_instance->m_seekingEndpoint;
+}
+
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
     s_instance = this;
 
@@ -126,4 +181,34 @@ ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_con
 void ConnectionManager::Initialize() {
     s_instance = new ConnectionManager();
     s_isInitialized.store(true);
+}
+
+void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
+    std::vector<QPointer<QObject>> targets;
+
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+
+        if (!s_isInitialized.load()) {
+            Initialize();
+        }
+
+        auto& objects = s_instance->m_eventObjects;
+        std::erase_if(objects, [](const QPointer<QObject>& obj) {
+            return obj.isNull();
+        });
+
+        if (objects.empty()) {
+            return;
+        }
+
+        targets = objects;
+    }
+
+    for (const auto& obj : targets) {
+        QMetaObject::invokeMethod(obj, [event = event->clone(), obj]() {
+            if (obj.isNull()) return;
+            obj->event(event);
+        });
+    }
 }

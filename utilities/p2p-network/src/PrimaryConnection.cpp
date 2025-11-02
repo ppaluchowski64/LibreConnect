@@ -1,35 +1,35 @@
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
+#include <Events.h>
+#include <ConnectionManager.h>
+
+class ConnectionManager;
 
 PrimaryConnection::PrimaryConnection(IOContext& context)
-    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr), m_sendFlag(context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(context.get_executor())) {}
+    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr),
+      m_sendFlag(context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(context.get_executor())) {
+}
 
 std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context) {
     return std::make_shared<PrimaryConnection>(context);
 }
 
-void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback) {
-    m_sslContext = sslContext;
-    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), std::move(callback)), asio::detached);
+void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext) {
+    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext), asio::detached);
 }
 
-void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, ConnectionCallbackType&& callback) {
-    m_sslContext = sslContext;
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), std::move(callback)), asio::detached);
+void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext) {
+    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext), asio::detached);
 }
 
-void PrimaryConnection::Disconnect(DisconnectionCallbackType&& callback) {
-    if (m_connectionState != ConnectionState::CONNECTED) {
-        return;
-    }
-
-    asio::co_spawn(m_strand, CoDisconnect(std::move(callback)), asio::detached);
+void PrimaryConnection::Disconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
+    asio::co_spawn(m_strand, CoDisconnect(errorCode, callConnectionManagerDisconnect), asio::detached);
 }
 
 std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPackage() {
-    static thread_local moodycamel::ConsumerToken token(m_packageIn);
+    static thread_local moodycamel::ConsumerToken consumerToken(m_packageIn);
 
-    if (std::unique_ptr<Package<PC_PackageType>> package; m_packageIn.try_dequeue(token, package)) {
+    if (std::unique_ptr<Package<PC_PackageType>> package; m_packageIn.try_dequeue(consumerToken, package)) {
         return std::move(package);
     }
 
@@ -44,70 +44,49 @@ bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
-asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, ConnectionCallbackType callback) {
+asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-
-    {
-        asio::steady_timer timer(m_context.get_executor());
-        while (m_connectionState != ConnectionState::DISCONNECTED) {
-            timer.expires_after(std::chrono::milliseconds(50));
-            co_await timer.async_wait(asio::use_awaitable);
-        }
-    }
-
-    m_connectionState = ConnectionState::CONNECTING;
+    m_sslContext = sslContext;
+    m_connectionState.store(ConnectionState::CONNECTING);
 
     try {
-        if (m_socket == nullptr || !m_socket->lowest_layer().is_open()) {
-            m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
-        }
+        co_await CoCleanupConnection();
+        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
         co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
         Debug::Log("Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
-        m_connectionState = ConnectionState::CONNECTED;
+        m_connectionState.store(ConnectionState::CONNECTED);
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::post(m_context, [callback = std::move(callback)]() mutable {
-            callback(true);
-        });
+
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
+        ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection connection error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        asio::post(m_context, [callback = std::move(callback)]() mutable {
-            callback(false);
-        });
-        Disconnect();
+        Disconnect(error.code());
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
+        ConnectionManager::SendEvent(event);
     }
 
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, ConnectionCallbackType callback) {
+asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-
-    {
-        asio::steady_timer timer(m_context.get_executor());
-        while (m_connectionState != ConnectionState::DISCONNECTED) {
-            timer.expires_after(std::chrono::milliseconds(50));
-            co_await timer.async_wait(asio::use_awaitable);
-        }
-    }
-
-    m_connectionState = ConnectionState::CONNECTING;
+    m_connectionState.store(ConnectionState::CONNECTING);
+    m_sslContext = sslContext;
 
     try {
-        if (m_socket == nullptr || !m_socket->lowest_layer().is_open()) {
-            m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
-        }
+        co_await CoCleanupConnection();
+        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         TCPAcceptor acceptor(m_context, endpoint);
         co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
@@ -115,52 +94,62 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, Connection
 
         Debug::Log("Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
-        m_connectionState = ConnectionState::CONNECTED;
+        m_connectionState.store(ConnectionState::CONNECTED);
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::post(m_context, [callback = std::move(callback)]() mutable {
-            callback(true);
-        });
+
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
+        ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::ssl::error::stream_truncated || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection connection seek error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        asio::post(m_context, [callback = std::move(callback)]() mutable {
-            callback(false);
-        });
-        Disconnect();
+        Disconnect(error.code());
+        const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
+        ConnectionManager::SendEvent(event);
     }
 
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoDisconnect(DisconnectionCallbackType callback) {
+asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-    m_connectionState = ConnectionState::DISCONNECTING;
+    if (!m_socket) {
+        co_return;
+    }
 
     try {
-        m_socket->lowest_layer().cancel();
-        co_await m_socket->async_shutdown(asio::use_awaitable);
-        m_socket->lowest_layer().close();
+        if (m_socket->lowest_layer().is_open()) {
+            m_socket->lowest_layer().cancel();
+            co_await m_socket->async_shutdown(asio::use_awaitable);
+            m_socket->lowest_layer().close();
+        }
 
-        m_packageOut = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
-        m_packageIn  = moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>>{};
-
+        m_socket.reset();
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
             Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
     }
+}
 
-    m_connectionState = ConnectionState::DISCONNECTED;
-    asio::post(m_context,callback);
+asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
+    const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+
+    if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
+        co_return;
+    }
+
+    m_connectionState.store(ConnectionState::DISCONNECTING);
+    co_await CoCleanupConnection();
+    m_connectionState.store(ConnectionState::DISCONNECTED);
+
+    if (callConnectionManagerDisconnect) {
+        ConnectionManager::Disconnect(errorCode);
+    }
 }
 
 asio::awaitable<void> PrimaryConnection::CoSend() {
@@ -174,7 +163,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
         std::vector<uint8_t> buffer;
         buffer.resize(PackageHeader::GetSerializedSize());
 
-        while (m_connectionState == ConnectionState::CONNECTED) {
+        while (m_connectionState.load() == ConnectionState::CONNECTED) {
             if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {
                 PackageHeader& header = package->GetHeader();
 
@@ -193,13 +182,11 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
             }
         }
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection send error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        Disconnect();
+        Disconnect(error.code());
     }
 }
 
@@ -207,19 +194,17 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
     try {
         const std::shared_ptr<PrimaryConnection> self = shared_from_this();
         moodycamel::ProducerToken token(m_packageIn);
-        std::vector<uint8_t> headerBuffer;
-
-        headerBuffer.resize(PackageHeader::GetSerializedSize());
+        std::vector<uint8_t> headerBuffer(PackageHeader::GetSerializedSize());
         PackageHeader header{};
 
-        while (m_connectionState == ConnectionState::CONNECTED) {
+        while (m_connectionState.load() == ConnectionState::CONNECTED) {
             asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
             co_await asio::async_read(*m_socket, headerMutableBuffer, asio::use_awaitable);
 
             size_t offset = 0;
             header.Deserialize(headerBuffer, offset);
 
-            if (m_connectionState != ConnectionState::CONNECTED) break;
+            if (m_connectionState.load() != ConnectionState::CONNECTED) break;
 
             if (header.size > MAX_PACKAGE_SIZE) {
                 throw std::runtime_error("PrimaryConnection receive package size too large");
@@ -230,20 +215,16 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
 
             co_await asio::async_read(*m_socket, packageBuffer, asio::use_awaitable);
 
-            if (m_connectionState != ConnectionState::CONNECTED) break;
+            if (m_connectionState.load() != ConnectionState::CONNECTED) break;
 
             m_packageIn.enqueue(std::move(package));
             m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
-        if (error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe) {
-            Debug::Log("Connection closed by peer");
-        } else {
-            Debug::LogError("PrimaryConnection receive error: {}", error.what());
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
         }
 
-        Disconnect();
+        Disconnect(error.code());
     }
 }
-
-
