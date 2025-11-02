@@ -1,8 +1,8 @@
 #ifndef EVENTS_H
 #define EVENTS_H
 
+#include <system_error>
 #include <QEvent>
-#include <DeviceInfo.h>
 
 constexpr static int P2PEventBase = QEvent::User + 100;
 
