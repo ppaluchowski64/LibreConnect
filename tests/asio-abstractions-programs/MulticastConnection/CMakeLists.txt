@@ -4,6 +4,5 @@ BuildQTExecutable(MulticastTestProgram
         network-component-pc
         system-component-pc
         p2p-network-component-pc
-        Qt6::Quick
-        Qt6::Qml
+        Qt6::Core
 )

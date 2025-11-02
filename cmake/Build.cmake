@@ -92,6 +92,18 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
     target_include_directories(${ExecutableName} PUBLIC ${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
 
+    set(DEPLOY_FOLDER ${CMAKE_BINARY_DIR}/deploy/$<CONFIG>/${ExecutableName})
+
+    set_target_properties(${ExecutableName} PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${DEPLOY_FOLDER}"
+    )
+
+    if(APPLE)
+        set_target_properties(${ExecutableName} PROPERTIES
+                BUNDLE_OUTPUT_DIRECTORY "${DEPLOY_FOLDER}"
+        )
+    endif()
+
     DeployQT(${ExecutableName})
 endfunction()
 
@@ -103,6 +115,10 @@ function(DeployQT Target)
                 VERBATIM
         )
     elseif(APPLE)
+        set_target_properties(${ExecutableName} PROPERTIES
+                MACOSX_BUNDLE TRUE
+        )
+
         add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND "$ENV{QT_DIR}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${Target}>" -qmldir=$ENV{QT_DIR}/qml -dmg
                 COMMENT "Running macdeployqt on ${Target}..."
