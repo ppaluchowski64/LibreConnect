@@ -51,7 +51,7 @@ BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaul
 if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
-    BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp device-type)
+    BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
 endif()
 
