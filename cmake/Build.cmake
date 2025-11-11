@@ -136,6 +136,7 @@ function(DeployQT Target)
                 -qmldir=$ENV{QT_DIR}/qml
                 -qmake=$ENV{QT_DIR}/bin/qmake
                 -exclude-libs=libqsqlmimer
+                -bundle-non-qt-libs
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )

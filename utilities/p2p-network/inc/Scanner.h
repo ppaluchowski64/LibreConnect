@@ -21,8 +21,8 @@ public:
 private:
     asio::awaitable<void> Co_JoinMulticastGroup();
     asio::awaitable<void> Co_LeaveMulticastGroup();
-    asio::awaitable<void> Co_SendProbes();
-    asio::awaitable<void> Co_ReceiveResponses();
+    asio::awaitable<void> Co_SendProbes(UDPSocket& socket);
+    asio::awaitable<void> Co_ReceiveResponses(UDPSocket& socket);
 
     std::mutex m_mutex;
 
@@ -34,12 +34,15 @@ private:
     AwaitableFlag m_awaitableFlag;
     IOWorkGuard m_workGuard;
 
-    UDPSocket m_socket;
-
     std::thread m_contextThread;
     bool m_isScanning{false};
 
+    uint8_t m_jobsActive{0};
     std::unordered_map<boost::uuids::uuid, size_t> m_devicesLastProbe;
+
+    std::vector<UDPSocket> m_sendSockets;
+    std::vector<UDPSocket> m_receiveSockets;
+
     std::vector<DeviceInfo> m_discoveredDevices;
 };
 

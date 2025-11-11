@@ -78,6 +78,50 @@ else:
 common_generator_flags = "-g CMakeToolchain -g CMakeDeps"
 common_build_missing = "--build=missing"
 
+def install_linux_dependencies():
+    if not shutil.which("apt-get"):
+        print("WARNING: 'apt-get' not found. Skipping system dependency installation.")
+        print("Please ensure the required build packages are installed manually.")
+        return
+
+    try:
+        print("Updating package lists...")
+        subprocess.run(["sudo", "apt-get", "update"], check=True)
+
+        print("Installing packages...")
+        packages = [
+            "build-essential",
+            "libgl1-mesa-dev",
+            "libxkbcommon-x11-0",
+            "libdbus-1-dev",
+            "libfontconfig1",
+            "libxcb-icccm4",
+            "libxcb-image0",
+            "libxcb-keysyms1",
+            "libxcb-randr0",
+            "libxcb-render-util0",
+            "libxcb-shape0",
+            "libxcb-xinerama0",
+            "libxcb-xkb1",
+            "libxkbcommon-dev",
+            "libmysqlclient21",
+            "libmysqlclient-dev",
+            "unixodbc",
+            "unixodbc-dev",
+            "libpq-dev"
+        ]
+
+        cmd = ["sudo", "apt-get", "install", "-y"] + packages
+        subprocess.run(cmd, check=True)
+        print("System dependencies installed successfully.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"ERROR: Failed to install system dependencies. {e}")
+        print("Please try running the 'sudo apt-get ...' commands manually.")
+        sys.exit(e.returncode)
+    except FileNotFoundError:
+        print("ERROR: 'sudo' command not found. Cannot install system dependencies.")
+        sys.exit(1)
 def run_conan_install(build_type: str):
     cmd_parts = [
         "conan",
@@ -88,6 +132,7 @@ def run_conan_install(build_type: str):
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]
+
     if extra_flags:
         cmd_parts.append(extra_flags)
 
@@ -102,6 +147,7 @@ def run_conan_install(build_type: str):
 disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "true", "yes", "on"]
 
 if platform.startswith("linux"):
+    install_linux_dependencies()
     tools_dir = Path("~/.local/bin").expanduser()
     tools_dir.mkdir(parents=True, exist_ok=True)
     target = tools_dir / "linuxdeployqt"

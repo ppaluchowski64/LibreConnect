@@ -1,13 +1,14 @@
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <AddressResolver.h>
-#include <Package.h>
+#include <Packable.h>
 #include <chrono>
-#include <../inc/DeviceData.h>
+#include <vector>
+#include <DeviceData.h>
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
-LanDeviceScanner::LanDeviceScanner() : m_awaitableFlag(m_context.get_executor()), m_workGuard(asio::make_work_guard(m_context.get_executor())), m_socket(m_context) {
+LanDeviceScanner::LanDeviceScanner() : m_awaitableFlag(m_context.get_executor()), m_workGuard(asio::make_work_guard(m_context.get_executor())) {
     m_contextThread = std::thread([this]() {
         m_context.run();
     });
@@ -64,21 +65,61 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
 
 asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
     try {
+        co_await Co_LeaveMulticastGroup();
         const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
 
-        m_socket.open(asio::ip::udp::v4());
-        m_socket.set_option(asio::socket_base::reuse_address(true));
-        m_socket.bind(asio::ip::udp::endpoint(asio::ip::udp::v4(), DEVICE_DISCOVERY_MULTICAST_PORT));
-        m_socket.set_option(asio::ip::multicast::enable_loopback(false));
+        m_sendSockets.reserve(addresses.size());
+        m_receiveSockets.reserve(addresses.size());
+        int i = 0;
 
-        for (const auto& address : addresses) {
-            m_socket.set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
+        while (m_jobsActive > 0) {
+            asio::steady_timer timer(m_context);
+            timer.expires_after(std::chrono::milliseconds(10));
+            co_await timer.async_wait(asio::use_awaitable);
         }
 
         m_isScanning = true;
 
-        asio::co_spawn(m_context, Co_SendProbes(), asio::detached);
-        asio::co_spawn(m_context, Co_ReceiveResponses(), asio::detached);
+        for (const auto& address : addresses) {
+            if (address.is_loopback()) {
+                continue;
+            }
+
+            {
+                UDPSocket socket(m_context);
+                socket.open(asio::ip::udp::v4());
+                socket.set_option(asio::ip::multicast::enable_loopback(false));
+                socket.set_option(asio::socket_base::reuse_address(true));
+#ifdef SO_REUSEPORT
+                int reuse = 1;
+                ::setsockopt(socket.native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+#endif
+                socket.bind(asio::ip::udp::endpoint(address.to_v4(), 0));
+                socket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
+                m_sendSockets.push_back(std::move(socket));
+            }
+
+            {
+                UDPSocket socket(m_context);
+                socket.open(asio::ip::udp::v4());
+                socket.set_option(asio::socket_base::reuse_address(true));
+
+#ifdef SO_REUSEPORT
+                int reuse = 1;
+                ::setsockopt(socket.native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+#endif
+
+                socket.set_option(asio::ip::multicast::enable_loopback(false));
+                socket.bind(UDPEndpoint(asio::ip::address_v4::any(), DEVICE_DISCOVERY_MULTICAST_PORT));
+                socket.set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
+                m_receiveSockets.push_back(std::move(socket));
+            }
+
+            asio::co_spawn(m_context, Co_SendProbes(m_sendSockets[i]), asio::detached);
+            asio::co_spawn(m_context, Co_ReceiveResponses(m_receiveSockets[i]), asio::detached);
+
+            i++;
+        }
 
     } catch (const std::system_error& errorCode) {
         Debug::LogError(errorCode.what());
@@ -89,11 +130,28 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
 
 asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
     try {
-        m_socket.set_option(asio::ip::multicast::leave_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS));
-        m_socket.cancel();
-        m_socket.close();
-
         m_isScanning = false;
+
+        for (auto& socket : m_sendSockets) {
+            if (!socket.is_open()) {
+                continue;
+            }
+
+            socket.cancel();
+            socket.close();
+        }
+
+        for (auto& socket : m_receiveSockets) {
+            if (!socket.is_open()) {
+                continue;
+            }
+
+            socket.cancel();
+            socket.close();
+        }
+
+        m_sendSockets.clear();
+        m_receiveSockets.clear();
 
     } catch (const std::system_error& errorCode) {
         Debug::LogError(errorCode.what());
@@ -102,10 +160,11 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
     co_return;
 }
 
-asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
+asio::awaitable<void> LanDeviceScanner::Co_SendProbes(UDPSocket& socket) {
+    m_jobsActive++;
+
     try {
         const UDPEndpoint multicastEndpoint(DEVICE_DISCOVERY_MULTICAST_ADDRESS, DEVICE_DISCOVERY_MULTICAST_PORT);
-        const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
 
         do {
             const DeviceInfo deviceInfo = DeviceInfo::GetThisDeviceInfo();
@@ -117,10 +176,7 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
             deviceInfo.Serialize(buffer, offset);
 
             const asio::const_buffer constBuffer = asio::const_buffer(buffer.data(), buffer.size());
-            for (const auto& address : addresses) {
-                m_socket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
-                co_await m_socket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
-            }
+            co_await socket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
 
             asio::steady_timer timer(m_context);
             timer.expires_after(std::chrono::seconds(1));
@@ -131,9 +187,13 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() {
     } catch (const std::system_error& errorCode) {
         Debug::LogError(errorCode.what());
     }
+
+    m_jobsActive--;
 }
 
-asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
+asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses(UDPSocket& socket) {
+    m_jobsActive++;
+
     try {
         DeviceInfo device = {};
         std::vector<uint8_t> buffer;
@@ -143,7 +203,9 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
             asio::mutable_buffer mutableBuffer(buffer.data(), buffer.size());
             UDPEndpoint senderEndpoint;
 
-            co_await m_socket.async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
+            co_await socket.async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
+
+            Debug::Log("Received response from {}", senderEndpoint.address().to_string());
 
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
@@ -166,6 +228,8 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
     } catch (const std::system_error& errorCode) {
         Debug::LogError(errorCode.what());
     }
+
+    m_jobsActive--;
 }
 
 size_t LanDeviceScanner::GetTimeMS() {

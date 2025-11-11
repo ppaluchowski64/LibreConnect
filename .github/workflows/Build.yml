@@ -89,7 +89,11 @@ jobs:
           libxcb-xinerama0 \
           libxcb-xkb1 \
           libxkbcommon-dev \
-          libxkbcommon-x11-dev
+          libxkbcommon-x11-dev \
+          libmysqlclient21 \
+          unixodbc \
+          unixodbc-dev \
+          libpq-dev
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
