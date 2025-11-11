@@ -8,7 +8,9 @@
 #include <QObject>
 #include <PrimaryConnection.h>
 #include <ConcurrentUnorderedMap.h>
-#include <magic_enum/magic_enum.hpp>
+
+class PrimaryConnection;
+class LanDeviceScanner;
 
 class ConnectionManager final {
 public:
@@ -52,6 +54,7 @@ private:
     ConnectionManager();
 
     friend class PrimaryConnection;
+    friend class LanDeviceScanner;
 
     static void Initialize();
     static void SendEvent(const std::unique_ptr<QEvent>& event);

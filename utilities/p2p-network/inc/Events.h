@@ -21,8 +21,6 @@ private:
     EventResult m_status;
 };
 
-
-
 class DisconnectedEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+1);
@@ -32,5 +30,13 @@ private:
     std::error_code m_errorCode;
 };
 
+class ScannerErrorEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+2);
+    explicit ScannerErrorEvent(const std::error_code errorCode) : QEvent(Type), m_errorCode(errorCode) {}
+    std::error_code ErrorCode() const { return m_errorCode; }
+private:
+    std::error_code m_errorCode;
+};
 
 #endif //EVENTS_H

@@ -10,6 +10,7 @@
 #include <boost/uuid.hpp>
 #include <DeviceInfo.h>
 
+
 class LanDeviceScanner {
 public:
     LanDeviceScanner();
@@ -23,6 +24,8 @@ private:
     asio::awaitable<void> Co_LeaveMulticastGroup();
     asio::awaitable<void> Co_SendProbes(UDPSocket& socket);
     asio::awaitable<void> Co_ReceiveResponses(UDPSocket& socket);
+
+    static void ProcessError(const asio::system_error& error);
 
     std::mutex m_mutex;
 

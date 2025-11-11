@@ -5,6 +5,9 @@
 #include <chrono>
 #include <vector>
 #include <DeviceData.h>
+#include <Events.h>
+
+class ConnectionManager;
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
@@ -122,7 +125,7 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
         }
 
     } catch (const std::system_error& errorCode) {
-        Debug::LogError(errorCode.what());
+        ProcessError(errorCode);
     }
 
     co_return;
@@ -154,7 +157,7 @@ asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
         m_receiveSockets.clear();
 
     } catch (const std::system_error& errorCode) {
-        Debug::LogError(errorCode.what());
+        ProcessError(errorCode);
     }
 
     co_return;
@@ -185,7 +188,7 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes(UDPSocket& socket) {
         } while (m_isScanning);
 
     } catch (const std::system_error& errorCode) {
-        Debug::LogError(errorCode.what());
+        ProcessError(errorCode);
     }
 
     m_jobsActive--;
@@ -226,10 +229,16 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses(UDPSocket& socket) {
         } while (m_isScanning);
 
     } catch (const std::system_error& errorCode) {
-        Debug::LogError(errorCode.what());
+        ProcessError(errorCode);
     }
 
     m_jobsActive--;
+}
+
+void LanDeviceScanner::ProcessError(const asio::system_error& error) {
+    Debug::LogError(error.what());
+    const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(error.code());
+    ConnectionManager::SendEvent(event);
 }
 
 size_t LanDeviceScanner::GetTimeMS() {
