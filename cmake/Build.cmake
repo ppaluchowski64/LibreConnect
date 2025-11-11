@@ -50,7 +50,7 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
     )
 
     FILE(GLOB_RECURSE QML_FILES
-            RELATIVE_PATH ${CMAKE_CURRENT_SOURCE_DIR}
+            RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
             ${RootPath}/qml/*.qml
     )
 
@@ -125,17 +125,24 @@ function(DeployQT Target)
                 VERBATIM
         )
     elseif(UNIX)
-        find_program(LINUXDEPLOYQT_EXECUTABLE linuxdeployqt)
+        find_program(LINUXDEPLOY_EXECUTABLE linuxdeploy)
+        find_program(PLUGIN_QT_EXECUTABLE linuxdeploy-plugin-qt)
 
-        if(NOT LINUXDEPLOYQT_EXECUTABLE)
-            message(FATAL_ERROR "linuxdeployqt not found. Please ensure it's in your PATH or set its path manually.")
+        if(NOT LINUXDEPLOY_EXECUTABLE)
+            message(FATAL_ERROR "linuxdeploy not found. Please ensure it's in your PATH or set its path manually.")
+        endif()
+
+        if(NOT PLUGIN_QT_EXECUTABLE)
+            message(FATAL_ERROR "linuxdeploy-plugin-qt not found. Please ensure it's in your PATH or set its path manually.")
         endif()
 
         add_custom_command(TARGET ${Target} POST_BUILD
-                COMMAND ${LINUXDEPLOYQT_EXECUTABLE} "$<TARGET_FILE:${Target}>"
-                -qmldir=$ENV{QT_DIR}/qml
-                -qmake=$ENV{QT_DIR}/bin/qmake
-                -exclude-libs=libqsqlmimer
+                COMMAND env
+                QMAKE=$ENV{QT_DIR}/bin/qmake6
+                ${LINUXDEPLOY_EXECUTABLE}
+                --appdir ${CMAKE_BINARY_DIR}/AppDir
+                --executable "$<TARGET_FILE:${Target}>"
+                --plugin qt
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
