@@ -1,15 +1,24 @@
 #include <AddressResolver.h>
 
 #ifdef _WIN32
-
-#include <winsock2.h>
-#include <iphlpapi.h>
-#include <ws2tcpip.h>
-
-#pragma comment(lib, "iphlpapi.lib")
-#pragma comment(lib, "ws2_32.lib")
-
+  #include <winsock2.h>
+  #include <iphlpapi.h>
+  #include <ws2tcpip.h>
+  #pragma comment(lib, "iphlpapi.lib")
+  #pragma comment(lib, "ws2_32.lib")
+#else
+  #include <ifaddrs.h>
+  #include <net/if.h>
+  #include <arpa/inet.h>
+  #include <netinet/in.h>
+  #include <sys/socket.h>
+  #include <cstring>
+  #include <cerrno>
 #endif
+
+#include <vector>
+#include <string>
+#include <set>
 
 bool AddressResolver::IsAddressPublic(const IPAddress& address) {
     if (address.is_v4()) {
@@ -95,92 +104,147 @@ bool AddressResolver::IsAddressPrivate(const asio::ip::address_v4& address) {
     return false;
 }
 
-IPAddress AddressResolver::GetPrivateIPv4() {
-    try {
-        asio::io_context ioContext;
-        asio::ip::tcp::resolver resolver(ioContext);
+static void push_unique(std::vector<IPAddress>& out, const IPAddress& a) {
+    for (auto &x : out) if (x == a) return;
+    out.push_back(a);
+}
 
-        const std::string hostname = asio::ip::host_name();
+static std::vector<IPAddress> EnumerateAllAddresses() {
+    std::vector<IPAddress> result;
 
-        for (const asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(hostname, ""); const auto& entry : endpoints) {
-            if (const IPAddress entryAddress = entry.endpoint().address(); entryAddress.is_v4() && IsAddressPrivate(entryAddress)) {
-                return entryAddress;
-            }
-        }
-    } catch (const std::exception& e) {
-        Debug::LogError(e.what());
-        return {};
+#ifdef _WIN32
+    ULONG outBufLen = 0;
+    if (GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, nullptr, &outBufLen) != ERROR_BUFFER_OVERFLOW) {
+        outBufLen = 16 * 1024;
     }
 
-    Debug::LogError("No address found");
-    return {};
+    std::vector<uint8_t> buffer;
+    buffer.resize(outBufLen);
+    IP_ADAPTER_ADDRESSES* adapters = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
+
+    DWORD rv = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, adapters, &outBufLen);
+    if (rv == ERROR_BUFFER_OVERFLOW) {
+        buffer.resize(outBufLen);
+        adapters = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buffer.data());
+        rv = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_INCLUDE_PREFIX, nullptr, adapters, &outBufLen);
+    }
+
+    if (rv != NO_ERROR) {
+        Debug::LogError(std::string("GetAdaptersAddresses failed: ") + std::to_string((int)rv));
+        return result;
+    }
+
+    for (IP_ADAPTER_ADDRESSES* adapter = adapters; adapter; adapter = adapter->Next) {
+        if (adapter->OperStatus != IfOperStatusUp)
+            continue;
+
+        for (IP_ADAPTER_UNICAST_ADDRESS* ua = adapter->FirstUnicastAddress; ua; ua = ua->Next) {
+            if (!ua->Address.lpSockaddr) continue;
+            sockaddr* sa = ua->Address.lpSockaddr;
+            char addrbuf[INET6_ADDRSTRLEN] = {0};
+
+            if (sa->sa_family == AF_INET) {
+                sockaddr_in* sin = reinterpret_cast<sockaddr_in*>(sa);
+                inet_ntop(AF_INET, &sin->sin_addr, addrbuf, sizeof(addrbuf));
+                try {
+                    push_unique(result, asio::ip::make_address(std::string(addrbuf)));
+                } catch (...) { }
+            } else if (sa->sa_family == AF_INET6) {
+                sockaddr_in6* sin6 = reinterpret_cast<sockaddr_in6*>(sa);
+                inet_ntop(AF_INET6, &sin6->sin6_addr, addrbuf, sizeof(addrbuf));
+                try {
+                    push_unique(result, asio::ip::make_address(std::string(addrbuf)));
+                } catch (...) { }
+            }
+        }
+    }
+
+#else // POSIX
+
+    struct ifaddrs* ifaddr = nullptr;
+    if (getifaddrs(&ifaddr) == -1) {
+        Debug::LogError(std::string("getifaddrs failed: ") + std::strerror(errno));
+        return result;
+    }
+
+    for (struct ifaddrs* ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+        if (!ifa->ifa_addr || !ifa->ifa_name) continue;
+
+        if (!(ifa->ifa_flags & IFF_UP)) continue;
+        if (ifa->ifa_flags & IFF_LOOPBACK) continue;
+
+        char addrbuf[INET6_ADDRSTRLEN] = {0};
+        if (ifa->ifa_addr->sa_family == AF_INET) {
+            sockaddr_in* sin = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
+            if (inet_ntop(AF_INET, &sin->sin_addr, addrbuf, sizeof(addrbuf))) {
+                try { push_unique(result, asio::ip::make_address(std::string(addrbuf))); }
+                catch (...) {}
+            }
+        } else if (ifa->ifa_addr->sa_family == AF_INET6) {
+            sockaddr_in6* sin6 = reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr);
+            if (inet_ntop(AF_INET6, &sin6->sin6_addr, addrbuf, sizeof(addrbuf))) {
+                try { push_unique(result, asio::ip::make_address(std::string(addrbuf))); }
+                catch (...) {}
+            }
+        }
+    }
+
+    freeifaddrs(ifaddr);
+
+#endif
+
+    return result;
+}
+
+std::vector<IPAddress> AddressResolver::GetAllIPv4() {
+    const std::vector<IPAddress> all = EnumerateAllAddresses();
+    std::vector<IPAddress> out;
+    for (const auto& a : all) if (a.is_v4()) out.push_back(a);
+    return out;
+}
+
+std::vector<IPAddress> AddressResolver::GetAllIPv6() {
+    const std::vector<IPAddress> all = EnumerateAllAddresses();
+    std::vector<IPAddress> out;
+    for (const auto& a : all) if (a.is_v6()) out.push_back(a);
+    return out;
+}
+
+std::vector<IPAddress> AddressResolver::GetAllPublicIPv4() {
+    std::vector<IPAddress> allv4 = GetAllIPv4();
+    std::vector<IPAddress> out;
+    for (const auto& a : allv4) {
+        if (IsAddressPublic(a.to_v4())) out.push_back(a);
+    }
+    return out;
 }
 
 std::vector<IPAddress> AddressResolver::GetAllPrivateIPv4() {
-    std::vector<IPAddress> addresses;
-
-    try {
-        asio::io_context ioContext;
-        asio::ip::tcp::resolver resolver(ioContext);
-
-        const std::string hostname = asio::ip::host_name();
-
-        for (const asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(hostname, ""); const auto& entry : endpoints) {
-            if (const IPAddress entryAddress = entry.endpoint().address(); entryAddress.is_v4() && IsAddressPrivate(entryAddress)) {
-                addresses.push_back(entryAddress);
-            }
-        }
-    } catch (const std::exception& e) {
-        Debug::LogError(e.what());
-        return {};
+    std::vector<IPAddress> allv4 = GetAllIPv4();
+    std::vector<IPAddress> out;
+    for (const auto& a : allv4) {
+        if (IsAddressPrivate(a.to_v4())) out.push_back(a);
     }
-
-    return addresses;
+    return out;
 }
 
-IPAddress AddressResolver::GetPrivateIPv6() {
-    try {
-        asio::io_context ctx;
-        asio::ip::tcp::resolver resolver(ctx);
-
-        const std::string hostname = asio::ip::host_name();
-
-        for (const asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(hostname, ""); const auto& entry : endpoints) {
-            if (const IPAddress entryAddress = entry.endpoint().address(); entryAddress.is_v6() && IsAddressPrivate(entryAddress)) {
-                return entryAddress;
-            }
-        }
-    } catch (const std::exception& e) {
-        Debug::LogError(e.what());
-        return {};
+std::vector<IPAddress> AddressResolver::GetAllPublicIPv6() {
+    std::vector<IPAddress> allv6 = GetAllIPv6();
+    std::vector<IPAddress> out;
+    for (const auto& a : allv6) {
+        if (IsAddressPublic(a.to_v6())) out.push_back(a);
     }
-
-    Debug::LogError("No address found");
-    return {};
+    return out;
 }
 
 std::vector<IPAddress> AddressResolver::GetAllPrivateIPv6() {
-    std::vector<IPAddress> addresses;
-    try {
-        asio::io_context ctx;
-        asio::ip::tcp::resolver resolver(ctx);
-
-        const std::string hostname = asio::ip::host_name();
-
-        for (const asio::ip::tcp::resolver::results_type endpoints = resolver.resolve(hostname, ""); const auto& entry : endpoints) {
-            if (const IPAddress entryAddress = entry.endpoint().address(); entryAddress.is_v6() && IsAddressPrivate(entryAddress)) {
-                addresses.push_back(entryAddress);
-            }
-        }
-    } catch (const std::exception& e) {
-        Debug::LogError(e.what());
-        return {};
+    std::vector<IPAddress> allv6 = GetAllIPv6();
+    std::vector<IPAddress> out;
+    for (const auto& a : allv6) {
+        if (IsAddressPrivate(a.to_v6())) out.push_back(a);
     }
-
-    return addresses;
+    return out;
 }
-
-
 
 std::vector<NetworkInterfaceData> AddressResolver::GetAllNetworkInterfaces() {
     std::vector<NetworkInterfaceData> result;

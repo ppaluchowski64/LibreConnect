@@ -19,11 +19,14 @@ public:
     static bool IsAddressPrivate(const asio::ip::address_v4& address);
     static bool IsAddressPrivate(const IPAddress& address);
 
-    static IPAddress GetPrivateIPv4();
-    static IPAddress GetPrivateIPv6();
+    static std::vector<IPAddress> GetAllIPv4();
+    static std::vector<IPAddress> GetAllIPv6();
 
     static std::vector<IPAddress> GetAllPrivateIPv4();
     static std::vector<IPAddress> GetAllPrivateIPv6();
+    static std::vector<IPAddress> GetAllPublicIPv4();
+    static std::vector<IPAddress> GetAllPublicIPv6();
+
     static std::vector<NetworkInterfaceData> GetAllNetworkInterfaces();
 
 private:
