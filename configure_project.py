@@ -1,5 +1,4 @@
 import os
-import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -104,27 +103,44 @@ disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "tr
 if platform.startswith("linux"):
     tools_dir = Path("~/.local/bin").expanduser()
     tools_dir.mkdir(parents=True, exist_ok=True)
-    target = tools_dir / "linuxdeployqt"
 
-    if not target.exists():
-        print("Installing linuxdeployqt globally...")
-        url = "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
-        subprocess.run(["wget", "-q", "-O", str(target), url], check=True)
-        subprocess.run(["chmod", "+x", str(target)], check=True)
+    linuxdeploy = tools_dir / "linuxdeploy"
+    plugin_qt = tools_dir / "linuxdeploy-plugin-qt"
 
-        path_str = str(tools_dir)
-        home = Path.home()
-        profiles = [home / ".bashrc", home / ".zshrc", home / ".profile"]
-        for profile in profiles:
-            if profile.exists():
-                content = profile.read_text()
-                if path_str in content:
-                    break
-        else:
-            export_line = f'\n# Added by Qt setup script\nexport PATH="{path_str}:$PATH"\n'
-            target = home / ".bashrc"
-            with open(target, "a") as f:
-                f.write(export_line)
+    arch = os.uname().machine
+    if arch == "x86_64":
+        linuxdeploy_url = "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage"
+        plugin_qt_url = "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage"
+    elif arch == "aarch64":
+        linuxdeploy_url = "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-aarch64.AppImage"
+        plugin_qt_url = "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-aarch64.AppImage"
+    else:
+        print(f"Unsupported architecture: {arch}")
+        sys.exit(1)
+
+    if not linuxdeploy.exists():
+        print("Installing linuxdeploy...")
+        subprocess.run(["wget", "-q", "-O", str(linuxdeploy), linuxdeploy_url], check=True)
+        subprocess.run(["chmod", "+x", str(linuxdeploy)], check=True)
+
+    if not plugin_qt.exists():
+        print("Installing linuxdeploy-plugin-qt...")
+        subprocess.run(["wget", "-q", "-O", str(plugin_qt), plugin_qt_url], check=True)
+        subprocess.run(["chmod", "+x", str(plugin_qt)], check=True)
+
+    path_str = str(tools_dir)
+    home = Path.home()
+    profiles = [home / ".bashrc", home / ".zshrc", home / ".profile"]
+    for profile in profiles:
+        if profile.exists():
+            content = profile.read_text()
+            if path_str in content:
+                break
+    else:
+        export_line = f'\n# Added by Qt setup script\nexport PATH="{path_str}:$PATH"\n'
+        target = home / ".bashrc"
+        with open(target, "a") as f:
+            f.write(export_line)
 
 if not disable_debug:
     run_conan_install("Debug")
