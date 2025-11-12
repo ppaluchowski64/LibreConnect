@@ -11,11 +11,15 @@
 std::mutex CryptographicIdentityManager::m_mutex{};
 EVP_PKEY* CryptographicIdentityManager::m_keyPair{nullptr};
 
+constexpr static const char* PRIVATE_KEY_FILE_NAME = "privateKey.key";
+constexpr static const char* CERTIFICATE_FILE_NAME = "certificate.crt";
+constexpr static const char* KEYS_PAIR_FILE_NAME = "keys.pem";
+
 void CryptographicIdentityManager::GenerateCertificate(const std::filesystem::path& path) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    const std::string privateKeyPath = (path / "privateKey.key").string();
-    const std::string certificatePath = (path / "certificate.crt").string();
+    const std::string privateKeyPath = (path / PRIVATE_KEY_FILE_NAME).string();
+    const std::string certificatePath = (path / CERTIFICATE_FILE_NAME).string();
 
     std::filesystem::create_directories(path);
 
@@ -79,7 +83,7 @@ bool CryptographicIdentityManager::IsCertificateValid(const std::filesystem::pat
     std::lock_guard<std::mutex> lock(m_mutex);
     constexpr int certificateMinimalTimeLeft = 60 * 10;
 
-    const std::string certPath = (path / "certificate.crt").string();
+    const std::string certPath = (path / CERTIFICATE_FILE_NAME).string();
     FILE* fp = fopen(certPath.c_str(), "r");
     if (!fp) {
         return false;
@@ -103,7 +107,7 @@ bool CryptographicIdentityManager::IsCertificateValid(const std::filesystem::pat
 }
 
 void CryptographicIdentityManager::LoadOrGenerateKeyPair(const std::filesystem::path& path) {
-    const std::string keysPath = (path / "keys.pem").string();
+    const std::string keysPath = (path / KEYS_PAIR_FILE_NAME).string();
 
     if (std::filesystem::exists(keysPath)) {
         FILE* file = fopen(keysPath.c_str(), "rb");
