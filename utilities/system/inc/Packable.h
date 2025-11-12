@@ -11,7 +11,11 @@
 #include <boost/uuid/string_generator.hpp>
 
 template <typename T>
-concept Primitive = std::integral<T> || std::floating_point<T>;
+concept Primitive =
+    std::integral<std::remove_cvref_t<T>> ||
+    std::floating_point<std::remove_cvref_t<T>> ||
+    std::is_enum_v<std::remove_cvref_t<T>> &&
+    std::integral<std::underlying_type_t<std::remove_cvref_t<T>>>;
 
 template <typename T>
 concept Packable = requires(T a, std::vector<uint8_t>& buf, size_t& offset) {
