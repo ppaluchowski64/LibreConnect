@@ -5,7 +5,7 @@
 #include <vector>
 #include <cstdint>
 
-enum class FileType {
+enum class FileType : uint8_t {
     Text,
     Image,
     Video,
@@ -26,7 +26,7 @@ struct FileEntry {
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
-    size_t GetSerializedSize() const;
+    [[nodiscard]] size_t GetSerializedSize() const;
 };
 
 #endif // FILE_ENTRY_H
