@@ -130,15 +130,15 @@ static std::vector<IPAddress> EnumerateAllAddresses() {
     }
 
     if (rv != NO_ERROR) {
-        Debug::LogError(std::string("GetAdaptersAddresses failed: ") + std::to_string((int)rv));
+        Debug::LogError(std::string("GetAdaptersAddresses failed: ") + std::to_string(static_cast<int>(rv)));
         return result;
     }
 
-    for (IP_ADAPTER_ADDRESSES* adapter = adapters; adapter; adapter = adapter->Next) {
+    for (const IP_ADAPTER_ADDRESSES* adapter = adapters; adapter; adapter = adapter->Next) {
         if (adapter->OperStatus != IfOperStatusUp)
             continue;
 
-        for (IP_ADAPTER_UNICAST_ADDRESS* ua = adapter->FirstUnicastAddress; ua; ua = ua->Next) {
+        for (const IP_ADAPTER_UNICAST_ADDRESS* ua = adapter->FirstUnicastAddress; ua; ua = ua->Next) {
             if (!ua->Address.lpSockaddr) continue;
             sockaddr* sa = ua->Address.lpSockaddr;
             char addrbuf[INET6_ADDRSTRLEN] = {0};
