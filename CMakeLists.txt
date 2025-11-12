@@ -47,11 +47,13 @@ target_compile_definitions(project_defaults INTERFACE
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
+BuildStaticLibrary(file-entry utilities/file-system project_defaults system-component-pc)
 
 if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
     BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
+    BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-entry)
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
 endif()
 
