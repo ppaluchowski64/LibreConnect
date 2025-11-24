@@ -44,20 +44,4 @@ void VirtualCamera::SetFrameBuffer(const std::shared_ptr<FrameBuffer>& frameBuff
     m_frameBuffer = frameBuffer;
 }
 
-#ifdef _WIN32
-
-void VirtualCamera::Flush() const {
-
-}
-
-void VirtualCamera::SetupStream() const {
-
-}
-
-void VirtualCamera::DestroyStream() const {
-
-}
-
-#endif
-
 

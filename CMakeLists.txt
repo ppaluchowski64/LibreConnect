@@ -48,7 +48,15 @@ BuildStaticLibrary(network-component-pc utilities/network project_defaults opens
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
 BuildStaticLibrary(file-entry utilities/file-system project_defaults system-component-pc)
-BuildStaticLibrary(virtual-camera utilities/virtual-camera Debug-Log)
+
+if (WIN32)
+    BuildStaticLibrary(virtual-camera utilities/virtual-camera Debug-Log)
+    BuildSharedLibrary(virtual-camera-windows-dll utilities/virtual-camera-windows-dll Debug-Log)
+elseif (APPLE)
+    BuildStaticLibrary(virtual-camera utilities/virtual-camera Debug-Log)
+elseif (UNIX)
+    BuildStaticLibrary(virtual-camera utilities/virtual-camera Debug-Log)
+endif ()
 
 if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
