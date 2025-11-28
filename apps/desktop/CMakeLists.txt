@@ -7,3 +7,5 @@ BuildQTExecutable(appLibreConnect_desktop
         Qt6::Quick
         Qt6::Qml
 )
+
+linkSoftcam(appLibreConnect_desktop)
