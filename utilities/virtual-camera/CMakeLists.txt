@@ -1,13 +1,3 @@
-include(FetchContent)
-
-FetchContent_Declare(
-        debug-log
-        GIT_REPOSITORY https://github.com/ddj4747/Debug-Log.git
-        GIT_TAG main
-)
-
-FetchContent_MakeAvailable(debug-log)
-
 if (WIN32)
     include(ExternalProject)
     find_program(MSBUILD_EXECUTABLE NAMES MSBuild.exe MSBuild)
@@ -33,7 +23,7 @@ if (WIN32)
 
     ExternalProject_Get_Property(softcam_project SOURCE_DIR)
 
-    set(SOFTCAM_INCLUDE_DIR "${SOURCE_DIR}/softcam/include")
+    set(SOFTCAM_INCLUDE_DIR "${SOURCE_DIR}/dist/include")
     file(MAKE_DIRECTORY ${SOFTCAM_INCLUDE_DIR})
 
     add_library(Softcam::Client SHARED IMPORTED GLOBAL)
