@@ -46,7 +46,7 @@ target_compile_definitions(project_defaults INTERFACE
 
 add_subdirectory("utilities/virtual-camera")
 
-BuildStaticLibrary(virtual-camera utilities/virtual-camera project_defaults Debug-Log Softcam::Client)
+BuildStaticLibrary(virtual-camera utilities/virtual-camera project_defaults Debug-Log)
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
@@ -62,6 +62,5 @@ if (ENABLE_TESTS)
     BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera)
 
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
-
     LinkVirtualCameraLibs(VirtualCameraTest)
 endif()
