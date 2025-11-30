@@ -6,16 +6,18 @@
 #include <cstdint>
 
 enum class FileType : uint8_t {
+    Directory,
     Text,
     Image,
     Video,
     Audio,
-    Binary,
-    Archive,
     Document,
-    Directory,
+    Archive,
+    Executable,
     Unknown
 };
+
+FileType DetectFileType(const std::string& filepath);
 
 struct FileEntry {
     std::string name;
