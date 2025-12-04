@@ -10,6 +10,7 @@
 #include <ConcurrentUnorderedMap.h>
 
 class PrimaryConnection;
+class InitialConnection;
 class LanDeviceScanner;
 
 class ConnectionManager final {
@@ -23,7 +24,6 @@ public:
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
     static void AddEventListener(const QPointer<QObject>& object);
-    static void PairDevice(CallbackWithResult&& callback);
     static TCPEndpoint GetSeekEndpoint();
 
     template <Serializable... Args>
@@ -55,6 +55,7 @@ private:
 
     friend class PrimaryConnection;
     friend class LanDeviceScanner;
+    friend class InitialConnection;
 
     static void Initialize();
     static void SendEvent(const std::unique_ptr<QEvent>& event);

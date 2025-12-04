@@ -138,26 +138,6 @@ void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
     s_instance->m_eventObjects.push_back(object);
 }
 
-void ConnectionManager::PairDevice(CallbackWithResult&& callback) {
-    // if (!s_isInitialized.load()) {
-    //     std::lock_guard<std::mutex> lock(s_mutex);
-    //     Initialize();
-    // }
-    //
-    // SendRequest(PC_PackageType::PAIR_REQUEST, [callback = std::move(callback)](std::unique_ptr<Package<PC_PackageType>>&& package) mutable {
-    //     const PackageTypeInt type = package->GetHeader().type;
-    //
-    //     if (PackageTypeIntHasFlag(type, static_cast<PackageTypeInt>(PC_PackageType::PAIR_REQUEST_ACCEPTED))) {
-    //         std::string publicKey = package->GetValue<std::string>();
-    //         DeviceInfo deviceInfo = package->GetValue<DeviceInfo>();
-    //         callback(true);
-    //     } else {
-    //         callback(false);
-    //     }
-    //
-    // }, std::move(CryptographicIdentityManager::GetPublicKey()), DeviceInfo::GetThisDeviceInfo());
-}
-
 TCPEndpoint ConnectionManager::GetSeekEndpoint() {
     if (!s_isInitialized.load()) {
         std::lock_guard<std::mutex> lock(s_mutex);

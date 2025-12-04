@@ -71,7 +71,7 @@ private:
     std::shared_ptr<SSLContext> m_sslContext;
     std::unique_ptr<SSLSocket> m_socket;
 
-    AwaitableFlag  m_sendFlag;
+    AwaitableFlag m_sendFlag;
     std::shared_ptr<AwaitableFlag> m_receiveFlag;
 
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;

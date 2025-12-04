@@ -39,4 +39,5 @@ private:
     std::error_code m_errorCode;
 };
 
+
 #endif //EVENTS_H

@@ -68,7 +68,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
 
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
+            Debug::LogError("PrimaryConnection connection error: {}", error.what());
         }
 
         Disconnect(error.code());
@@ -104,7 +104,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
 
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
+            Debug::LogError("PrimaryConnection seek error: {}", error.what());
         }
 
         Disconnect(error.code());
@@ -131,7 +131,7 @@ asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
         m_socket.reset();
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
+            Debug::LogError("PrimaryConnection cleanup error: {}", error.what());
         }
     }
 }
@@ -183,7 +183,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
         }
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
+            Debug::LogError("PrimaryConnection send error: {}", error.what());
         }
 
         Disconnect(error.code());
@@ -222,7 +222,7 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
         }
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection disconnect error: {}", error.what());
+            Debug::LogError("PrimaryConnection receive error: {}", error.what());
         }
 
         Disconnect(error.code());
