@@ -7,7 +7,7 @@ VirtualCamera::VirtualCamera() {
     m_cameraID = generator();
 }
 
-void VirtualCamera::StartStream() {
+void VirtualCamera::StartStream(const int width, const int height, const int fps) {
     if (!m_frameBuffer) {
         Debug::LogError("Framebuffer is null");
         return;
@@ -19,7 +19,7 @@ void VirtualCamera::StartStream() {
     }
 
     try {
-        SetupStream();
+        SetupStream(width, height, fps);
         m_active = true;
     } catch (...) {
         Debug::LogError("Failed to start stream");

@@ -175,7 +175,7 @@ endfunction()
 
 function(LinkVirtualCameraLibs target)
     if (WIN32)
-        target_link_libraries(${target} PRIVATE Softcam::Client)
+        target_link_libraries(${target} PUBLIC Softcam::Client)
 
         add_custom_command(TARGET ${target} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
