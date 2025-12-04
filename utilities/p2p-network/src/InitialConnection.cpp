@@ -31,7 +31,8 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
         std::unique_ptr<Package<InitialConnectionPackageType>> package = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CONNECT_INFO, mode);
-        m_packagesOut.push_back(std::move(package));
+        m_packagesOut.emplace_back(std::move(package));
+        m_sendFlag.Signal();
 
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
@@ -111,7 +112,7 @@ asio::awaitable<void> InitialConnection::CoSend() {
 
                 PackageHeader& header = package->GetHeader();
 
-                std::size_t offset = 0;
+                size_t offset = 0;
                 header.Serialize(buffer, offset);
 
                 std::vector<asio::const_buffer> constBuffers {
@@ -128,10 +129,47 @@ asio::awaitable<void> InitialConnection::CoSend() {
         }
 
     } catch (std::system_error& error) {
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("InitialConnection send error: {}", error.what());
+        }
 
+        Disconnect();
     }
 }
 
+asio::awaitable<void> InitialConnection::CoReceive() {
+    try {
+        const std::shared_ptr<InitialConnection> self = shared_from_this();
+        std::vector<uint8_t> headerBuffer(PackageHeader::GetSerializedSize());
+        PackageHeader header{};
+
+        while (m_connectionState == ConnectionState::CONNECTED) {
+            asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
+            co_await asio::async_read(m_socket, headerMutableBuffer, asio::use_awaitable);
+            if (m_connectionState != ConnectionState::CONNECTED) break;
+
+            size_t offset = 0;
+            header.Deserialize(headerBuffer, offset);
+
+            if (header.size > MAX_PACKAGE_SIZE) {
+                throw std::runtime_error("PrimaryConnection receive package size too large");
+            }
+
+            const std::unique_ptr<Package<InitialConnectionPackageType>> package = std::make_unique<Package<InitialConnectionPackageType>>(header);
+            asio::mutable_buffer packageBuffer(package->GetRawBody(), header.size);
+
+            co_await asio::async_read(m_socket, headerMutableBuffer, asio::use_awaitable);
+            if (m_connectionState != ConnectionState::CONNECTED) break;
+
+            
+        }
 
 
+    } catch (std::system_error& error) {
+        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
+            Debug::LogError("InitialConnection receive error: {}", error.what());
+        }
 
+        Disconnect();
+    }
+}
