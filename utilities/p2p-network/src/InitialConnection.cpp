@@ -37,12 +37,21 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
 
         m_connectionState = ConnectionState::CONNECTED;
 
-        asio::co_spawn(m_strand, CoSend(), asio::detached);
-        asio::co_spawn(m_strand, CoReceive(), asio::detached);
+        TCPEndpoint anyEndpoint = TCPEndpoint(asio::ip::tcp::v4(), 0);
+        ConnectionManager::Seek(std::move(anyEndpoint), [this, mode](const TCPEndpoint endpoint) {
+            asio::co_spawn(m_strand, CoSend(), asio::detached);
+            asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-        std::unique_ptr<Package<InitialConnectionPackageType>> package = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CONNECT_INFO, mode);
-        m_packagesOut.emplace_back(std::move(package));
-        m_sendFlag.Signal();
+            InitialConnectionData data;
+
+            data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+            data.deviceInfo.deviceAddressPort = endpoint.port();
+            data.initialConnectionMode = mode;
+
+            std::unique_ptr<Package<InitialConnectionPackageType>> package = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CONNECT_INFO, data);
+            m_packagesOut.emplace_back(std::move(package));
+            m_sendFlag.Signal();
+        });
 
     } catch (std::system_error& error) {
         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
@@ -173,10 +182,12 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
             switch (header.type) {
             case static_cast<uint16_t>(InitialConnectionPackageType::CONNECT_INFO):
-                const bool pair = package->GetValue<bool>();
-                const boost::uuids::uuid deviceUUID = package->GetValue<boost::uuids::uuid>();
+                InitialConnectionData data = package->GetValue<InitialConnectionData>();
+                data.deviceInfo.deviceAddress = m_socket.local_endpoint().address().to_string();
 
-                if (pair) {
+                if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+
+                } else if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
 
                 } else {
 

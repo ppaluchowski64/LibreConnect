@@ -18,8 +18,8 @@ void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SS
     asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext), asio::detached);
 }
 
-void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext) {
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext), asio::detached);
+void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, std::function<void(TCPEndpoint)>&& callback) {
+    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext, std::move(callback)), asio::detached);
 }
 
 void PrimaryConnection::Disconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
@@ -79,7 +79,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext) {
+asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, std::function<void(TCPEndpoint)>&& callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_connectionState.store(ConnectionState::CONNECTING);
     m_sslContext = sslContext;
@@ -89,6 +89,15 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         TCPAcceptor acceptor(m_context, endpoint);
+        TCPEndpoint listenEndpoint = acceptor.local_endpoint();
+
+        asio::post(
+            m_context,
+            [cb = std::move(callback), listenEndpoint]() mutable {
+                cb(listenEndpoint);
+            }
+        );
+
         co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
         co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
