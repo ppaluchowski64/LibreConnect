@@ -20,12 +20,17 @@ enum class InitialConnectionMode : uint8_t {
     CONNECTION_WITHOUT_PAIR
 };
 
-enum class InitialConnectionPackageType : uint16_t {
+enum class InitialConnectionPackageType : PackageTypeInt {
     CONNECT_INFO
 };
 
-class InitialConnection : public std::enable_shared_from_this<InitialConnection> {
+class InitialConnection final : public std::enable_shared_from_this<InitialConnection> {
 public:
+    explicit InitialConnection(IOContext& context);
+    InitialConnection() = delete;
+
+    static std::shared_ptr<InitialConnection> Create(IOContext& context);
+
     void Connect(TCPEndpoint&& endpoint, InitialConnectionMode mode);
     void Seek(TCPEndpoint&& endpoint);
     void Disconnect();

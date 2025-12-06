@@ -26,8 +26,8 @@ constexpr size_t MAX_PACKAGE_SIZE = 8192;
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
     explicit PrimaryConnection(IOContext& context);
-
     PrimaryConnection() = delete;
+
     static std::shared_ptr<PrimaryConnection> Create(IOContext& context);
 
     void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext);

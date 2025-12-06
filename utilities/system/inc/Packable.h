@@ -22,7 +22,7 @@ concept Packable = requires(T a, std::vector<uint8_t>& buf, size_t& offset) {
     { a.Serialize(buf, offset) };
     { a.Deserialize(buf, offset) };
     { a.GetSerializedSize() } -> std::convertible_to<size_t>;
-};
+} || std::is_same_v<boost::uuids::uuid, T>;
 
 template <typename T>
 struct is_packable_vector : std::false_type {};
