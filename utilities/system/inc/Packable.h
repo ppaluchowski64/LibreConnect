@@ -22,19 +22,24 @@ concept Packable = requires(T a, std::vector<uint8_t>& buf, size_t& offset) {
     { a.Serialize(buf, offset) };
     { a.Deserialize(buf, offset) };
     { a.GetSerializedSize() } -> std::convertible_to<size_t>;
-} || std::is_same_v<boost::uuids::uuid, T>;
+};
+
+template <typename T>
+concept SerializableValue =
+    Primitive<T> ||
+    Packable<T> ||
+    std::is_same_v<boost::uuids::uuid, T> ||
+    std::is_same_v<std::string, T>;
 
 template <typename T>
 struct is_packable_vector : std::false_type {};
 
 template<typename T>
-struct is_packable_vector<std::vector<T>> : std::bool_constant<Primitive<T> || Packable<T> || std::is_same_v<std::string, T>> {};
+struct is_packable_vector<std::vector<T>> : std::bool_constant<SerializableValue<T>> {};
 
 template <typename T>
 concept Serializable =
-    Primitive<T> ||
-    Packable<T> ||
-    std::is_same_v<T, std::string> ||
+    SerializableValue<T> ||
     is_packable_vector<T>::value;
 
 template <Primitive T>
