@@ -8,6 +8,7 @@
 #include <QObject>
 #include <PrimaryConnection.h>
 #include <ConcurrentUnorderedMap.h>
+#include <boost/uuid/nil_generator.hpp>
 
 class PrimaryConnection;
 class InitialConnection;
@@ -59,7 +60,7 @@ private:
 
     static void Initialize();
     static void SendEvent(const std::unique_ptr<QEvent>& event);
-    static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer);
+    static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid());
     static void RunContext();
 
     asio::awaitable<void> CoProcessPackages();
