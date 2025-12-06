@@ -4,6 +4,8 @@
 #include <Events.h>
 #include <DeviceInfo.h>
 #include <QPointer>
+#include <openssl/x509.h>
+#include <openssl/x509_vfy.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -16,29 +18,19 @@ void ConnectionManager::Connect(TCPEndpoint&& endpoint) {
         Initialize();
     }
 
-    Debug::Log("Started Connecting");
-
-    if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::CLIENT) {
-        s_instance->m_sslContext = CreateSSLContext(false);
-    }
-
+    s_instance->m_sslContext = CreateSSLContext(false);
     s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext);
 }
 
-void ConnectionManager::Seek(TCPEndpoint&& endpoint) {
+void ConnectionManager::Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback) {
     if (!s_isInitialized.load()) {
         std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
-    Debug::Log("Started Seeking");
-
-    if (s_instance->m_currentSSLContextCurrentMode != SSLContextCurrentMode::SERVER) {
-        s_instance->m_sslContext = CreateSSLContext(true);
-    }
-
+    s_instance->m_sslContext = CreateSSLContext(true);
     s_instance->m_seekingEndpoint = endpoint;
-    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext);
+    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
@@ -69,6 +61,7 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         context->load_verify_file(targetCertificatePath.c_str());
     } else {
         context->set_verify_mode(asio::ssl::verify_none);
+        context->set_verify_callback(std::bind(&ConnectionManager::VerifyCallbackAlwaysAccept, std::placeholders::_1, std::placeholders::_2));
     }
 
     context->set_options(
@@ -83,6 +76,18 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
     context->use_private_key_file(privateKeyPath.data(), SSLContext::pem);
 
     return context;
+}
+
+bool ConnectionManager::VerifyCallbackAlwaysAccept(const bool preverified, asio::ssl::verify_context& ctx) {
+    if (!preverified) {
+        const X509_STORE_CTX* cert_ctx = ctx.native_handle();
+        const int error_code = X509_STORE_CTX_get_error(cert_ctx);
+        const char* error_string = X509_verify_cert_error_string(error_code);
+
+        Debug::Log("Certificate presented but failed standard verification checks: {}", error_string);
+    }
+
+    return true;
 }
 
 void ConnectionManager::RunContext() {

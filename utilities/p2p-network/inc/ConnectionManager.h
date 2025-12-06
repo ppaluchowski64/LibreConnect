@@ -20,7 +20,7 @@ public:
     typedef std::function<void(bool)> CallbackWithResult;
 
     static void Connect(TCPEndpoint&& endpoint);
-    static void Seek(TCPEndpoint&& endpoint);
+    static void Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback = nullptr);
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
@@ -61,6 +61,7 @@ private:
     static void Initialize();
     static void SendEvent(const std::unique_ptr<QEvent>& event);
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid());
+    static bool VerifyCallbackAlwaysAccept(bool preverified, asio::ssl::verify_context& ctx);
     static void RunContext();
 
     asio::awaitable<void> CoProcessPackages();

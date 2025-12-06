@@ -12,6 +12,7 @@
 #include <AwaitableFlag.h>
 #include <deque>
 #include <optional>
+#include <DeviceInfo.h>
 #include <functional>
 
 enum class InitialConnectionMode : uint8_t {
@@ -22,6 +23,25 @@ enum class InitialConnectionMode : uint8_t {
 
 enum class InitialConnectionPackageType : PackageTypeInt {
     CONNECT_INFO
+};
+
+struct InitialConnectionData {
+    DeviceInfo deviceInfo;
+    InitialConnectionMode initialConnectionMode;
+
+    void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
+        deviceInfo.Serialize(buffer, offset);
+        SerializeObject(initialConnectionMode, buffer, offset);
+    }
+
+    void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
+        deviceInfo.Deserialize(buffer, offset);
+        DeserializeObject(initialConnectionMode, buffer, offset);
+    }
+
+    inline size_t GetSerializedSize() const {
+        return deviceInfo.GetSerializedSize() + GetObjectSerializedSize(initialConnectionMode);
+    }
 };
 
 class InitialConnection final : public std::enable_shared_from_this<InitialConnection> {
