@@ -2,6 +2,16 @@
 #include <asio/buffer.hpp>
 #include <Events.h>
 #include <ConnectionManager.h>
+#include <boost/uuid.hpp>
+
+InitialConnection::InitialConnection(IOContext& context) : m_context(context), m_strand(asio::make_strand(context)),
+                                                           m_sendFlag(context.get_executor()), m_socket(context) {
+}
+
+std::shared_ptr<InitialConnection> InitialConnection::Create(IOContext& context) {
+    return std::make_shared<InitialConnection>(context);
+}
+
 
 void InitialConnection::Connect(TCPEndpoint&& endpoint, const InitialConnectionMode mode) {
     asio::co_spawn(m_strand, CoConnect(std::move(endpoint), mode), asio::detached);
@@ -161,7 +171,20 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             co_await asio::async_read(m_socket, headerMutableBuffer, asio::use_awaitable);
             if (m_connectionState != ConnectionState::CONNECTED) break;
 
-            
+            switch (header.type) {
+            case static_cast<uint16_t>(InitialConnectionPackageType::CONNECT_INFO):
+                const bool pair = package->GetValue<bool>();
+                const boost::uuids::uuid deviceUUID = package->GetValue<boost::uuids::uuid>();
+
+                if (pair) {
+
+                } else {
+
+                }
+
+                break;
+
+            }
         }
 
 
