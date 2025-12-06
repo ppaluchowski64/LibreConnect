@@ -10,6 +10,8 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/string_generator.hpp>
 
+typedef boost::uuids::uuid uuid;
+
 template <typename T>
 concept Primitive =
     std::integral<std::remove_cvref_t<T>> ||
@@ -28,7 +30,7 @@ template <typename T>
 concept SerializableValue =
     Primitive<T> ||
     Packable<T> ||
-    std::is_same_v<boost::uuids::uuid, T> ||
+    std::is_same_v<uuid, T> ||
     std::is_same_v<std::string, T>;
 
 template <typename T>
@@ -111,12 +113,12 @@ inline void SerializeObject(const std::vector<std::string>& object, std::vector<
     }
 }
 
-inline void SerializeObject(const boost::uuids::uuid& object, std::vector<uint8_t>& buffer, size_t& offset) {
+inline void SerializeObject(const uuid& object, std::vector<uint8_t>& buffer, size_t& offset) {
     const std::string uuid = boost::uuids::to_string(object);
     SerializeObject(uuid, buffer, offset);
 }
 
-inline void DeserializeObject(boost::uuids::uuid& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+inline void DeserializeObject(uuid& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     std::string uuid;
     DeserializeObject(uuid, buffer, offset);
 
@@ -180,7 +182,7 @@ inline size_t GetObjectSerializedSize(const std::vector<std::string>& object) {
     return result;
 }
 
-constexpr size_t GetObjectSerializedSize(const boost::uuids::uuid&) {
+constexpr size_t GetObjectSerializedSize(const uuid&) {
     return sizeof(size_t) + 36; // UUID string size
 }
 

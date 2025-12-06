@@ -50,19 +50,27 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
     s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
 
     const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
-    ConnectionManager::SendEvent(event);
+    SendEvent(event);
 }
 
-std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer) {
-    const std::filesystem::path rootPath{"certs"};
-    const std::string privateKeyPath{"certs/privateKey.key"};
-    const std::string certificatePath{"certs/certificate.crt"};
+std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID) {
+    const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(targetUUID) + "/cert.key"};
+    constexpr std::string_view privateKeyPath{"certs/local/pkey.key"};
+    constexpr std::string_view certificatePath{"certs/local/cert.key"};
 
-    if (!CryptographicIdentityManager::IsCertificateValid(rootPath)) {
-        CryptographicIdentityManager::GenerateCertificate(rootPath);
+    if (!CryptographicIdentityManager::IsCertificateValid(certificatePath)) {
+        CryptographicIdentityManager::GenerateCertificate(privateKeyPath, certificatePath);
     }
 
     std::shared_ptr<SSLContext> context = std::make_shared<SSLContext>(isServer ? SSLContext::tlsv13_server : SSLContext::tlsv13_client);
+
+    if (targetUUID != boost::uuids::nil_uuid() && std::filesystem::exists(targetCertificatePath)) {
+        context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+        context->load_verify_file(targetCertificatePath.c_str());
+    } else {
+        context->set_verify_mode(asio::ssl::verify_none);
+    }
+
     context->set_options(
         SSLContext::default_workarounds |
         SSLContext::no_sslv2 |
@@ -71,8 +79,8 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         SSLContext::no_tlsv1_1
     );
 
-    context->use_certificate_chain_file(certificatePath);
-    context->use_private_key_file(privateKeyPath, SSLContext::pem);
+    context->use_certificate_chain_file(certificatePath.data());
+    context->use_private_key_file(privateKeyPath.data(), SSLContext::pem);
 
     return context;
 }

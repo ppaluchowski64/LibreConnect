@@ -15,8 +15,8 @@
 
 class CryptographicIdentityManager {
 public:
-    static void GenerateCertificate(const std::filesystem::path& path);
-    static bool IsCertificateValid(const std::filesystem::path& path);
+    static void GenerateCertificate(std::string_view privateKeyPath, std::string_view certificatePath);
+    static bool IsCertificateValid(std::string_view certificatePath);
     static void LoadOrGenerateKeyPair(const std::filesystem::path& path);
 
     static std::string GetPublicKey();

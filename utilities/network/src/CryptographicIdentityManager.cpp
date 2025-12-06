@@ -5,23 +5,21 @@
 #include <openssl/x509v3.h>
 #include <openssl/err.h>
 #include <DebugLog.h>
-#include <cstdio>
 #include <filesystem>
 
 std::mutex CryptographicIdentityManager::m_mutex{};
 EVP_PKEY* CryptographicIdentityManager::m_keyPair{nullptr};
 
-constexpr static const char* PRIVATE_KEY_FILE_NAME = "privateKey.key";
-constexpr static const char* CERTIFICATE_FILE_NAME = "certificate.crt";
 constexpr static const char* KEYS_PAIR_FILE_NAME = "keys.pem";
 
-void CryptographicIdentityManager::GenerateCertificate(const std::filesystem::path& path) {
+void CryptographicIdentityManager::GenerateCertificate(const std::string_view privateKeyPath, const std::string_view certificatePath) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    const std::string privateKeyPath = (path / PRIVATE_KEY_FILE_NAME).string();
-    const std::string certificatePath = (path / CERTIFICATE_FILE_NAME).string();
+    const std::string privateKeyRootPath = std::filesystem::path(privateKeyPath).parent_path().string();
+    const std::string certificateRootPath = std::filesystem::path(certificatePath).parent_path().string();
 
-    std::filesystem::create_directories(path);
+    std::filesystem::create_directories(privateKeyRootPath);
+    std::filesystem::create_directories(certificateRootPath);
 
     const unsigned char * C_value = reinterpret_cast<const unsigned char*>("PL");
     const unsigned char * O_value = reinterpret_cast<const unsigned char*>("LibreConnect");
@@ -39,7 +37,7 @@ void CryptographicIdentityManager::GenerateCertificate(const std::filesystem::pa
 
     EVP_PKEY_CTX_free(context);
 
-    FILE* privateKeyFile = fopen(privateKeyPath.c_str(), "wb");
+    FILE* privateKeyFile = fopen(privateKeyPath.data(), "wb");
     if (!privateKeyFile) {
         Debug::LogError("Failed to open keyfile");
         return;
@@ -66,25 +64,24 @@ void CryptographicIdentityManager::GenerateCertificate(const std::filesystem::pa
         return;
     }
 
-    FILE* certfile = fopen(certificatePath.c_str(), "wb");
-    if (!certfile) {
+    FILE* certificateFile = fopen(certificatePath.data(), "wb");
+    if (!certificateFile) {
         const std::string error = GetOpenSSLError();
         Debug::LogError("Failed to sign certificate ({})", error);
         return;
     }
-    PEM_write_X509(certfile, certificate);
-    fclose(certfile);
+    PEM_write_X509(certificateFile, certificate);
+    fclose(certificateFile);
 
     X509_free(certificate);
     EVP_PKEY_free(privateKey);
 }
 
-bool CryptographicIdentityManager::IsCertificateValid(const std::filesystem::path& path) {
+bool CryptographicIdentityManager::IsCertificateValid(const std::string_view certificatePath) {
     std::lock_guard<std::mutex> lock(m_mutex);
     constexpr int certificateMinimalTimeLeft = 60 * 10;
 
-    const std::string certPath = (path / CERTIFICATE_FILE_NAME).string();
-    FILE* fp = fopen(certPath.c_str(), "r");
+    FILE* fp = fopen(certificatePath.data(), "r");
     if (!fp) {
         return false;
     }
