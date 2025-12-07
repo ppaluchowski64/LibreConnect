@@ -39,22 +39,24 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
         Initialize();
     }
 
-    std::lock_guard<std::mutex> lock(s_mutex);
-
     const std::shared_ptr<InitialConnection> connection = InitialConnection::Create(s_instance->m_context);
-    bool placed = false;
 
-    for (int i = 0; i < s_instance->m_initialConnectionsIn.size(); i++) {
-        if (!s_instance->m_initialConnectionsIn[i].lock()) {
-            s_instance->m_initialConnectionsIn[i] = connection;
-            placed = true;
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        bool placed = false;
 
-            break;
+        for (int i = 0; i < s_instance->m_initialConnectionsIn.size(); i++) {
+            if (!s_instance->m_initialConnectionsIn[i].lock()) {
+                s_instance->m_initialConnectionsIn[i] = connection;
+                placed = true;
+
+                break;
+            }
         }
-    }
 
-    if (!placed) {
-        s_instance->m_initialConnectionsIn.push_back(connection);
+        if (!placed) {
+            s_instance->m_initialConnectionsIn.push_back(connection);
+        }
     }
 
     connection->TemporaryOwnership(connection);
