@@ -44,7 +44,7 @@ bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
-asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext) {
+asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const std::shared_ptr<SSLContext> sslContext) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
     m_connectionState.store(ConnectionState::CONNECTING);
@@ -79,7 +79,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, std::sh
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, std::function<void(TCPEndpoint)>&& callback) {
+asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, std::function<void(TCPEndpoint)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_connectionState.store(ConnectionState::CONNECTING);
     m_sslContext = sslContext;
