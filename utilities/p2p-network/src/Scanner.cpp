@@ -207,8 +207,6 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses(UDPSocket& socket) {
 
             co_await socket.async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
 
-            Debug::Log("Received response from {}", senderEndpoint.address().to_string());
-
             std::size_t offset = 0;
             device.Deserialize(buffer, offset);
             device.deviceAddress = senderEndpoint.address().to_string();
