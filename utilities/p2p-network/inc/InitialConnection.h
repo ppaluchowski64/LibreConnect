@@ -2,16 +2,12 @@
 #define INITIAL_CONNECTION_H
 
 #include <asio.hpp>
-#include <asio/ssl.hpp>
-
 #include <Package.h>
 #include <Packable.h>
 #include <AsioCommon.h>
-#include <concurrentqueue.h>
 #include <asio/awaitable.hpp>
 #include <AwaitableFlag.h>
 #include <deque>
-#include <optional>
 #include <DeviceInfo.h>
 #include <functional>
 
@@ -43,6 +39,8 @@ struct InitialConnectionData {
         return deviceInfo.GetSerializedSize() + GetObjectSerializedSize(initialConnectionMode);
     }
 };
+
+class ConnectionManager;
 
 class InitialConnection final : public std::enable_shared_from_this<InitialConnection> {
 public:

@@ -1,11 +1,15 @@
+#define _WIN32_WINNT 0x0A00
+
 #include <Scanner.h>
 #include <ConnectionManager.h>
+#include <InitialConnection.h>
 #include <iostream>
 #include <QCoreApplication>
 
 int main() {
     LanDeviceScanner::BeginScan();
-    ConnectionManager::Seek(TCPEndpoint(asio::ip::tcp::v4(), 5000));
+    ConnectionManager::StartAcceptingConnections();
+
     std::vector<DeviceInfo> devices;
 
     ConnectionManager::AddResponseHandler(PC_PackageType::MESSAGE, [](std::unique_ptr<Package<PC_PackageType>>&& package) {
@@ -57,8 +61,8 @@ int main() {
                     continue;
                 }
 
-                TCPEndpoint endpoint(asio::ip::make_address_v4(devices[id-1].deviceAddress), devices[id-1].deviceAddressPort);
-                ConnectionManager::Connect(std::move(endpoint));
+                ConnectionManager::Connect(devices[id-1].deviceAddress, devices[id-1].deviceAddressPort, InitialConnectionMode::CONNECTION_WITHOUT_PAIR);
+                connected = true;
 
             } catch (const std::invalid_argument& e) {
                 Debug::LogError(std::string(e.what()));

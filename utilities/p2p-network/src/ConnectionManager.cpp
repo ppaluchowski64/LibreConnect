@@ -12,6 +12,9 @@ ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
 std::atomic<bool>  ConnectionManager::s_isInitialized{false};
 
+class PrimaryConnection;
+class InitialConnection;
+class LanDeviceScanner;
 
 void ConnectionManager::ConnectPrimary(TCPEndpoint&& endpoint) {
     if (!s_isInitialized.load()) {

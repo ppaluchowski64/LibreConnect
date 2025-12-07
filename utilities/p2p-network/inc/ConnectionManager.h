@@ -7,12 +7,11 @@
 
 #include <QObject>
 #include <PrimaryConnection.h>
+#include <InitialConnection.h>
 #include <ConcurrentUnorderedMap.h>
 #include <boost/uuid/nil_generator.hpp>
 
-class PrimaryConnection;
-class InitialConnection;
-class LanDeviceScanner;
+
 enum class InitialConnectionMode : uint8_t;
 
 class ConnectionManager final {
