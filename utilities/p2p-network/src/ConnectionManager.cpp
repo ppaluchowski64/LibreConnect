@@ -170,6 +170,15 @@ void ConnectionManager::RunContext() {
     s_instance->m_context.run();
 }
 
+void ConnectionManager::SetSeekingEndpoint(TCPEndpoint endpoint) {
+    if (!s_isInitialized.load()) {
+        Initialize();
+    }
+
+    std::lock_guard<std::mutex> lock(s_mutex);
+    s_instance->m_seekingEndpoint = endpoint;
+}
+
 asio::awaitable<void> ConnectionManager::CoProcessPackages() {
     const std::shared_ptr<AwaitableFlag> receiveFlag = m_primaryConnection->GetReceiveFlag();
 

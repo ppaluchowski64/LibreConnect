@@ -75,6 +75,8 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
         TCPAcceptor acceptor(m_context, endpoint);
         acceptor.set_option(asio::socket_base::reuse_address(true));
 
+        ConnectionManager::SetSeekingEndpoint(acceptor.local_endpoint());
+
         co_await acceptor.async_accept(m_socket, asio::use_awaitable);
         Debug::Log("Accepted TCP initial connection to {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
 

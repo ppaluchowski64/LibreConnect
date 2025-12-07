@@ -69,6 +69,7 @@ private:
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid());
     static bool VerifyCallbackAlwaysAccept(bool preverified, asio::ssl::verify_context& ctx);
     static void RunContext();
+    static void SetSeekingEndpoint(TCPEndpoint endpoint);
 
     asio::awaitable<void> CoProcessPackages();
 

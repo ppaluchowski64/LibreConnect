@@ -61,6 +61,8 @@ int main() {
                     continue;
                 }
 
+                Debug::Log("{}:{}", devices[id-1].deviceAddress, devices[id-1].deviceAddressPort);
+
                 ConnectionManager::Connect(devices[id-1].deviceAddress, devices[id-1].deviceAddressPort, InitialConnectionMode::CONNECTION_WITHOUT_PAIR);
                 connected = true;
 
