@@ -1,5 +1,3 @@
-#define _WIN32_WINNT 0x0A00
-
 #include <Scanner.h>
 #include <ConnectionManager.h>
 #include <InitialConnection.h>

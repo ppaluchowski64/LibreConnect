@@ -40,7 +40,7 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
 
         m_connectionState = ConnectionState::CONNECTED;
 
-        TCPEndpoint anyEndpoint = TCPEndpoint(asio::ip::tcp::v4(), 0);
+        TCPEndpoint anyEndpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
 
         // ReSharper disable once CppPassValueParameterByConstReference
         // ReSharper disable once CppDeclarationHidesUncapturedLocal
@@ -88,6 +88,8 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
         ConnectionManager::SetSeekingEndpoint(acceptor.local_endpoint());
 
         co_await acceptor.async_accept(m_socket, asio::use_awaitable);
+        Debug::Log("Accepted TCP initial connection to {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
+
         TCPEndpoint acceptorEndpoint = acceptor.local_endpoint();
 
         asio::post(
@@ -209,7 +211,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             switch (header.type) {
             case static_cast<uint16_t>(InitialConnectionPackageType::CONNECT_INFO):
                 InitialConnectionData data = package->GetValue<InitialConnectionData>();
-                data.deviceInfo.deviceAddress = m_socket.local_endpoint().address().to_string();
+                data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
 
                 // if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
                 //
