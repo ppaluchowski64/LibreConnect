@@ -4,10 +4,9 @@
 #include <vector>
 #include <Packable.h>
 #include <boost/uuid.hpp>
-#include <asio.hpp>
-#include <DeviceData.h>
-#include <ConnectionManager.h>
 
+class ConnectionManager;
+class InitialConnection;
 class DeviceData;
 
 struct DeviceInfo {
@@ -16,16 +15,7 @@ struct DeviceInfo {
     std::uint16_t deviceAddressPort;
     boost::uuids::uuid deviceID;
 
-    static DeviceInfo GetThisDeviceInfo() {
-        const TCPEndpoint endpoint = ConnectionManager::GetSeekEndpoint();
-        DeviceInfo device{};
-
-        device.deviceName = asio::ip::host_name();
-        device.deviceID   = DeviceData::GetDeviceUUID();
-        device.deviceAddressPort = endpoint.port();
-
-        return device;
-    }
+    static DeviceInfo GetThisDeviceInfo();
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
         SerializeObject(deviceName, buffer, offset);

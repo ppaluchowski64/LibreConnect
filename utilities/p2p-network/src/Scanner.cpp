@@ -1,13 +1,12 @@
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <AddressResolver.h>
-#include <Packable.h>
+#include <DeviceInfo.h>
 #include <chrono>
 #include <vector>
 #include <DeviceData.h>
 #include <Events.h>
-
-class ConnectionManager;
+#include <ConnectionManager.h>
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 

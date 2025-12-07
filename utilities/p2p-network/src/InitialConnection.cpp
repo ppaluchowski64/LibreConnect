@@ -201,14 +201,17 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 InitialConnectionData data = package->GetValue<InitialConnectionData>();
                 data.deviceInfo.deviceAddress = m_socket.local_endpoint().address().to_string();
 
-                if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+                // if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+                //
+                //
+                // } else if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+                //
+                // } else {
+                //
+                // }
 
-
-                } else if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
-
-                } else {
-
-                }
+                TCPEndpoint endpoint(asio::ip::make_address_v4(data.deviceInfo.deviceAddress), data.deviceInfo.deviceAddressPort);
+                ConnectionManager::ConnectPrimary(std::move(endpoint));
 
                 break;
 
