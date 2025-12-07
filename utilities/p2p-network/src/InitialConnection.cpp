@@ -24,6 +24,10 @@ void InitialConnection::Disconnect(const bool cancelSeeking) {
     asio::co_spawn(m_strand, CoDisconnect(cancelSeeking), asio::detached);
 }
 
+void InitialConnection::TemporaryOwnership(std::shared_ptr<InitialConnection> ptr) {
+    m_temporaryOwnership = ptr;
+}
+
 asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const InitialConnectionMode mode) {
     const std::shared_ptr<InitialConnection> self = shared_from_this();
     m_connectionState = ConnectionState::CONNECTING;
@@ -68,18 +72,22 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
 
 asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::function<void(TCPEndpoint endpoint)> callback) {
     const std::shared_ptr<InitialConnection> self = shared_from_this();
+    m_temporaryOwnership.reset();
+
     m_connectionState = ConnectionState::CONNECTING;
 
+
     try {
-        m_socket = TCPSocket(m_context, endpoint.protocol());
-        TCPAcceptor acceptor(m_context, endpoint);
+        m_socket = TCPSocket(m_context);
+        TCPAcceptor acceptor(m_context);
+        acceptor.open(endpoint.protocol());
         acceptor.set_option(asio::socket_base::reuse_address(true));
+        acceptor.bind(endpoint);
+        acceptor.listen();
 
         ConnectionManager::SetSeekingEndpoint(acceptor.local_endpoint());
 
         co_await acceptor.async_accept(m_socket, asio::use_awaitable);
-        Debug::Log("Accepted TCP initial connection to {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
-
         TCPEndpoint acceptorEndpoint = acceptor.local_endpoint();
 
         asio::post(

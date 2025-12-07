@@ -7,8 +7,8 @@
 #include <QCoreApplication>
 
 int main() {
-    LanDeviceScanner::BeginScan();
     ConnectionManager::StartAcceptingConnections();
+    LanDeviceScanner::BeginScan();
 
     std::vector<DeviceInfo> devices;
 

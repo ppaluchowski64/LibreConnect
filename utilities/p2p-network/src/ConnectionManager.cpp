@@ -48,6 +48,7 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
         if (!s_instance->m_initialConnectionsIn[i].lock()) {
             s_instance->m_initialConnectionsIn[i] = connection;
             placed = true;
+
             break;
         }
     }
@@ -56,6 +57,7 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
         s_instance->m_initialConnectionsIn.push_back(connection);
     }
 
+    connection->TemporaryOwnership(connection);
     connection->Seek(std::move(endpoint), [](TCPEndpoint ep) {
         SeekInitialConnection(std::move(ep));
     });
