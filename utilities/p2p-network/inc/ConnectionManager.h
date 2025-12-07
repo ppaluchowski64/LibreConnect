@@ -13,7 +13,7 @@
 class PrimaryConnection;
 class InitialConnection;
 class LanDeviceScanner;
-enum class InitialConnectionMode;
+enum class InitialConnectionMode : uint8_t;
 
 class ConnectionManager final {
 public:
