@@ -53,6 +53,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const s
         co_await CoCleanupConnection();
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
+        Debug::Log("PrimaryConnection::CoConnect {}:{}", endpoint.address().to_string(), endpoint.port());
         co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
         co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
@@ -98,6 +99,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
             }
         );
 
+        Debug::Log("PrimaryConnection::CoSeek {}:{}", acceptor.local_endpoint().address().to_string(), acceptor.local_endpoint().port());
         co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
         co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
