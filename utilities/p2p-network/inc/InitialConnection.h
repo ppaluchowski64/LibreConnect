@@ -53,6 +53,8 @@ public:
     void Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint endpoint)>&& callback);
     void Disconnect(bool cancelSeeking = false);
 
+    void TemporaryOwnership(std::shared_ptr<InitialConnection> ptr);
+
 private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, InitialConnectionMode mode);
     asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::function<void(TCPEndpoint endpoint)> callback);
@@ -68,6 +70,7 @@ private:
 
     std::deque<std::unique_ptr<Package<InitialConnectionPackageType>>> m_packagesOut;
     ConnectionState m_connectionState{ConnectionState::DISCONNECTED};
+    std::shared_ptr<InitialConnection> m_temporaryOwnership;
 };
 
 #endif //INITIAL_CONNECTION_H
