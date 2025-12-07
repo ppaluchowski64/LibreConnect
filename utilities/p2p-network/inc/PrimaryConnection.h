@@ -59,7 +59,7 @@ public:
 
 private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext);
-    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, std::function<void(TCPEndpoint)>&& callback);
+    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, std::function<void(TCPEndpoint)> callback);
     asio::awaitable<void> CoCleanupConnection();
     asio::awaitable<void> CoDisconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
     asio::awaitable<void> CoSend();

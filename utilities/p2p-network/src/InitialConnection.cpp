@@ -2,7 +2,6 @@
 #include <asio/buffer.hpp>
 #include <Events.h>
 #include <ConnectionManager.h>
-#include <boost/uuid.hpp>
 
 InitialConnection::InitialConnection(IOContext& context) : m_context(context), m_strand(asio::make_strand(context)),
                                                            m_sendFlag(context.get_executor()), m_socket(context) {
@@ -17,12 +16,12 @@ void InitialConnection::Connect(TCPEndpoint&& endpoint, const InitialConnectionM
     asio::co_spawn(m_strand, CoConnect(std::move(endpoint), mode), asio::detached);
 }
 
-void InitialConnection::Seek(TCPEndpoint&& endpoint) {
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint)), asio::detached);
+void InitialConnection::Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint endpoint)>&& callback) {
+    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), std::move(callback)), asio::detached);
 }
 
-void InitialConnection::Disconnect() {
-    asio::co_spawn(m_strand, CoDisconnect(), asio::detached);
+void InitialConnection::Disconnect(const bool cancelSeeking) {
+    asio::co_spawn(m_strand, CoDisconnect(cancelSeeking), asio::detached);
 }
 
 asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const InitialConnectionMode mode) {
@@ -32,13 +31,16 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
     try {
         m_socket = TCPSocket(m_context, endpoint.protocol());
 
-        co_await asio::async_connect(m_socket, std::initializer_list<TCPEndpoint>({endpoint}),asio::use_awaitable);
+        co_await asio::async_connect(m_socket, std::initializer_list<TCPEndpoint>({endpoint}), asio::use_awaitable);
         Debug::Log("Accepted TCP initial connection to {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
 
         m_connectionState = ConnectionState::CONNECTED;
 
         TCPEndpoint anyEndpoint = TCPEndpoint(asio::ip::tcp::v4(), 0);
-        ConnectionManager::Seek(std::move(anyEndpoint), [this, mode](const TCPEndpoint endpoint) {
+
+        // ReSharper disable once CppPassValueParameterByConstReference
+        // ReSharper disable once CppDeclarationHidesUncapturedLocal
+        ConnectionManager::SeekPrimary(std::move(anyEndpoint), [this, mode](const TCPEndpoint endpoint) {
             asio::co_spawn(m_strand, CoSend(), asio::detached);
             asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
@@ -64,16 +66,26 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
     co_return;
 }
 
-asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint) {
+asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::function<void(TCPEndpoint endpoint)> callback) {
     const std::shared_ptr<InitialConnection> self = shared_from_this();
     m_connectionState = ConnectionState::CONNECTING;
 
     try {
         m_socket = TCPSocket(m_context, endpoint.protocol());
         TCPAcceptor acceptor(m_context, endpoint);
+        acceptor.set_option(asio::socket_base::reuse_address(true));
 
         co_await acceptor.async_accept(m_socket, asio::use_awaitable);
         Debug::Log("Accepted TCP initial connection to {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
+
+        TCPEndpoint acceptorEndpoint = acceptor.local_endpoint();
+
+        asio::post(
+            m_context,
+            [cb = std::move(callback), ep = std::move(acceptorEndpoint)]() mutable {
+                cb(std::move(ep));
+            }
+        );
 
         m_connectionState = ConnectionState::CONNECTED;
 
@@ -89,7 +101,7 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint) {
     }
 }
 
-asio::awaitable<void> InitialConnection::CoDisconnect() {
+asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) {
     const std::shared_ptr<InitialConnection> self = shared_from_this();
 
     if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
@@ -112,6 +124,10 @@ asio::awaitable<void> InitialConnection::CoDisconnect() {
     }
 
     m_connectionState = ConnectionState::DISCONNECTED;
+
+    if (cancelSeeking) {
+        ConnectionManager::Disconnect();
+    }
 }
 
 asio::awaitable<void> InitialConnection::CoSend() {
@@ -177,7 +193,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             const std::unique_ptr<Package<InitialConnectionPackageType>> package = std::make_unique<Package<InitialConnectionPackageType>>(header);
             asio::mutable_buffer packageBuffer(package->GetRawBody(), header.size);
 
-            co_await asio::async_read(m_socket, headerMutableBuffer, asio::use_awaitable);
+            co_await asio::async_read(m_socket, packageBuffer, asio::use_awaitable);
             if (m_connectionState != ConnectionState::CONNECTED) break;
 
             switch (header.type) {
@@ -186,6 +202,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 data.deviceInfo.deviceAddress = m_socket.local_endpoint().address().to_string();
 
                 if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+
 
                 } else if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
 

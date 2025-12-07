@@ -6,15 +6,15 @@
 #include <QPointer>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
+#include <InitialConnection.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
 std::atomic<bool>  ConnectionManager::s_isInitialized{false};
 
 
-void ConnectionManager::Connect(TCPEndpoint&& endpoint) {
+void ConnectionManager::ConnectPrimary(TCPEndpoint&& endpoint) {
     if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -22,20 +22,93 @@ void ConnectionManager::Connect(TCPEndpoint&& endpoint) {
     s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext);
 }
 
-void ConnectionManager::Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback) {
+void ConnectionManager::SeekPrimary(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback) {
     if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
     s_instance->m_sslContext = CreateSSLContext(true);
-    s_instance->m_seekingEndpoint = endpoint;
     s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<std::function<void(TCPEndpoint)>>(callback));
+}
+
+void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
+    if (!s_isInitialized.load()) {
+        Initialize();
+    }
+
+    std::lock_guard<std::mutex> lock(s_mutex);
+
+    const std::shared_ptr<InitialConnection> connection = InitialConnection::Create(s_instance->m_context);
+    bool placed = false;
+
+    for (int i = 0; i < s_instance->m_initialConnectionsIn.size(); i++) {
+        if (!s_instance->m_initialConnectionsIn[i].lock()) {
+            s_instance->m_initialConnectionsIn[i] = connection;
+            placed = true;
+            break;
+        }
+    }
+
+    if (!placed) {
+        s_instance->m_initialConnectionsIn.push_back(connection);
+    }
+
+    connection->Seek(std::move(endpoint), [](TCPEndpoint ep) {
+        SeekInitialConnection(std::move(ep));
+    });
+}
+
+void ConnectionManager::StartAcceptingConnections() {
+    if (!s_isInitialized.load()) {
+        Initialize();
+    }
+
+    if (s_instance->m_initialConnectionOut != nullptr) {
+        s_instance->m_initialConnectionOut->Disconnect();
+    }
+
+    s_instance->m_initialConnectionOut = InitialConnection::Create(s_instance->m_context);
+
+    const TCPEndpoint endpoint(asio::ip::tcp::v4(), 0);
+    SeekInitialConnection(endpoint);
+}
+
+void ConnectionManager::StopAcceptingConnections() {
+    if (!s_isInitialized.load()) {
+        Initialize();
+    }
+
+    std::lock_guard<std::mutex> lock(s_mutex);
+
+    if (s_instance->m_initialConnectionOut != nullptr) {
+        s_instance->m_initialConnectionOut->Disconnect();
+        s_instance->m_initialConnectionOut.reset();
+    }
+
+    for (int i = 0; i < s_instance->m_initialConnectionsIn.size(); i++) {
+        if (const auto ref = s_instance->m_initialConnectionsIn[i].lock()) {
+            ref->Disconnect();
+        }
+    }
+
+    s_instance->m_initialConnectionsIn.clear();
+}
+
+void ConnectionManager::Connect(const std::string& address, const uint16_t port, const InitialConnectionMode mode) {
+    if (!s_isInitialized.load()) {
+        Initialize();
+    }
+
+    if (s_instance->m_initialConnectionOut == nullptr) {
+        return;
+    }
+
+    TCPEndpoint endpoint(asio::ip::make_address_v4(address), port);
+    s_instance->m_initialConnectionOut->Connect(std::move(endpoint), mode);
 }
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
     if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -134,7 +207,6 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
     if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -143,7 +215,6 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
 
 void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
     if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
@@ -153,10 +224,10 @@ void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
 
 TCPEndpoint ConnectionManager::GetSeekEndpoint() {
     if (!s_isInitialized.load()) {
-        std::lock_guard<std::mutex> lock(s_mutex);
         Initialize();
     }
 
+    std::lock_guard<std::mutex> lock(s_mutex);
     return s_instance->m_seekingEndpoint;
 }
 
@@ -172,6 +243,7 @@ ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_con
 }
 
 void ConnectionManager::Initialize() {
+    std::lock_guard<std::mutex> lock(s_mutex);
     s_instance = new ConnectionManager();
     s_isInitialized.store(true);
 }

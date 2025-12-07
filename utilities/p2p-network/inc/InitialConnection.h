@@ -52,13 +52,13 @@ public:
     static std::shared_ptr<InitialConnection> Create(IOContext& context);
 
     void Connect(TCPEndpoint&& endpoint, InitialConnectionMode mode);
-    void Seek(TCPEndpoint&& endpoint);
-    void Disconnect();
+    void Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint endpoint)>&& callback);
+    void Disconnect(bool cancelSeeking = false);
 
 private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, InitialConnectionMode mode);
-    asio::awaitable<void> CoSeek(TCPEndpoint endpoint);
-    asio::awaitable<void> CoDisconnect();
+    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::function<void(TCPEndpoint endpoint)> callback);
+    asio::awaitable<void> CoDisconnect(bool cancelSeeking);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 

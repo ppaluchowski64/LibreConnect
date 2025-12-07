@@ -13,14 +13,16 @@
 class PrimaryConnection;
 class InitialConnection;
 class LanDeviceScanner;
+enum class InitialConnectionMode;
 
 class ConnectionManager final {
 public:
     typedef std::function<void(std::unique_ptr<Package<PC_PackageType>>&&)> RequestCallbackType;
     typedef std::function<void(bool)> CallbackWithResult;
 
-    static void Connect(TCPEndpoint&& endpoint);
-    static void Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback = nullptr);
+    static void StartAcceptingConnections();
+    static void StopAcceptingConnections();
+    static void Connect(const std::string& address, uint16_t port, InitialConnectionMode mode);
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
@@ -58,6 +60,11 @@ private:
     friend class LanDeviceScanner;
     friend class InitialConnection;
 
+    static void ConnectPrimary(TCPEndpoint&& endpoint);
+    static void SeekPrimary(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback = nullptr);
+
+    static void SeekInitialConnection(TCPEndpoint endpoint);
+
     static void Initialize();
     static void SendEvent(const std::unique_ptr<QEvent>& event);
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid());
@@ -76,7 +83,6 @@ private:
     static std::mutex         s_mutex;
     static std::atomic<bool>  s_isInitialized;
 
-
     IOContext  m_context;
     std::shared_ptr<SSLContext> m_sslContext;
     IOWorkGuard m_workGuard;
@@ -89,6 +95,9 @@ private:
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
     ConcurrentUnorderedMap<size_t, RequestCallbackType> m_requestCallbackMap;
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
+
+    std::shared_ptr<InitialConnection> m_initialConnectionOut;
+    std::vector<std::weak_ptr<InitialConnection>> m_initialConnectionsIn;
 
     std::vector<QPointer<QObject>> m_eventObjects;
 
