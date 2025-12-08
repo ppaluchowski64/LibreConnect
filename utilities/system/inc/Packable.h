@@ -67,6 +67,10 @@ inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buf
     const size_t size = object.size();
     SerializeObject(size, buffer, offset);
 
+    if (object.size() == 0) {
+        return;
+    }
+
     std::memcpy(&buffer[offset], object.c_str(), object.size());
     offset += object.size();
 }
@@ -74,6 +78,10 @@ inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buf
 inline void DeserializeObject(std::string& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
     DeserializeObject(size, buffer, offset);
+
+    if (object.size() == 0) {
+        return;
+    }
 
     object.resize(size);
     std::memcpy(&object[0], &buffer[offset], size);
