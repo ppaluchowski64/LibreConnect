@@ -79,7 +79,7 @@ inline void DeserializeObject(std::string& object, const std::vector<uint8_t>& b
     size_t size;
     DeserializeObject(size, buffer, offset);
 
-    if (object.size() == 0) {
+    if (size == 0) {
         return;
     }
 

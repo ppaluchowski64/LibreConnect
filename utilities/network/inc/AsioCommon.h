@@ -103,6 +103,7 @@ inline bool IsWarningAsioError(const std::error_code& ec)
 inline void HandleAsioError(const std::error_code& ec)
 {
     if (!ec)
+        Debug::Log("Connection closed cleanly");
         return;
 
     if (IsNonFatalAsioError(ec)) {
