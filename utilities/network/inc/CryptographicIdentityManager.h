@@ -10,6 +10,10 @@
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/err.h>
+
+#include <AsioCommon.h>
+#include <asio/ssl.hpp>
+
 #include <mutex>
 #include <filesystem>
 
@@ -18,6 +22,8 @@ public:
     static void GenerateCertificate(std::string_view privateKeyPath, std::string_view certificatePath);
     static bool IsCertificateValid(std::string_view certificatePath);
     static void LoadOrGenerateKeyPair(const std::filesystem::path& path);
+
+    static bool SavePeerCertificate(std::string_view certificatePath, SSLSocket socket);
 
     static std::string GetPublicKey();
     static std::string GenerateRandomChallenge(size_t size = 32);
