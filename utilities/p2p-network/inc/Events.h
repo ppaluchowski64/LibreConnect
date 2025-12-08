@@ -2,6 +2,8 @@
 #define EVENTS_H
 
 #include <system_error>
+#include <DeviceInfo.h>
+#include <InitialConnection.h>
 #include <QEvent>
 
 constexpr static int P2PEventBase = QEvent::User + 100;
@@ -15,7 +17,7 @@ class ConnectedEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase);
     explicit ConnectedEvent(const EventResult result) : QEvent(Type), m_status(result) {}
-    EventResult Result() const { return m_status; }
+    EventResult GetResult() const { return m_status; }
 
 private:
     EventResult m_status;
@@ -25,7 +27,7 @@ class DisconnectedEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+1);
     explicit DisconnectedEvent(const std::error_code code) : QEvent(Type), m_errorCode(code) {}
-    std::error_code ErrorCode() const { return m_errorCode; }
+    std::error_code GetErrorCode() const { return m_errorCode; }
 private:
     std::error_code m_errorCode;
 };
@@ -34,9 +36,21 @@ class ScannerErrorEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+2);
     explicit ScannerErrorEvent(const std::error_code errorCode) : QEvent(Type), m_errorCode(errorCode) {}
-    std::error_code ErrorCode() const { return m_errorCode; }
+    std::error_code GetErrorCode() const { return m_errorCode; }
 private:
     std::error_code m_errorCode;
+};
+
+class ConnectionPendingEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+3);
+    explicit ConnectionPendingEvent(const DeviceInfo& deviceInfo, const InitialConnectionMode mode) : QEvent(Type), m_mode(mode), m_deviceInfo(deviceInfo) {}
+    DeviceInfo GetDeviceInfo() const { return m_deviceInfo; }
+    InitialConnectionMode GetInitialConnectionMode() const { return m_mode; }
+
+private:
+    InitialConnectionMode m_mode;
+    DeviceInfo m_deviceInfo;
 };
 
 

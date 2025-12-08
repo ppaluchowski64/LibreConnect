@@ -20,15 +20,9 @@ int main() {
 
     while (true) {
         while (connected.load()) {
-            Debug::Log("Send message (write disconnect to disconnect)");
+            Debug::Log("Send message");
             std::string text;
             std::getline(std::cin, text);
-
-            if (text == "disconnect") {
-                ConnectionManager::Disconnect();
-                break;
-            }
-
             ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
         }
 
