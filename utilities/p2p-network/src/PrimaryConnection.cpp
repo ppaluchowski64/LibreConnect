@@ -68,11 +68,9 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const s
         ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection connection error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect(error.code());
+
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
     }
@@ -114,11 +112,9 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
         ConnectionManager::SendEvent(event);
 
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection seek error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect(error.code());
+
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
     }
@@ -141,9 +137,7 @@ asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
 
         m_socket.reset();
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection cleanup error: {}", error.what());
-        }
+        HandleAsioError(error.code());
     }
 }
 
@@ -157,6 +151,8 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     m_connectionState.store(ConnectionState::DISCONNECTING);
     co_await CoCleanupConnection();
     m_connectionState.store(ConnectionState::DISCONNECTED);
+
+    Debug::Log("Disconnected TLS primary connection");
 
     if (callConnectionManagerDisconnect) {
         ConnectionManager::Disconnect(errorCode);
@@ -193,10 +189,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
             }
         }
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection send error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect(error.code());
     }
 }
@@ -232,10 +225,7 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("PrimaryConnection receive error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect(error.code());
     }
 }

@@ -60,10 +60,7 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
         });
 
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("InitialConnection connection error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect();
     }
 
@@ -105,10 +102,7 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("InitialConnection seek error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect();
     }
 }
@@ -130,9 +124,7 @@ asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) 
         }
 
     } catch (std::system_error& error) {
-         if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-             Debug::LogError("InitialConnection disconnect error: {}", error.what());
-         }
+        HandleAsioError(error.code());
     }
 
     m_connectionState = ConnectionState::DISCONNECTED;
@@ -176,10 +168,7 @@ asio::awaitable<void> InitialConnection::CoSend() {
         }
 
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("InitialConnection send error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect();
     }
 }
@@ -232,10 +221,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
 
     } catch (std::system_error& error) {
-        if (!(error.code() == asio::error::eof || error.code() == asio::error::connection_reset || error.code() == asio::error::operation_aborted || error.code() == asio::error::connection_aborted || error.code() == asio::error::broken_pipe)) {
-            Debug::LogError("InitialConnection receive error: {}", error.what());
-        }
-
+        HandleAsioError(error.code());
         Disconnect();
     }
 }
