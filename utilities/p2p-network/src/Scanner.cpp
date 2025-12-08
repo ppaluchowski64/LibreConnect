@@ -180,6 +180,8 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes(UDPSocket& socket) {
             const asio::const_buffer constBuffer = asio::const_buffer(buffer.data(), buffer.size());
             co_await socket.async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
 
+            Debug::Log("Send probe");
+
             asio::steady_timer timer(m_context);
             timer.expires_after(std::chrono::seconds(1));
             co_await timer.async_wait(asio::use_awaitable);
@@ -211,6 +213,8 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses(UDPSocket& socket) {
             device.Deserialize(buffer, offset);
             device.deviceAddress = senderEndpoint.address().to_string();
 
+            Debug::Log("Received from {}", device.deviceAddress);
+
             {
                 std::lock_guard<std::mutex> lock(m_mutex);
                 auto it = std::ranges::find_if(m_discoveredDevices, [&](const auto& d) { return d.deviceID == device.deviceID; });
@@ -233,7 +237,7 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses(UDPSocket& socket) {
 }
 
 void LanDeviceScanner::ProcessError(const asio::system_error& error) {
-    Debug::LogError(error.what());
+    HandleAsioError(error.code());
     const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(error.code());
     ConnectionManager::SendEvent(event);
 }
