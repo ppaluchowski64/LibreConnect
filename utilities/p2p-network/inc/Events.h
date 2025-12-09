@@ -44,13 +44,31 @@ private:
 class ConnectionPendingEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+3);
-    explicit ConnectionPendingEvent(const DeviceInfo& deviceInfo, const InitialConnectionMode mode) : QEvent(Type), m_mode(mode), m_deviceInfo(deviceInfo) {}
+    explicit ConnectionPendingEvent(const DeviceInfo& deviceInfo, const InitialConnectionMode mode, std::function<void(bool, std::string)>&& callback) : QEvent(Type), m_mode(mode), m_deviceInfo(deviceInfo), m_callback(std::move(callback)) {}
     DeviceInfo GetDeviceInfo() const { return m_deviceInfo; }
     InitialConnectionMode GetInitialConnectionMode() const { return m_mode; }
+
+    void AcceptConnection() const { m_callback(true, ""); }
+    void AcceptConnectionIfVerified(const std::string& challenge) const { m_callback(false, challenge); }
+    void DenyConnection() const { m_callback(false, ""); }
 
 private:
     InitialConnectionMode m_mode;
     DeviceInfo m_deviceInfo;
+    std::function<void(bool, std::string)> m_callback;
+
+};
+
+class ConnectionVerificationEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+4);
+    explicit ConnectionVerificationEvent(std::function<void(std::string)>&& callback) : QEvent(Type), m_callback(std::move(callback)) {}
+
+    void SendAnswer(const std::string& answer) const { m_callback(answer); }
+
+private:
+    std::function<void(std::string)> m_callback;
+
 };
 
 

@@ -176,6 +176,9 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         PackageHeader header{};
 
         InitialConnectionData data;
+        uint32_t triesLeft = MAX_NUMBER_OF_VERIFICATION_TRIES;
+        std::string challengeAnswer = "";
+
 
         while (m_connectionState == ConnectionState::CONNECTED) {
             asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
@@ -199,21 +202,39 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 package->GetValue(data);
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
 
-                TCPEndpoint endpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
-                ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
-                    InitialConnectionData data{};
+                // ReSharper disable once CppPassValueParameterByConstReference
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data](const bool actionResult, const std::string challenge) {
+                    if (!actionResult) {
+                        ref->Disconnect();
+                        return;
+                    }
 
-                    data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
-                    data.initialConnectionMode = mode;
+                    if (challenge != "") {
+                        InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST);
 
-                    data.deviceInfo.deviceAddress = endpoint.address().to_string();
-                    data.deviceInfo.deviceAddressPort = endpoint.port();
+                        ref->m_packagesOut.emplace_back(std::move(out));
+                        ref->m_sendFlag.Signal();
+                        return;
+                    }
 
-                    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FS, data);
+                    TCPEndpoint endpoint = TCPEndpoint(ref->m_socket.local_endpoint().address(), 0);
+                    ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [ref = std::move(ref), mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
+                         InitialConnectionData data{};
 
-                    m_packagesOut.emplace_back(std::move(out));
-                    m_sendFlag.Signal();
+                         data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+                         data.initialConnectionMode = mode;
+
+                         data.deviceInfo.deviceAddress = endpoint.address().to_string();
+                         data.deviceInfo.deviceAddressPort = endpoint.port();
+
+                         InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FS, data);
+
+                         ref->m_packagesOut.emplace_back(std::move(out));
+                         ref->m_sendFlag.Signal();
+                    });
                 });
+
+                ConnectionManager::SendEvent(event);
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FS)) {
                 package->GetValue(data);
@@ -221,6 +242,8 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
                 TCPEndpoint endpoint(asio::ip::make_address_v4(data.deviceInfo.deviceAddress), data.deviceInfo.deviceAddressPort);
                 ConnectionManager::ConnectPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode);
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST)) {
+
             }
         }
 
