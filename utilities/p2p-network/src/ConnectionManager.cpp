@@ -16,22 +16,22 @@ class PrimaryConnection;
 class InitialConnection;
 class LanDeviceScanner;
 
-void ConnectionManager::ConnectPrimary(TCPEndpoint&& endpoint) {
+void ConnectionManager::ConnectPrimary(TCPEndpoint&& endpoint, const uuid targetUUID, const InitialConnectionMode initialConnectionMode) {
     if (!s_isInitialized.load()) {
         Initialize();
     }
 
     s_instance->m_sslContext = CreateSSLContext(false);
-    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext);
+    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, initialConnectionMode, targetUUID);
 }
 
-void ConnectionManager::SeekPrimary(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint)>&& callback) {
+void ConnectionManager::SeekPrimary(TCPEndpoint&& endpoint, const uuid targetUUID, const InitialConnectionMode initialConnectionMode, std::function<void(TCPEndpoint)>&& callback) {
     if (!s_isInitialized.load()) {
         Initialize();
     }
 
     s_instance->m_sslContext = CreateSSLContext(true);
-    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, std::forward<std::function<void(TCPEndpoint)>>(callback));
+    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, initialConnectionMode, targetUUID, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
 
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
@@ -138,7 +138,7 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
 
     if (targetUUID != boost::uuids::nil_uuid() && std::filesystem::exists(targetCertificatePath)) {
         context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-        context->load_verify_file(targetCertificatePath.c_str());
+        context->load_verify_file(targetCertificatePath);
     } else {
         context->set_verify_mode(asio::ssl::verify_none);
         context->set_verify_callback(std::bind(&ConnectionManager::VerifyCallbackAlwaysAccept, std::placeholders::_1, std::placeholders::_2));

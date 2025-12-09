@@ -140,9 +140,48 @@ void CryptographicIdentityManager::LoadOrGenerateKeyPair(const std::filesystem::
     }
 }
 
-bool CryptographicIdentityManager::SavePeerCertificate(const std::string_view certificatePath, SSLSocket socket) {
+bool CryptographicIdentityManager::SavePeerCertificate(const std::string_view certificatePath, SSLSocket& socket) {
     const SSL* nativeHandler = socket.native_handle();
-    const std::unique_ptr<X509, decltype(&X509_free)> certificate(SSL_get1_peer_certificate(socket.native_handle()), X509_free);
+    const std::unique_ptr<X509, decltype(&X509_free)> certificate(SSL_get1_peer_certificate(nativeHandler), X509_free);
+
+    if (!certificate) {
+        Debug::LogWarning("No certificate presented by peer");
+        return false;
+    }
+
+    const std::filesystem::path path(certificatePath);
+    std::error_code errorCode;
+    std::filesystem::create_directories(path.parent_path(), errorCode);
+
+    if (errorCode) {
+        Debug::LogError("Filesystem error ({}): {}", errorCode.value(), errorCode.message());
+        return false;
+    }
+
+    BIO* outBio = BIO_new_file(path.string().c_str(), "wb");
+    if (!outBio) {
+        Debug::LogError("Failed to open BIO file: {}", path.string());
+        return false;
+    }
+
+    std::unique_ptr<BIO, decltype(&BIO_free)> bioGuard(outBio, BIO_free);
+
+    if (!PEM_write_bio_X509(outBio, certificate.get())) {
+        Debug::LogError("Failed to write certificate: {}", GetOpenSSLError());
+        return false;
+    }
+
+    return true;
+}
+
+bool CryptographicIdentityManager::SavePeerCertificate(const std::string_view certificatePath, SSLSocket *socket) {
+    if (socket == nullptr) {
+        Debug::LogError("Socket is null");
+        return false;
+    }
+
+    const SSL* nativeHandler = socket->native_handle();
+    const std::unique_ptr<X509, decltype(&X509_free)> certificate(SSL_get1_peer_certificate(nativeHandler), X509_free);
 
     if (!certificate) {
         Debug::LogWarning("No certificate presented by peer");

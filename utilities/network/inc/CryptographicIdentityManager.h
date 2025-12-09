@@ -23,7 +23,8 @@ public:
     static bool IsCertificateValid(std::string_view certificatePath);
     static void LoadOrGenerateKeyPair(const std::filesystem::path& path);
 
-    static bool SavePeerCertificate(std::string_view certificatePath, SSLSocket socket);
+    static bool SavePeerCertificate(std::string_view certificatePath, SSLSocket& socket);
+    static bool SavePeerCertificate(std::string_view certificatePath, SSLSocket* socket);
 
     static std::string GetPublicKey();
     static std::string GenerateRandomChallenge(size_t size = 32);
