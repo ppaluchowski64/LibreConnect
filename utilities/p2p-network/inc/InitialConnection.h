@@ -18,7 +18,9 @@ enum class InitialConnectionMode : uint8_t {
 };
 
 enum class InitialConnectionPackageType : PackageTypeInt {
-    CONNECT_INFO
+    DEVICE_DATA_FC,
+    DEVICE_DATA_FS,
+    CONNECTION_INFO
 };
 
 struct InitialConnectionData {
@@ -53,7 +55,7 @@ public:
     void Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint endpoint)>&& callback);
     void Disconnect(bool cancelSeeking = false);
 
-    void TemporaryOwnership(std::shared_ptr<InitialConnection> ptr);
+    void TemporaryOwnership(const std::shared_ptr<InitialConnection>& ptr);
 
 private:
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, InitialConnectionMode mode);

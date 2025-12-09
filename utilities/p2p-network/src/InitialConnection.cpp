@@ -3,6 +3,8 @@
 #include <Events.h>
 #include <ConnectionManager.h>
 
+typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnectionPackagePtr;
+
 InitialConnection::InitialConnection(IOContext& context) : m_context(context), m_strand(asio::make_strand(context)),
                                                            m_sendFlag(context.get_executor()), m_socket(context) {
 }
@@ -10,7 +12,6 @@ InitialConnection::InitialConnection(IOContext& context) : m_context(context), m
 std::shared_ptr<InitialConnection> InitialConnection::Create(IOContext& context) {
     return std::make_shared<InitialConnection>(context);
 }
-
 
 void InitialConnection::Connect(TCPEndpoint&& endpoint, const InitialConnectionMode mode) {
     asio::co_spawn(m_strand, CoConnect(std::move(endpoint), mode), asio::detached);
@@ -24,7 +25,7 @@ void InitialConnection::Disconnect(const bool cancelSeeking) {
     asio::co_spawn(m_strand, CoDisconnect(cancelSeeking), asio::detached);
 }
 
-void InitialConnection::TemporaryOwnership(std::shared_ptr<InitialConnection> ptr) {
+void InitialConnection::TemporaryOwnership(const std::shared_ptr<InitialConnection>& ptr) {
     m_temporaryOwnership = ptr;
 }
 
@@ -42,22 +43,18 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
 
         TCPEndpoint anyEndpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
 
-        // ReSharper disable once CppPassValueParameterByConstReference
-        // ReSharper disable once CppDeclarationHidesUncapturedLocal
-        ConnectionManager::SeekPrimary(std::move(anyEndpoint), [this, mode](const TCPEndpoint endpoint) {
-            asio::co_spawn(m_strand, CoSend(), asio::detached);
-            asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-            InitialConnectionData data;
+        asio::co_spawn(m_strand, CoSend(), asio::detached);
+        asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
-            data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
-            data.deviceInfo.deviceAddressPort = endpoint.port();
-            data.initialConnectionMode = mode;
+        InitialConnectionData data;
 
-            std::unique_ptr<Package<InitialConnectionPackageType>> package = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CONNECT_INFO, data);
-            m_packagesOut.emplace_back(std::move(package));
-            m_sendFlag.Signal();
-        });
+        data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+        data.initialConnectionMode = mode;
+
+        InitialConnectionPackagePtr package = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FC, data);
+        m_packagesOut.emplace_back(std::move(package));
+        m_sendFlag.Signal();
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
@@ -72,7 +69,6 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
     m_temporaryOwnership.reset();
 
     m_connectionState = ConnectionState::CONNECTING;
-
 
     try {
         m_socket = TCPSocket(m_context);
@@ -179,6 +175,8 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         std::vector<uint8_t> headerBuffer(PackageHeader::GetSerializedSize());
         PackageHeader header{};
 
+        InitialConnectionData data;
+
         while (m_connectionState == ConnectionState::CONNECTED) {
             asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
             co_await asio::async_read(m_socket, headerMutableBuffer, asio::use_awaitable);
@@ -197,24 +195,32 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             co_await asio::async_read(m_socket, packageBuffer, asio::use_awaitable);
             if (m_connectionState != ConnectionState::CONNECTED) break;
 
-            switch (header.type) {
-            case static_cast<uint16_t>(InitialConnectionPackageType::CONNECT_INFO):
-                InitialConnectionData data = package->GetValue<InitialConnectionData>();
+            if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FC)) {
+                package->GetValue(data);
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
 
-                if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+                TCPEndpoint endpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
+                ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
+                    InitialConnectionData data{};
 
-                } else if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+                    data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+                    data.initialConnectionMode = mode;
 
-                } else {
+                    data.deviceInfo.deviceAddress = endpoint.address().to_string();
+                    data.deviceInfo.deviceAddressPort = endpoint.port();
 
-                }
+                    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FS, data);
+
+                    m_packagesOut.emplace_back(std::move(out));
+                    m_sendFlag.Signal();
+                });
+
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FS)) {
+                package->GetValue(data);
+                data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
 
                 TCPEndpoint endpoint(asio::ip::make_address_v4(data.deviceInfo.deviceAddress), data.deviceInfo.deviceAddressPort);
-                ConnectionManager::ConnectPrimary(std::move(endpoint));
-
-                break;
-
+                ConnectionManager::ConnectPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode);
             }
         }
 

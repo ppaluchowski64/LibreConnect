@@ -1,7 +1,9 @@
+#include "CryptographicIdentityManager.h"
+
+#include <ConnectionManager.h>
+#include <Events.h>
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
-#include <Events.h>
-#include <ConnectionManager.h>
 
 class ConnectionManager;
 
@@ -14,12 +16,12 @@ std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context)
     return std::make_shared<PrimaryConnection>(context);
 }
 
-void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext) {
-    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext), asio::detached);
+void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID) {
+    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext, initialConnectionMode, targetUUID), asio::detached);
 }
 
-void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, std::function<void(TCPEndpoint)>&& callback) {
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext, std::move(callback)), asio::detached);
+void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID, std::function<void(TCPEndpoint)>&& callback) {
+    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext, initialConnectionMode, targetUUID, std::move(callback)), asio::detached);
 }
 
 void PrimaryConnection::Disconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
@@ -44,7 +46,7 @@ bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
-asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const std::shared_ptr<SSLContext> sslContext) {
+asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const std::shared_ptr<SSLContext> sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
     m_connectionState.store(ConnectionState::CONNECTING);
@@ -63,6 +65,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const s
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
+        asio::co_spawn(m_strand, CoProcessConnectionMode(initialConnectionMode, targetUUID), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
@@ -78,7 +81,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const s
     co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, std::function<void(TCPEndpoint)> callback) {
+asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID, std::function<void(TCPEndpoint)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_connectionState.store(ConnectionState::CONNECTING);
     m_sslContext = sslContext;
@@ -107,6 +110,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
+        asio::co_spawn(m_strand, CoProcessConnectionMode(initialConnectionMode, targetUUID), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
@@ -228,4 +232,17 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
         HandleAsioError(error.code());
         Disconnect(error.code());
     }
+}
+
+asio::awaitable<void> PrimaryConnection::CoProcessConnectionMode(const InitialConnectionMode initialConnectionMode, const uuid targetUUID) const {
+    if (m_connectionState.load() != ConnectionState::CONNECTED) {
+        co_return;
+    }
+
+    if (initialConnectionMode != InitialConnectionMode::PAIR_AND_CONNECT) {
+        co_return;
+    }
+
+    const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(targetUUID) + "/cert.key"};
+    CryptographicIdentityManager::SavePeerCertificate(targetCertificatePath, m_socket.get());
 }
