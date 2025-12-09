@@ -20,7 +20,8 @@ enum class InitialConnectionMode : uint8_t {
 enum class InitialConnectionPackageType : PackageTypeInt {
     DEVICE_DATA_FC,
     DEVICE_DATA_FS,
-    CONNECTION_INFO
+    CHALLENGE_ANSWER_REQUEST,
+    CHALLENGE_RESPONSE
 };
 
 struct InitialConnectionData {

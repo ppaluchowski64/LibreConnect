@@ -39,6 +39,7 @@ constexpr PackageSizeInt MAX_FULL_PACKAGE_SIZE = 1024 * 64;
 constexpr PackageSizeInt MAX_FILE_NAME_SIZE = 255;
 constexpr PackageSizeInt FILE_BUFFER_SIZE = 128 * 1024;
 constexpr uint32_t PACKAGES_WARN_THRESHOLD = 10000;
+constexpr uint32_t MAX_NUMBER_OF_VERIFICATION_TRIES = 5;
 
 const asio::ip::address_v4 DEVICE_DISCOVERY_MULTICAST_ADDRESS = asio::ip::make_address_v4("239.255.123.242");
 constexpr uint16_t DEVICE_DISCOVERY_MULTICAST_PORT            = 5430;
