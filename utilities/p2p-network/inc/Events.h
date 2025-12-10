@@ -19,6 +19,10 @@ public:
     explicit ConnectedEvent(const EventResult result) : QEvent(Type), m_status(result) {}
     EventResult GetResult() const { return m_status; }
 
+    ConnectedEvent* clone() const override {
+        return new ConnectedEvent(*this);
+    }
+
 private:
     EventResult m_status;
 };
@@ -28,6 +32,11 @@ public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+1);
     explicit DisconnectedEvent(const std::error_code code) : QEvent(Type), m_errorCode(code) {}
     std::error_code GetErrorCode() const { return m_errorCode; }
+
+    DisconnectedEvent* clone() const override {
+        return new DisconnectedEvent(*this);
+    }
+
 private:
     std::error_code m_errorCode;
 };
@@ -37,6 +46,11 @@ public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+2);
     explicit ScannerErrorEvent(const std::error_code errorCode) : QEvent(Type), m_errorCode(errorCode) {}
     std::error_code GetErrorCode() const { return m_errorCode; }
+
+    ScannerErrorEvent* clone() const override {
+        return new ScannerErrorEvent(*this);
+    }
+
 private:
     std::error_code m_errorCode;
 };
@@ -52,6 +66,10 @@ public:
     void AcceptConnectionIfVerified(const std::string& challenge) const { m_callback(false, challenge); }
     void DenyConnection() const { m_callback(false, ""); }
 
+    ConnectionPendingEvent* clone() const override {
+        return new ConnectionPendingEvent(*this);
+    }
+
 private:
     InitialConnectionMode m_mode;
     DeviceInfo m_deviceInfo;
@@ -66,6 +84,10 @@ public:
 
     void SendAnswer(const std::string& answer) const { m_callback(answer); }
 
+    ConnectionVerificationEvent* clone() const override {
+        return new ConnectionVerificationEvent(*this);
+    }
+
 private:
     std::function<void(std::string)> m_callback;
 
@@ -77,6 +99,10 @@ public:
     explicit ConnectionFailedVerificationEvent(const int32_t leftTries) : QEvent(Type), m_leftTries(leftTries) {}
 
     int32_t GetLeftTries() const { return m_leftTries; }
+
+    ConnectionFailedVerificationEvent* clone() const override {
+        return new ConnectionFailedVerificationEvent(*this);
+    }
 
 private:
     int32_t m_leftTries;

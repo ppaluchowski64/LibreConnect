@@ -82,6 +82,8 @@ void ConnectionManager::StartAcceptingConnections() {
         Initialize();
     }
 
+    std::lock_guard<std::mutex> lock(s_mutex);
+
     if (s_instance->m_initialConnectionOut != nullptr) {
         s_instance->m_initialConnectionOut->Disconnect();
     }
@@ -222,8 +224,12 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         SSLContext::no_tlsv1_1
     );
 
-    context->use_certificate_chain_file(certificatePath.data());
-    context->use_private_key_file(privateKeyPath.data(), SSLContext::pem);
+    try {
+        context->use_certificate_chain_file(certificatePath.data());
+        context->use_private_key_file(privateKeyPath.data(), SSLContext::pem);
+    } catch (const std::system_error& e) {
+        Debug::LogError("Failed to load SSL certs: {}", e.what());
+    }
 
     return context;
 }
@@ -331,6 +337,11 @@ ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_con
 
 void ConnectionManager::Initialize() {
     std::lock_guard<std::mutex> lock(s_mutex);
+
+    if (s_isInitialized.load()) {
+        return;
+    }
+
     s_instance = new ConnectionManager();
     s_isInitialized.store(true);
 }
