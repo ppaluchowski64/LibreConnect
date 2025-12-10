@@ -70,7 +70,7 @@ private:
 
     asio::awaitable<void> CoProcessConnectionVerificationEvent(std::string&& response);
     asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string&& challenge);
-    asio::awaitable<void> CoPrimaryConnectionCallback(TCPEndpoint endpoint, InitialConnectionMode mode);
+    asio::awaitable<void> CoPrimaryConnectionCallback(InitialConnectionData data);
 
     IOContext& m_context;
     asio::strand<asio::io_context::executor_type> m_strand;

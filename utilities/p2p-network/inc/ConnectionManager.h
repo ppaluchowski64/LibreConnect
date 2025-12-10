@@ -59,8 +59,8 @@ private:
     friend class LanDeviceScanner;
     friend class InitialConnection;
 
-    static void ConnectPrimary(TCPEndpoint&& endpoint, uuid targetUUID, InitialConnectionMode initialConnectionMode);
-    static void SeekPrimary(TCPEndpoint&& endpoint, uuid targetUUID, InitialConnectionMode initialConnectionMode, std::function<void(TCPEndpoint)>&& callback = nullptr);
+    static void ConnectPrimary(const InitialConnectionData& data);
+    static void SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback = nullptr);
 
     static void SeekInitialConnection(TCPEndpoint endpoint);
 
