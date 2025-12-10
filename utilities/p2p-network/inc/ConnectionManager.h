@@ -11,7 +11,6 @@
 #include <ConcurrentUnorderedMap.h>
 #include <boost/uuid/nil_generator.hpp>
 
-
 enum class InitialConnectionMode : uint8_t;
 
 class ConnectionManager final {
@@ -22,6 +21,8 @@ public:
     static void StartAcceptingConnections();
     static void StopAcceptingConnections();
     static void Connect(const std::string& address, uint16_t port, InitialConnectionMode mode);
+
+    static std::vector<DeviceInfoLite> GetPairedDevices();
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
