@@ -8,6 +8,8 @@
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 #include <InitialConnection.h>
+#include <iostream>
+#include <nlohmann/json.hpp>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -122,6 +124,64 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
 
     TCPEndpoint endpoint(asio::ip::make_address_v4(address), port);
     s_instance->m_initialConnectionOut->Connect(std::move(endpoint), mode);
+}
+
+std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
+    std::vector<DeviceInfoLite> devices;
+    std::error_code errorCode;
+
+    static boost::uuids::string_generator generator;
+
+    if (!std::filesystem::exists("certs", errorCode)) {
+        Debug::LogWarning("Certs directory does not exist");
+        return devices;
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator("certs", errorCode)) {
+        if (errorCode) {
+            Debug::LogError("GetPairedDevices error: {}", errorCode.message());
+            break;
+        }
+
+        std::string name = entry.path().filename().string();
+        if (entry.is_directory() && name != "local") {
+            DeviceInfoLite device{};
+
+            try {
+                device.deviceID = generator(name);
+            } catch (const std::system_error& e) {
+                Debug::LogWarning("Invalid UUID directory: {}", name);
+                continue;
+            }
+
+            std::filesystem::path path = entry.path() / "data.JSON";
+            std::ifstream file(path.string(), std::ios::binary);
+
+            if (!file) {
+                Debug::LogWarning("Missing data.JSON for device {}", name);
+                continue;
+            }
+
+            try {
+                std::string rawJson{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+
+                nlohmann::json json = nlohmann::json::parse(rawJson);
+                device.deviceName = json.value("name", "");
+                if (json.contains("type") && json["type"].is_number_integer()) {
+                    device.deviceType = static_cast<DeviceType>(json["type"].get<int>());
+                } else {
+                    device.deviceType = DeviceType::Unknown;
+                }
+
+                devices.push_back(device);
+
+            } catch (const nlohmann::json::exception& exception) {
+                Debug::LogWarning("Invalid JSON in {}: {}", path.string(), exception.what());
+            }
+        }
+    }
+
+    return devices;
 }
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {

@@ -10,6 +10,12 @@ class ConnectionManager;
 class InitialConnection;
 class DeviceData;
 
+struct DeviceInfoLite {
+    std::string deviceName;
+    boost::uuids::uuid deviceID;
+    DeviceType deviceType;
+};
+
 struct DeviceInfo {
     std::string deviceName;
     std::string deviceAddress;
