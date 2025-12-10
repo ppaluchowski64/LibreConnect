@@ -231,7 +231,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 }
 
                 TCPEndpoint endpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
-                ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
+                ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](TCPEndpoint endpoint) {
                     asio::co_spawn(m_strand, CoPrimaryConnectionCallback(std::move(endpoint), mode), asio::detached);
                 });
 
@@ -240,7 +240,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
                 std::unique_ptr<QEvent> event = std::make_unique<ConnectionFailedVerificationEvent>(leftTries);
                 ConnectionManager::SendEvent(event);
-                
+
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST)) {
                 std::unique_ptr<ConnectionVerificationEvent> event = std::make_unique<ConnectionVerificationEvent>([this](std::string response) {
                     asio::co_spawn(m_strand, CoProcessConnectionVerificationEvent(std::move(response)), asio::detached);
