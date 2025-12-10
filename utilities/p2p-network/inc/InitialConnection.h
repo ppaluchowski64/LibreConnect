@@ -65,6 +65,9 @@ private:
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
+    asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string&& challenge);
+    asio::awaitable<void> CoPrimaryConnectionCallback(TCPEndpoint endpoint, InitialConnectionMode mode);
+
     IOContext& m_context;
     asio::strand<asio::io_context::executor_type> m_strand;
 

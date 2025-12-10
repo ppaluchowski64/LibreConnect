@@ -203,35 +203,8 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
 
                 // ReSharper disable once CppPassValueParameterByConstReference
-                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data](const bool actionResult, const std::string challenge) {
-                    if (!actionResult) {
-                        ref->Disconnect();
-                        return;
-                    }
-
-                    if (challenge != "") {
-                        InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST);
-
-                        ref->m_packagesOut.emplace_back(std::move(out));
-                        ref->m_sendFlag.Signal();
-                        return;
-                    }
-
-                    TCPEndpoint endpoint = TCPEndpoint(ref->m_socket.local_endpoint().address(), 0);
-                    ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [ref = std::move(ref), mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
-                         InitialConnectionData data{};
-
-                         data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
-                         data.initialConnectionMode = mode;
-
-                         data.deviceInfo.deviceAddress = endpoint.address().to_string();
-                         data.deviceInfo.deviceAddressPort = endpoint.port();
-
-                         InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FS, data);
-
-                         ref->m_packagesOut.emplace_back(std::move(out));
-                         ref->m_sendFlag.Signal();
-                    });
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data, this](const bool actionResult, std::string challenge) {
+                    asio::co_spawn(m_strand, CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
                 });
 
                 ConnectionManager::SendEvent(event);
@@ -252,4 +225,41 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         HandleAsioError(error.code());
         Disconnect();
     }
+}
+
+asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(const bool actionResult, InitialConnectionData data, std::string&& challenge){
+    if (!actionResult) {
+        Disconnect();
+        co_return;
+    }
+
+    if (challenge != "") {
+        InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST);
+
+        m_packagesOut.emplace_back(std::move(out));
+        m_sendFlag.Signal();
+        co_return;
+    }
+
+    TCPEndpoint endpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
+    ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
+         asio::co_spawn(m_strand, CoPrimaryConnectionCallback(std::move(endpoint), mode), asio::detached);
+    });
+}
+
+asio::awaitable<void> InitialConnection::CoPrimaryConnectionCallback(const TCPEndpoint endpoint, const InitialConnectionMode mode) {
+    InitialConnectionData data{};
+
+    data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+    data.initialConnectionMode = mode;
+
+    data.deviceInfo.deviceAddress = endpoint.address().to_string();
+    data.deviceInfo.deviceAddressPort = endpoint.port();
+
+    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FS, data);
+
+    m_packagesOut.emplace_back(std::move(out));
+    m_sendFlag.Signal();
+
+    co_return;
 }
