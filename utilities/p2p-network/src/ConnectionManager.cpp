@@ -4,6 +4,7 @@
 #include <Events.h>
 #include <DeviceInfo.h>
 #include <QPointer>
+#include <utility>
 #include <openssl/x509.h>
 #include <openssl/x509_vfy.h>
 #include <InitialConnection.h>
@@ -21,7 +22,12 @@ void ConnectionManager::ConnectPrimary(TCPEndpoint&& endpoint, const uuid target
         Initialize();
     }
 
-    s_instance->m_sslContext = CreateSSLContext(false);
+    if (initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+        s_instance->m_sslContext = CreateSSLContext(true, targetUUID);
+    } else {
+        s_instance->m_sslContext = CreateSSLContext(true);
+    }
+
     s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, initialConnectionMode, targetUUID);
 }
 
@@ -30,7 +36,12 @@ void ConnectionManager::SeekPrimary(TCPEndpoint&& endpoint, const uuid targetUUI
         Initialize();
     }
 
-    s_instance->m_sslContext = CreateSSLContext(true);
+    if (initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+        s_instance->m_sslContext = CreateSSLContext(true, targetUUID);
+    } else {
+        s_instance->m_sslContext = CreateSSLContext(true);
+    }
+
     s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, initialConnectionMode, targetUUID, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
 
@@ -45,11 +56,10 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
         std::lock_guard<std::mutex> lock(s_mutex);
         bool placed = false;
 
-        for (int i = 0; i < s_instance->m_initialConnectionsIn.size(); i++) {
-            if (!s_instance->m_initialConnectionsIn[i].lock()) {
-                s_instance->m_initialConnectionsIn[i] = connection;
+        for (auto& elem : s_instance->m_initialConnectionsIn) {
+            if (!elem.lock()) {
+                elem = connection;
                 placed = true;
-
                 break;
             }
         }
@@ -92,8 +102,8 @@ void ConnectionManager::StopAcceptingConnections() {
         s_instance->m_initialConnectionOut.reset();
     }
 
-    for (int i = 0; i < s_instance->m_initialConnectionsIn.size(); i++) {
-        if (const auto ref = s_instance->m_initialConnectionsIn[i].lock()) {
+    for (const auto& elem : s_instance->m_initialConnectionsIn) {
+        if (const auto ref = elem.lock()) {
             ref->Disconnect();
         }
     }
@@ -180,12 +190,13 @@ void ConnectionManager::SetSeekingEndpoint(TCPEndpoint endpoint) {
     }
 
     std::lock_guard<std::mutex> lock(s_mutex);
-    s_instance->m_seekingEndpoint = endpoint;
+    s_instance->m_seekingEndpoint = std::move(endpoint);
 }
 
 asio::awaitable<void> ConnectionManager::CoProcessPackages() {
     const std::shared_ptr<AwaitableFlag> receiveFlag = m_primaryConnection->GetReceiveFlag();
 
+    // ReSharper disable once CppDFAEndlessLoop
     while (true) {
         co_await receiveFlag->Wait();
         receiveFlag->Reset();

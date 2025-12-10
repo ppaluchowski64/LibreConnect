@@ -26,6 +26,8 @@ enum class InitialConnectionPackageType : PackageTypeInt {
 };
 
 struct InitialConnectionData {
+    InitialConnectionData() : deviceInfo(), initialConnectionMode(InitialConnectionMode::CONNECTION_WITHOUT_PAIR) {}
+
     DeviceInfo deviceInfo;
     InitialConnectionMode initialConnectionMode;
 

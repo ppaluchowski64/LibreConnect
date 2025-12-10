@@ -6,7 +6,7 @@
 typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnectionPackagePtr;
 
 InitialConnection::InitialConnection(IOContext& context) : m_context(context), m_strand(asio::make_strand(context)),
-                                                           m_sendFlag(context.get_executor()), m_socket(context), m_challengeLeftTries(0), m_challengeResult("") {
+                                                           m_sendFlag(context.get_executor()), m_socket(context), m_challengeLeftTries(0){
 }
 
 std::shared_ptr<InitialConnection> InitialConnection::Create(IOContext& context) {
@@ -40,9 +40,6 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
         Debug::Log("Accepted TCP initial connection to {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
 
         m_connectionState = ConnectionState::CONNECTED;
-
-        TCPEndpoint anyEndpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
-
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -274,7 +271,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     m_challengeLeftTries = MAX_NUMBER_OF_VERIFICATION_TRIES;
     m_challengeResult = std::move(challenge);
 
-    if (m_challengeResult != "") {
+    if (!m_challengeResult.empty()) {
         InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST);
 
         m_packagesOut.emplace_back(std::move(out));
@@ -283,7 +280,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     }
 
     TCPEndpoint endpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
-    ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
+    ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](TCPEndpoint endpoint) {
          asio::co_spawn(m_strand, CoPrimaryConnectionCallback(std::move(endpoint), mode), asio::detached);
     });
 }
