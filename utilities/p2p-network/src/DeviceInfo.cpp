@@ -10,6 +10,7 @@ DeviceInfo DeviceInfo::GetThisDeviceInfo() {
     device.deviceName = asio::ip::host_name();
     device.deviceID   = DeviceData::GetDeviceUUID();
     device.deviceAddressPort = endpoint.port();
+    device.deviceType = DeviceTypeDetector::GetDeviceType();
 
     return device;
 }

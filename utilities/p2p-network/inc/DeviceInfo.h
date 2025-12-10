@@ -4,6 +4,7 @@
 #include <vector>
 #include <Packable.h>
 #include <boost/uuid.hpp>
+#include <DeviceTypeDetector.h>
 
 class ConnectionManager;
 class InitialConnection;
@@ -14,6 +15,7 @@ struct DeviceInfo {
     std::string deviceAddress;
     std::uint16_t deviceAddressPort;
     boost::uuids::uuid deviceID;
+    DeviceType deviceType;
 
     static DeviceInfo GetThisDeviceInfo();
 
@@ -21,16 +23,18 @@ struct DeviceInfo {
         SerializeObject(deviceName, buffer, offset);
         SerializeObject(deviceAddressPort, buffer, offset);
         SerializeObject(deviceID, buffer, offset);
+        SerializeObject(deviceType, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
         DeserializeObject(deviceName, buffer,offset);
         DeserializeObject(deviceAddressPort, buffer,offset);
         DeserializeObject(deviceID, buffer, offset);
+        DeserializeObject(deviceType, buffer, offset);
     }
 
     inline size_t GetSerializedSize() const {
-        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceAddressPort) + GetObjectSerializedSize(deviceID);
+        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceAddressPort) + GetObjectSerializedSize(deviceID) + GetObjectSerializedSize(deviceType);
     }
 };
 

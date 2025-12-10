@@ -17,32 +17,32 @@ class PrimaryConnection;
 class InitialConnection;
 class LanDeviceScanner;
 
-void ConnectionManager::ConnectPrimary(TCPEndpoint&& endpoint, const uuid targetUUID, const InitialConnectionMode initialConnectionMode) {
+void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
     if (!s_isInitialized.load()) {
         Initialize();
     }
 
-    if (initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
-        s_instance->m_sslContext = CreateSSLContext(true, targetUUID);
+    if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+        s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
     } else {
         s_instance->m_sslContext = CreateSSLContext(true);
     }
 
-    s_instance->m_primaryConnection->Connect(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, initialConnectionMode, targetUUID);
+    s_instance->m_primaryConnection->Connect(s_instance->m_sslContext, data);
 }
 
-void ConnectionManager::SeekPrimary(TCPEndpoint&& endpoint, const uuid targetUUID, const InitialConnectionMode initialConnectionMode, std::function<void(TCPEndpoint)>&& callback) {
+void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
     if (!s_isInitialized.load()) {
         Initialize();
     }
 
-    if (initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
-        s_instance->m_sslContext = CreateSSLContext(true, targetUUID);
+    if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+        s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
     } else {
         s_instance->m_sslContext = CreateSSLContext(true);
     }
 
-    s_instance->m_primaryConnection->Seek(std::forward<TCPEndpoint>(endpoint), s_instance->m_sslContext, initialConnectionMode, targetUUID, std::forward<std::function<void(TCPEndpoint)>>(callback));
+    s_instance->m_primaryConnection->Seek(s_instance->m_sslContext, data, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
 
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {

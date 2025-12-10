@@ -31,8 +31,9 @@ public:
 
     static std::shared_ptr<PrimaryConnection> Create(IOContext& context);
 
-    void Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, InitialConnectionMode initialConnectionMode, uuid targetUUID);
-    void Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, InitialConnectionMode initialConnectionMode, uuid targetUUID, std::function<void(TCPEndpoint)>&& callback);
+    void Connect(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data);
+    void Seek(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback);
+
     void Disconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
 
     template <Serializable... Args>
@@ -59,13 +60,16 @@ public:
 
 
 private:
-    asio::awaitable<void> CoConnect(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, InitialConnectionMode initialConnectionMode, uuid targetUUID);
-    asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, InitialConnectionMode initialConnectionMode, uuid targetUUID, std::function<void(TCPEndpoint)> callback);
+    asio::awaitable<void> CoConnect(std::shared_ptr<SSLContext> sslContext, InitialConnectionData data);
+    asio::awaitable<void> CoSeek(std::shared_ptr<SSLContext> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback);
+
     asio::awaitable<void> CoCleanupConnection();
     asio::awaitable<void> CoDisconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
-    asio::awaitable<void> CoProcessConnectionMode(InitialConnectionMode initialConnectionMode, uuid targetUUID) const;
+
+    static void SavePairData(const InitialConnectionData& data);
+    void SaveCertificate(const InitialConnectionData& data) const;
 
     IOContext&      m_context;
     asio::strand<asio::io_context::executor_type> m_strand;

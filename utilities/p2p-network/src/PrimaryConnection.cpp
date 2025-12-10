@@ -1,4 +1,5 @@
-#include "CryptographicIdentityManager.h"
+#include <CryptographicIdentityManager.h>
+#include <nlohmann/json.hpp>
 
 #include <ConnectionManager.h>
 #include <Events.h>
@@ -16,12 +17,12 @@ std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context)
     return std::make_shared<PrimaryConnection>(context);
 }
 
-void PrimaryConnection::Connect(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID) {
-    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), sslContext, initialConnectionMode, targetUUID), asio::detached);
+void PrimaryConnection::Connect(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data) {
+    asio::co_spawn(m_strand, CoConnect(sslContext, data), asio::detached);
 }
 
-void PrimaryConnection::Seek(TCPEndpoint&& endpoint, const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID, std::function<void(TCPEndpoint)>&& callback) {
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), sslContext, initialConnectionMode, targetUUID, std::move(callback)), asio::detached);
+void PrimaryConnection::Seek(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
+    asio::co_spawn(m_strand, CoSeek(sslContext, data, std::move(callback)), asio::detached);
 }
 
 void PrimaryConnection::Disconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
@@ -46,12 +47,14 @@ bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
-asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const std::shared_ptr<SSLContext> sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID) {
+asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
     m_connectionState.store(ConnectionState::CONNECTING);
 
     try {
+        TCPEndpoint endpoint(asio::ip::make_address_v4(data.deviceInfo.deviceAddress), data.deviceInfo.deviceAddressPort);
+
         co_await CoCleanupConnection();
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
@@ -64,32 +67,36 @@ asio::awaitable<void> PrimaryConnection::CoConnect(TCPEndpoint endpoint, const s
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::co_spawn(m_strand, CoProcessConnectionMode(initialConnectionMode, targetUUID), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
 
+        if (data.initialConnectionMode != InitialConnectionMode::CONNECTION_WITHOUT_PAIR) {
+            SavePairData(data);
+        }
+
+        if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+            SaveCertificate(data);
+        }
+
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
         Disconnect(error.code());
-
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
     }
-
-    co_return;
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::shared_ptr<SSLContext> sslContext, const InitialConnectionMode initialConnectionMode, const uuid targetUUID, std::function<void(TCPEndpoint)> callback) {
+asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-    m_connectionState.store(ConnectionState::CONNECTING);
     m_sslContext = sslContext;
+    m_connectionState.store(ConnectionState::CONNECTING);
 
     try {
         co_await CoCleanupConnection();
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
-        TCPAcceptor acceptor(m_context, endpoint);
+        TCPAcceptor acceptor(m_context);
         TCPEndpoint listenEndpoint = acceptor.local_endpoint();
 
         asio::post(
@@ -108,20 +115,24 @@ asio::awaitable<void> PrimaryConnection::CoSeek(TCPEndpoint endpoint, std::share
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::co_spawn(m_strand, CoProcessConnectionMode(initialConnectionMode, targetUUID), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
 
+        if (data.initialConnectionMode != InitialConnectionMode::CONNECTION_WITHOUT_PAIR) {
+            SavePairData(data);
+        }
+
+        if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+            SaveCertificate(data);
+        }
+
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
         Disconnect(error.code());
-
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
     }
-
-    co_return;
 }
 
 asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
@@ -232,15 +243,18 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoProcessConnectionMode(const InitialConnectionMode initialConnectionMode, const uuid targetUUID) const {
-    if (m_connectionState.load() != ConnectionState::CONNECTED) {
-        co_return;
-    }
+void PrimaryConnection::SavePairData(const InitialConnectionData& data) {
+    const std::string targetDataPath{"certs/" + boost::uuids::to_string(data.deviceInfo.deviceID) + "/data.JSON"};
 
-    if (initialConnectionMode != InitialConnectionMode::PAIR_AND_CONNECT) {
-        co_return;
-    }
+    nlohmann::json targetData;
+    targetData["name"] = data.deviceInfo.deviceName;
+    targetData["type"] = data.deviceInfo.deviceType;
 
-    const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(targetUUID) + "/cert.key"};
+    std::ofstream file(targetDataPath);
+    file << targetData.dump(4);
+}
+
+void PrimaryConnection::SaveCertificate(const InitialConnectionData& data) const {
+    const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(data.deviceInfo.deviceID) + "/cert.key"};
     CryptographicIdentityManager::SavePeerCertificate(targetCertificatePath, m_socket.get());
 }
