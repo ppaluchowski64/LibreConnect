@@ -6,7 +6,7 @@
 typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnectionPackagePtr;
 
 InitialConnection::InitialConnection(IOContext& context) : m_context(context), m_strand(asio::make_strand(context)),
-                                                           m_sendFlag(context.get_executor()), m_socket(context) {
+                                                           m_sendFlag(context.get_executor()), m_socket(context), m_challengeLeftTries(0), m_challengeResult("") {
 }
 
 std::shared_ptr<InitialConnection> InitialConnection::Create(IOContext& context) {
@@ -176,8 +176,6 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         PackageHeader header{};
 
         InitialConnectionData data;
-        uint32_t triesLeft = MAX_NUMBER_OF_VERIFICATION_TRIES;
-        std::string challengeAnswer = "";
 
 
         while (m_connectionState == ConnectionState::CONNECTED) {
@@ -210,12 +208,43 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 ConnectionManager::SendEvent(event);
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FS)) {
-                package->GetValue(data);
-                data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
+                auto [deviceInfo, initialConnectionMode] = package->GetValue<InitialConnectionData>();
+                deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
 
-                TCPEndpoint endpoint(asio::ip::make_address_v4(data.deviceInfo.deviceAddress), data.deviceInfo.deviceAddressPort);
-                ConnectionManager::ConnectPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode);
+                TCPEndpoint endpoint(asio::ip::make_address_v4(deviceInfo.deviceAddress), deviceInfo.deviceAddressPort);
+                ConnectionManager::ConnectPrimary(std::move(endpoint), deviceInfo.deviceID, initialConnectionMode);
+
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_RESPONSE)) {
+                if (m_challengeLeftTries <= 0) {
+                    continue;
+                }
+
+                const std::string response = package->GetValue<std::string>();
+                if (response != m_challengeResult) {
+                    m_challengeLeftTries--;
+
+                    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER, m_challengeLeftTries);
+
+                    m_packagesOut.emplace_back(std::move(out));
+                    m_sendFlag.Signal();
+                    continue;
+                }
+
+                TCPEndpoint endpoint = TCPEndpoint(m_socket.local_endpoint().address(), 0);
+                ConnectionManager::SeekPrimary(std::move(endpoint), data.deviceInfo.deviceID, data.initialConnectionMode, [this, mode = data.initialConnectionMode](const TCPEndpoint endpoint) {
+                    asio::co_spawn(m_strand, CoPrimaryConnectionCallback(std::move(endpoint), mode), asio::detached);
+                });
+
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER)) {
+                int32_t leftTries = package->GetValue<int32_t>();
+
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionFailedVerificationEvent>(leftTries);
+                ConnectionManager::SendEvent(event);
+                
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST)) {
+                std::unique_ptr<ConnectionVerificationEvent> event = std::make_unique<ConnectionVerificationEvent>([this](std::string response) {
+                    asio::co_spawn(m_strand, CoProcessConnectionVerificationEvent(std::move(response)), asio::detached);
+                });
 
             }
         }
@@ -227,13 +256,25 @@ asio::awaitable<void> InitialConnection::CoReceive() {
     }
 }
 
+asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(std::string&& response) {
+    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_RESPONSE, std::move(response));
+
+    m_packagesOut.emplace_back(std::move(out));
+    m_sendFlag.Signal();
+
+    co_return;
+}
+
 asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(const bool actionResult, InitialConnectionData data, std::string&& challenge){
     if (!actionResult) {
         Disconnect();
         co_return;
     }
 
-    if (challenge != "") {
+    m_challengeLeftTries = MAX_NUMBER_OF_VERIFICATION_TRIES;
+    m_challengeResult = std::move(challenge);
+
+    if (m_challengeResult != "") {
         InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST);
 
         m_packagesOut.emplace_back(std::move(out));

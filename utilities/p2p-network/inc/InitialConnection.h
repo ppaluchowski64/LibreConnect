@@ -21,7 +21,8 @@ enum class InitialConnectionPackageType : PackageTypeInt {
     DEVICE_DATA_FC,
     DEVICE_DATA_FS,
     CHALLENGE_ANSWER_REQUEST,
-    CHALLENGE_RESPONSE
+    CHALLENGE_RESPONSE,
+    CHALLENGE_WRONG_ANSWER
 };
 
 struct InitialConnectionData {
@@ -65,6 +66,7 @@ private:
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
+    asio::awaitable<void> CoProcessConnectionVerificationEvent(std::string&& response);
     asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string&& challenge);
     asio::awaitable<void> CoPrimaryConnectionCallback(TCPEndpoint endpoint, InitialConnectionMode mode);
 
@@ -73,6 +75,9 @@ private:
 
     AwaitableFlag m_sendFlag;
     TCPSocket m_socket;
+
+    int32_t m_challengeLeftTries;
+    std::string m_challengeResult;
 
     std::deque<std::unique_ptr<Package<InitialConnectionPackageType>>> m_packagesOut;
     ConnectionState m_connectionState{ConnectionState::DISCONNECTED};

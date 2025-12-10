@@ -71,5 +71,16 @@ private:
 
 };
 
+class ConnectionFailedVerificationEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+5);
+    explicit ConnectionFailedVerificationEvent(const int32_t leftTries) : QEvent(Type), m_leftTries(leftTries) {}
+
+    int32_t GetLeftTries() const { return m_leftTries; }
+
+private:
+    int32_t m_leftTries;
+
+};
 
 #endif //EVENTS_H
