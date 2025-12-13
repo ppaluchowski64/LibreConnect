@@ -77,8 +77,7 @@ void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
     emit pendingChanged();
 
     if (!success) {
-        m_lastError = QStringLiteral("Connection failed");
-        emit lastErrorChanged();
+        handleError("Connection failed", ev->type());
     }
 }
 
@@ -90,14 +89,28 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
     emit connectedChanged();
     emit pendingChanged();
 
-    m_lastError = QString::fromStdString(ev->GetErrorCode().message());
+    handleError(ev->GetErrorCode().message(), ev->type());
+}
+
+void DeviceConnectionController::handleError(const std::string& message)
+{
+    Debug::LogError("DeviceConnectionController error: {}", message);
+    m_lastError = QString::fromStdString(message);
+
+    emit lastErrorChanged();
+}
+
+void DeviceConnectionController::handleError(const std::string& message, QEvent::Type type)
+{
+    Debug::LogError("DeviceConnectionController error from event {}: {}", static_cast<int>(type), message);
+    m_lastError = QString::fromStdString(message);
+
     emit lastErrorChanged();
 }
 
 void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
 {
-    m_lastError = QString::fromStdString(ev->GetErrorCode().message());
-    emit lastErrorChanged();
+    handleError(ev->GetErrorCode().message(), ev->type());
 }
 
 void DeviceConnectionController::handleConnectionPendingEvent(ConnectionPendingEvent* ev)
