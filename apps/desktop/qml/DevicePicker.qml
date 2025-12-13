@@ -222,7 +222,6 @@ Page {
         // If connection fails or disconnects -> show error popup later
         function onLastErrorChanged() {
             if (conn.lastError.length > 0) {
-                console.log("Connection error:", conn.lastError)
                 isConnecting = false
             }
         }

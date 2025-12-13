@@ -49,6 +49,9 @@ private:
     void handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev);
     void handleConnectionVerificationEvent(ConnectionVerificationEvent* ev);
 
+    void handleError(const std::string& message);
+    void handleError(const std::string& message, QEvent::Type eventType);
+
     bool m_connected = false;
     bool m_pending   = false;
     QString m_lastError;
