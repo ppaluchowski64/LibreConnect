@@ -7,26 +7,19 @@ Page {
     DeviceDiscovery {
         id: discovery
     }
+    DeviceConnectionController {
+        id: conn
+    }
     property bool isConnecting: false
-    property var connectingTo: null
-
     function connectToCurrent() {
         if (deviceListView.currentIndex < 0 || isConnecting)
             return
-        connectingTo = discovery.model.get(deviceListView.currentIndex)
+
+        const dev = discovery.deviceAt(deviceListView.currentIndex)
+
+        conn.connectTo(dev.ipAddress, 5000, 0)
+
         isConnecting = true
-        connectTimer.restart()
-    }
-    // still fake
-    Timer {
-        id: connectTimer
-        interval: 1200
-        repeat: false
-        onTriggered: {
-            isConnecting = false
-            devicePicker.StackView.view.push(
-                "qrc:/LibreConnect/desktop/Connected.qml")
-        }
     }
 
     Image {
@@ -158,7 +151,8 @@ Page {
             width: 120
             height: 48
             font.pixelSize: 16
-            enabled: deviceListView.currentIndex >= 0 && !isConnecting
+            enabled: deviceListView.currentIndex >= 0 && !conn.pending && !conn.connected
+
             onClicked: devicePicker.connectToCurrent()
         }
 
@@ -214,6 +208,32 @@ Page {
             }
         }
     }
+    Connections {
+        target: conn
 
-    Component.onCompleted: discovery.discover()
+        // When connected successfully -> navigate to connected page
+        function onConnectedChanged() {
+            if (conn.connected) {
+                isConnecting = false
+                devicePicker.StackView.view.push("qrc:/LibreConnect/desktop/Connected.qml")
+            }
+        }
+
+        // If connection fails or disconnects -> show error popup later
+        function onLastErrorChanged() {
+            if (conn.lastError.length > 0) {
+                console.log("Connection error:", conn.lastError)
+                isConnecting = false
+            }
+        }
+
+        function onPendingChanged() {
+            isConnecting = conn.pending
+        }
+    }
+
+    Component.onCompleted: {
+        discovery.discover();
+        console.log("DevicePicker loaded OK");
+    }
 }
