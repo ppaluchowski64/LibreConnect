@@ -1,16 +1,12 @@
 #ifndef VIRTUAL_CAMERA_H
 #define VIRTUAL_CAMERA_H
 
-
-#ifdef _WIN32
-#include <softcam/softcam.h>
-#endif
-
 #include <memory>
 #include <boost/uuid/uuid.hpp>
 
-class FrameBuffer {
-
+enum class FrameFormat : uint8_t {
+    RGBA32,
+    NV12
 };
 
 class VirtualCamera final {
@@ -19,22 +15,16 @@ public:
     VirtualCamera(const VirtualCamera&) = delete;
     VirtualCamera& operator=(const VirtualCamera&) = delete;
 
-    void StartStream(int width, int height, int fps);
-    void StopStream();
-    void SetFrameBuffer(const std::shared_ptr<FrameBuffer>& frameBuffer);
-    void Flush() const;
+    void Start(std::string_view name, FrameFormat format, int width, int height, int fps);
+    void Stop();
+    void PushFrame(const void* data) const;
 
 private:
-    void SetupStream(int width, int height, int fps);
-    void DestroyStream();
+    void SetupCamera(std::string_view name, FrameFormat format, int width, int height, int fps);
+    void DestroyCamera();
 
     boost::uuids::uuid m_cameraID;
-    std::shared_ptr<FrameBuffer> m_frameBuffer{nullptr};
     bool m_active{false};
-
-#ifdef _WIN32
-    scCamera m_camera{nullptr};
-#endif
 
 };
 

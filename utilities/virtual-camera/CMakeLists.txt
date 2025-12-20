@@ -1,37 +1,45 @@
+file(GLOB_RECURSE COMMON_SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cxx
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cc
+)
+
+file(GLOB_RECURSE COMMON_HEADER_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc/*.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc/*.hpp
+)
+
 if (WIN32)
-    include(ExternalProject)
-    find_program(MSBUILD_EXECUTABLE NAMES MSBuild.exe MSBuild)
-
-    if (NOT MSBUILD_EXECUTABLE)
-        message(FATAL_ERROR "Required MSBuild not found")
-    endif()
-
-    ExternalProject_Add(
-            softcam_project
-            GIT_REPOSITORY https://github.com/tshino/softcam.git
-            GIT_TAG v1.8.1
-            CONFIGURE_COMMAND ""
-            BUILD_IN_SOURCE 1
-            BUILD_COMMAND
-            "${MSBUILD_EXECUTABLE}"
-            "<SOURCE_DIR>/softcam.sln"
-            /p:Configuration=Release
-            /p:Platform=x64
-            /t:softcam
-            INSTALL_COMMAND ""
+    file(GLOB_RECURSE SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win/*.cc
     )
 
-    ExternalProject_Get_Property(softcam_project SOURCE_DIR)
-
-    set(SOFTCAM_INCLUDE_DIR "${SOURCE_DIR}/dist/include")
-    file(MAKE_DIRECTORY ${SOFTCAM_INCLUDE_DIR})
-
-    add_library(Softcam::Client SHARED IMPORTED GLOBAL)
-    add_dependencies(Softcam::Client softcam_project)
-
-    set_target_properties(Softcam::Client PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${SOFTCAM_INCLUDE_DIR}"
-            IMPORTED_IMPLIB "${SOURCE_DIR}/x64/Release/softcam.lib"
-            IMPORTED_LOCATION "${SOURCE_DIR}/x64/Release/softcam.dll"
+    file(GLOB_RECURSE HEADER_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win/*.hpp
     )
+endif()
+
+
+add_library(virtual-camera SHARED
+        ${SOURCE_FILES}
+        ${HEADER_FILES}
+        ${COMMON_SOURCE_FILES}
+        ${COMMON_HEADER_FILES}
+)
+
+target_include_directories(virtual-camera PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc/
+)
+
+if (WIN32)
+    find_package(wil REQUIRED)
+
+    target_include_directories(virtual-camera PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win/
+    )
+
+    target_link_libraries(virtual-camera PRIVATE WIL::WIL)
 endif()
