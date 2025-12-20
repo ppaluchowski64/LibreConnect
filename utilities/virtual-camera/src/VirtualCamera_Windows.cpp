@@ -1,25 +1,18 @@
 #ifdef _WIN32
 
 #include <VirtualCamera.h>
-#include <softcam/softcam.h>
 #include <DebugLog.h>
 
-void VirtualCamera::Flush() const {
+void VirtualCamera::PushFrame(const void* data) const {
 
 }
 
-void VirtualCamera::SetupStream(const int width, const int height, const int fps) {
-    DestroyStream();
-    m_camera = scCreateCamera(width, height, fps);
-    scWaitForConnection(m_camera);
+void VirtualCamera::SetupCamera(const std::string_view name, const FrameFormat format, const int width, const int height, const int fps) {
+
 }
 
-void VirtualCamera::DestroyStream() {
-    if (m_camera != nullptr && scIsConnected(m_camera)) {
-        scDeleteCamera(m_camera);
-    }
+void VirtualCamera::DestroyCamera() {
 
-    m_camera = nullptr;
 }
 
 #endif

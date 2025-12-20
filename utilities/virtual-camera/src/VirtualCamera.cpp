@@ -7,41 +7,30 @@ VirtualCamera::VirtualCamera() {
     m_cameraID = generator();
 }
 
-void VirtualCamera::StartStream(const int width, const int height, const int fps) {
-    if (!m_frameBuffer) {
-        Debug::LogError("Framebuffer is null");
-        return;
-    }
-
+void VirtualCamera::Start(const std::string_view name, const FrameFormat format, const int width, const int height, const int fps) {
     if (m_active) {
         Debug::LogWarning("Stream already started");
         return;
     }
 
     try {
-        SetupStream(width, height, fps);
+        SetupCamera(name, format, width, height, fps);
         m_active = true;
     } catch (...) {
         Debug::LogError("Failed to start stream");
     }
 }
 
-void VirtualCamera::StopStream() {
+void VirtualCamera::Stop() {
     if (!m_active) {
         Debug::LogWarning("Stream already stopped");
         return;
     }
 
     try {
-        DestroyStream();
+        DestroyCamera();
         m_active = false;
     } catch (...) {
         Debug::LogError("Failed to stop stream");
     }
 }
-
-void VirtualCamera::SetFrameBuffer(const std::shared_ptr<FrameBuffer>& frameBuffer) {
-    m_frameBuffer = frameBuffer;
-}
-
-
