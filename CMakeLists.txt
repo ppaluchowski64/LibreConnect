@@ -54,6 +54,9 @@ if (ENABLE_TESTS)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
     BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-entry)
+    target_sources(FileEntryTest PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp
+    )
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
 endif()
 
