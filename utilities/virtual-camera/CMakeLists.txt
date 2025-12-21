@@ -10,22 +10,39 @@ file(GLOB_RECURSE COMMON_HEADER_FILES
 )
 
 if (WIN32)
+    find_package(wil REQUIRED)
+
     file(GLOB_RECURSE SOURCE_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/src-win/*.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/src-win/*.cxx
-            ${CMAKE_CURRENT_SOURCE_DIR}/src-win/*.cc
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.cc
     )
 
     file(GLOB_RECURSE HEADER_FILES
-            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win/*.h
-            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win/*.hpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win-dll/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win-dll/*.hpp
     )
+
+    add_library(virtual-camera-windows-dll SHARED
+            ${SOURCE_FILES}
+            ${HEADER_FILES}
+    )
+
+    target_link_libraries(virtual-camera-windows-dll PRIVATE WIL::WIL
+            windowsapp
+            Mfplat.lib
+            Mf.lib
+            Mfuuid.lib
+            Uuid.lib
+            Ole32.lib
+            Kernel32.lib
+            Mfsensorgroup.lib
+    )
+    target_include_directories(virtual-camera-windows-dll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc-win-dll/)
 endif()
 
 
-add_library(virtual-camera SHARED
-        ${SOURCE_FILES}
-        ${HEADER_FILES}
+add_library(virtual-camera STATIC
         ${COMMON_SOURCE_FILES}
         ${COMMON_HEADER_FILES}
 )
@@ -35,13 +52,3 @@ target_include_directories(virtual-camera PUBLIC
 )
 
 target_link_libraries(virtual-camera PRIVATE Debug-Log)
-
-if (WIN32)
-    find_package(wil REQUIRED)
-
-    target_include_directories(virtual-camera PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/inc-win/
-    )
-
-    target_link_libraries(virtual-camera PRIVATE WIL::WIL)
-endif()
