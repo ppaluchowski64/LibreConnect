@@ -34,6 +34,8 @@ target_include_directories(virtual-camera PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/inc/
 )
 
+target_link_libraries(virtual-camera PRIVATE Debug-Log)
+
 if (WIN32)
     find_package(wil REQUIRED)
 
