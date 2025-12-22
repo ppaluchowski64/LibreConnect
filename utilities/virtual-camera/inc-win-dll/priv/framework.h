@@ -48,7 +48,7 @@
 #include "winrt/base.h"
 
 // project globals
-#include "wintrace.h"
+#include "WinTrace.h"
 
 #pragma comment(lib, "mfsensorgroup")
 // 3cad447d-f283-4af4-a3b2-6f5363309f52
