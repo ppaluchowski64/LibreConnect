@@ -38,7 +38,8 @@ if (WIN32)
             Kernel32.lib
             Mfsensorgroup.lib
     )
-    target_include_directories(virtual-camera-windows-dll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc-win-dll/)
+    target_include_directories(virtual-camera-windows-dll PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc-win-dll/priv)
+    target_include_directories(virtual-camera-windows-dll PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inc-win-dll/pub)
 endif()
 
 
