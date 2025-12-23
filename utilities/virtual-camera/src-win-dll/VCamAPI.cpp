@@ -499,7 +499,7 @@ VCAMAPI_API VCamResult PushFrame(const VCamHandle handle, const void* data, cons
     return VCAM_SUCCESS;
 }
 
-VCAMAPI_API const wchar_t* VCamGetLastError(VCamHandle handle)
+VCAMAPI_API const wchar_t* VCamGetLastError(const VCamHandle handle)
 {
     if (!g_lastErrors.contains(handle)) {
         return nullptr;

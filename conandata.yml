@@ -1,6 +1,5 @@
 requirements:
   common:
-    - "tracy/0.12.1"
     - "boost/1.87.0"
     - "openssl/3.5.0"
     - "asio/1.34.2"
@@ -9,6 +8,6 @@ requirements:
     - "concurrentqueue/1.0.4"
     - "fmt/12.0.0"
     - "magic_enum/0.9.7"
-    - "sqlitecpp/3.3.2"
+    - "sqlitecpp/3.3.3"
   windows:
     - "wil/1.0.250325.1"
