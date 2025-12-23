@@ -16,6 +16,9 @@
 #include <vector>
 
 static void SetError(const wchar_t* msg, VCamHandle handle);
+static void SetError(const wchar_t* msg, const VCamHandle* handle);
+static void SetError(HRESULT hr, const VCamHandle handle);
+static void SetError(HRESULT hr, const VCamHandle* handle);
 
 extern "C" {
     extern GUID CLSID_VCam;
@@ -94,8 +97,8 @@ struct SharedFrameHeader
 {
     UINT width;
     UINT height;
-    UINT stride;      // bytes per row
-    GUID format;      // MFVideoFormat_*
+    UINT stride;
+    GUID format;
     volatile LONG frameVersion; // incremented on each new frame
 };
 
@@ -177,6 +180,20 @@ static GUID FormatToGUID(const VCamFormat format)
 static void SetError(const wchar_t* msg, const VCamHandle handle)
 {
     g_lastErrors[handle] = msg ? msg : L"";
+}
+
+static void SetError(const wchar_t* msg, const VCamHandle* handle) {
+    if (handle != nullptr) {
+        g_lastErrors[*handle] = msg ? msg : L"";
+    }
+}
+
+static void SetError(const HRESULT hr, const VCamHandle* handle)
+{
+    if (handle != nullptr)
+    {
+        SetError(hr, *handle);
+    }
 }
 
 static void SetError(const HRESULT hr, const VCamHandle handle)

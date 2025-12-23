@@ -16,7 +16,7 @@ extern "C" {
 
     // Error codes
     typedef enum {
-        VCAM_SUCCESS = 0,
+        VCAM_SUCCESS = 1,
         VCAM_ERROR_INVALID_PARAM = -1,
         VCAM_ERROR_INIT_FAILED = -2,
         VCAM_ERROR_CAMERA_EXISTS = -3,

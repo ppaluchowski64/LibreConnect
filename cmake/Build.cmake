@@ -175,6 +175,11 @@ endfunction()
 
 function(LinkVirtualCameraLibs target)
     if (WIN32)
-
+        target_link_libraries(${target} PUBLIC virtual-camera-windows-dll)
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:virtual-camera-windows-dll>
+                $<TARGET_FILE_DIR:${target}>
+        )
     endif ()
 endfunction()

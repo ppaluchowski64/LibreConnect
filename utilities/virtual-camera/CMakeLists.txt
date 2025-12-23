@@ -1,3 +1,5 @@
+include(../../cmake/Build.cmake)
+
 file(GLOB_RECURSE COMMON_SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cxx
@@ -16,6 +18,7 @@ if (WIN32)
             ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.cxx
             ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.cc
+            ${CMAKE_CURRENT_SOURCE_DIR}/src-win-dll/*.def
     )
 
     file(GLOB_RECURSE HEADER_FILES
@@ -52,4 +55,8 @@ target_include_directories(virtual-camera PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/inc/
 )
 
-target_link_libraries(virtual-camera PRIVATE Debug-Log)
+target_link_libraries(virtual-camera PUBLIC Debug-Log magic_enum::magic_enum)
+
+if (WIN32)
+    target_link_libraries(virtual-camera PUBLIC virtual-camera-windows-dll)
+endif ()
