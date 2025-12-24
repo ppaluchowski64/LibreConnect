@@ -5,7 +5,7 @@
 #include <windows.h>
 #include <fmt/ostream.h>
 
-static std::string Utf16ToUtf8(const std::wstring& utf16) {
+static std::string to_string(const std::wstring& utf16) {
     if (utf16.empty())
         return {};
 
@@ -43,16 +43,16 @@ void VirtualCamera::PushFrame(const void* data) const {
 void VirtualCamera::SetupCamera(const std::wstring& name, const int width, const int height, const int fps) {
     m_handle = nullptr;
     const VCamResult result = CreateCam(name.c_str(), width, height, fps, &m_handle);
-    if (!result) {
-        Debug::LogError("Camera setup result {} - \"{}\"", magic_enum::enum_name(result), Utf16ToUtf8(VCamGetLastError(m_handle)));
+    if (result != VCAM_SUCCESS) {
+        Debug::LogError("Camera setup result {} - \"{}\"", magic_enum::enum_name(result), to_string(VCamGetLastError(m_handle)));
     }
 }
 
 void VirtualCamera::DestroyCamera() {
     const VCamResult result = DestroyCam(m_handle);
 
-    if (result) {
-        Debug::LogError("Camera stop result {} - \"{}\"", magic_enum::enum_name(result), Utf16ToUtf8(VCamGetLastError(m_handle)));
+    if (result != VCAM_SUCCESS) {
+        Debug::LogError("Camera stop result {} - \"{}\"", magic_enum::enum_name(result), to_string(VCamGetLastError(m_handle)));
     }
 
     m_handle = nullptr;

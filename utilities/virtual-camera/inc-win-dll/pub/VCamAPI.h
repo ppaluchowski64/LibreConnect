@@ -54,7 +54,7 @@ extern "C" {
     /**
      * Get the last error message (if any)
      * @param handle Camera handle
-     * @return Error message string (null if no error)
+     * @return Error message string (empty if no error)
      */
     VCAMAPI_API const wchar_t* VCamGetLastError(VCamHandle handle);
 
