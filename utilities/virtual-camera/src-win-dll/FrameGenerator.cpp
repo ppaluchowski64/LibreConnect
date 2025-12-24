@@ -3,6 +3,7 @@
 #include "EnumNames.h"
 #include "MFTools.h"
 #include "FrameGenerator.h"
+#include "VCamAPI.h"
 
 HRESULT FrameGenerator::EnsureRenderTarget(UINT width, UINT height)
 {
@@ -221,4 +222,174 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** 
 
 	buffer2D->Unlock2D();
 	return hr;
+}
+
+HRESULT FrameGenerator::PushExternalFrame(const void* data, UINT width, UINT height, const GUID& format) {
+	if (!data || !width || !height)
+		return E_INVALIDARG;
+
+	winrt::slim_lock_guard lock(_externalFrameLock);
+
+	ExternalFrame frame;
+	frame.width = width;
+	frame.height = height;
+	frame.format = format;
+
+	// Calculate frame size
+	size_t frameSize = 0;
+	if (format == MFVideoFormat_RGB32)
+	{
+		frameSize = width * height * 4;
+	}
+	else if (format == MFVideoFormat_NV12)
+	{
+		frameSize = width * height * 3 / 2;
+	}
+	else
+	{
+		return E_INVALIDARG;
+	}
+
+	frame.data.resize(frameSize);
+	memcpy(frame.data.data(), data, frameSize);
+
+	_externalFrameQueue.push(frame);
+
+	if (_externalFrameQueue.size() > 10)
+	{
+		_externalFrameQueue.pop();
+	}
+
+	return S_OK;
+}
+
+HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& format, IMFSample** outSample) {
+	RETURN_HR_IF_NULL(E_POINTER, sample);
+	RETURN_HR_IF_NULL(E_POINTER, outSample);
+	*outSample = nullptr;
+
+	// Try to get frame from local queue first
+	ExternalFrame frame;
+	bool hasFrame = false;
+	{
+		winrt::slim_lock_guard lock(_externalFrameLock);
+		if (!_externalFrameQueue.empty())
+		{
+			frame = _externalFrameQueue.front();
+			_externalFrameQueue.pop();
+			hasFrame = true;
+		}
+	}
+
+	if (!hasFrame)
+	{
+		extern GUID CLSID_VCam;
+		PushedFrame apiFrame = {};
+
+		if (GetExternalFrame(CLSID_VCam, apiFrame))
+		{
+			// Convert API frame to local format
+			frame.data = apiFrame.data;
+			frame.width = apiFrame.width;
+			frame.height = apiFrame.height;
+			frame.format = apiFrame.format;
+			hasFrame = true;
+			WINTRACE(L"FrameGenerator::GenerateFromExternal - Got frame from shared memory: %ux%u, format: %s, data size: %zu",
+				frame.width, frame.height, GUID_ToStringW(frame.format).c_str(), frame.data.size());
+		}
+		else
+		{
+			WINTRACE(L"FrameGenerator::GenerateFromExternal - No frame in shared memory");
+		}
+	}
+	else
+	{
+		WINTRACE(L"FrameGenerator::GenerateFromExternal - Got frame from local queue: %ux%u", frame.width, frame.height);
+	}
+
+	if (!hasFrame)
+	{
+		return MF_E_NOT_AVAILABLE;
+	}
+
+	// Ensure render target matches frame dimensions
+	if (_width != frame.width || _height != frame.height)
+	{
+		RETURN_IF_FAILED(EnsureRenderTarget(frame.width, frame.height));
+	}
+
+	// Copy frame data to buffer
+	wil::com_ptr_nothrow<IMFMediaBuffer> mediaBuffer;
+	RETURN_IF_FAILED(sample->GetBufferByIndex(0, &mediaBuffer));
+
+	wil::com_ptr_nothrow<IMF2DBuffer2> buffer2D;
+	BYTE* scanline;
+	LONG pitch;
+	BYTE* start;
+	DWORD length;
+	RETURN_IF_FAILED(mediaBuffer->QueryInterface(IID_PPV_ARGS(&buffer2D)));
+	RETURN_IF_FAILED(buffer2D->Lock2DSize(MF2DBuffer_LockFlags_Write, &scanline, &pitch, &start, &length));
+
+	if (frame.format == MFVideoFormat_RGB32)
+	{
+		if (format == MFVideoFormat_RGB32)
+		{
+			// Direct copy
+			UINT expectedStride = frame.width * 4;
+			WINTRACE(L"FrameGenerator::GenerateFromExternal - Copying RGB32 frame: %ux%u, stride: %u (expected: %u), data size: %zu",
+				frame.width, frame.height, pitch, expectedStride, frame.data.size());
+
+			if (pitch == expectedStride)
+			{
+				memcpy(scanline, frame.data.data(), frame.data.size());
+				WINTRACE(L"FrameGenerator::GenerateFromExternal - Direct copy completed");
+			}
+			else
+			{
+				// Copy line by line
+				WINTRACE(L"FrameGenerator::GenerateFromExternal - Line-by-line copy (pitch mismatch)");
+				for (UINT y = 0; y < frame.height; y++)
+				{
+					memcpy(scanline + y * pitch, frame.data.data() + y * expectedStride, expectedStride);
+				}
+			}
+		}
+		else if (format == MFVideoFormat_NV12)
+		{
+			// Convert RGB32 to NV12
+			RETURN_IF_FAILED(RGB32ToNV12(frame.data.data(), (ULONG)frame.data.size(), frame.width * 4, frame.width, frame.height, scanline, length, pitch));
+		}
+	}
+	else if (frame.format == MFVideoFormat_NV12 && format == MFVideoFormat_NV12)
+	{
+		// Direct copy NV12
+		UINT expectedStride = frame.width;
+		if (pitch == expectedStride)
+		{
+			memcpy(scanline, frame.data.data(), frame.data.size());
+		}
+		else
+		{
+			// Copy Y plane
+			for (UINT y = 0; y < frame.height; y++)
+			{
+				memcpy(scanline + y * pitch, frame.data.data() + y * expectedStride, expectedStride);
+			}
+			// Copy UV plane
+			BYTE* uvDest = scanline + frame.height * pitch;
+			BYTE* uvSrc = frame.data.data() + frame.height * expectedStride;
+			UINT uvHeight = frame.height / 2;
+			for (UINT y = 0; y < uvHeight; y++)
+			{
+				memcpy(uvDest + y * pitch, uvSrc + y * expectedStride, expectedStride);
+			}
+		}
+	}
+
+	buffer2D->Unlock2D();
+
+	_frame++;
+	sample->AddRef();
+	*outSample = sample;
+	return S_OK;
 }
