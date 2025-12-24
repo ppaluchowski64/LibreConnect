@@ -334,10 +334,9 @@ VCAMAPI_API VCamResult CreateCam(const wchar_t* name, const int width, const int
             if (FAILED(hr))
             {
                 SetError(hr, handle);
+                instance->vcam->Remove();
+                return VCAM_ERROR_INIT_FAILED;
             }
-
-            instance->vcam->Remove();
-            return VCAM_ERROR_INIT_FAILED;
         }
         catch (const winrt::hresult_error& ex)
         {
@@ -519,7 +518,7 @@ VCAMAPI_API VCamResult PushFrame(const VCamHandle handle, const void* data, cons
 VCAMAPI_API const wchar_t* VCamGetLastError(const VCamHandle handle)
 {
     if (!g_lastErrors.contains(handle)) {
-        return nullptr;
+        return L"";
     }
 
     return g_lastErrors.at(handle).c_str();
