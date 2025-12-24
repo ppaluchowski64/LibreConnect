@@ -1,7 +1,7 @@
 #pragma once
 
 #include "framework.h"
-
+#include <queue>
 
 class FrameGenerator
 {
@@ -19,6 +19,16 @@ class FrameGenerator
 	wil::com_ptr_nothrow<IMFTransform> _converter;
 	wil::com_ptr_nothrow<IWICBitmap> _bitmap;
 	wil::com_ptr_nothrow<IMFDXGIDeviceManager> _dxgiManager;
+
+	winrt::slim_mutex _externalFrameLock;
+	struct ExternalFrame
+	{
+		std::vector<BYTE> data;
+		UINT width;
+		UINT height;
+		GUID format;
+	};
+	std::queue<ExternalFrame> _externalFrameQueue;
 
 	HRESULT CreateRenderTargetResources(UINT width, UINT height);
 
@@ -50,4 +60,6 @@ public:
 	const bool HasD3DManager() const;
 	HRESULT EnsureRenderTarget(UINT width, UINT height);
 	HRESULT Generate(IMFSample* sample, REFGUID format, IMFSample** outSample);
+	HRESULT PushExternalFrame(const void* data, UINT width, UINT height, REFGUID format);
+	HRESULT GenerateFromExternal(IMFSample* sample, REFGUID format, IMFSample** outSample);
 };
