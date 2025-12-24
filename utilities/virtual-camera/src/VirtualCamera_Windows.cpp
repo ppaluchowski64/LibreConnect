@@ -37,12 +37,17 @@ static std::string to_string(const std::wstring& utf16) {
 }
 
 void VirtualCamera::PushFrame(const void* data) const {
+    const VCamResult result = PushCamFrame(m_handle, data, m_format);
 
+    if (result != VCAM_SUCCESS) {
+        Debug::LogError("Camera push frame result {} - \"{}\"", magic_enum::enum_name(result), to_string(VCamGetLastError(m_handle)));
+    }
 }
 
 void VirtualCamera::SetupCamera(const std::wstring& name, const int width, const int height, const int fps) {
     m_handle = nullptr;
     const VCamResult result = CreateCam(name.c_str(), width, height, fps, &m_handle);
+
     if (result != VCAM_SUCCESS) {
         Debug::LogError("Camera setup result {} - \"{}\"", magic_enum::enum_name(result), to_string(VCamGetLastError(m_handle)));
     }

@@ -2,12 +2,12 @@
 #include <DebugLog.h>
 #include <boost/uuid/random_generator.hpp>
 
-VirtualCamera::VirtualCamera() : m_format(FrameFormat::RGBA32), m_handle(nullptr) {
+VirtualCamera::VirtualCamera() : m_format(VCamFormat::VCAM_FORMAT_RGB32), m_handle(nullptr) {
     static thread_local boost::uuids::random_generator generator = boost::uuids::random_generator();
     m_cameraID = generator();
 }
 
-void VirtualCamera::Start(const std::wstring& name, const FrameFormat format, const int width, const int height, const int fps) {
+void VirtualCamera::Start(const std::wstring& name, const VCamFormat format, const int width, const int height, const int fps) {
     if (m_active) {
         Debug::LogWarning("Stream already started");
         return;
