@@ -40,7 +40,7 @@ struct VCamInstance;
 struct PushedFrame
 {
     std::vector<BYTE> data;
-    GUID format;  // Use GUID for internal storage
+    GUID format;
     UINT width;
     UINT height;
 };
@@ -443,7 +443,7 @@ VCAMAPI_API VCamResult DestroyCam(const VCamHandle handle)
     return VCAM_SUCCESS;
 }
 
-VCAMAPI_API VCamResult PushFrame(const VCamHandle handle, const void* data, const VCamFormat format)
+VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data, const VCamFormat format)
 {
     if (!handle || !data)
     {
@@ -604,8 +604,7 @@ extern "C++"
         {
             const auto name = GetSharedMemoryName(CLSID_VCam);
 
-
-            HANDLE hMap = OpenFileMappingW(FILE_MAP_READ, FALSE, name.c_str());
+            const HANDLE hMap = OpenFileMappingW(FILE_MAP_READ, FALSE, name.c_str());
             if (!hMap)
             {
                 return false;

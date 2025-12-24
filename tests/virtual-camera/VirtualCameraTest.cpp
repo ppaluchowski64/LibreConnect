@@ -14,7 +14,7 @@ int main() {
 
     camera.Start(
         L"Example Virtual Camera",
-        FrameFormat::RGBA32,
+        VCAM_FORMAT_RGB32,
         width,
         height,
         fps
@@ -28,7 +28,7 @@ int main() {
     float phase = 0.0f;
     constexpr float phaseStep = 0.02f;
 
-    for (int i = 0; i < 300; ++i) {
+    for (int i = 0; i < 500; ++i) {
         const uint8_t r = static_cast<uint8_t>(127 + 127 * std::sin(phase));
         const uint8_t g = static_cast<uint8_t>(127 + 127 * std::sin(phase + 2.0f));
         const uint8_t b = static_cast<uint8_t>(127 + 127 * std::sin(phase + 4.0f));
@@ -47,5 +47,7 @@ int main() {
     }
 
     camera.Stop();
+    Debug::Log("camera destroyed");
+
     return 0;
 }

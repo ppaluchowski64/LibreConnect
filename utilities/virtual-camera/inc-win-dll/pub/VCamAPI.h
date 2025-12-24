@@ -49,7 +49,7 @@ extern "C" {
      * @param format Frame format (VCAM_FORMAT_RGB32 or VCAM_FORMAT_NV12)
      * @return VCamResult error code
      */
-    VCAMAPI_API VCamResult PushFrame(VCamHandle handle, const void* data, VCamFormat format);
+    VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data, VCamFormat format);
 
     /**
      * Get the last error message (if any)

@@ -6,5 +6,5 @@ DllRegisterServer	PRIVATE
 DllUnregisterServer	PRIVATE
 CreateCam
 DestroyCam
-PushFrame
+PushCamFrame
 VCamGetLastError
