@@ -5,6 +5,17 @@
 #include "FrameGenerator.h"
 #include "VCamAPI.h"
 
+struct PushedFrame
+{
+	std::vector<BYTE> data;
+	UINT width;
+	UINT height;
+	GUID format;
+};
+
+extern "C++" __declspec(dllimport) bool VCamAPI_HasExternalFrame(const GUID& clsid);
+extern "C++" __declspec(dllimport) bool GetExternalFrame(const GUID& clsid, PushedFrame& frame);
+
 HRESULT FrameGenerator::EnsureRenderTarget(UINT width, UINT height)
 {
 	if (!HasD3DManager())
