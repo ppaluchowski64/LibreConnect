@@ -232,298 +232,296 @@ static bool IsCLSIDRegistered(const GUID& clsid)
 }
 
 extern "C" {
-
-VCAMAPI_API VCamResult CreateCam(const wchar_t* name, const int width, const int height, const int fps, VCamHandle* handle)
-{
-    if (!name || !handle || width <= 0 || height <= 0 || fps <= 0)
+    VCAMAPI_API VCamResult CreateCam(const wchar_t* name, const int width, const int height, const int fps, VCamHandle* handle)
     {
-        SetError(L"Invalid parameters", handle);
-        return VCAM_ERROR_INVALID_PARAM;
-    }
-
-    std::lock_guard<std::mutex> lock(g_camerasMutex);
-
-    // Check if CLSID is registered before attempting to create camera
-    if (!IsCLSIDRegistered(CLSID_VCam))
-    {
-        SetError(L"CLSID_VCam is not registered in registry.", handle);
-        return VCAM_ERROR_INIT_FAILED;
-    }
-
-    static bool mfInitialized = false;
-    if (!mfInitialized)
-    {
-        HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+        if (!name || !handle || width <= 0 || height <= 0 || fps <= 0)
         {
-            SetError(hr, handle);
+            SetError(L"Invalid parameters", handle);
+            return VCAM_ERROR_INVALID_PARAM;
+        }
+
+        std::lock_guard<std::mutex> lock(g_camerasMutex);
+
+        // Check if CLSID is registered before attempting to create camera
+        if (!IsCLSIDRegistered(CLSID_VCam))
+        {
+            SetError(L"CLSID_VCam is not registered in registry.", handle);
             return VCAM_ERROR_INIT_FAILED;
         }
-        hr = MFStartup(MF_VERSION);
-        if (FAILED(hr))
+
+        static bool mfInitialized = false;
+        if (!mfInitialized)
         {
-            SetError(hr, handle);
-            return VCAM_ERROR_INIT_FAILED;
-        }
-        mfInitialized = true;
-    }
-
-    try
-    {
-        const auto instance = std::make_shared<VCamInstance>();
-        instance->name = name;
-        instance->width = width;
-        instance->height = height;
-        instance->fps = fps;
-        instance->useExternalFrames = true;
-
-        // Use the registered CLSID_VCam
-        instance->clsid = CLSID_VCam;
-        const auto clsidStr = GUID_ToStringW_Simple(CLSID_VCam);
-
-        {
-            std::lock_guard<std::mutex> configLock(g_configMutex);
-            StreamConfig config;
-            config.width = width;
-            config.height = height;
-            config.fps = fps;
-            config.useExternalFrames = true;
-            g_streamConfigs[clsidStr] = config;
-
-            const std::wstring regPath = L"SOFTWARE\\VCamSample\\" + clsidStr;
-            HKEY hKey;
-            if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, nullptr,
-                REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
+            HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+            if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
             {
-                RegSetValueExW(hKey, L"Width", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&width), sizeof(width));
-                RegSetValueExW(hKey, L"Height", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&height), sizeof(height));
-                RegSetValueExW(hKey, L"Fps", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&fps), sizeof(fps));
-                constexpr DWORD useExternal = 1;
-                RegSetValueExW(hKey, L"UseExternalFrames", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&useExternal), sizeof(useExternal));
-                RegCloseKey(hKey);
+                SetError(hr, handle);
+                return VCAM_ERROR_INIT_FAILED;
             }
-
-            const DWORD processId = GetCurrentProcessId();
-            wchar_t debugMsg[512];
-            swprintf_s(debugMsg, L"[VCamAPI] CreateCam: Setting config BEFORE camera creation: %dx%d @ %d fps, useExternalFrames=%d (Process ID=%lu, map size=%zu, map addr=%p)\n",
-                width, height, fps, config.useExternalFrames, processId, g_streamConfigs.size(), &g_streamConfigs);
-            OutputDebugStringW(debugMsg);
-        }
-
-        // Create virtual camera
-        HRESULT hr = MFCreateVirtualCamera(
-            MFVirtualCameraType_SoftwareCameraSource,
-            MFVirtualCameraLifetime_Session,
-            MFVirtualCameraAccess_CurrentUser,
-            name,
-            clsidStr.c_str(),
-            nullptr,
-            0,
-            &instance->vcam);
-
-        if (FAILED(hr))
-        {
-            SetError(hr, handle);
-            return VCAM_ERROR_INIT_FAILED;
+            hr = MFStartup(MF_VERSION);
+            if (FAILED(hr))
+            {
+                SetError(hr, handle);
+                return VCAM_ERROR_INIT_FAILED;
+            }
+            mfInitialized = true;
         }
 
         try
         {
-            hr = instance->vcam->Start(nullptr);
+            const auto instance = std::make_shared<VCamInstance>();
+            instance->name = name;
+            instance->width = width;
+            instance->height = height;
+            instance->fps = fps;
+            instance->useExternalFrames = true;
 
-            if (FAILED(hr))
+            // Use the registered CLSID_VCam
+            instance->clsid = CLSID_VCam;
+            const auto clsidStr = GUID_ToStringW_Simple(CLSID_VCam);
+
             {
-                SetError(hr, handle);
-                instance->vcam->Remove();
-                return VCAM_ERROR_INIT_FAILED;
-            }
-        }
-        catch (const winrt::hresult_error& ex)
-        {
-            HRESULT exHr = ex.code();
-            SetError(hr, handle);
-
-            if (instance->vcam)
-            {
-                instance->vcam->Remove();
-            }
-
-            return VCAM_ERROR_INIT_FAILED;
-        }
-
-        instance->initialized = true;
-        *handle = instance.get();
-        g_cameras[*handle] = instance;
-        g_camerasByClsid[clsidStr] = instance;
-
-        {
-            std::lock_guard<std::mutex> configLock(g_configMutex);
-            auto it = g_streamConfigs.find(clsidStr);
-            if (it != g_streamConfigs.end())
-            {
-                wchar_t debugMsg[256];
-                swprintf_s(debugMsg, L"[VCamAPI] CreateCam: Config verified after Start: %dx%d @ %d fps, useExternalFrames=%d\n",
-                    it->second.width, it->second.height, it->second.fps, it->second.useExternalFrames);
-                OutputDebugStringW(debugMsg);
-            }
-            else
-            {
-                OutputDebugStringW(L"[VCamAPI] CreateCam: WARNING - Config lost after Start()!\n");
+                std::lock_guard<std::mutex> configLock(g_configMutex);
                 StreamConfig config;
                 config.width = width;
                 config.height = height;
                 config.fps = fps;
                 config.useExternalFrames = true;
                 g_streamConfigs[clsidStr] = config;
+
+                const std::wstring regPath = L"SOFTWARE\\VCamSample\\" + clsidStr;
+                HKEY hKey;
+                if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, nullptr,
+                    REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
+                {
+                    RegSetValueExW(hKey, L"Width", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&width), sizeof(width));
+                    RegSetValueExW(hKey, L"Height", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&height), sizeof(height));
+                    RegSetValueExW(hKey, L"Fps", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&fps), sizeof(fps));
+                    constexpr DWORD useExternal = 1;
+                    RegSetValueExW(hKey, L"UseExternalFrames", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&useExternal), sizeof(useExternal));
+                    RegCloseKey(hKey);
+                }
+
+                const DWORD processId = GetCurrentProcessId();
+                wchar_t debugMsg[512];
+                swprintf_s(debugMsg, L"[VCamAPI] CreateCam: Setting config BEFORE camera creation: %dx%d @ %d fps, useExternalFrames=%d (Process ID=%lu, map size=%zu, map addr=%p)\n",
+                    width, height, fps, config.useExternalFrames, processId, g_streamConfigs.size(), &g_streamConfigs);
+                OutputDebugStringW(debugMsg);
             }
+
+            // Create virtual camera
+            HRESULT hr = MFCreateVirtualCamera(
+                MFVirtualCameraType_SoftwareCameraSource,
+                MFVirtualCameraLifetime_Session,
+                MFVirtualCameraAccess_CurrentUser,
+                name,
+                clsidStr.c_str(),
+                nullptr,
+                0,
+                &instance->vcam);
+
+            if (FAILED(hr))
+            {
+                SetError(hr, handle);
+                return VCAM_ERROR_INIT_FAILED;
+            }
+
+            try
+            {
+                hr = instance->vcam->Start(nullptr);
+
+                if (FAILED(hr))
+                {
+                    SetError(hr, handle);
+                    instance->vcam->Remove();
+                    return VCAM_ERROR_INIT_FAILED;
+                }
+            }
+            catch (const winrt::hresult_error& ex)
+            {
+                HRESULT exHr = ex.code();
+                SetError(hr, handle);
+
+                if (instance->vcam)
+                {
+                    instance->vcam->Remove();
+                }
+
+                return VCAM_ERROR_INIT_FAILED;
+            }
+
+            instance->initialized = true;
+            *handle = instance.get();
+            g_cameras[*handle] = instance;
+            g_camerasByClsid[clsidStr] = instance;
+
+            {
+                std::lock_guard<std::mutex> configLock(g_configMutex);
+                auto it = g_streamConfigs.find(clsidStr);
+                if (it != g_streamConfigs.end())
+                {
+                    wchar_t debugMsg[256];
+                    swprintf_s(debugMsg, L"[VCamAPI] CreateCam: Config verified after Start: %dx%d @ %d fps, useExternalFrames=%d\n",
+                        it->second.width, it->second.height, it->second.fps, it->second.useExternalFrames);
+                    OutputDebugStringW(debugMsg);
+                }
+                else
+                {
+                    OutputDebugStringW(L"[VCamAPI] CreateCam: WARNING - Config lost after Start()!\n");
+                    StreamConfig config;
+                    config.width = width;
+                    config.height = height;
+                    config.fps = fps;
+                    config.useExternalFrames = true;
+                    g_streamConfigs[clsidStr] = config;
+                }
+            }
+
+            return VCAM_SUCCESS;
+        }
+        catch (const winrt::hresult_error& ex)
+        {
+            const HRESULT hr = ex.code();
+            SetError(hr, handle);
+
+            return VCAM_ERROR_INIT_FAILED;
+        }
+        catch (const std::exception& ex)
+        {
+            std::string msg = ex.what();
+            std::wstring wmsg(msg.begin(), msg.end());
+            SetError(wmsg.c_str(), handle);
+            return VCAM_ERROR_INIT_FAILED;
+        }
+        catch (...)
+        {
+            SetError(L"Unknown exception during camera creation", handle);
+            return VCAM_ERROR_INIT_FAILED;
+        }
+    }
+
+    VCAMAPI_API VCamResult DestroyCam(const VCamHandle handle)
+    {
+        if (!handle)
+        {
+            SetError(L"Invalid handle", handle);
+            return VCAM_ERROR_INVALID_PARAM;
+        }
+
+        std::lock_guard<std::mutex> lock(g_camerasMutex);
+
+        auto it = g_cameras.find(handle);
+        if (it == g_cameras.end())
+        {
+            SetError(L"Camera not found", handle);
+            return VCAM_ERROR_CAMERA_NOT_FOUND;
+        }
+
+        auto instance = it->second;
+
+        // Remove virtual camera
+        if (instance->vcam)
+        {
+            instance->vcam->Remove();
+            instance->vcam.reset();
+        }
+
+        // Clear frame queue
+        {
+            std::lock_guard<std::mutex> frameLock(instance->frameQueueMutex);
+            while (!instance->frameQueue.empty())
+            {
+                instance->frameQueue.pop();
+            }
+        }
+
+        // Remove from both maps
+        auto clsidStr = GUID_ToStringW_Simple(instance->clsid);
+        g_camerasByClsid.erase(clsidStr);
+        g_cameras.erase(it);
+        return VCAM_SUCCESS;
+    }
+
+    VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data, const VCamFormat format)
+    {
+        if (!handle || !data)
+        {
+            SetError(L"Invalid parameters", handle);
+            return VCAM_ERROR_INVALID_PARAM;
+        }
+
+        std::lock_guard<std::mutex> lock(g_camerasMutex);
+
+        const auto it = g_cameras.find(handle);
+        if (it == g_cameras.end())
+        {
+            SetError(L"Camera not found", handle);
+            return VCAM_ERROR_CAMERA_NOT_FOUND;
+        }
+
+        const auto instance = it->second;
+        if (!instance->initialized)
+        {
+            SetError(L"Camera not initialized", handle);
+            return VCAM_ERROR_CAMERA_NOT_FOUND;
+        }
+
+        size_t frameSize = 0;
+        UINT bytesPerPixel = 0;
+        GUID mfFormat = GUID_NULL;
+
+        if (format == VCAM_FORMAT_RGB32 || format == VCAM_FORMAT_BGRA)
+        {
+            bytesPerPixel = 4;
+            frameSize = instance->width * instance->height * bytesPerPixel;
+            mfFormat = MFVideoFormat_RGB32;
+        }
+        else if (format == VCAM_FORMAT_NV12)
+        {
+            bytesPerPixel = 1;
+            frameSize = instance->width * instance->height * 3 / 2;
+            mfFormat = MFVideoFormat_NV12;
+        }
+        else
+        {
+            SetError(L"Unsupported format", handle);
+            return VCAM_ERROR_INVALID_PARAM;
+        }
+
+        // Ensure shared memory for this camera (cross-process)
+        if (!EnsureSharedMemory(instance->clsid, frameSize, handle))
+        {
+            return VCAM_ERROR_INIT_FAILED;
+        }
+
+        // Write frame into shared memory
+        g_sharedFrameHeader->width = instance->width;
+        g_sharedFrameHeader->height = instance->height;
+        g_sharedFrameHeader->stride = (mfFormat == MFVideoFormat_RGB32) ? (instance->width * 4) : instance->width;
+        g_sharedFrameHeader->format = mfFormat;
+
+        if (frameSize <= g_sharedFrameBufferSize)
+        {
+            memcpy(g_sharedFrameData, data, frameSize);
+            const LONG newVersion = InterlockedIncrement(&g_sharedFrameHeader->frameVersion);
+        }
+        else
+        {
+            SetError(L"Shared frame buffer too small", handle);
+            return VCAM_ERROR_INVALID_PARAM;
         }
 
         return VCAM_SUCCESS;
     }
-    catch (const winrt::hresult_error& ex)
-    {
-        const HRESULT hr = ex.code();
-        SetError(hr, handle);
 
-        return VCAM_ERROR_INIT_FAILED;
-    }
-    catch (const std::exception& ex)
+    VCAMAPI_API const wchar_t* VCamGetLastError(const VCamHandle handle)
     {
-        std::string msg = ex.what();
-        std::wstring wmsg(msg.begin(), msg.end());
-        SetError(wmsg.c_str(), handle);
-        return VCAM_ERROR_INIT_FAILED;
-    }
-    catch (...)
-    {
-        SetError(L"Unknown exception during camera creation", handle);
-        return VCAM_ERROR_INIT_FAILED;
-    }
-}
-
-VCAMAPI_API VCamResult DestroyCam(const VCamHandle handle)
-{
-    if (!handle)
-    {
-        SetError(L"Invalid handle", handle);
-        return VCAM_ERROR_INVALID_PARAM;
-    }
-
-    std::lock_guard<std::mutex> lock(g_camerasMutex);
-
-    auto it = g_cameras.find(handle);
-    if (it == g_cameras.end())
-    {
-        SetError(L"Camera not found", handle);
-        return VCAM_ERROR_CAMERA_NOT_FOUND;
-    }
-
-    auto instance = it->second;
-
-    // Remove virtual camera
-    if (instance->vcam)
-    {
-        instance->vcam->Remove();
-        instance->vcam.reset();
-    }
-
-    // Clear frame queue
-    {
-        std::lock_guard<std::mutex> frameLock(instance->frameQueueMutex);
-        while (!instance->frameQueue.empty())
-        {
-            instance->frameQueue.pop();
+        if (!g_lastErrors.contains(handle)) {
+            return L"";
         }
+
+        return g_lastErrors.at(handle).c_str();
     }
-
-    // Remove from both maps
-    auto clsidStr = GUID_ToStringW_Simple(instance->clsid);
-    g_camerasByClsid.erase(clsidStr);
-    g_cameras.erase(it);
-    return VCAM_SUCCESS;
-}
-
-VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data, const VCamFormat format)
-{
-    if (!handle || !data)
-    {
-        SetError(L"Invalid parameters", handle);
-        return VCAM_ERROR_INVALID_PARAM;
-    }
-
-    std::lock_guard<std::mutex> lock(g_camerasMutex);
-
-    const auto it = g_cameras.find(handle);
-    if (it == g_cameras.end())
-    {
-        SetError(L"Camera not found", handle);
-        return VCAM_ERROR_CAMERA_NOT_FOUND;
-    }
-
-    const auto instance = it->second;
-    if (!instance->initialized)
-    {
-        SetError(L"Camera not initialized", handle);
-        return VCAM_ERROR_CAMERA_NOT_FOUND;
-    }
-
-    size_t frameSize = 0;
-    UINT bytesPerPixel = 0;
-    GUID mfFormat = GUID_NULL;
-
-    if (format == VCAM_FORMAT_RGB32 || format == VCAM_FORMAT_BGRA)
-    {
-        bytesPerPixel = 4;
-        frameSize = instance->width * instance->height * bytesPerPixel;
-        mfFormat = MFVideoFormat_RGB32;
-    }
-    else if (format == VCAM_FORMAT_NV12)
-    {
-        bytesPerPixel = 1;
-        frameSize = instance->width * instance->height * 3 / 2;
-        mfFormat = MFVideoFormat_NV12;
-    }
-    else
-    {
-        SetError(L"Unsupported format", handle);
-        return VCAM_ERROR_INVALID_PARAM;
-    }
-
-    // Ensure shared memory for this camera (cross-process)
-    if (!EnsureSharedMemory(instance->clsid, frameSize, handle))
-    {
-        return VCAM_ERROR_INIT_FAILED;
-    }
-
-    // Write frame into shared memory
-    g_sharedFrameHeader->width = instance->width;
-    g_sharedFrameHeader->height = instance->height;
-    g_sharedFrameHeader->stride = (mfFormat == MFVideoFormat_RGB32) ? (instance->width * 4) : instance->width;
-    g_sharedFrameHeader->format = mfFormat;
-
-    if (frameSize <= g_sharedFrameBufferSize)
-    {
-        memcpy(g_sharedFrameData, data, frameSize);
-        const LONG newVersion = InterlockedIncrement(&g_sharedFrameHeader->frameVersion);
-    }
-    else
-    {
-        SetError(L"Shared frame buffer too small", handle);
-        return VCAM_ERROR_INVALID_PARAM;
-    }
-
-    return VCAM_SUCCESS;
-}
-
-VCAMAPI_API const wchar_t* VCamGetLastError(const VCamHandle handle)
-{
-    if (!g_lastErrors.contains(handle)) {
-        return L"";
-    }
-
-    return g_lastErrors.at(handle).c_str();
-}
-
 }
 
 extern "C++"
