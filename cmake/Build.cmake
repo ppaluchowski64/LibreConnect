@@ -38,7 +38,6 @@ function(BuildSharedLibrary SharedLibraryName RootPath)
     )
 endfunction()
 
-
 function(BuildTestProgram ExecutableName Path)
     add_executable(${ExecutableName} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${Path})
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
@@ -138,7 +137,7 @@ function(DeployQT Target)
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
-    elseif(APPLE)
+    elseif(APPLE AND NOT IOS)
         set_target_properties(${ExecutableName} PROPERTIES
                 MACOSX_BUNDLE TRUE
         )
@@ -175,10 +174,10 @@ endfunction()
 
 function(LinkVirtualCameraLibs target)
     if (WIN32)
-        target_link_libraries(${target} PUBLIC virtual-camera-windows-dll)
+        target_link_libraries(${target} PUBLIC virtual-camera-platform-implementation)
         add_custom_command(TARGET ${target} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                $<TARGET_FILE:virtual-camera-windows-dll>
+                $<TARGET_FILE:virtual-camera-platform-implementation>
                 $<TARGET_FILE_DIR:${target}>
         )
     endif ()
