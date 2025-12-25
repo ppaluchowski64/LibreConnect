@@ -8,6 +8,7 @@
 #include <combaseapi.h>
 #include "framework.h"
 #include "VCamAPI.h"
+#include "Tools.h"
 #include <queue>
 #include <mutex>
 #include <memory>

@@ -1,13 +1,8 @@
 #ifndef VIRTUAL_CAMERA_H
 #define VIRTUAL_CAMERA_H
 
-#ifdef WIN32
 #include <VCamAPI.h>
-#endif
-
 #include <boost/uuid/uuid.hpp>
-#include <magic_enum/magic_enum.hpp>
-
 
 class VirtualCamera final {
 public:
@@ -15,23 +10,18 @@ public:
     VirtualCamera(const VirtualCamera&) = delete;
     VirtualCamera& operator=(const VirtualCamera&) = delete;
 
-    void Start(const std::wstring& name, VCamFormat format, int width, int height, int fps);
-    void Stop();
-    void PushFrame(const void* data) const;
+    bool Start(const std::wstring& name, VCamFormat format, int width, int height, int fps);
+    bool Stop();
+    bool PushFrame(const void* data) const;
 
 private:
-    void SetupCamera(const std::wstring& name, int width, int height, int fps);
-    void DestroyCamera();
+    bool SetupCamera(const std::wstring& name, int width, int height, int fps);
+    bool DestroyCamera();
 
     boost::uuids::uuid m_cameraID;
     VCamFormat m_format;
-    bool m_active{false};
-
-#ifdef WIN32
     VCamHandle m_handle;
-#endif
-
-
+    bool m_active{false};
 };
 
 #endif //VIRTUAL_CAMERA_H

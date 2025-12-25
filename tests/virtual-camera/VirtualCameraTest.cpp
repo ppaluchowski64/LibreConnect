@@ -12,13 +12,9 @@ int main() {
     constexpr int height = 720;
     constexpr int fps    = 30;
 
-    camera.Start(
-        L"Example Virtual Camera",
-        VCAM_FORMAT_RGB32,
-        width,
-        height,
-        fps
-    );
+    if (!camera.Start( L"Example Virtual Camera", VCAM_FORMAT_RGB32, width, height, fps)) {
+        exit(-1);
+    }
 
     Debug::Log("camera created");
 
@@ -46,7 +42,10 @@ int main() {
         std::this_thread::sleep_for(frameDuration);
     }
 
-    camera.Stop();
+    if (!camera.Stop()) {
+        exit(-1);
+    }
+
     Debug::Log("camera destroyed");
 
     return 0;
