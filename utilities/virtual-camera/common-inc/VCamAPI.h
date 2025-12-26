@@ -1,6 +1,12 @@
 #pragma once
 
-#define VCAMAPI_API __declspec(dllexport)
+#if defined(_WIN32) || defined(_WIN64)
+        #define VCAMAPI_API __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+    #define VCAMAPI_API __attribute__((visibility("default")))
+#else
+    #define VCAMAPI_API
+#endif
 
 #ifdef __cplusplus
 extern "C" {
