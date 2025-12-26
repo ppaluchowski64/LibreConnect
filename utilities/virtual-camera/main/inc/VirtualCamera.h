@@ -2,6 +2,7 @@
 #define VIRTUAL_CAMERA_H
 
 #include <VCamAPI.h>
+#include <string>
 #include <boost/uuid/uuid.hpp>
 
 class VirtualCamera final {
