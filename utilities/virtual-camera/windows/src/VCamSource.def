@@ -1,0 +1,10 @@
+EXPORTS
+
+DllCanUnloadNow		PRIVATE
+DllGetClassObject	PRIVATE
+DllRegisterServer	PRIVATE
+DllUnregisterServer	PRIVATE
+CreateCam
+DestroyCam
+PushCamFrame
+VCamGetLastError

@@ -15,6 +15,29 @@ function(BuildStaticLibrary StaticLibraryName RootPath)
     target_include_directories(${StaticLibraryName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/)
 endfunction()
 
+function(BuildSharedLibrary SharedLibraryName RootPath)
+    file(GLOB_RECURSE SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
+    )
+
+    file(GLOB_RECURSE HEADER_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
+    )
+
+    add_library(${SharedLibraryName} SHARED
+            ${SOURCE_FILES}
+            ${HEADER_FILES}
+    )
+
+    target_link_libraries(${SharedLibraryName} PUBLIC ${ARGN})
+    target_include_directories(${SharedLibraryName} PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/
+    )
+endfunction()
+
 function(BuildTestProgram ExecutableName Path)
     add_executable(${ExecutableName} ${CMAKE_CURRENT_SOURCE_DIR}/tests/${Path})
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
@@ -114,7 +137,7 @@ function(DeployQT Target)
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
-    elseif(APPLE)
+    elseif(APPLE AND NOT IOS)
         set_target_properties(${ExecutableName} PROPERTIES
                 MACOSX_BUNDLE TRUE
         )
@@ -147,4 +170,15 @@ function(DeployQT Target)
                 VERBATIM
         )
     endif()
+endfunction()
+
+function(LinkVirtualCameraLibs target)
+    if (WIN32)
+        target_link_libraries(${target} PUBLIC virtual-camera-platform-implementation)
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:virtual-camera-platform-implementation>
+                $<TARGET_FILE_DIR:${target}>
+        )
+    endif ()
 endfunction()

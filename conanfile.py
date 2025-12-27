@@ -49,6 +49,11 @@ class ConanApplication(ConanFile):
         pass
 
     def requirements(self):
-        requirements = self.conan_data.get('requirements', [])
-        for requirement in requirements:
-            self.requires(requirement)
+        data = self.conan_data.get("requirements", {})
+
+        for req in data.get("common", []):
+            self.requires(req)
+
+        if self.settings.os == "Windows":
+            for req in data.get("windows", []):
+                self.requires(req)
