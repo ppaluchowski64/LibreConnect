@@ -4,6 +4,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+from marshmallow.fields import String
+
 # Environment variables
 env_file_path = ".env"
 default_env_content = """
@@ -11,26 +13,107 @@ default_env_content = """
 # Project Environment Variables
 # ==============================
 #
-# QT_DIR:
-#   Full path to your Qt installation.
-#   Used by CMake and deployment tools to locate Qt libraries, plugins, and utilities (e.g., windeployqt).
-#   Example (Windows, Qt 6.8.3, MSVC 2022 64-bit):
-#       QT_DIR=C:\\Qt\\6.8.3\\msvc2022_64
+# This file defines environment variables used by the build system
+# (CMake, Conan, deployment tools, and platform-specific scripts).
 #
-# DISABLE_DEBUG:
-#   Set this to disable the Conan "Debug" configuration step in the build script.
-#   Accepts: 1 / true / yes / on (case-insensitive) to skip Debug build.
-#   Leave empty or set to 0 / false / no / off to enable both Debug and Release builds.
+#
+
+# ------------------------------------------------
+# QT_DIR
+# ------------------------------------------------
+# Full path to your Qt installation for desktop builds.
+# Used by CMake and deployment tools to locate Qt libraries,
+# plugins, and utilities (e.g., windeployqt, macdeployqt).
+#
+# Example (Windows, Qt 6.8.3, MSVC 2022 64-bit):
+#   QT_DIR=C:\\Qt\\6.8.3\\msvc2022_64
+#
+# Example (Linux):
+#   QT_DIR=/opt/Qt/6.8.3/gcc_64
+#
+
+# ------------------------------------------------
+# DISABLE_DEBUG
+# ------------------------------------------------
+# Controls whether the Debug configuration is built.
+#
+# If set to any of the following values (case-insensitive):
+#   1 / true / yes / on
+# the Debug build step will be skipped and only Release will be built.
+#
+# If set to:
+#   0 / false / no / off
+# both Debug and Release configurations will be built.
 #
 # Example:
-#   DISABLE_DEBUG=false
+#   DISABLE_DEBUG=true
 #
+
+# ------------------------------------------------
+# BUILD_ANDROID
+# ------------------------------------------------
+# Enables Android-specific build steps.
+#
+# If set to:
+#   1 / true / yes / on
+# Android toolchains, Qt for Android, and the Android NDK
+# will be used during the build.
+#
+# If unset or set to:
+#   0 / false / no / off
+# Android-related variables are ignored.
+#
+# Example:
+#   BUILD_ANDROID=true
+#
+
+# ------------------------------------------------
+# QT_DIR_ANDROID
+# ------------------------------------------------
+# Full path to the Qt installation built for Android.
+# Required only when BUILD_ANDROID is enabled.
+#
+# Example:
+#   QT_DIR_ANDROID=C:\\Qt\\6.8.3\\android_arm64_v8a
+#
+# The selected Qt Android ABI must match the Android NDK
+# and the target ABI configured in your build scripts.
+#
+
+# ------------------------------------------------
+# ANDROID_NDK_DIR
+# ------------------------------------------------
+# Full path to the Android NDK installation.
+# Required only when BUILD_ANDROID is enabled.
+#
+# Example:
+#   ANDROID_NDK_DIR=C:\\Android\\Sdk\\ndk\\26.1.10909125
+#
+# Make sure the NDK version is compatible with both
+# your Qt for Android version and your CMake toolchain.
+#
+
 # ==============================================
 # Fill in the values below and save this file.
 # ==============================================
 
+# ===================
+# Common variables
+# ===================
+
 QT_DIR=
 DISABLE_DEBUG=
+
+# ================
+# Android only
+# ================
+
+BUILD_ANDROID=
+QT_DIR_ANDROID=
+ANDROID_NDK_DIR=
+DISABLE_ANDROID_DEBUG=
+ANDROID_ARCH=
+
 """
 
 # Check for environment variables file 
@@ -49,19 +132,27 @@ with open(env_file_path, "r") as f:
             key, _, value = line.partition("=")
             os.environ[key.strip()] = value.strip()
 
-# Check if QT_DIR is set
-if not os.environ.get("QT_DIR"):
-    print(f"QT_DIR is not set in \"{env_file_path}\"! Fill it before running this script.")
-    input("Press Enter to continue...")
-    exit(-1)
+def check_env_var(name: str):
+    if not os.environ.get(name):
+        print(f"${name} is not set in \"{env_file_path}\"! Fill it before running this script.")
+        input("Press Enter to continue...")
+        exit(-1)
 
-# Check if DISABLE_DEBUG is set
-if not os.environ.get("DISABLE_DEBUG"):
-    print(f"DISABLE_DEBUG is not set in \"{env_file_path}\"! Fill it before running this script.")
-    input("Press Enter to continue...")
-    exit(-1)
+check_env_var("QT_DIR")
+check_env_var("DISABLE_DEBUG")
+check_env_var("BUILD_ANDROID")
 
+if os.environ.get("BUILD_ANDROID"):
+    check_env_var("QT_DIR_ANDROID")
+    check_env_var("ANDROID_NDK_DIR")
+    check_env_var("DISABLE_ANDROID_DEBUG")
+    check_env_var("ANDROID_ARCH")
+    check_env_var("ANDROID_CLANG_VERSION")
+    check_env_var("ANDROID_OS_API_LEVEL")
+
+build_android = os.environ.get("BUILD_ANDROID", "").strip().lower() in ["1", "true", "yes", "on"]
 platform = sys.platform
+
 if platform == "win32":
     cppstd = "20"
     extra_flags = ""
@@ -144,6 +235,66 @@ def run_conan_install(build_type: str):
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
 
+def run_conan_install_android(build_type: str):
+    arch_type = os.environ.get("ANDROID_ARCH")
+    ndk = os.environ.get("ANDROID_NDK_DIR")
+    clang_version = os.environ.get("ANDROID_CLANG_VERSION")
+    api_level = os.environ.get("ANDROID_OS_API_LEVEL")
+
+    ndk_path = Path(ndk)
+    toolchain_base = ndk_path / "toolchains" / "llvm" / "prebuilt"
+
+    try:
+        host_tag = next(toolchain_base.iterdir()).name
+    except (StopIteration, FileNotFoundError):
+        print(f"ERROR: NDK structure invalid at {toolchain_base}")
+        sys.exit(1)
+
+    exe_ext = ".exe" if sys.platform == "win32" else ""
+    bin_dir = toolchain_base / host_tag / "bin"
+    addr2line_path = bin_dir / f"addr2line{exe_ext}"
+
+    if not addr2line_path.exists():
+        addr2line_path = bin_dir / f"llvm-addr2line{exe_ext}"
+
+    addr2line = str(addr2line_path).replace("\\", "/")
+
+    cmd_parts = [
+        "conan",
+        "install",
+        ".",
+        common_build_missing,
+        common_generator_flags,
+        f"-s build_type={build_type}",
+
+        "-s:h os=Android",
+        f"-s:h os.api_level={api_level}",
+        f"-s:h arch={arch_type}",
+        "-s:h compiler=clang",
+        f"-s:h compiler.version={clang_version}",
+        f"-s:h compiler.cppstd={cppstd}",
+        "-s:h compiler.libcxx=c++_static",
+        "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
+
+        "-pr:b default",
+        f"-s:b compiler.cppstd={cppstd}",
+
+        "-c", f'tools.android:ndk_path="{ndk}"',
+        f'-o boost/*:addr2line_location="{addr2line}"'
+    ]
+
+    if extra_flags:
+        cmd_parts.append(extra_flags)
+
+    cmd = " ".join(cmd_parts)
+    print(f"Running: {cmd}")
+
+    result = subprocess.run(cmd, shell=True)
+    if result.returncode != 0:
+        print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
+        sys.exit(result.returncode)
+
+
 disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "true", "yes", "on"]
 
 if platform.startswith("linux"):
@@ -192,3 +343,11 @@ if platform.startswith("linux"):
 if not disable_debug:
     run_conan_install("Debug")
 run_conan_install("Release")
+
+if build_android:
+    disable_debug_android = os.environ.get("DISABLE_DEBUG_ANDROID", "").strip().lower() in ["1", "true", "yes", "on"]
+
+    if not disable_debug_android:
+        run_conan_install("Debug")
+
+    run_conan_install_android("Release")
