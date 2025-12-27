@@ -1,0 +1,28 @@
+#ifndef VIRTUAL_CAMERA_H
+#define VIRTUAL_CAMERA_H
+
+#include <VCamAPI.h>
+#include <string>
+#include <boost/uuid/uuid.hpp>
+
+class VirtualCamera final {
+public:
+    VirtualCamera();
+    VirtualCamera(const VirtualCamera&) = delete;
+    VirtualCamera& operator=(const VirtualCamera&) = delete;
+
+    bool Start(const std::wstring& name, VCamFormat format, int width, int height, int fps);
+    bool Stop();
+    bool PushFrame(const void* data) const;
+
+private:
+    bool SetupCamera(const std::wstring& name, int width, int height, int fps);
+    bool DestroyCamera();
+
+    boost::uuids::uuid m_cameraID;
+    VCamFormat m_format;
+    VCamHandle m_handle;
+    bool m_active{false};
+};
+
+#endif //VIRTUAL_CAMERA_H
