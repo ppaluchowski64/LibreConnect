@@ -203,7 +203,8 @@ STDMETHODIMP MediaStream::GetStreamDescriptor(IMFStreamDescriptor** ppStreamDesc
 
 STDMETHODIMP MediaStream::RequestSample(IUnknown* pToken)
 {
-	//WINTRACE(L"MediaStream::RequestSample pToken:%p", pToken);
+	OutputDebugStringW(L"MediaStream::RequestSample");
+	WINTRACE(L"MediaStream::RequestSample pToken:%p", pToken);
 	winrt::slim_lock_guard lock(_lock);
 	RETURN_HR_IF(MF_E_SHUTDOWN, !_allocator || !_queue);
 
@@ -214,7 +215,17 @@ STDMETHODIMP MediaStream::RequestSample(IUnknown* pToken)
 
 	// generate frame
 	wil::com_ptr_nothrow<IMFSample> outSample;
-	RETURN_IF_FAILED(_generator.Generate(sample.get(), _format, &outSample));
+	HRESULT hr = _generator.GenerateFromExternal(sample.get(), _format, &outSample);
+
+	if (FAILED(hr)) {
+		if (hr == MF_E_NOT_AVAILABLE) {
+			WINTRACE(L"MediaStream::RequestSample - No external frame available, using internal generator");
+		} else {
+			WINTRACE(L"MediaStream::RequestSample - GenerateFromExternal failed: 0x%08X", hr);
+		}
+
+		RETURN_IF_FAILED(_generator.Generate(sample.get(), _format, &outSample));
+	}
 
 	if (pToken)
 	{

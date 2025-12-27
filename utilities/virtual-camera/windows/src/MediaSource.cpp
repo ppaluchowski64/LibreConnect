@@ -269,7 +269,7 @@ STDMETHODIMP MediaSource::Stop()
 // IMFMediaSourceEx
 STDMETHODIMP MediaSource::GetSourceAttributes(IMFAttributes** ppAttributes)
 {
-	WINTRACE(L"MediaSource::GetSourceAttributes");
+	//WINTRACE(L"MediaSource::GetSourceAttributes");
 	RETURN_HR_IF_NULL(E_POINTER, ppAttributes);
 	winrt::slim_lock_guard lock(_lock);
 
@@ -356,12 +356,12 @@ STDMETHODIMP MediaSource::GetAllocatorUsage(DWORD dwOutputStreamID, DWORD* pdwIn
 // IKsControl
 STDMETHODIMP_(NTSTATUS) MediaSource::KsProperty(PKSPROPERTY property, ULONG length, LPVOID data, ULONG dataLength, ULONG* bytesReturned)
 {
-	WINTRACE(L"MediaSource::KsProperty len:%u data:%p dataLength:%u", length, data, dataLength);
+	//WINTRACE(L"MediaSource::KsProperty len:%u data:%p dataLength:%u", length, data, dataLength);
 	RETURN_HR_IF_NULL(E_POINTER, property);
 	RETURN_HR_IF_NULL(E_POINTER, bytesReturned);
 	winrt::slim_lock_guard lock(_lock);
 
-	WINTRACE(L"MediaSource::KsProperty prop:%s", PKSIDENTIFIER_ToString(property, length).c_str());
+	//WINTRACE(L"MediaSource::KsProperty prop:%s", PKSIDENTIFIER_ToString(property, length).c_str());
 
 	// right now, we don't expose any property, but this is where we'll typically be asked for
 	// 

@@ -58,8 +58,8 @@ struct StreamConfig
     UINT width;
     UINT height;
     UINT fps;
-    bool useExternalFrames;
 };
+
 std::map<std::wstring, StreamConfig> g_streamConfigs;
 std::mutex g_configMutex;
 
@@ -71,6 +71,7 @@ struct VCamInstance
     UINT height;
     UINT fps;
     GUID clsid;
+    GUID instanceID;
     wil::com_ptr_nothrow<IMFVirtualCamera> vcam;
     std::mutex frameQueueMutex;
     std::queue<PushedFrame> frameQueue;
@@ -80,7 +81,7 @@ struct VCamInstance
     VCamInstance() : useExternalFrames(false), initialized(false), width(0), height(0), fps(30)
     {
         // Generate unique CLSID for this instance
-        CoCreateGuid(&clsid);
+        CoCreateGuid(&instanceID);
     }
 
     ~VCamInstance()
@@ -280,6 +281,7 @@ extern "C" {
             // Use the registered CLSID_VCam
             instance->clsid = CLSID_VCam;
             const auto clsidStr = GUID_ToStringW_Simple(CLSID_VCam);
+            const auto instanceIDStr = GUID_ToStringW_Simple(instance->instanceID);
 
             {
                 std::lock_guard<std::mutex> configLock(g_configMutex);
@@ -287,10 +289,9 @@ extern "C" {
                 config.width = width;
                 config.height = height;
                 config.fps = fps;
-                config.useExternalFrames = true;
-                g_streamConfigs[clsidStr] = config;
+                g_streamConfigs[instanceIDStr] = config;
 
-                const std::wstring regPath = L"SOFTWARE\\VCamSample\\" + clsidStr;
+                const std::wstring regPath = L"SOFTWARE\\VCamSample\\" + instanceIDStr;
                 HKEY hKey;
                 if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, nullptr,
                     REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
@@ -298,16 +299,8 @@ extern "C" {
                     RegSetValueExW(hKey, L"Width", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&width), sizeof(width));
                     RegSetValueExW(hKey, L"Height", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&height), sizeof(height));
                     RegSetValueExW(hKey, L"Fps", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&fps), sizeof(fps));
-                    constexpr DWORD useExternal = 1;
-                    RegSetValueExW(hKey, L"UseExternalFrames", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&useExternal), sizeof(useExternal));
                     RegCloseKey(hKey);
                 }
-
-                const DWORD processId = GetCurrentProcessId();
-                wchar_t debugMsg[512];
-                swprintf_s(debugMsg, L"[VCamAPI] CreateCam: Setting config BEFORE camera creation: %dx%d @ %d fps, useExternalFrames=%d (Process ID=%lu, map size=%zu, map addr=%p)\n",
-                    width, height, fps, config.useExternalFrames, processId, g_streamConfigs.size(), &g_streamConfigs);
-                OutputDebugStringW(debugMsg);
             }
 
             // Create virtual camera
@@ -354,29 +347,7 @@ extern "C" {
             instance->initialized = true;
             *handle = instance.get();
             g_cameras[*handle] = instance;
-            g_camerasByClsid[clsidStr] = instance;
-
-            {
-                std::lock_guard<std::mutex> configLock(g_configMutex);
-                auto it = g_streamConfigs.find(clsidStr);
-                if (it != g_streamConfigs.end())
-                {
-                    wchar_t debugMsg[256];
-                    swprintf_s(debugMsg, L"[VCamAPI] CreateCam: Config verified after Start: %dx%d @ %d fps, useExternalFrames=%d\n",
-                        it->second.width, it->second.height, it->second.fps, it->second.useExternalFrames);
-                    OutputDebugStringW(debugMsg);
-                }
-                else
-                {
-                    OutputDebugStringW(L"[VCamAPI] CreateCam: WARNING - Config lost after Start()!\n");
-                    StreamConfig config;
-                    config.width = width;
-                    config.height = height;
-                    config.fps = fps;
-                    config.useExternalFrames = true;
-                    g_streamConfigs[clsidStr] = config;
-                }
-            }
+            g_camerasByClsid[instanceIDStr] = instance;
 
             return VCAM_SUCCESS;
         }
@@ -437,8 +408,8 @@ extern "C" {
         }
 
         // Remove from both maps
-        auto clsidStr = GUID_ToStringW_Simple(instance->clsid);
-        g_camerasByClsid.erase(clsidStr);
+        const auto id = GUID_ToStringW_Simple(instance->instanceID);
+        g_camerasByClsid.erase(id);
         g_cameras.erase(it);
         return VCAM_SUCCESS;
     }
@@ -490,7 +461,7 @@ extern "C" {
         }
 
         // Ensure shared memory for this camera (cross-process)
-        if (!EnsureSharedMemory(instance->clsid, frameSize, handle))
+        if (!EnsureSharedMemory(instance->instanceID, frameSize, handle))
         {
             return VCAM_ERROR_INIT_FAILED;
         }
@@ -529,11 +500,9 @@ extern "C++"
 {
     __declspec(dllexport) bool VCamAPI_HasExternalFrame(const GUID& clsid)
     {
-        UNREFERENCED_PARAMETER(clsid);
-
         if (!g_sharedFrameHeader)
         {
-            const auto name = GetSharedMemoryName(CLSID_VCam);
+            const auto name = GetSharedMemoryName(clsid);
 
             const HANDLE hMap = OpenFileMappingW(FILE_MAP_READ, FALSE, name.c_str());
             if (!hMap)
