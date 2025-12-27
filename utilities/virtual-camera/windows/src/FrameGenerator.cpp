@@ -132,6 +132,8 @@ HRESULT FrameGenerator::CreateRenderTargetResources(UINT width, UINT height)
 
 HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** outSample)
 {
+	WINTRACE(L"FrameGenerator::Generate - No external frame available, using internal generator");
+	OutputDebugStringA("FrameGenerator::PushFrame");
 	RETURN_HR_IF_NULL(E_POINTER, sample);
 	RETURN_HR_IF_NULL(E_POINTER, outSample);
 	*outSample = nullptr;
@@ -139,7 +141,7 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** 
 	if (_renderTarget)
 	{
 		_renderTarget->BeginDraw();
-		_renderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f));
+		_renderTarget->Clear(D2D1::ColorF(0.0f, 0.5f, 0.5f, 1.0f));
 		RETURN_IF_FAILED(_renderTarget->EndDraw());
 	}
 
@@ -236,6 +238,8 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** 
 }
 
 HRESULT FrameGenerator::PushExternalFrame(const void* data, UINT width, UINT height, const GUID& format) {
+	WINTRACE(L"FrameGenerator::GenerateExternalFrame");
+	OutputDebugStringA("FrameGenerator::PushExternalFrame");
 	if (!data || !width || !height)
 		return E_INVALIDARG;
 
