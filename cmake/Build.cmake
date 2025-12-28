@@ -147,6 +147,8 @@ function(DeployQT Target)
                 COMMENT "Running macdeployqt on ${Target}..."
                 VERBATIM
         )
+    elseif(ANDROID)
+        set_property(TARGET ${Target} PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
     elseif(UNIX)
         find_program(LINUXDEPLOY_EXECUTABLE linuxdeploy)
         find_program(PLUGIN_QT_EXECUTABLE linuxdeploy-plugin-qt)

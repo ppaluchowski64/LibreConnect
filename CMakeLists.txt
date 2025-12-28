@@ -17,7 +17,13 @@ include(cmake/ENV_Loader.cmake)
 
 load_env_file(.env)
 
-list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR}/lib/cmake)
+if (ANDROID)
+    list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_ANDROID}/lib/cmake)
+    set(ANDROID_SDK_ROOT $ENV{ANDROID_SDK_DIR})
+    set(ENABLE_TESTS OFF)
+elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+    list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR}/lib/cmake)
+endif()
 
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
@@ -27,7 +33,7 @@ find_package(GTest           REQUIRED)
 find_package(benchmark       REQUIRED)
 find_package(SQLiteCpp       REQUIRED)
 find_package(nlohmann_json   REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Quick Qml)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml)
 
 FetchContent_Declare(
         debug-log
@@ -40,14 +46,18 @@ qt_standard_project_setup()
 
 add_library(project_defaults INTERFACE)
 
-
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core)
 BuildStaticLibrary(file-entry utilities/file-system project_defaults system-component-pc)
 
 add_subdirectory("utilities/virtual-camera")
-add_subdirectory("apps/desktop")
+
+if (ANDROID)
+    add_subdirectory("apps/mobile")
+elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+    add_subdirectory("apps/desktop")
+endif()
 
 if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
