@@ -4,8 +4,6 @@ import sys
 import subprocess
 from pathlib import Path
 
-from marshmallow.fields import String
-
 # Environment variables
 env_file_path = ".env"
 default_env_content = """
@@ -305,8 +303,7 @@ def run_conan_install_android(build_type: str):
         "-pr:b", "default",
         "-s:b", f"compiler.cppstd={cppstd}",
         "-c", f"tools.android:ndk_path={ndk}",
-        "-o", f"boost/*:addr2line_location={addr2line}",
-        "-of", f"build/android/{build_type}"
+        "-o", f"boost/*:addr2line_location={addr2line}"
     ]
 
     if extra_flags:
