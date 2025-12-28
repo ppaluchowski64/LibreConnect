@@ -221,7 +221,8 @@ def run_conan_install(build_type: str):
         common_build_missing,
         common_generator_flags,
         f"-s compiler.cppstd={cppstd}",
-        f"-s build_type={build_type}"
+        f"-s build_type={build_type}",
+        "-of", f"build/desktop/{build_type}"
     ]
 
     if extra_flags:
@@ -259,37 +260,67 @@ def run_conan_install_android(build_type: str):
 
     addr2line = str(addr2line_path).replace("\\", "/")
 
-    cmd_parts = [
+    arch_map = {
+        "armv7": "armv7a-linux-androideabi",
+        "armeabi-v7a": "armv7a-linux-androideabi",
+        "arm64-v8a": "aarch64-linux-android",
+        "aarch64": "aarch64-linux-android",
+        "x86": "i686-linux-android",
+        "x86_64": "x86_64-linux-android"
+    }
+
+    triple = arch_map.get(arch_type)
+    if not triple:
+        print(f"ERROR: Unknown or unsupported ANDROID_ARCH: {arch_type}")
+        print(f"Supported values: {list(arch_map.keys())}")
+        sys.exit(1)
+
+    target_flag = f"--target={triple}{api_level}"
+
+    cmd_args = [
         "conan",
         "install",
         ".",
-        common_build_missing,
-        common_generator_flags,
-        f"-s build_type={build_type}",
-
-        "-s:h os=Android",
-        f"-s:h os.api_level={api_level}",
-        f"-s:h arch={arch_type}",
-        "-s:h compiler=clang",
-        f"-s:h compiler.version={clang_version}",
-        f"-s:h compiler.cppstd={cppstd}",
-        "-s:h compiler.libcxx=c++_static",
+        "--build=missing",
+        "-g", "CMakeToolchain",
+        "-g", "CMakeDeps",
+        "-s", f"build_type={build_type}",
+        "-s:h", "os=Android",
+        "-s:h", f"os.api_level={api_level}",
+        "-s:h", f"arch={arch_type}",
+        "-s:h", "compiler=clang",
+        "-s:h", f"compiler.version={clang_version}",
+        "-s:h", f"compiler.cppstd={cppstd}",
+        "-s:h", "compiler.libcxx=c++_static",
         "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
 
-        "-pr:b default",
-        f"-s:b compiler.cppstd={cppstd}",
+        # Pass these as raw Python-style lists; subprocess will handle the quoting
+        "-c", f'tools.build:cxxflags=["{target_flag}"]',
+        "-c", f'tools.build:cflags=["{target_flag}"]',
+        "-c", f'tools.build:exelinkflags=["{target_flag}"]',
+        "-c", f'tools.build:sharedlinkflags=["{target_flag}"]',
 
-        "-c", f'tools.android:ndk_path="{ndk}"',
-        f'-o boost/*:addr2line_location="{addr2line}"'
+        "-o", f"boost/*:extra_b2_flags=cflags={target_flag} cxxflags={target_flag}",
+
+        "-pr:b", "default",
+        "-s:b", f"compiler.cppstd={cppstd}",
+        "-c", f"tools.android:ndk_path={ndk}",
+        "-o", f"boost/*:addr2line_location={addr2line}",
+        "-of", f"build/android/{build_type}"
     ]
 
     if extra_flags:
-        cmd_parts.append(extra_flags)
+        cmd_args.extend(extra_flags.split())
 
-    cmd = " ".join(cmd_parts)
-    print(f"Running: {cmd}")
+    print(f"Running: {' '.join(cmd_args)}")
 
-    result = subprocess.run(cmd, shell=True)
+    env = os.environ.copy()
+    env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
+    env["CFLAGS"] = target_flag
+    env["CXXFLAGS"] = target_flag
+
+    result = subprocess.run(cmd_args, shell=False, env=env)
+
     if result.returncode != 0:
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
@@ -348,6 +379,6 @@ if build_android:
     disable_debug_android = os.environ.get("DISABLE_DEBUG_ANDROID", "").strip().lower() in ["1", "true", "yes", "on"]
 
     if not disable_debug_android:
-        run_conan_install("Debug")
+        run_conan_install_android("Debug")
 
     run_conan_install_android("Release")
