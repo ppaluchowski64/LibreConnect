@@ -22,7 +22,7 @@ if (ANDROID)
     set(ANDROID_SDK_ROOT $ENV{ANDROID_SDK_DIR})
     set(ENABLE_TESTS OFF)
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
-    list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR}/lib/cmake)
+    list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
 endif()
 
 find_package(OpenSSL         REQUIRED)

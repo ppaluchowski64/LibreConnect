@@ -133,7 +133,7 @@ endfunction()
 function(DeployQT Target)
     if(WIN32)
         add_custom_command(TARGET ${Target} POST_BUILD
-                COMMAND "$ENV{QT_DIR}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR}/qml" "$<TARGET_FILE:${Target}>"
+                COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
@@ -143,7 +143,7 @@ function(DeployQT Target)
         )
 
         add_custom_command(TARGET ${Target} POST_BUILD
-                COMMAND "$ENV{QT_DIR}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${Target}>" -qmldir=$ENV{QT_DIR}/qml -dmg
+                COMMAND "$ENV{QT_DIR_DESKTOP}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${Target}>" -qmldir=$ENV{QT_DIR_DESKTOP}/qml -dmg
                 COMMENT "Running macdeployqt on ${Target}..."
                 VERBATIM
         )
@@ -163,7 +163,7 @@ function(DeployQT Target)
 
         add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND env
-                QMAKE=$ENV{QT_DIR}/bin/qmake6
+                QMAKE=$ENV{QT_DIR_DESKTOP}/bin/qmake6
                 ${LINUXDEPLOY_EXECUTABLE}
                 --appdir ${CMAKE_BINARY_DIR}/AppDir
                 --executable "$<TARGET_FILE:${Target}>"
