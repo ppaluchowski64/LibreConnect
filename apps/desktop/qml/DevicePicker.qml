@@ -4,64 +4,27 @@ import LibreConnect.desktop 1.0
 
 Page {
     id: devicePicker
-    property bool isSearching: false
+    DeviceDiscovery {
+        id: discovery
+    }
+    DeviceConnectionController {
+        id: conn
+    }
     property bool isConnecting: false
-    property var connectingTo: null
-
-    // --- FAKE DATA MODEL ---
-    ListModel {
-        id: deviceModel
-        // starts empty; we "discover" one later
-    }
-
-    function simulateDiscovery() {
-        isSearching = true
-        deviceModel.clear()
-        deviceListView.currentIndex = -1
-        discoveryTimer.restart()
-    }
-
     function connectToCurrent() {
         if (deviceListView.currentIndex < 0 || isConnecting)
             return
-        connectingTo = deviceModel.get(deviceListView.currentIndex)
+
+        const dev = discovery.deviceAt(deviceListView.currentIndex)
+
+        conn.connectTo(dev.ipAddress, 5000, 0)
+
         isConnecting = true
-        connectTimer.restart()
-    }
-
-    Timer {
-        id: discoveryTimer
-        interval: 1200
-        repeat: false
-        onTriggered: {
-            // Append a fake device
-            deviceModel.append({
-                                   "icon": "android.png",
-                                   "deviceName": "Google Pixel 7 Pro",
-                                   "ipAddress": "192.168.1.23",
-                                   "osName": "Android",
-                                   "osVersion": "16",
-                                   "appVersion": "1.0.3"
-                               })
-            isSearching = false
-        }
-    }
-
-    // Fake "connect" action
-    Timer {
-        id: connectTimer
-        interval: 1200
-        repeat: false
-        onTriggered: {
-            isConnecting = false
-            root.StackView.view.push(
-                        "qrc:/LibreConnect/desktop/Connected.qml")
-        }
     }
 
     Image {
         id: logo
-        source: "qrc:/LibreConnect/desktop/libreconnect_logo.png"
+        source: "libreconnect_logo.png"
         width: 140
         height: 140
         fillMode: Image.PreserveAspectFit
@@ -87,9 +50,8 @@ Page {
             clip: true
             focus: true
 
-            model: deviceModel
+            model: discovery.model
 
-            // Smooth highlight that follows the selected (clicked) item
             highlight: Rectangle {
                 color: "#e3f2fd"
                 border.color: "#2196f3"
@@ -118,7 +80,7 @@ Page {
 
                     Image {
                         id: deviceIcon
-                        source: icon // role from ListModel
+                        source: icon
                         width: 48
                         height: 48
                         anchors.verticalCenter: parent.verticalCenter
@@ -129,7 +91,7 @@ Page {
                         spacing: 4
 
                         Text {
-                            text: deviceName // role from ListModel
+                            text: deviceName
                             font.pixelSize: 18
                             font.bold: true
                             color: "#111111"
@@ -152,7 +114,6 @@ Page {
                 MouseArea {
                     anchors.fill: parent
                     hoverEnabled: true
-
                     onClicked: deviceListView.currentIndex = index
                     onDoubleClicked: {
                         deviceListView.currentIndex = index
@@ -168,10 +129,9 @@ Page {
                 font.pixelSize: 16
                 color: "#666666"
                 visible: deviceListView.count === 0
-                text: isSearching ? "Searching for devices..." : "No devices found"
+                text: discovery.searching ? "Searching for devices..." : "No devices found"
             }
 
-            // Keyboard: Enter to connect, Esc to clear selection
             Keys.onReturnPressed: devicePicker.connectToCurrent()
             Keys.onEnterPressed: devicePicker.connectToCurrent()
             Keys.onEscapePressed: deviceListView.currentIndex = -1
@@ -191,7 +151,8 @@ Page {
             width: 120
             height: 48
             font.pixelSize: 16
-            enabled: deviceListView.currentIndex >= 0 && !isConnecting
+            enabled: deviceListView.currentIndex >= 0 && !conn.pending && !conn.connected
+
             onClicked: devicePicker.connectToCurrent()
         }
 
@@ -202,10 +163,9 @@ Page {
             height: 48
             font.pixelSize: 16
             enabled: !isConnecting
-            onClicked: simulateDiscovery() // simulate a new search
+            onClicked: discovery.discover()
         }
     }
-
     Column {
         id: helpText
         anchors.right: parent.right
@@ -220,22 +180,15 @@ Page {
             font.pixelSize: 16
             font.bold: true
             color: "#111111"
-            wrapMode: Text.WordWrap
             width: parent.width
         }
-
         Column {
             width: parent.width
             Row {
                 spacing: 6
                 width: parent.width
                 Text {
-                    text: "•"
-                    font.pixelSize: 14
-                    color: "#333333"
-                }
-                Text {
-                    text: "Make sure both of your devices are on the same network"
+                    text: "• Make sure both of your devices are on the same network"
                     font.pixelSize: 14
                     color: "#333333"
                     wrapMode: Text.WordWrap
@@ -246,12 +199,7 @@ Page {
                 spacing: 6
                 width: parent.width
                 Text {
-                    text: "•"
-                    font.pixelSize: 14
-                    color: "#333333"
-                }
-                Text {
-                    text: "Make sure the app is in the foreground"
+                    text: "• Make sure the app is in the foreground"
                     font.pixelSize: 14
                     color: "#333333"
                     wrapMode: Text.WordWrap
@@ -260,6 +208,31 @@ Page {
             }
         }
     }
+    Connections {
+        target: conn
 
-    Component.onCompleted: simulateDiscovery() // kick off the fake search
+        // When connected successfully -> navigate to connected page
+        function onConnectedChanged() {
+            if (conn.connected) {
+                isConnecting = false
+                devicePicker.StackView.view.push("qrc:/LibreConnect/desktop/Connected.qml")
+            }
+        }
+
+        // If connection fails or disconnects -> show error popup later
+        function onLastErrorChanged() {
+            if (conn.lastError.length > 0) {
+                isConnecting = false
+            }
+        }
+
+        function onPendingChanged() {
+            isConnecting = conn.pending
+        }
+    }
+
+    Component.onCompleted: {
+        discovery.discover();
+        console.log("DevicePicker loaded OK");
+    }
 }
