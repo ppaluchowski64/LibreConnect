@@ -41,8 +41,9 @@ jobs:
       - name: Write Qt path to .env for CMake
         shell: pwsh
         run: |
-          "QT_DIR=$env:QT_ROOT_DIR" >> .env
+          "QT_DIR_DESKTOP=$env:QT_ROOT_DIR" >> .env
           "DISABLE_DEBUG=true" >> .env
+          "BUILD_FOR=Desktop" >> .env
 
       - name: Install Conan deps
         run: python configure_project.py
@@ -112,7 +113,7 @@ jobs:
         run: conan profile detect --force
 
       - name: Write Qt path to .env for CMake
-        run: echo QT_DIR=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env
+        run: echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env && echo BUILD_FOR=Desktop >> .env
 
       - name: Install Conan deps
         run: python configure_project.py
@@ -155,7 +156,7 @@ jobs:
           arch: 'clang_64'
 
       - name: Write Qt path to .env for CMake
-        run: echo "QT_DIR=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env
+        run: echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env && echo "BUILD_FOR=Desktop" >> .env
 
       - name: Create Conan profile
         run: conan profile detect --force
