@@ -82,15 +82,18 @@ void ConnectionManager::StartAcceptingConnections() {
         Initialize();
     }
 
-    std::lock_guard<std::mutex> lock(s_mutex);
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
 
-    if (s_instance->m_initialConnectionOut != nullptr) {
-        s_instance->m_initialConnectionOut->Disconnect();
+        if (s_instance->m_initialConnectionOut != nullptr) {
+            s_instance->m_initialConnectionOut->Disconnect();
+        }
+
+        s_instance->m_initialConnectionOut = InitialConnection::Create(s_instance->m_context);
     }
 
-    s_instance->m_initialConnectionOut = InitialConnection::Create(s_instance->m_context);
-
     const TCPEndpoint endpoint(asio::ip::tcp::v4(), 0);
+
     SeekInitialConnection(endpoint);
 }
 
