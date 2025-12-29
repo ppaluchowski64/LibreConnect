@@ -279,29 +279,6 @@ def run_conan_install_android(build_type: str):
 
     addr2line = str(addr2line_path).replace("\\", "/")
 
-    android_triple_map = {
-        "armv7": "armv7a-linux-androideabi",
-        "armeabi-v7a": "armv7a-linux-androideabi",
-        "arm64-v8a": "aarch64-linux-android",
-        "aarch64": "aarch64-linux-android",
-        "x86": "i686-linux-android",
-        "x86_64": "x86_64-linux-android"
-    }
-
-    # 2. Define a secondary map to translate Android ABIs to Conan Settings
-    # Conan's settings.yml does NOT recognize 'arm64-v8a', it uses 'armv8'
-    conan_arch_map = {
-        "armv7": "armv7",
-        "armeabi-v7a": "armv7",
-        "arm64-v8a": "armv8",  # Map arm64-v8a to conan's armv8
-        "aarch64": "armv8",
-        "x86": "x86",
-        "x86_64": "x86_64"
-    }
-
-
-    target_flag = f"--target={arch_type}{api_level}"
-
     cmd_args = [
         "conan",
         "install",
@@ -329,12 +306,8 @@ def run_conan_install_android(build_type: str):
     if extra_flags:
         cmd_args.extend(extra_flags.split())
 
-    print(f"Running: {' '.join(cmd_args)}")
-
     env = os.environ.copy()
     env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
-    env["CFLAGS"] = target_flag
-    env["CXXFLAGS"] = target_flag
 
     result = subprocess.run(cmd_args, shell=False, env=env)
 
