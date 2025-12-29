@@ -1,6 +1,6 @@
 requirements:
   common:
-    - "boost/1.87.0"
+    - "boost/1.90.0"
     - "openssl/3.5.0"
     - "asio/1.34.2"
     - "gtest/1.17.0"

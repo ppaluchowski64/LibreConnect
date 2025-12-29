@@ -6,7 +6,6 @@ BuildQTExecutable(appLibreConnect_mobile
         p2p-network-component-pc
         virtual-camera
         Qt6::Quick
-        Qt6::Qml
 )
 
 LinkVirtualCameraLibs(appLibreConnect_mobile)
