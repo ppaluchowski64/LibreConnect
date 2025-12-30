@@ -62,7 +62,7 @@ bool VirtualCamera::PushFrame(const void* data) const {
 
 bool VirtualCamera::SetupCamera(const std::string& name, const int width, const int height, const int fps) {
     m_handle = nullptr;
-    const VCamResult result = CreateCam(name.c_str(), width, height, fps, &m_handle);
+    const VCamResult result = CreateCam(name.c_str(), width, height, fps, m_format, &m_handle);
 
     if (result != VCAM_SUCCESS) {
         Debug::LogError("Camera setup result {} - \"{}\"", magic_enum::enum_name(result), VCamGetLastError(m_handle));

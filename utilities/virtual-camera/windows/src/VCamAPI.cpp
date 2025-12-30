@@ -234,7 +234,7 @@ static bool IsCLSIDRegistered(const GUID& clsid)
 }
 
 extern "C" {
-    VCAMAPI_API VCamResult CreateCam(const wchar_t* name, const int width, const int height, const int fps, VCamHandle* handle)
+    VCAMAPI_API VCamResult CreateCam(const wchar_t* name, const int width, const int height, const int fps, VCamFormat format, VCamHandle* handle)
     {
         if (!name || !handle || width <= 0 || height <= 0 || fps <= 0)
         {

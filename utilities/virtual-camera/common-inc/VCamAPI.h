@@ -36,10 +36,11 @@ extern "C" {
      * @param width Frame width in pixels
      * @param height Frame height in pixels
      * @param fps Frames per second
+     * @param format Frame format (VCAM_FORMAT_RGB32 or VCAM_FORMAT_NV12)
      * @param handle Output handle to the created camera
      * @return VCamResult error code
      */
-    VCAMAPI_API VCamResult CreateCam(const char* name, int width, int height, int fps, VCamHandle* handle);
+    VCAMAPI_API VCamResult CreateCam(const char* name, int width, int height, int fps, VCamFormat format, VCamHandle* handle);
 
     /**
      * Destroy a virtual camera

@@ -10,7 +10,7 @@ file(GLOB_RECURSE HEADER_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/inc/*.hpp
 )
 
-add_library(virtual-camera-platform-implementation STATIC
+add_library(virtual-camera-platform-implementation SHARED
         ${SOURCE_FILES}
         ${HEADER_FILES}
 )
