@@ -10,9 +10,14 @@ file(GLOB_RECURSE HEADER_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/inc/*.hpp
 )
 
-add_library(virtual-camera-platform-implementation SHARED
+add_library(virtual-camera-platform-implementation STATIC
         ${SOURCE_FILES}
         ${HEADER_FILES}
+)
+
+target_link_libraries(virtual-camera-platform-implementation PRIVATE
+        nlohmann_json::nlohmann_json
+        Debug-Log
 )
 
 target_include_directories(virtual-camera-platform-implementation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)

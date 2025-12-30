@@ -1,7 +1,7 @@
 #include "VCamAPI.h"
 
 extern "C" {
-    VCAMAPI_API VCamResult CreateCam(const wchar_t* name, int width, int height, int fps, VCamHandle* handle) {
+    VCAMAPI_API VCamResult CreateCam(const char* name, int width, int height, int fps, VCamHandle* handle) {
         return VCAM_SUCCESS;
     }
 
@@ -13,7 +13,7 @@ extern "C" {
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API const wchar_t* VCamGetLastError(VCamHandle handle) {
-        return L"";
+    VCAMAPI_API const char* VCamGetLastError(VCamHandle handle) {
+        return "";
     }
 }

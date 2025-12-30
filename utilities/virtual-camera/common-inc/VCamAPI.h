@@ -39,7 +39,7 @@ extern "C" {
      * @param handle Output handle to the created camera
      * @return VCamResult error code
      */
-    VCAMAPI_API VCamResult CreateCam(const wchar_t* name, int width, int height, int fps, VCamHandle* handle);
+    VCAMAPI_API VCamResult CreateCam(const char* name, int width, int height, int fps, VCamHandle* handle);
 
     /**
      * Destroy a virtual camera
@@ -62,7 +62,7 @@ extern "C" {
      * @param handle Camera handle
      * @return Error message string (empty if no error)
      */
-    VCAMAPI_API const wchar_t* VCamGetLastError(VCamHandle handle);
+    VCAMAPI_API const char* VCamGetLastError(VCamHandle handle);
 
 #ifdef __cplusplus
 }
