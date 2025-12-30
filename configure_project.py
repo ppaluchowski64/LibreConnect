@@ -240,8 +240,7 @@ def run_conan_install(build_type: str):
         common_build_missing,
         common_generator_flags,
         f"-s compiler.cppstd={cppstd}",
-        f"-s build_type={build_type}",
-        "-of", f"build/desktop/{build_type}"
+        f"-s build_type={build_type}"
     ]
 
     if extra_flags:
