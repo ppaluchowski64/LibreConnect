@@ -12,7 +12,7 @@ int main() {
     constexpr int height = 720;
     constexpr int fps    = 30;
 
-    if (!camera.Start( L"Example Virtual Camera", VCAM_FORMAT_RGB32, width, height, fps)) {
+    if (!camera.Start( "Example Virtual Camera", VCAM_FORMAT_RGB32, width, height, fps)) {
         exit(-1);
     }
 
@@ -24,7 +24,7 @@ int main() {
     float phase = 0.0f;
     constexpr float phaseStep = 0.02f;
 
-    for (int i = 0; i < 500; ++i) {
+    for (int i = 0; i < 50000; ++i) {
         const uint8_t r = static_cast<uint8_t>(127 + 127 * std::sin(phase));
         const uint8_t g = static_cast<uint8_t>(127 + 127 * std::sin(phase + 2.0f));
         const uint8_t b = static_cast<uint8_t>(127 + 127 * std::sin(phase + 4.0f));
