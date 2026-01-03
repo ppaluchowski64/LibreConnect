@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        cmd = "v4l2loopback-ctl add --exclusive-caps 1 --name=\"" +
+        cmd = "v4l2loopback-ctl add --name=\"" +
               std::string(argv[2]) + "\"";
     }
     else if (std::string(argv[1]) == "remove") {
