@@ -28,6 +28,7 @@ endif()
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
 find_package(magic_enum      REQUIRED)
+find_package(fmt             REQUIRED)
 find_package(concurrentqueue REQUIRED)
 find_package(GTest           REQUIRED)
 find_package(benchmark       REQUIRED)
@@ -68,4 +69,27 @@ if (ENABLE_TESTS)
 
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
     LinkVirtualCameraLibs(VirtualCameraTest)
+endif()
+
+
+if (ANDROID)
+
+elseif(APPLE AND NOT IOS)
+    add_custom_target(copy_scripts ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scripts/macos
+            ${CMAKE_BINARY_DIR}/scripts
+    )
+elseif (UNIX AND NOT APPLE)
+    add_custom_target(copy_scripts ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scripts/linux
+            ${CMAKE_BINARY_DIR}/scripts
+    )
+elseif (WIN32)
+    add_custom_target(copy_scripts ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/scripts/windows
+            ${CMAKE_BINARY_DIR}/scripts
+    )
 endif()

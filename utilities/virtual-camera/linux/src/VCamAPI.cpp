@@ -4,7 +4,6 @@
 #include <filesystem>
 #include <fstream>
 #include <vector>
-#include <DebugLog.h>
 #include <nlohmann/json.hpp>
 
 #include <unistd.h>
@@ -13,9 +12,16 @@
 #include <csignal>
 #include <sys/stat.h>
 #include <linux/videodev2.h>
+#include <fmt/format.h>
+#include <thread>
+
+constexpr int START_VIDEO_DEVICE_ID = 30;
+constexpr int END_VIDEO_DEVICE_ID = 37;
 
 struct VCamInstance {
     int v4l2Device{};
+    int width;
+    int height;
     std::string lastError;
 };
 
@@ -31,112 +37,52 @@ static void SetError(const std::string_view str, const VCamHandle handle) {
     g_instances.at(handle)->lastError = str;
 }
 
-struct VirtualCameraData {
-    std::string name;
-    uint16_t cameraID;
-    bool locked;
-};
-
 static bool IsProcessAlive(const pid_t pid) {
     return kill(pid, 0) == 0 || errno == EPERM;
 }
 
-static bool videoExists(const int number) {
-    const std::string path = "/dev/video" + std::to_string(number);
-    struct stat buffer{};
-    return (stat(path.c_str(), &buffer) == 0);
-}
-
-static int findFreeVideoNr(const int start = 10, const int max = 1000) {
-    for (int i = start; i <= max; ++i) {
-        if (!videoExists(i))
-            return i;
+std::vector<std::string> ListVideoDevices() {
+    std::vector<std::string> devices;
+    for (const auto& entry : std::filesystem::directory_iterator("/dev")) {
+        if (entry.path().filename().string().starts_with("video")) {
+            devices.push_back(entry.path());
+        }
     }
-    return -1;
+    return devices;
 }
 
-static std::vector<VirtualCameraData> LoadConfig() {
-    const std::filesystem::path configDir{"VirtualCameraConfigs"};
-    const std::string lockedFilePrefix{"lock_"};
+static std::string GetVideoLabel(const std::string& device) {
+    int fd = open(device.c_str(), O_RDONLY);
+    if (fd < 0)
+        return {};
 
-    std::error_code ec{};
-    std::filesystem::create_directories(configDir, ec);
-
-    if (ec) {
-        Debug::LogError("VirtualCamera::LoadConfig create directories error: {}", ec.message());
+    v4l2_capability cap{};
+    if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
+        close(fd);
         return {};
     }
 
-    std::vector<VirtualCameraData> configs;
+    close(fd);
+    return reinterpret_cast<char*>(cap.card);
+}
 
-    for (const auto& entry : std::filesystem::directory_iterator(configDir, ec)) {
-        if (ec) {
-            Debug::LogError("VirtualCamera::LoadConfig Directory iteration error: {}", ec.message());
-            break;
+static std::string FindDeviceByLabel(const std::string& label) {
+    for (const auto& dev : ListVideoDevices()) {
+        if (GetVideoLabel(dev) == label) {
+            return dev;
         }
-
-        if (entry.is_directory()) {
-            continue;
-        }
-
-        std::ifstream file(entry.path());
-        if (!file) {
-            Debug::LogError("VirtualCamera::LoadConfig Failed to open {}", entry.path().string());
-            continue;
-        }
-
-        const std::string filename = entry.path().filename();
-
-        if (filename.starts_with(lockedFilePrefix)) {
-            continue;
-        }
-
-        nlohmann::json config;
-        try {
-            file >> config;
-        } catch (const std::exception& e) {
-            Debug::LogError("VirtualCamera::LoadConfig JSON parse failed for {}: {}", entry.path().string(), e.what());
-            continue;
-        }
-
-        bool valid =
-            config.contains("name") &&
-            config["name"].is_string() &&
-            config.contains("cameraID") &&
-            config["cameraID"].is_number_unsigned();
-
-        if (!valid) {
-            std::filesystem::remove(entry.path(), ec);
-            if (ec) {
-                Debug::LogError("VirtualCamera::LoadConfig file remove error: {}", ec.message());
-            }
-
-            continue;
-        }
-
-        const std::filesystem::path lockPath = entry.path().parent_path() / (lockedFilePrefix + filename);
-        bool locked = std::filesystem::exists(lockPath);
-        if (locked) {
-            std::ifstream lockFile(lockPath);
-            if (!lockFile) {
-                Debug::LogError("VirtualCamera::LoadConfig Failed to open {}", lockPath.string());
-                continue;
-            }
-
-            pid_t pid{};
-            lockFile >> pid;
-
-            locked = IsProcessAlive(pid);
-        }
-
-        configs.emplace_back(
-            config.at("name").get<std::string>(),
-            config.at("cameraID").get<uint16_t>(),
-            locked
-        );
     }
+    return {};
+}
 
-    return configs;
+static std::string WaitForDeviceByLabel(const std::string& label, const int timeoutMs = 50) {
+    for (int i = 0; i < timeoutMs / 50; ++i) {
+        auto dev = FindDeviceByLabel(label);
+        if (!dev.empty())
+            return dev;
+        std::this_thread::sleep_for(std::chrono::milliseconds(timeoutMs));
+    }
+    return {};
 }
 
 extern "C" {
@@ -162,60 +108,27 @@ extern "C" {
             return VCAM_ERROR_INVALID_PARAM;
         }
 
-        const std::vector<VirtualCameraData> configs = LoadConfig();
-        bool createNewCamera = true;
         int deviceID = -1;
 
-        for (const auto& config : configs) {
-            if (config.name != name) {
-                continue;
+        {
+            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper add \"{}\"", name);
+
+            if (std::system(cmd.c_str()) != 0) {
+                SetError("Failed to add v4l2loopback device", handle);
+                return VCAM_ERROR_INIT_FAILED;
             }
-
-            if (config.locked) {
-                SetError("Camera with that name already exists", *handle);
-                return VCAM_ERROR_CAMERA_EXISTS;
-            }
-
-            createNewCamera = false;
-            deviceID = config.cameraID;
-
-            break;
         }
 
-        if (createNewCamera) {
-            deviceID = findFreeVideoNr(10, 50000);
-            const std::string command = fmt::format("modprobe v4l2loopback devices=1 video_nr={} card_label=\"{}\" exclusive_caps=1", deviceID, name);
-            const int status = system(command.c_str());
+        {
+            const std::string result = WaitForDeviceByLabel(name);
 
-            if (status == -1) {
-                SetError("Failed to execute system()", *handle);
-                return VCAM_ERROR_INIT_FAILED;
+            int i = 0;
+            for (; i < result.size(); ++i) {
+                if (result[i] >= '0' && result[i] <= '9') { break; }
             }
 
-            const int exitCode = WEXITSTATUS(status);
-            if (exitCode != 0) {
-                SetError(fmt::format("Modprobe failed with code: {}", exitCode), *handle);
-                return VCAM_ERROR_INIT_FAILED;
-            }
-
-            nlohmann::json config;
-            config["name"] = name;
-            config["cameraID"] = deviceID;
-
-            const std::filesystem::path configDir{fmt::format("VirtualCameraConfigs/config_{}", deviceID)};
-            std::ofstream configFileStream(configDir);
-
-            if (!configFileStream) {
-                SetError("Failed to open config file", *handle);
-                return VCAM_ERROR_INIT_FAILED;
-            }
-
-            configFileStream << config;
-        }
-
-        if (!videoExists(deviceID)) {
-            SetError("v4l2loopback did not create device", *handle);
-            return VCAM_ERROR_INIT_FAILED;
+            std::string parsed = result.substr(i, result.size() - 1);
+            deviceID = std::stoi(parsed);
         }
 
         const std::string device = fmt::format("/dev/video{}", deviceID);
@@ -272,11 +185,51 @@ extern "C" {
     }
 
     VCAMAPI_API VCamResult DestroyCam(VCamHandle handle) {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (!g_instances.contains(handle)) {
+            return VCAM_ERROR_INVALID_PARAM;
+        }
+
+        const std::shared_ptr<VCamInstance>& instance = g_instances.at(handle);
+        close(instance->v4l2Device);
+
+        {
+            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper remove {}", instance->v4l2Device);
+
+            if (std::system(cmd.c_str()) != 0) {
+                SetError("Failed to delete v4l2loopback device", handle);
+                return VCAM_ERROR_CAMERA_DESTRUCTION_FAILED;
+            }
+        }
 
         return VCAM_SUCCESS;
     }
 
     VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data, const VCamFormat format) {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (!g_instances.contains(handle)) {
+            return VCAM_ERROR_INVALID_PARAM;
+        }
+
+        const std::shared_ptr<VCamInstance>& instance = g_instances.at(handle);
+
+        int size = 0;
+        switch (format) {
+            case VCAM_FORMAT_RGB32:
+                size = instance->width * instance->height * 4;
+                break;
+            case VCAM_FORMAT_BGRA:
+                size = instance->width * instance->height * 4;
+                break;
+            case VCAM_FORMAT_NV12:
+                size = instance->width * instance->height * 3 / 2;
+                break;
+        }
+
+        if (write(instance->v4l2Device, data, size) < 0) {
+            SetError("Failed to push frame", handle);
+            return VCAM_ERROR_FRAME_PUSH_FAILED;
+        }
 
         return VCAM_SUCCESS;
     }

@@ -27,7 +27,8 @@ extern "C" {
         VCAM_ERROR_INIT_FAILED = -2,
         VCAM_ERROR_CAMERA_EXISTS = -3,
         VCAM_ERROR_CAMERA_NOT_FOUND = -4,
-        VCAM_ERROR_FRAME_PUSH_FAILED = -5
+        VCAM_ERROR_FRAME_PUSH_FAILED = -5,
+        VCAM_ERROR_CAMERA_DESTRUCTION_FAILED = -6
     } VCamResult;
 
     /**
