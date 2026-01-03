@@ -50,21 +50,14 @@ sudo install -m 755 v4l2loopback-helper /usr/libexec/
 
 sudo bash -c 'cat > /usr/share/polkit-1/rules.d/50-v4l2loopback.rules <<EOF
 polkit.addRule(function(action, subject) {
-    // 1. Check for the specific custom action ID
-    if (action.id === "org.example.v4l2loopback.manage") {
-        return polkit.Result.AUTH_ADMIN_KEEP;
-    }
-
-    // 2. FALLBACK: Check for the generic exec action pointing to our specific binary
-    // This catches cases where the annotation lookup fails.
-    if (action.id === "org.freedesktop.policykit.exec" &&
-        action.lookup("program") == "/usr/libexec/v4l2loopback-helper") {
-        return polkit.Result.AUTH_ADMIN_KEEP;
+    if ((action.id === "org.example.v4l2loopback.manage" || (action.id === "org.freedesktop.policykit.exec" &&
+    action.lookup("program") == "/usr/libexec/v4l2loopback-helper")) &&
+        subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
     }
 });
 EOF'
 
-# 3. Install the XML Policy (The Definition & Annotation)
 sudo bash -c 'cat > /usr/share/polkit-1/actions/org.example.v4l2loopback.policy <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE policyconfig PUBLIC
@@ -79,7 +72,7 @@ sudo bash -c 'cat > /usr/share/polkit-1/actions/org.example.v4l2loopback.policy 
     <defaults>
       <allow_any>no</allow_any>
       <allow_inactive>no</allow_inactive>
-      <allow_active>auth_admin_keep</allow_active>
+      <allow_active>yes</allow_active>
     </defaults>
 
     <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/v4l2loopback-helper</annotate>

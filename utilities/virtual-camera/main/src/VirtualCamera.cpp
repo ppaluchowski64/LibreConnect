@@ -27,8 +27,8 @@ bool VirtualCamera::Start(const std::string& name, const VCamFormat format, cons
         const bool result = SetupCamera(name, width, height, fps);
         m_active = result;
         return result;
-    } catch (...) {
-        Debug::LogError("Failed to start stream");
+    } catch (std::exception& e) {
+        Debug::LogError("Failed to start stream: {}", e.what());
         return false;
     }
 }
@@ -43,8 +43,8 @@ bool VirtualCamera::Stop() {
         const bool result = DestroyCamera();
         m_active = false;
         return result;
-    } catch (...) {
-        Debug::LogError("Failed to stop stream");
+    } catch (std::exception& e) {
+        Debug::LogError("Failed to stop stream: {}", e.what());
         return false;
     }
 }

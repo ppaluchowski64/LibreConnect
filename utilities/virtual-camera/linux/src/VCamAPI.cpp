@@ -14,19 +14,24 @@
 #include <linux/videodev2.h>
 #include <fmt/format.h>
 #include <thread>
+#include <sys/wait.h>
+#include <cstdio>
+#include <sys/mman.h>
 
 constexpr int START_VIDEO_DEVICE_ID = 30;
 constexpr int END_VIDEO_DEVICE_ID = 37;
 
 struct VCamInstance {
     int v4l2Device{};
-    int width;
-    int height;
+    int videoID{};
+    int width{};
+    int height{};
     std::string lastError;
 };
 
-static std::mutex g_mutex;
-static std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_instances;
+std::mutex g_mutex;
+std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_instances;
+std::map<int, std::vector<VCamHandle>> g_instancesByPID;
 static std::atomic<uint64_t> g_nextHandle{1};
 
 static void SetError(const std::string_view str, const VCamHandle handle) {
@@ -76,7 +81,7 @@ static std::string FindDeviceByLabel(const std::string& label) {
 }
 
 static std::string WaitForDeviceByLabel(const std::string& label, const int timeoutMs = 50) {
-    for (int i = 0; i < timeoutMs / 50; ++i) {
+    for (int i = 0; i < 20; i++) {
         auto dev = FindDeviceByLabel(label);
         if (!dev.empty())
             return dev;
@@ -85,13 +90,24 @@ static std::string WaitForDeviceByLabel(const std::string& label, const int time
     return {};
 }
 
+void StartWatcher(int videoID, int fd, pid_t parentPid);
+
 extern "C" {
     VCAMAPI_API VCamResult CreateCam(const char* name, int width, int height, int fps, VCamFormat format, VCamHandle* handle) {
         std::lock_guard<std::mutex> lock(g_mutex);
         std::shared_ptr<VCamInstance> instance = std::make_shared<VCamInstance>();
 
-        *handle = reinterpret_cast<void*>(g_nextHandle++);
+        {
+            int fd = shm_open("/video_vcam_counter", O_RDWR | O_CREAT, 0666);
+            ftruncate(fd, sizeof(std::atomic<uint16_t>));
+            uint16_t nextHandle = static_cast<std::atomic<uint16_t> *>(mmap(nullptr, sizeof(std::atomic<uint32_t>),PROT_READ | PROT_WRITE, MAP_SHARED, fd,0))->fetch_add(1);
+            *handle = reinterpret_cast<void*>(static_cast<uint64_t>(nextHandle));
+        }
+
         g_instances[*handle] = instance;
+
+        const int pid = getpid();
+        g_instancesByPID[pid].push_back(*handle);
 
         if (fps <= 0 || fps > 240) {
             SetError("Invalid FPS value", *handle);
@@ -109,9 +125,10 @@ extern "C" {
         }
 
         int deviceID = -1;
+        std::string deviceName = fmt::format("{}: {}", reinterpret_cast<long long>(*handle), name);
 
         {
-            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper add \"{}\"", name);
+            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper add \"{}\"", deviceName);
 
             if (std::system(cmd.c_str()) != 0) {
                 SetError("Failed to add v4l2loopback device", handle);
@@ -120,7 +137,7 @@ extern "C" {
         }
 
         {
-            const std::string result = WaitForDeviceByLabel(name);
+            const std::string result = WaitForDeviceByLabel(deviceName);
 
             int i = 0;
             for (; i < result.size(); ++i) {
@@ -133,15 +150,18 @@ extern "C" {
 
         const std::string device = fmt::format("/dev/video{}", deviceID);
         instance->v4l2Device = open(device.c_str(), O_RDWR | O_CLOEXEC);
+        instance->videoID = deviceID;
+
+        StartWatcher(deviceID, instance->v4l2Device, getpid());
 
         if (instance->v4l2Device < 0) {
             SetError("Failed to open device", *handle);
             return VCAM_ERROR_INIT_FAILED;
         }
 
+
         v4l2_format v4l2_format{};
         v4l2_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-        v4l2_format.fmt.pix.field = V4L2_FIELD_NONE;
         v4l2_format.fmt.pix.width = width;
         v4l2_format.fmt.pix.height = height;
 
@@ -194,11 +214,22 @@ extern "C" {
         close(instance->v4l2Device);
 
         {
-            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper remove {}", instance->v4l2Device);
+            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper remove {}", instance->videoID);
 
             if (std::system(cmd.c_str()) != 0) {
                 SetError("Failed to delete v4l2loopback device", handle);
                 return VCAM_ERROR_CAMERA_DESTRUCTION_FAILED;
+            }
+        }
+
+        const int pid = getpid();
+        g_instances.erase(handle);
+
+        if (g_instancesByPID.contains(pid)) {
+            auto& vec = g_instancesByPID.at(pid);
+            for (int i = 0; i < vec.size(); ++i) {
+                vec.erase(vec.begin() + i);
+                i--;
             }
         }
 
@@ -241,5 +272,26 @@ extern "C" {
         }
 
         return g_instances.at(handle)->lastError.c_str();
+    }
+}
+
+void StartWatcher(const int videoID, const int fd, const pid_t parentPid) {
+    const pid_t pid = fork();
+
+    if (pid != 0) {
+        return;
+    }
+
+    setsid();
+
+    while (true) {
+        if (kill(parentPid, 0) == -1) {
+            close(fd);
+            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper remove {}", videoID);
+            std::system(cmd.c_str());
+            _exit(0);
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(2));
     }
 }
