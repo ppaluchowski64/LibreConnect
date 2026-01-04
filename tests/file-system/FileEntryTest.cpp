@@ -1,9 +1,9 @@
 #include "FileEntry.h"
+#include "FileTimeUtils.h"
 #include "OverloadedStreams.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-#include <ctime>
 
 int main() {
     std::filesystem::path testDir = "test_dir";
@@ -29,16 +29,11 @@ int main() {
     original.path = std::filesystem::absolute(testFile).parent_path().string();
     original.size = std::filesystem::file_size(testFile);
     original.type = DetectFileType(testFile.string());
-    original.lastModTime = std::chrono::system_clock::to_time_t(
-        std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-            std::filesystem::last_write_time(testFile)
-            - std::filesystem::file_time_type::clock::now()
-            + std::chrono::system_clock::now()
-        )
-    );
+    original.lastModTime = GetLastModTime(testFile);
+    original.creationTime = GetCreationTime(testFile);
 
     std::cout << "[ORIGINAL FILE]\n";
-    std::cout << original << "\n\n";
+    std::cout << original << '\n';
 
     std::vector<uint8_t> buffer;
     size_t offset = 0;
@@ -50,22 +45,18 @@ int main() {
     restored.Deserialize(buffer, offset);
 
     std::cout << "[RESTORED FILE]\n";
-    std::cout << restored << "\n\n";
+    std::cout << restored << '\n';
 
     original.name = testDir.filename().string();
     original.path = std::filesystem::absolute(testDir).parent_path().string();
     original.size = 0; // Harder than I thought, will fix later, too sleepy now ;)
+    // P.S. Placeholders for the solution are already in the appropriate files
     original.type = DetectFileType(testDir.string());
-    original.lastModTime = std::chrono::system_clock::to_time_t(
-        std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-            std::filesystem::last_write_time(testFile)
-            - std::filesystem::file_time_type::clock::now()
-            + std::chrono::system_clock::now()
-        )
-    );
+    original.lastModTime = GetLastModTime(testFile);
+    original.creationTime = GetCreationTime(testFile);
 
     std::cout << "[ORIGINAL DIRECTORY]\n";
-    std::cout << original << "\n\n";
+    std::cout << original << '\n';
 
     offset = 0;
     buffer.resize(original.GetSerializedSize());
@@ -75,7 +66,7 @@ int main() {
     restored.Deserialize(buffer, offset);
 
     std::cout << "[RESTORED DIRECTORY]\n";
-    std::cout << restored << '\n';
+    std::cout << restored;
 
     return 0;
 }
