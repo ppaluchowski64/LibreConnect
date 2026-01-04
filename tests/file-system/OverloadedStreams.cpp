@@ -1,5 +1,6 @@
 #include "OverloadedStreams.h"
-#include  <ctime>
+#include <iomanip>
+#include <ctime>
 
 std::ostream& operator<<(std::ostream& os, const FileType& type) {
     switch(type) {
@@ -32,10 +33,16 @@ std::ostream& operator<<(std::ostream& os, const FileEntry& entry) {
     os << "Size: " << entry.size << " bytes\n";
     os << "Type: " << entry.type << '\n';
 
-    auto modTime = static_cast<std::time_t>(entry.lastModTime);
-    std::string timeStr = std::ctime(&modTime);
-    timeStr.pop_back();
-    os << "Last Modification Time: " << timeStr;
+    std::time_t time;
+    std::tm tm;
+
+    time = entry.lastModTime;
+    tm = *std::localtime(&time);
+    os << "Last Modification Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
+
+    time = entry.creationTime;
+    tm = *std::localtime(&time);
+    os << "Last Creation Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
 
     return os;
 }

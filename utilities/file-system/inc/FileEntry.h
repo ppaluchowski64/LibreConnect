@@ -18,13 +18,15 @@ enum class FileType : uint8_t {
 };
 
 FileType DetectFileType(const std::string& filepath);
+// Function header to calculate directory size
 
 struct FileEntry {
     std::string name;
     std::string path;
     uint64_t size;
     FileType type;
-    uint64_t lastModTime;
+    int64_t lastModTime;
+    int64_t creationTime;
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);

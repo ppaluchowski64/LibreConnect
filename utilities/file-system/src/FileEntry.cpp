@@ -81,12 +81,15 @@ FileType DetectFileType(const std::string& filepath) {
     return FileType::Unknown;
 }
 
+// Implementation of the function to calculate directory size
+
 void FileEntry::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
     SerializeObject(name, buffer, offset);
     SerializeObject(path, buffer, offset);
     SerializeObject(size, buffer, offset);
     SerializeObject(type, buffer, offset);
     SerializeObject(lastModTime, buffer, offset);
+    SerializeObject(creationTime, buffer, offset);
 }
 
 void FileEntry::Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
@@ -95,6 +98,7 @@ void FileEntry::Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) 
     DeserializeObject(size, buffer, offset);
     DeserializeObject(type, buffer, offset);
     DeserializeObject(lastModTime, buffer, offset);
+    DeserializeObject(creationTime, buffer, offset);
 }
 
 size_t FileEntry::GetSerializedSize() const {
@@ -102,5 +106,6 @@ size_t FileEntry::GetSerializedSize() const {
            GetObjectSerializedSize(path) +
            GetObjectSerializedSize(size) +
            GetObjectSerializedSize(type) +
-           GetObjectSerializedSize(lastModTime);
+           GetObjectSerializedSize(lastModTime) +
+           GetObjectSerializedSize(creationTime);
 }
