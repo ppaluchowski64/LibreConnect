@@ -39,8 +39,12 @@ cd "$SRC/utils"
 make
 sudo install -m 0755 v4l2loopback-ctl /usr/local/bin/v4l2loopback-ctl
 
+sudo bash -c 'cat > /etc/modprobe.d/v4l2loopback.conf <<EOF
+options v4l2loopback exclusive_caps=1
+EOF'
+
 sudo modprobe -r v4l2loopback || true
-sudo modprobe v4l2loopback exclusive_caps=1
+sudo modprobe v4l2loopback
 
 cd "$ROOT_DIR"
 
