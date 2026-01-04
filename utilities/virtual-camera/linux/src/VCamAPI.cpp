@@ -5,21 +5,17 @@
 #include <fstream>
 #include <vector>
 #include <nlohmann/json.hpp>
-
 #include <unistd.h>
-#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <csignal>
-#include <sys/stat.h>
-#include <linux/videodev2.h>
 #include <fmt/format.h>
 #include <thread>
-#include <sys/wait.h>
-#include <cstdio>
-#include <sys/mman.h>
 
-constexpr int START_VIDEO_DEVICE_ID = 30;
-constexpr int END_VIDEO_DEVICE_ID = 37;
+#include <linux/videodev2.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/mman.h>
 
 struct VCamInstance {
     int v4l2Device{};
@@ -29,10 +25,8 @@ struct VCamInstance {
     std::string lastError;
 };
 
-std::mutex g_mutex;
-std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_instances;
-std::map<int, std::vector<VCamHandle>> g_instancesByPID;
-static std::atomic<uint64_t> g_nextHandle{1};
+static std::mutex g_mutex;
+static std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_instances;
 
 static void SetError(const std::string_view str, const VCamHandle handle) {
     if (!g_instances.contains(handle)) {
@@ -106,9 +100,6 @@ extern "C" {
 
         g_instances[*handle] = instance;
 
-        const int pid = getpid();
-        g_instancesByPID[pid].push_back(*handle);
-
         if (fps <= 0 || fps > 240) {
             SetError("Invalid FPS value", *handle);
             return VCAM_ERROR_INVALID_PARAM;
@@ -123,6 +114,9 @@ extern "C" {
             SetError("Invalid height value", *handle);
             return VCAM_ERROR_INVALID_PARAM;
         }
+
+        instance->width = width;
+        instance->height = height;
 
         int deviceID = -1;
         std::string deviceName = fmt::format("{}: {}", reinterpret_cast<long long>(*handle), name);
@@ -149,7 +143,7 @@ extern "C" {
         }
 
         const std::string device = fmt::format("/dev/video{}", deviceID);
-        instance->v4l2Device = open(device.c_str(), O_RDWR | O_CLOEXEC);
+        instance->v4l2Device = open(device.c_str(), O_WRONLY);
         instance->videoID = deviceID;
 
         StartWatcher(deviceID, instance->v4l2Device, getpid());
@@ -158,7 +152,6 @@ extern "C" {
             SetError("Failed to open device", *handle);
             return VCAM_ERROR_INIT_FAILED;
         }
-
 
         v4l2_format v4l2_format{};
         v4l2_format.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
@@ -169,6 +162,7 @@ extern "C" {
             case VCAM_FORMAT_RGB32: v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB32; break;
             case VCAM_FORMAT_NV12:  v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;  break;
             case VCAM_FORMAT_BGRA:  v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_BGR32; break;
+            case VCAM_FORMAT_YUYV:  v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV; break;
         }
 
         if (ioctl(instance->v4l2Device, VIDIOC_S_FMT, &v4l2_format) < 0) {
@@ -225,14 +219,6 @@ extern "C" {
         const int pid = getpid();
         g_instances.erase(handle);
 
-        if (g_instancesByPID.contains(pid)) {
-            auto& vec = g_instancesByPID.at(pid);
-            for (int i = 0; i < vec.size(); ++i) {
-                vec.erase(vec.begin() + i);
-                i--;
-            }
-        }
-
         return VCAM_SUCCESS;
     }
 
@@ -255,6 +241,8 @@ extern "C" {
             case VCAM_FORMAT_NV12:
                 size = instance->width * instance->height * 3 / 2;
                 break;
+            case VCAM_FORMAT_YUYV:
+                size = instance->width * instance->height * 2;
         }
 
         if (write(instance->v4l2Device, data, size) < 0) {
