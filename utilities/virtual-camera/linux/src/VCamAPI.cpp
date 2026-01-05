@@ -158,11 +158,39 @@ extern "C" {
         v4l2_format.fmt.pix.width = width;
         v4l2_format.fmt.pix.height = height;
 
+        v4l2_format.fmt.pix.field = V4L2_FIELD_NONE;
+        v4l2_format.fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
+
+        v4l2_format.fmt.pix.ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+        v4l2_format.fmt.pix.quantization = V4L2_QUANTIZATION_DEFAULT;
+        v4l2_format.fmt.pix.xfer_func = V4L2_XFER_FUNC_DEFAULT;
+
         switch (format) {
-            case VCAM_FORMAT_RGB32: v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB32; break;
-            case VCAM_FORMAT_NV12:  v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;  break;
-            case VCAM_FORMAT_BGRA:  v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_BGR32; break;
-            case VCAM_FORMAT_YUYV:  v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV; break;
+            case VCAM_FORMAT_RGB32:
+                v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_RGB32;
+                v4l2_format.fmt.pix.bytesperline = width * 4;
+                v4l2_format.fmt.pix.sizeimage = width * height * 4;
+                break;
+            case VCAM_FORMAT_NV12:
+                v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_NV12;
+                v4l2_format.fmt.pix.bytesperline = width;
+                v4l2_format.fmt.pix.sizeimage = width * height * 3 / 2;
+                break;
+            case VCAM_FORMAT_BGRA:
+                v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_BGR32;
+                v4l2_format.fmt.pix.bytesperline = width * 4;
+                v4l2_format.fmt.pix.sizeimage = width * height * 4;
+                break;
+            case VCAM_FORMAT_YUYV:
+                v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+                v4l2_format.fmt.pix.bytesperline = width * 2;
+                v4l2_format.fmt.pix.sizeimage = width * height * 2;
+                break;
+            case VCAM_FORMAT_YUV420:
+                v4l2_format.fmt.pix.pixelformat = V4L2_PIX_FMT_YUV420;
+                v4l2_format.fmt.pix.bytesperline = width;
+                v4l2_format.fmt.pix.sizeimage = width * height * 3 / 2;
+                break;
         }
 
         if (ioctl(instance->v4l2Device, VIDIOC_S_FMT, &v4l2_format) < 0) {
@@ -170,6 +198,13 @@ extern "C" {
             SetError("Failed to set format", *handle);
             return VCAM_ERROR_INIT_FAILED;
         }
+
+        // v4l2_std_id stdid = V4L2_STD_625_50;
+        // ioctl(instance->v4l2Device, VIDIOC_S_STD, &stdid);
+        //
+        // int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+        // ioctl(instance->v4l2Device, VIDIOC_STREAMON, &type);
+        // ioctl(instance->v4l2Device, VIDIOC_STREAMOFF, &type);
 
         if (ioctl(instance->v4l2Device, VIDIOC_G_FMT, &v4l2_format) < 0) {
             close(instance->v4l2Device);
@@ -194,6 +229,9 @@ extern "C" {
             SetError("Failed to set parms", *handle);
             return VCAM_ERROR_INIT_FAILED;
         }
+
+        // std::vector<uint8_t> blackFrame(v4l2_format.fmt.pix.sizeimage, 0);
+        // write(instance->v4l2Device, blackFrame.data(), blackFrame.size());
 
         return VCAM_SUCCESS;
     }
@@ -243,6 +281,10 @@ extern "C" {
                 break;
             case VCAM_FORMAT_YUYV:
                 size = instance->width * instance->height * 2;
+                break;
+            case VCAM_FORMAT_YUV420:
+                size = instance->width * instance->height * 3 / 2;
+                break;
         }
 
         if (write(instance->v4l2Device, data, size) < 0) {
