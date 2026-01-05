@@ -1,5 +1,6 @@
 #include "FileTimeUtils.h"
 
+#include <optional>
 #include <filesystem>
 #include <chrono>
 #include <ctime>
@@ -11,17 +12,20 @@
     #include <linux/stat.h>
 #endif
 
-std::time_t GetLastModTime(const std::filesystem::path& path) {
-    return std::chrono::system_clock::to_time_t(
-        std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-            std::filesystem::last_write_time(path)
-            - std::filesystem::file_time_type::clock::now()
+std::optional<std::time_t> GetLastModTime(const std::filesystem::path& path) {
+    try {
+        auto ftime = std::filesystem::last_write_time(path);
+        auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+            ftime - std::filesystem::file_time_type::clock::now()
             + std::chrono::system_clock::now()
-        )
-    );
+        );
+        return std::chrono::system_clock::to_time_t(sctp);
+    } catch (const std::filesystem::filesystem_error&) {
+        return std::nullopt;
+    }
 }
 
-std::time_t GetCreationTime(const std::filesystem::path& path) {
+std::optional<std::time_t> GetCreationTime(const std::filesystem::path& path) {
     #ifdef __linux__
         struct statx stx{};
         int dirfd = AT_FDCWD;
@@ -38,8 +42,8 @@ std::time_t GetCreationTime(const std::filesystem::path& path) {
         if (ret == 0 && (stx.stx_mask & STATX_BTIME))
             return stx.stx_btime.tv_sec;
 
-        return -1;
+        return std::nullopt;
     #else
-        return -1; // Yeah, I know it clashes with dates before 1970
+        return std::nullopt;
     #endif
 }

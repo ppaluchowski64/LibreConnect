@@ -1,4 +1,5 @@
 #include "FileEntry.h"
+
 #include <Packable.h>
 #include <filesystem>
 #include <unordered_set>
@@ -81,7 +82,7 @@ FileType DetectFileType(const std::string& filepath) {
     return FileType::Unknown;
 }
 
-// Implementation of the function to calculate directory size
+// Placeholder for implementation of the function to calculate directory size
 
 void FileEntry::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
     SerializeObject(name, buffer, offset);
