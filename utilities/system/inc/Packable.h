@@ -1,6 +1,7 @@
 #ifndef PACKABLE_H
 #define PACKABLE_H
 
+#include <optional>
 #include <concepts>
 #include <type_traits>
 #include <vector>
@@ -177,6 +178,35 @@ inline size_t GetObjectSerializedSize(const std::vector<std::string>& object) {
 
 constexpr size_t GetObjectSerializedSize(const boost::uuids::uuid&) {
     return sizeof(size_t) + 36; // UUID string size
+}
+
+// Here's added support for optional type
+template <typename T>
+inline void SerializeObject(const std::optional<T>& opt, std::vector<uint8_t>& buffer, size_t& offset) {
+    bool hasValue = opt.has_value();
+    SerializeObject(hasValue, buffer, offset);
+
+    if (hasValue)
+        SerializeObject(*opt, buffer, offset);
+}
+
+template <typename T>
+inline void DeserializeObject(std::optional<T>& opt, const std::vector<uint8_t>& buffer, size_t& offset) {
+    bool hasValue;
+    DeserializeObject(hasValue, buffer, offset);
+
+    if (hasValue) {
+        T value;
+        DeserializeObject(value, buffer, offset);
+        opt = value;
+    } else {
+        opt = std::nullopt;
+    }
+}
+
+template <typename T>
+inline size_t GetObjectSerializedSize(const std::optional<T>& opt) {
+    return sizeof(bool) + (opt.has_value() ? GetObjectSerializedSize(*opt) : 0);
 }
 
 #endif //PACKABLE_H
