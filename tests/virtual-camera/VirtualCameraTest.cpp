@@ -12,18 +12,22 @@ int main() {
     constexpr int height = 720;
     constexpr int fps    = 30;
 
-    // IMPORTANT: switch to YUYV
+    // Switch to YUV420 (I420)
     if (!camera.Start("Example Virtual Camera",
-                      VCAM_FORMAT_YUYV,
+                      VCAM_FORMAT_YUV420,
                       width, height, fps)) {
         return -1;
                       }
 
     Debug::Log("camera created");
 
-    // YUYV = 2 bytes per pixel
-    const size_t frameSize = width * height * 2;
-    std::vector<uint8_t> frame(frameSize, 0);
+    // YUV420 = 1.5 bytes per pixel
+    const size_t frameSize = width * height * 3 / 2;
+    std::vector<uint8_t> frame(frameSize);
+
+    uint8_t* Y = frame.data();
+    uint8_t* U = Y + width * height;
+    uint8_t* V = U + (width * height) / 4;
 
     constexpr auto frameDuration =
         std::chrono::milliseconds(1000 / fps);
@@ -39,15 +43,18 @@ int main() {
         const uint8_t vVal =
             static_cast<uint8_t>(128 + 40 * std::sin(phase + 4.0f));
 
-        // Fill frame as YUYV
-        for (int y = 0; y < height; ++y) {
-            for (int x = 0; x < width; x += 2) {
-                const size_t index = (y * width + x) * 2;
+        // --- Fill Y plane (full resolution) ---
+        std::fill(Y, Y + width * height, yVal);
 
-                frame[index + 0] = yVal; // Y0
-                frame[index + 1] = uVal; // U
-                frame[index + 2] = yVal; // Y1
-                frame[index + 3] = vVal; // V
+        // --- Fill U and V planes (quarter resolution) ---
+        const int chromaWidth  = width / 2;
+        const int chromaHeight = height / 2;
+
+        for (int y = 0; y < chromaHeight; ++y) {
+            for (int x = 0; x < chromaWidth; ++x) {
+                const size_t idx = y * chromaWidth + x;
+                U[idx] = uVal;
+                V[idx] = vVal;
             }
         }
 

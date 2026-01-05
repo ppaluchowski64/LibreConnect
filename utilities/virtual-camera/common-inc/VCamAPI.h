@@ -18,7 +18,8 @@ extern "C" {
         VCAM_FORMAT_RGB32 = 0,
         VCAM_FORMAT_NV12 = 1,
         VCAM_FORMAT_BGRA = 2,
-        VCAM_FORMAT_YUYV = 3
+        VCAM_FORMAT_YUYV = 3,
+        VCAM_FORMAT_YUV420 = 4
     } VCamFormat;
 
     // Error codes
