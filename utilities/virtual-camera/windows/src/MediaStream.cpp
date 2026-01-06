@@ -132,6 +132,10 @@ void MediaStream::Shutdown()
 	_attributes.reset();
 }
 
+void MediaStream::SetCLSID(const GUID& clsid) {
+	_clsid = clsid;
+}
+
 // IMFMediaEventGenerator
 STDMETHODIMP MediaStream::BeginGetEvent(IMFAsyncCallback* pCallback, IUnknown* punkState)
 {
@@ -215,7 +219,7 @@ STDMETHODIMP MediaStream::RequestSample(IUnknown* pToken)
 
 	// generate frame
 	wil::com_ptr_nothrow<IMFSample> outSample;
-	HRESULT hr = _generator.GenerateFromExternal(sample.get(), _format, &outSample);
+	HRESULT hr = _generator.GenerateFromExternal(sample.get(), _clsid,  _format, &outSample);
 
 	if (FAILED(hr)) {
 		if (hr == MF_E_NOT_AVAILABLE) {

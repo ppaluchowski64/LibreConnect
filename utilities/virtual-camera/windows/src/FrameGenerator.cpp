@@ -237,100 +237,16 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** 
 	return hr;
 }
 
-HRESULT FrameGenerator::PushExternalFrame(const void* data, UINT width, UINT height, const GUID& format) {
-	WINTRACE(L"FrameGenerator::GenerateExternalFrame");
-	OutputDebugStringA("FrameGenerator::PushExternalFrame");
-	if (!data || !width || !height)
-		return E_INVALIDARG;
-
-	winrt::slim_lock_guard lock(_externalFrameLock);
-
-	ExternalFrame frame;
-	frame.width = width;
-	frame.height = height;
-	frame.format = format;
-
-	// Calculate frame size
-	size_t frameSize = 0;
-	if (format == MFVideoFormat_RGB32)
-	{
-		frameSize = width * height * 4;
-	}
-	else if (format == MFVideoFormat_NV12)
-	{
-		frameSize = width * height * 3 / 2;
-	}
-	else
-	{
-		return E_INVALIDARG;
-	}
-
-	frame.data.resize(frameSize);
-	memcpy(frame.data.data(), data, frameSize);
-
-	_externalFrameQueue.push(frame);
-
-	if (_externalFrameQueue.size() > 10)
-	{
-		_externalFrameQueue.pop();
-	}
-
-	return S_OK;
-}
-
-HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& format, IMFSample** outSample) {
+HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsid, const GUID& format, IMFSample** outSample) {
 	RETURN_HR_IF_NULL(E_POINTER, sample);
 	RETURN_HR_IF_NULL(E_POINTER, outSample);
 	*outSample = nullptr;
 
-	// Try to get frame from local queue first
-	ExternalFrame frame;
-	bool hasFrame = false;
+	PushedFrame frame{};
+	if (!GetExternalFrame(clsid, frame))
 	{
-		winrt::slim_lock_guard lock(_externalFrameLock);
-		if (!_externalFrameQueue.empty())
-		{
-			frame = _externalFrameQueue.front();
-			_externalFrameQueue.pop();
-			hasFrame = true;
-		}
-	}
-
-	if (!hasFrame)
-	{
-		extern GUID CLSID_VCam;
-		PushedFrame apiFrame = {};
-
-		if (GetExternalFrame(CLSID_VCam, apiFrame))
-		{
-			// Convert API frame to local format
-			frame.data = apiFrame.data;
-			frame.width = apiFrame.width;
-			frame.height = apiFrame.height;
-			frame.format = apiFrame.format;
-			hasFrame = true;
-			WINTRACE(L"FrameGenerator::GenerateFromExternal - Got frame from shared memory: %ux%u, format: %s, data size: %zu",
-				frame.width, frame.height, GUID_ToStringW(frame.format).c_str(), frame.data.size());
-		}
-		else
-		{
-			WINTRACE(L"FrameGenerator::GenerateFromExternal - No frame in shared memory");
-		}
-	}
-	else
-	{
-		WINTRACE(L"FrameGenerator::GenerateFromExternal - Got frame from local queue: %ux%u", frame.width, frame.height);
-	}
-
-	if (!hasFrame)
-	{
-		return MF_E_NOT_AVAILABLE;
-	}
-
-	// Ensure render target matches frame dimensions
-	if (_width != frame.width || _height != frame.height)
-	{
-		RETURN_IF_FAILED(EnsureRenderTarget(frame.width, frame.height));
+		WINTRACE(L"FrameGenerator::GenerateFromExternal - No frame in shared memory");
+		return S_FALSE;
 	}
 
 	// Copy frame data to buffer
