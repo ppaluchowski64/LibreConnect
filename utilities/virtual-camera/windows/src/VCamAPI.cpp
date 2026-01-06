@@ -16,12 +16,12 @@
 #include <map>
 #include <vector>
 
-static void SetError(const wchar_t* msg, VCamHandle handle);
-static void SetError(const wchar_t* msg, const VCamHandle* handle);
-static void SetError(HRESULT hr, const VCamHandle handle);
+static void SetError(const char* msg, VCamHandle handle);
+static void SetError(const char* msg, const VCamHandle* handle);
+static void SetError(HRESULT hr, VCamHandle handle);
 static void SetError(HRESULT hr, const VCamHandle* handle);
 
-extern "C" {
+extern "C++" {
     extern GUID CLSID_VCam;
 }
 
@@ -34,6 +34,37 @@ inline std::wstring GUID_ToStringW_Simple(const GUID& guid)
         guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]);
     return std::wstring(buf);
 }
+
+
+static std::wstring StringToWString(const std::string& str)
+{
+    if (str.empty())
+        return std::wstring();
+
+    int size_needed = MultiByteToWideChar(
+        CP_UTF8,
+        0,
+        str.c_str(),
+        (int)str.size(),
+        nullptr,
+        0
+    );
+
+    std::wstring wstr(size_needed, 0);
+
+    MultiByteToWideChar(
+        CP_UTF8,
+        0,
+        str.c_str(),
+        (int)str.size(),
+        &wstr[0],
+        size_needed
+    );
+
+    return wstr;
+}
+
+
 
 // Forward declaration
 struct VCamInstance;
@@ -50,7 +81,7 @@ struct PushedFrame
 static std::mutex g_camerasMutex;
 static std::map<std::wstring, std::shared_ptr<VCamInstance>> g_camerasByClsid;
 static std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_cameras;
-static std::map<VCamHandle, std::wstring> g_lastErrors;
+static std::map<VCamHandle, std::string> g_lastErrors;
 
 // Global configuration for MediaStream (since MediaSource is created by Windows)
 struct StreamConfig
@@ -137,7 +168,7 @@ static bool EnsureSharedMemory(const GUID& clsid, const size_t frameSize, const 
 
     if (!hMap)
     {
-        SetError(L"Failed to create shared memory for frames", handle);
+        SetError("Failed to create shared memory for frames", handle);
         return false;
     }
 
@@ -145,7 +176,7 @@ static bool EnsureSharedMemory(const GUID& clsid, const size_t frameSize, const 
     if (!view)
     {
         CloseHandle(hMap);
-        SetError(L"Failed to map shared memory for frames", handle);
+        SetError("Failed to map shared memory for frames", handle);
         return false;
     }
 
@@ -179,14 +210,14 @@ static GUID FormatToGUID(const VCamFormat format)
     }
 }
 
-static void SetError(const wchar_t* msg, const VCamHandle handle)
+static void SetError(const char* msg, const VCamHandle handle)
 {
-    g_lastErrors[handle] = msg ? msg : L"";
+    g_lastErrors[handle] = msg ? msg : "";
 }
 
-static void SetError(const wchar_t* msg, const VCamHandle* handle) {
+static void SetError(const char* msg, const VCamHandle* handle) {
     if (handle != nullptr) {
-        g_lastErrors[*handle] = msg ? msg : L"";
+        g_lastErrors[*handle] = msg ? msg : "";
     }
 }
 
@@ -200,15 +231,15 @@ static void SetError(const HRESULT hr, const VCamHandle* handle)
 
 static void SetError(const HRESULT hr, const VCamHandle handle)
 {
-    wchar_t errorText[256];
-    if (FormatMessageW(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, hr, 0, errorText, _countof(errorText), nullptr))
+    char errorText[256];
+    if (FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, hr, 0, errorText, _countof(errorText), nullptr))
     {
         g_lastErrors[handle] = errorText;
     }
     else
     {
-        wchar_t buf[64];
-        swprintf_s(buf, 64, L"Error 0x%08X", hr);
+        char buf[64];
+        sprintf_s(buf, 64, "Error 0x%08X", hr);
         g_lastErrors[handle] = buf;
     }
 }
@@ -234,11 +265,11 @@ static bool IsCLSIDRegistered(const GUID& clsid)
 }
 
 extern "C" {
-    VCAMAPI_API VCamResult CreateCam(const wchar_t* name, const int width, const int height, const int fps, VCamFormat format, VCamHandle* handle)
+    VCAMAPI_API VCamResult CreateCam(const char* name, const int width, const int height, const int fps, VCamFormat format, VCamHandle* handle)
     {
         if (!name || !handle || width <= 0 || height <= 0 || fps <= 0)
         {
-            SetError(L"Invalid parameters", handle);
+            SetError("Invalid parameters", handle);
             return VCAM_ERROR_INVALID_PARAM;
         }
 
@@ -247,7 +278,7 @@ extern "C" {
         // Check if CLSID is registered before attempting to create camera
         if (!IsCLSIDRegistered(CLSID_VCam))
         {
-            SetError(L"CLSID_VCam is not registered in registry.", handle);
+            SetError("CLSID_VCam is not registered in registry.", handle);
             return VCAM_ERROR_INIT_FAILED;
         }
 
@@ -272,7 +303,7 @@ extern "C" {
         try
         {
             const auto instance = std::make_shared<VCamInstance>();
-            instance->name = name;
+            instance->name = StringToWString(name);
             instance->width = width;
             instance->height = height;
             instance->fps = fps;
@@ -308,7 +339,7 @@ extern "C" {
                 MFVirtualCameraType_SoftwareCameraSource,
                 MFVirtualCameraLifetime_Session,
                 MFVirtualCameraAccess_CurrentUser,
-                name,
+                instance->name.c_str(),
                 clsidStr.c_str(),
                 nullptr,
                 0,
@@ -360,14 +391,13 @@ extern "C" {
         }
         catch (const std::exception& ex)
         {
-            std::string msg = ex.what();
-            std::wstring wmsg(msg.begin(), msg.end());
-            SetError(wmsg.c_str(), handle);
+            const std::string msg = ex.what();
+            SetError(msg.c_str(), handle);
             return VCAM_ERROR_INIT_FAILED;
         }
         catch (...)
         {
-            SetError(L"Unknown exception during camera creation", handle);
+            SetError("Unknown exception during camera creation", handle);
             return VCAM_ERROR_INIT_FAILED;
         }
     }
@@ -376,7 +406,7 @@ extern "C" {
     {
         if (!handle)
         {
-            SetError(L"Invalid handle", handle);
+            SetError("Invalid handle", handle);
             return VCAM_ERROR_INVALID_PARAM;
         }
 
@@ -385,7 +415,7 @@ extern "C" {
         auto it = g_cameras.find(handle);
         if (it == g_cameras.end())
         {
-            SetError(L"Camera not found", handle);
+            SetError("Camera not found", handle);
             return VCAM_ERROR_CAMERA_NOT_FOUND;
         }
 
@@ -418,7 +448,7 @@ extern "C" {
     {
         if (!handle || !data)
         {
-            SetError(L"Invalid parameters", handle);
+            SetError("Invalid parameters", handle);
             return VCAM_ERROR_INVALID_PARAM;
         }
 
@@ -427,14 +457,14 @@ extern "C" {
         const auto it = g_cameras.find(handle);
         if (it == g_cameras.end())
         {
-            SetError(L"Camera not found", handle);
+            SetError("Camera not found", handle);
             return VCAM_ERROR_CAMERA_NOT_FOUND;
         }
 
         const auto instance = it->second;
         if (!instance->initialized)
         {
-            SetError(L"Camera not initialized", handle);
+            SetError("Camera not initialized", handle);
             return VCAM_ERROR_CAMERA_NOT_FOUND;
         }
 
@@ -456,7 +486,7 @@ extern "C" {
         }
         else
         {
-            SetError(L"Unsupported format", handle);
+            SetError("Unsupported format", handle);
             return VCAM_ERROR_INVALID_PARAM;
         }
 
@@ -479,17 +509,17 @@ extern "C" {
         }
         else
         {
-            SetError(L"Shared frame buffer too small", handle);
+            SetError("Shared frame buffer too small", handle);
             return VCAM_ERROR_INVALID_PARAM;
         }
 
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API const wchar_t* VCamGetLastError(const VCamHandle handle)
+    VCAMAPI_API const char* VCamGetLastError(const VCamHandle handle)
     {
         if (!g_lastErrors.contains(handle)) {
-            return L"";
+            return "";
         }
 
         return g_lastErrors.at(handle).c_str();
