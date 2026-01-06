@@ -11,6 +11,7 @@ class FrameGenerator
 	MFTIME _prevTime;
 	UINT _fps;
 	HANDLE _deviceHandle;
+	GUID _clsid;
 	wil::com_ptr_nothrow<ID3D11Texture2D> _texture;
 	wil::com_ptr_nothrow<ID2D1RenderTarget> _renderTarget;
 	wil::com_ptr_nothrow<ID2D1SolidColorBrush> _whiteBrush;
@@ -20,16 +21,6 @@ class FrameGenerator
 	wil::com_ptr_nothrow<IWICBitmap> _bitmap;
 	wil::com_ptr_nothrow<IMFDXGIDeviceManager> _dxgiManager;
 
-	winrt::slim_mutex _externalFrameLock;
-	struct ExternalFrame
-	{
-		std::vector<BYTE> data;
-		UINT width;
-		UINT height;
-		GUID format;
-	};
-	std::queue<ExternalFrame> _externalFrameQueue;
-
 	HRESULT CreateRenderTargetResources(UINT width, UINT height);
 
 public:
@@ -38,6 +29,7 @@ public:
 		_height(0),
 		_frame(0),
 		_fps(0),
+		_clsid(GUID_NULL),
 		_deviceHandle(nullptr),
 		_prevTime(MFGetSystemTime())
 	{
@@ -60,6 +52,5 @@ public:
 	const bool HasD3DManager() const;
 	HRESULT EnsureRenderTarget(UINT width, UINT height);
 	HRESULT Generate(IMFSample* sample, REFGUID format, IMFSample** outSample);
-	HRESULT PushExternalFrame(const void* data, UINT width, UINT height, REFGUID format);
-	HRESULT GenerateFromExternal(IMFSample* sample, REFGUID format, IMFSample** outSample);
+	HRESULT GenerateFromExternal(IMFSample* sample, const GUID& clsid, REFGUID format, IMFSample** outSample);
 };

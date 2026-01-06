@@ -153,7 +153,7 @@ static void SetError(const HRESULT hr, const VCamHandle* handle)
     }
 }
 
-constexpr UINT static GetFrameSize(const VCamFormat format, const UINT width, const UINT height) {
+UINT static GetFrameSize(const VCamFormat format, const UINT width, const UINT height) {
     switch (format) {
         case VCAM_FORMAT_RGB32: return width * height * 4;
         case VCAM_FORMAT_BGRA: return width * height * 4;
@@ -165,19 +165,17 @@ constexpr UINT static GetFrameSize(const VCamFormat format, const UINT width, co
     return 0;
 }
 
-constexpr UINT static GetFrameSize(const GUID format, const UINT width, const UINT height) {
-    switch (format) {
-        case MFVideoFormat_RGB32: return width * height * 4;
-        case MFVideoFormat_ARGB32: return width * height * 4;
-        case MFVideoFormat_NV12: return width * height * 3 / 2;
-        case MFVideoFormat_YUY2: return width * height * 2;
-        case MFVideoFormat_I420: return width * height * 3 / 2;
-    }
+UINT static GetFrameSize(const GUID format, const UINT width, const UINT height) {
+    if (format == MFVideoFormat_RGB32)  return width * height * 4;
+    if (format == MFVideoFormat_ARGB32) return width * height * 4;
+    if (format == MFVideoFormat_NV12)   return width * height * 3 / 2;
+    if (format == MFVideoFormat_YUY2)   return width * height * 2;
+    if (format == MFVideoFormat_I420)   return width * height * 3 / 2;
 
     return 0;
 }
 
-constexpr UUID static GetMfFormat(const VCamFormat format) {
+UUID static GetMfFormat(const VCamFormat format) {
     switch (format) {
         case VCAM_FORMAT_RGB32: return MFVideoFormat_RGB32;
         case VCAM_FORMAT_BGRA: return MFVideoFormat_ARGB32;

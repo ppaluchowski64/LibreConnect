@@ -27,6 +27,11 @@ HRESULT MediaSource::Initialize(IMFAttributes* attributes)
 
 	RETURN_IF_FAILED(attributes->GetGUID(MFT_TRANSFORM_CLSID_Attribute, &_clsid));
 
+	for (auto i = 0; i < _numStreams; i++)
+	{
+		_streams[i]->SetCLSID(_clsid);
+	}
+
 	wil::com_ptr_nothrow<IMFSensorProfileCollection> collection;
 	RETURN_IF_FAILED(MFCreateSensorProfileCollection(&collection));
 
