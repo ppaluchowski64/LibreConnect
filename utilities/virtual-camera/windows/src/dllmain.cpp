@@ -6,10 +6,13 @@
 #include "MediaStream.h"
 #include "MediaSource.h"
 #include "Activator.h"
+#include <fstream>
+#include <nlohmann/json.hpp>
 
-// 3cad447d-f283-4af4-a3b2-6f5363309f52
-GUID CLSID_VCam = { 0x3cad447d,0xf283,0x4af4,{0xa3,0xb2,0x6f,0x53,0x63,0x30,0x9f,0x52} };
+winrt::com_array<GUID> Cameras_CLSID;
 HMODULE _hModule;
+
+static HRESULT LoadCamerasCLSIDs();
 
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 {
@@ -20,6 +23,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 		WinTraceRegister();
 		WINTRACE(L"DllMain DLL_PROCESS_ATTACH '%s'", GetCommandLine());
 		DisableThreadLibraryCalls(hModule);
+		LoadCamerasCLSIDs();
 
 		wil::SetResultLoggingCallback([](wil::FailureInfo const& failure) noexcept
 			{
@@ -41,22 +45,15 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 
 struct ClassFactory : winrt::implements<ClassFactory, IClassFactory>
 {
-	STDMETHODIMP CreateInstance(IUnknown* outer, GUID const& riid, void** result) noexcept final
-	{
-		RETURN_HR_IF_NULL(E_POINTER, result);
-		*result = nullptr;
-		if (outer)
-			RETURN_HR(CLASS_E_NOAGGREGATION);
+	GUID _cameraClsid;
+	explicit ClassFactory(const GUID clsid) : _cameraClsid(clsid) {}
 
-		auto vcam = winrt::make_self<Activator>();
-		RETURN_IF_FAILED(vcam->Initialize());
-		auto hr = vcam->QueryInterface(riid, result);
-		if (FAILED(hr))
-		{
-			auto iid = GUID_ToStringW(riid);
-			WINTRACE(L"ClassFactory QueryInterface failed on IID %s", iid.c_str());
-		}
-		return hr;
+	STDMETHODIMP CreateInstance(IUnknown* outer, REFIID riid, void** result) noexcept override {
+		if (outer) return CLASS_E_NOAGGREGATION;
+
+		auto act = winrt::make_self<Activator>();
+		act->Initialize(_cameraClsid);
+		return act->QueryInterface(riid, result);
 	}
 
 	STDMETHODIMP LockServer(BOOL) noexcept final
@@ -80,42 +77,126 @@ STDAPI DllCanUnloadNow()
 }
 
 _Check_return_
-STDAPI DllGetClassObject(_In_ REFCLSID rclsid, _In_ REFIID riid, _Outptr_ LPVOID FAR* ppv)
+STDAPI DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
 {
-	WINTRACE(L"DllGetClassObject rclsid:%s riid:%s", GUID_ToStringW(rclsid).c_str(), GUID_ToStringW(riid).c_str());
-	RETURN_HR_IF_NULL(E_POINTER, ppv);
-	*ppv = nullptr;
+	for (auto& clsid : Cameras_CLSID)
+	{
+		if (clsid == rclsid)
+		{
+			auto factory = winrt::make_self<ClassFactory>(rclsid);
+			return factory->QueryInterface(riid, ppv);
+		}
+	}
 
-	if (rclsid == CLSID_VCam)
-		return winrt::make_self<ClassFactory>()->QueryInterface(riid, ppv);
-
-	RETURN_HR(E_NOINTERFACE);
+	return CLASS_E_CLASSNOTAVAILABLE;
 }
 
 using registry_key = winrt::handle_type<registry_traits>;
 
+static uint8_t ReadConfigCount() {
+	std::ifstream settingsStream("VirtualCameraSettings.json");
+
+	if (!settingsStream.is_open()) {
+		return E_UNEXPECTED;
+	}
+
+	nlohmann::json json;
+
+	try {
+		json = nlohmann::json::parse(settingsStream);
+	} catch (const std::exception& ex) {
+		return E_UNEXPECTED;
+	}
+
+	if (!json.contains("VirtualCamera_MaxCount") || !json["VirtualCamera_MaxCount"].is_number_unsigned()) {
+		return E_UNEXPECTED;
+	}
+
+	return json["VirtualCamera_MaxCount"].get<uint8_t>();
+}
+
+static HRESULT LoadCamerasCLSIDs()
+{
+	registry_key base;
+	RegWriteKey(HKEY_LOCAL_MACHINE, L"Software\\LibreConnect_VirtualCamera", base.put());
+
+	DWORD count = 0;
+	DWORD size = sizeof(count);
+
+	RETURN_IF_WIN32_ERROR(RegGetValueW(
+		base.get(),
+		nullptr,
+		L"CameraCount",
+		RRF_RT_REG_DWORD,
+		nullptr,
+		&count,
+		&size));
+
+	Cameras_CLSID = winrt::com_array<GUID>(count);
+
+	for (DWORD i = 0; i < count; ++i)
+	{
+		std::wstring valueName = L"Camera" + std::to_wstring(i);
+
+		wchar_t guidStr[64]{};
+		DWORD guidSize = sizeof(guidStr);
+
+		RETURN_IF_WIN32_ERROR(RegGetValueW(
+			base.get(),
+			nullptr,
+			valueName.c_str(),
+			RRF_RT_REG_SZ,
+			nullptr,
+			guidStr,
+			&guidSize));
+
+		RETURN_IF_FAILED(IIDFromString(guidStr, &Cameras_CLSID[i]));
+	}
+
+	return S_OK;
+}
+
 STDAPI DllRegisterServer()
 {
-	std::wstring exePath = wil::GetModuleFileNameW(_hModule).get();
-	WINTRACE(L"DllRegisterServer '%s'", exePath.c_str());
-	auto clsid = GUID_ToStringW(CLSID_VCam, false);
-	std::wstring path = L"Software\\Classes\\CLSID\\" + clsid + L"\\InprocServer32";
+	const uint32_t count = ReadConfigCount();
 
-	// note: a vcam *must* be registered in HKEY_LOCAL_MACHINE
-	// for the frame server to be able to talk with it.
-	registry_key key;
-	RETURN_IF_WIN32_ERROR(RegWriteKey(HKEY_LOCAL_MACHINE, path.c_str(), key.put()));
-	RETURN_IF_WIN32_ERROR(RegWriteValue(key.get(), nullptr, exePath));
-	RETURN_IF_WIN32_ERROR(RegWriteValue(key.get(), L"ThreadingModel", L"Both"));
+	registry_key base;
+	RegWriteKey(HKEY_LOCAL_MACHINE, L"Software\\LibreConnect_VirtualCamera", base.put());
+	RegWriteValue(base.get(), L"CameraCount", count);
+
+	const std::wstring exePath = wil::GetModuleFileNameW(_hModule).get();
+	WINTRACE(L"DllRegisterServer '%s'", exePath.c_str());
+
+	for (uint32_t i = 0; i < count; ++i)
+	{
+		GUID clsid;
+		CoCreateGuid(&clsid);
+
+		std::wstring valueName = L"Camera" + std::to_wstring(i);
+		RegWriteValue(base.get(), valueName.c_str(), GUID_ToStringW(clsid));
+
+		auto clsid_wstring = GUID_ToStringW(clsid, false);
+		std::wstring path = L"Software\\Classes\\CLSID\\" + clsid_wstring + L"\\InprocServer32";
+
+		registry_key key;
+		RETURN_IF_WIN32_ERROR(RegWriteKey(HKEY_LOCAL_MACHINE, path.c_str(), key.put()));
+		RETURN_IF_WIN32_ERROR(RegWriteValue(key.get(), nullptr, exePath));
+		RETURN_IF_WIN32_ERROR(RegWriteValue(key.get(), L"ThreadingModel", L"Both"));
+	}
+
 	return S_OK;
 }
 
 STDAPI DllUnregisterServer()
 {
-	std::wstring exePath = wil::GetModuleFileNameW(_hModule).get();
+	const std::wstring exePath = wil::GetModuleFileNameW(_hModule).get();
 	WINTRACE(L"DllUnregisterServer '%s'", exePath.c_str());
-	auto clsid = GUID_ToStringW(CLSID_VCam, false);
-	std::wstring path = L"Software\\Classes\\CLSID\\" + clsid;
-	RETURN_IF_WIN32_ERROR(RegDeleteTreeW(HKEY_LOCAL_MACHINE, path.c_str()));
+
+	for (auto& clsid : Cameras_CLSID) {
+		auto clsid_wstring = GUID_ToStringW(clsid, false);
+		std::wstring path = L"Software\\Classes\\CLSID\\" + clsid_wstring;
+		RETURN_IF_WIN32_ERROR(RegDeleteTreeW(HKEY_LOCAL_MACHINE, path.c_str()));
+	}
+
 	return S_OK;
 }

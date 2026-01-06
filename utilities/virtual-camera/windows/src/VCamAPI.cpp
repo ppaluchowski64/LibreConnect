@@ -15,15 +15,13 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <fmt/format.h>
 
 static void SetError(const char* msg, VCamHandle handle);
 static void SetError(const char* msg, const VCamHandle* handle);
 static void SetError(HRESULT hr, VCamHandle handle);
 static void SetError(HRESULT hr, const VCamHandle* handle);
 
-extern "C++" {
-    extern GUID CLSID_VCam;
-}
 
 inline std::wstring GUID_ToStringW_Simple(const GUID& guid)
 {
@@ -94,7 +92,6 @@ struct StreamConfig
 std::map<std::wstring, StreamConfig> g_streamConfigs;
 std::mutex g_configMutex;
 
-// VCam instance structure
 struct VCamInstance
 {
     std::wstring name;
@@ -102,18 +99,13 @@ struct VCamInstance
     UINT height;
     UINT fps;
     GUID clsid;
-    GUID instanceID;
     wil::com_ptr_nothrow<IMFVirtualCamera> vcam;
     std::mutex frameQueueMutex;
     std::queue<PushedFrame> frameQueue;
-    bool useExternalFrames;
     bool initialized;
 
-    VCamInstance() : useExternalFrames(false), initialized(false), width(0), height(0), fps(30)
-    {
-        // Generate unique CLSID for this instance
-        CoCreateGuid(&instanceID);
-    }
+    VCamInstance() = delete;
+    explicit VCamInstance(const std::wstring& name, const UINT width, const UINT height, const UINT fps, const GUID clsid) : name(name), width(width), height(height), fps(fps), clsid(clsid), initialized(false) {}
 
     ~VCamInstance()
     {
@@ -234,7 +226,7 @@ static void SetError(const HRESULT hr, const VCamHandle handle)
     char errorText[256];
     if (FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, hr, 0, errorText, _countof(errorText), nullptr))
     {
-        g_lastErrors[handle] = errorText;
+        g_lastErrors[handle] = fmt::format("HRESULT(0x{:08X}): {}", static_cast<uint64_t>(hr), errorText);
     }
     else
     {
@@ -275,6 +267,7 @@ extern "C" {
 
         std::lock_guard<std::mutex> lock(g_camerasMutex);
 
+
         // Check if CLSID is registered before attempting to create camera
         if (!IsCLSIDRegistered(CLSID_VCam))
         {
@@ -302,17 +295,8 @@ extern "C" {
 
         try
         {
-            const auto instance = std::make_shared<VCamInstance>();
-            instance->name = StringToWString(name);
-            instance->width = width;
-            instance->height = height;
-            instance->fps = fps;
-            instance->useExternalFrames = true;
-
-            // Use the registered CLSID_VCam
-            instance->clsid = CLSID_VCam;
-            const auto clsidStr = GUID_ToStringW_Simple(CLSID_VCam);
-            const auto instanceIDStr = GUID_ToStringW_Simple(instance->instanceID);
+            const auto instance = std::make_shared<VCamInstance>(StringToWString(name), width, height, fps, {});
+            const auto clsid = GUID_ToStringW_Simple(instance->clsid);
 
             {
                 std::lock_guard<std::mutex> configLock(g_configMutex);
@@ -320,9 +304,9 @@ extern "C" {
                 config.width = width;
                 config.height = height;
                 config.fps = fps;
-                g_streamConfigs[instanceIDStr] = config;
+                g_streamConfigs[clsid] = config;
 
-                const std::wstring regPath = L"SOFTWARE\\VCamSample\\" + instanceIDStr;
+                const std::wstring regPath = L"SOFTWARE\\LibreConnect_VirtualCamera\\" + clsid;
                 HKEY hKey;
                 if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, nullptr,
                     REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
@@ -340,7 +324,7 @@ extern "C" {
                 MFVirtualCameraLifetime_Session,
                 MFVirtualCameraAccess_CurrentUser,
                 instance->name.c_str(),
-                clsidStr.c_str(),
+                clsid.c_str(),
                 nullptr,
                 0,
                 &instance->vcam);
@@ -378,7 +362,7 @@ extern "C" {
             instance->initialized = true;
             *handle = instance.get();
             g_cameras[*handle] = instance;
-            g_camerasByClsid[instanceIDStr] = instance;
+            g_camerasByClsid[clsid] = instance;
 
             return VCAM_SUCCESS;
         }
@@ -438,7 +422,7 @@ extern "C" {
         }
 
         // Remove from both maps
-        const auto id = GUID_ToStringW_Simple(instance->instanceID);
+        const auto id = GUID_ToStringW_Simple(instance->clsid);
         g_camerasByClsid.erase(id);
         g_cameras.erase(it);
         return VCAM_SUCCESS;
@@ -472,17 +456,35 @@ extern "C" {
         UINT bytesPerPixel = 0;
         GUID mfFormat = GUID_NULL;
 
-        if (format == VCAM_FORMAT_RGB32 || format == VCAM_FORMAT_BGRA)
+        if (format == VCAM_FORMAT_RGB32)
         {
             bytesPerPixel = 4;
-            frameSize = instance->width * instance->height * bytesPerPixel;
+            frameSize = instance->width * instance->height * 4;
             mfFormat = MFVideoFormat_RGB32;
+        }
+        else if (format == VCAM_FORMAT_BGRA)
+        {
+            bytesPerPixel = 4;
+            frameSize = instance->width * instance->height * 4;
+            mfFormat = MFVideoFormat_ARGB32;
         }
         else if (format == VCAM_FORMAT_NV12)
         {
             bytesPerPixel = 1;
             frameSize = instance->width * instance->height * 3 / 2;
             mfFormat = MFVideoFormat_NV12;
+        }
+        else if (format == VCAM_FORMAT_YUYV)
+        {
+            bytesPerPixel = 2;
+            frameSize = instance->width * instance->height * 2;
+            mfFormat = MFVideoFormat_YUY2;
+        }
+        else if (format == VCAM_FORMAT_YUV420)
+        {
+            bytesPerPixel = 1;
+            frameSize = instance->width * instance->height * 3 / 2;
+            mfFormat = MFVideoFormat_I420;
         }
         else
         {
@@ -491,7 +493,7 @@ extern "C" {
         }
 
         // Ensure shared memory for this camera (cross-process)
-        if (!EnsureSharedMemory(instance->instanceID, frameSize, handle))
+        if (!EnsureSharedMemory(instance->clsid, frameSize, handle))
         {
             return VCAM_ERROR_INIT_FAILED;
         }

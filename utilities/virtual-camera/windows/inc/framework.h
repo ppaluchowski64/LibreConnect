@@ -52,5 +52,4 @@
 
 #pragma comment(lib, "mfsensorgroup")
 // 3cad447d-f283-4af4-a3b2-6f5363309f52
-extern GUID CLSID_VCam;
-
+extern winrt::com_array<GUID> Cameras_CLSID;
