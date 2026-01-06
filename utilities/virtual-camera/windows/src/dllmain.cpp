@@ -7,6 +7,7 @@
 #include "MediaSource.h"
 #include "Activator.h"
 #include <fstream>
+#include <iostream>
 #include <nlohmann/json.hpp>
 
 winrt::com_array<GUID> Cameras_CLSID;
@@ -19,21 +20,23 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD dwReason, LPVOID lpReserved)
 	switch (dwReason)
 	{
 	case DLL_PROCESS_ATTACH:
-		_hModule = hModule;
-		WinTraceRegister();
-		WINTRACE(L"DllMain DLL_PROCESS_ATTACH '%s'", GetCommandLine());
-		DisableThreadLibraryCalls(hModule);
-		LoadCamerasCLSIDs();
+		{
+			_hModule = hModule;
+			WinTraceRegister();
+			WINTRACE(L"DllMain DLL_PROCESS_ATTACH '%s'", GetCommandLine());
+			DisableThreadLibraryCalls(hModule);
+			LoadCamerasCLSIDs();
 
-		wil::SetResultLoggingCallback([](wil::FailureInfo const& failure) noexcept
-			{
-				wchar_t str[2048];
-				if (SUCCEEDED(wil::GetFailureLogString(str, _countof(str), failure)))
+			wil::SetResultLoggingCallback([](wil::FailureInfo const& failure) noexcept
 				{
-					WinTrace(2, 0, str); // 2 => error
-				}
-			});
-		break;
+					wchar_t str[2048];
+					if (SUCCEEDED(wil::GetFailureLogString(str, _countof(str), failure)))
+					{
+						WinTrace(2, 0, str); // 2 => error
+					}
+				});
+			break;
+		}
 
 	case DLL_PROCESS_DETACH:
 		WINTRACE(L"DllMain DLL_PROCESS_DETACH '%s'", GetCommandLine());
@@ -97,7 +100,7 @@ static uint8_t ReadConfigCount() {
 	std::ifstream settingsStream("VirtualCameraSettings.json");
 
 	if (!settingsStream.is_open()) {
-		return E_UNEXPECTED;
+		return 16;
 	}
 
 	nlohmann::json json;
@@ -105,11 +108,11 @@ static uint8_t ReadConfigCount() {
 	try {
 		json = nlohmann::json::parse(settingsStream);
 	} catch (const std::exception& ex) {
-		return E_UNEXPECTED;
+		return 16;
 	}
 
 	if (!json.contains("VirtualCamera_MaxCount") || !json["VirtualCamera_MaxCount"].is_number_unsigned()) {
-		return E_UNEXPECTED;
+		return 16;
 	}
 
 	return json["VirtualCamera_MaxCount"].get<uint8_t>();
@@ -118,19 +121,34 @@ static uint8_t ReadConfigCount() {
 static HRESULT LoadCamerasCLSIDs()
 {
 	registry_key base;
-	RegWriteKey(HKEY_LOCAL_MACHINE, L"Software\\LibreConnect_VirtualCamera", base.put());
+	LSTATUS status = RegCreateKeyExW(
+		HKEY_LOCAL_MACHINE,
+		L"Software\\LibreConnect_VirtualCamera",
+		0,
+		nullptr,
+		REG_OPTION_NON_VOLATILE,
+		KEY_READ,
+		nullptr,
+		base.put(),
+		nullptr
+	);
+
+	if (status != ERROR_SUCCESS)
+	{
+		return HRESULT_FROM_WIN32(status);
+	}
 
 	DWORD count = 0;
 	DWORD size = sizeof(count);
 
 	RETURN_IF_WIN32_ERROR(RegGetValueW(
-		base.get(),
-		nullptr,
-		L"CameraCount",
-		RRF_RT_REG_DWORD,
-		nullptr,
-		&count,
-		&size));
+	   base.get(),
+	   nullptr,
+	   L"CameraCount",
+	   RRF_RT_REG_DWORD,
+	   nullptr,
+	   &count,
+	   &size));
 
 	Cameras_CLSID = winrt::com_array<GUID>(count);
 
@@ -142,13 +160,13 @@ static HRESULT LoadCamerasCLSIDs()
 		DWORD guidSize = sizeof(guidStr);
 
 		RETURN_IF_WIN32_ERROR(RegGetValueW(
-			base.get(),
-			nullptr,
-			valueName.c_str(),
-			RRF_RT_REG_SZ,
-			nullptr,
-			guidStr,
-			&guidSize));
+		   base.get(),
+		   nullptr,
+		   valueName.c_str(),
+		   RRF_RT_REG_SZ,
+		   nullptr,
+		   guidStr,
+		   &guidSize));
 
 		RETURN_IF_FAILED(IIDFromString(guidStr, &Cameras_CLSID[i]));
 	}
@@ -159,6 +177,12 @@ static HRESULT LoadCamerasCLSIDs()
 STDAPI DllRegisterServer()
 {
 	const uint32_t count = ReadConfigCount();
+
+	const LSTATUS status = RegDeleteTreeW(HKEY_LOCAL_MACHINE, L"Software\\LibreConnect_VirtualCamera");
+	if (status != ERROR_SUCCESS && status != ERROR_FILE_NOT_FOUND)
+	{
+		return HRESULT_FROM_WIN32(status);
+	}
 
 	registry_key base;
 	RegWriteKey(HKEY_LOCAL_MACHINE, L"Software\\LibreConnect_VirtualCamera", base.put());
