@@ -19,6 +19,8 @@ add_library(virtual-camera-platform-implementation SHARED
 
 target_link_libraries(virtual-camera-platform-implementation PRIVATE
         WIL::WIL
+        fmt::fmt
+        nlohmann_json::nlohmann_json
         windowsapp
         Mfplat.lib
         Mf.lib

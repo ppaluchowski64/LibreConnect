@@ -20,7 +20,7 @@ public:
 		SetBaseAttributesTraceName(L"ActivatorAtts");
 	}
 
-	HRESULT Initialize();
+	HRESULT Initialize(GUID cameraClsid);
 
 private:
 #if _DEBUG
@@ -39,6 +39,7 @@ private:
 #endif
 
 private:
+	UUID _cameraClsid;
 	winrt::com_ptr<MediaSource> _source;
 };
 
