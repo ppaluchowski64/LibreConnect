@@ -15,7 +15,6 @@
 #include <string>
 #include <map>
 #include <vector>
-#include <fmt/format.h>
 
 static void SetError(const char* msg, VCamHandle handle);
 static void SetError(const char* msg, const VCamHandle* handle);
@@ -77,7 +76,7 @@ struct PushedFrame
 
 // Global state - maps CLSID string to camera instance
 static std::mutex g_camerasMutex;
-static std::vector<bool> g_usedCLSIDs{false};
+static std::vector<bool> g_usedCLSIDs;
 static std::map<std::wstring, std::shared_ptr<VCamInstance>> g_camerasByClsid;
 static std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_cameras;
 static std::map<VCamHandle, std::string> g_lastErrors;
@@ -192,7 +191,7 @@ static void SetError(const HRESULT hr, const VCamHandle handle)
     char errorText[256];
     if (FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, hr, 0, errorText, _countof(errorText), nullptr))
     {
-        g_lastErrors[handle] = fmt::format("HRESULT(0x{:08X}): {}", static_cast<uint64_t>(hr), errorText);
+        g_lastErrors[handle] = errorText;
     }
     else
     {
@@ -289,17 +288,24 @@ extern "C" {
 
         std::lock_guard<std::mutex> lock(g_camerasMutex);
 
+        if (g_usedCLSIDs.empty()) {
+            g_usedCLSIDs = std::vector<bool>(Cameras_CLSID.size(), false);
+        }
+
         GUID clsid = GUID_NULL;
+
         for (int i = 0; i < Cameras_CLSID.size(); i++) {
             if (g_usedCLSIDs[i]) {
                 continue;
             }
 
             clsid = Cameras_CLSID[i];
+            g_usedCLSIDs[i] = true;
+            break;
         }
 
         if (clsid == GUID_NULL) {
-            SetError("Instance limit reached.", handle);
+            SetError(std::to_string(Cameras_CLSID.size()).c_str(), handle);
             return VCAM_ERROR_INIT_FAILED;
         }
 
