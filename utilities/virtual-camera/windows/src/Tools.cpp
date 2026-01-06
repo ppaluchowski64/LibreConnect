@@ -53,7 +53,6 @@ const std::wstring GUID_ToStringW(const GUID& guid, bool resolve)
 	{
 		// list of known GUIDs we're interested in
 		IFGUID(GUID_NULL);
-		IFGUID(CLSID_VCam);
 		IFGUID(PINNAME_VIDEO_CAPTURE);
 		IFGUID(MF_DEVICESTREAM_STREAM_CATEGORY);
 		IFGUID(MF_DEVICESTREAM_STREAM_ID);

@@ -11,11 +11,11 @@ HRESULT Activator::Initialize(const GUID cameraClsid)
 {
 	_cameraClsid = cameraClsid;
 
-	_source = winrt::make_self<MediaSource>();
-	_source->Initialize(this);
-
 	RETURN_IF_FAILED(SetUINT32(MF_VIRTUALCAMERA_PROVIDE_ASSOCIATED_CAMERA_SOURCES, 1));
 	RETURN_IF_FAILED(SetGUID(MFT_TRANSFORM_CLSID_Attribute, _cameraClsid));
+
+	_source = winrt::make_self<MediaSource>();
+	_source->Initialize(this);
 
 	return S_OK;
 }

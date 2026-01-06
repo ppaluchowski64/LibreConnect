@@ -77,6 +77,8 @@ private:
 	UINT _height;
 	UINT _fps;
 
+	UUID _clsid;
+
 	const int _numStreams = 1;  // 1 stream for now
 	winrt::slim_mutex _lock;
 	winrt::com_array<wil::com_ptr_nothrow<MediaStream>> _streams;
