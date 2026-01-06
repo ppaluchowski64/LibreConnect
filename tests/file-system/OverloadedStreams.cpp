@@ -29,25 +29,30 @@ std::ostream& operator<<(std::ostream& os, const FileType& type) {
 }
 
 std::ostream& operator<<(std::ostream& os, const FileEntry& entry) {
-    os << "Name: " << entry.name << '\n';
-    os << "Path: " << entry.path << '\n';
-    os << "Size: " << entry.size << " bytes\n";
-    os << "Type: " << entry.type << '\n';
+    os << "Name: " << (entry.GetName() ? *entry.GetName() : "Unknown") << '\n';
+    os << "Path: " << (entry.GetPath() ? *entry.GetPath() : "Unknown") << '\n';
+
+    if (auto size = entry.GetSize())
+        os << "Size: " << *size << " bytes\n";
+    else
+        os << "Size: Unknown\n";
+
+    os << "Type: " << (entry.GetType() ? *entry.GetType() : FileType::Unknown) << '\n';
 
     std::tm tm{};
 
-    if (entry.lastModTime) {
-        auto time = static_cast<std::time_t>(*entry.lastModTime);
+    if (auto modTime = entry.GetLastModTime()) {
+        auto time = *modTime;
         tm = *std::localtime(&time);
         os << "Last Modification Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
     } else {
         os << "Last Modification Time: Unknown\n";
     }
 
-    if (entry.creationTime) {
-        auto time = static_cast<std::time_t>(*entry.creationTime);
+    if (auto createTime = entry.GetCreationTime()) {
+        auto time = *createTime;
         tm = *std::localtime(&time);
-        os << "Last Creation Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
+        os << "Creation Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
     } else {
         os << "Creation Time: Unknown\n";
     }
