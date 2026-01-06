@@ -47,14 +47,18 @@ target_compile_definitions(project_defaults INTERFACE
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log Tracy::TracyClient network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue Qt6::Core)
-BuildStaticLibrary(file-entry utilities/file-system project_defaults system-component-pc)
+BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc)
 
 if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
     BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
-    BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-entry)
+    BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
+    BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     target_sources(FileEntryTest PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp
+    )
+    target_sources(FileSystemTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp
     )
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")

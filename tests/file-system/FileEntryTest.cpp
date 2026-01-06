@@ -7,10 +7,10 @@
 #include <filesystem>
 
 int main() {
-    std::filesystem::path testDir = "test_dir";
-    std::filesystem::path testFile = testDir / "test.txt";
+    const std::filesystem::path testDir = "test_dir";
+    const std::filesystem::path testFile = testDir / "test.txt";
 
-    bool fileCreated = !(std::filesystem::exists(testDir) && std::filesystem::exists(testFile));
+    const bool fileCreated = !(std::filesystem::exists(testDir) && std::filesystem::exists(testFile));
 
     if (!std::filesystem::exists(testDir)) {
         std::filesystem::create_directory(testDir);
