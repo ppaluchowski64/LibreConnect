@@ -3,6 +3,7 @@
 
 #include "FileEntry.h"
 
+#include <string>
 #include <vector>
 #include <filesystem>
 
@@ -14,6 +15,7 @@ struct DirectoryResult {
 class FileSystemManager {
     public:
         static DirectoryResult GetEntries(const std::filesystem::path& dirPath);
+        static std::filesystem::path GetAppDataPath(const std::string& appName);
 };
 
 #endif // FILE_SYSTEM_MANAGER_H

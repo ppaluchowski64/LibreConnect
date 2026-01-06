@@ -24,5 +24,17 @@ int main() {
         std::cout << entry << '\n';
     }
 
+    const std::string appName = "LibreConnect";
+    const auto appDataPath = FileSystemManager::GetAppDataPath(appName);
+
+    std::cout << "[APP DATA PATH]\n";
+
+    if (appDataPath.empty()) {
+        std::cout << "Failed to get application data path\n";
+        return 1;
+    }
+
+    std::cout << "App data path: " << appDataPath << '\n';
+
     return 0;
 }
