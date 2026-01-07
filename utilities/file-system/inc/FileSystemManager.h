@@ -14,11 +14,13 @@ struct DirectoryResult {
 
 class FileSystemManager {
     public:
-        static DirectoryResult GetEntries(const std::filesystem::path& dirPath);
         static std::filesystem::path GetAppDataPath(const std::string& appName);
+        static DirectoryResult GetEntries(const std::filesystem::path& dirPath);
 
         static bool CopyToClipboard(const std::vector<std::filesystem::path>& paths);
+        static bool CopyToClipboard(const std::filesystem::path& path);
         static bool PasteFromClipboard(const std::filesystem::path& targetDir);
+        static bool FilesInClipboard();
 };
 
 #endif // FILE_SYSTEM_MANAGER_H
