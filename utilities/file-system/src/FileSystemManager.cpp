@@ -69,17 +69,17 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
     QList<QUrl> urlList;
     urlList.reserve(static_cast<int>(paths.size()));
 
-    bool anyValid = false;
+    bool anyCopied = false;
 
-    for (const auto& p : paths) {
-        if (!std::filesystem::exists(p))
+    for (const auto& path : paths) {
+        if (!std::filesystem::exists(path))
             continue;
 
-        urlList.append(QUrl::fromLocalFile(QString::fromStdString(p.string())));
-        anyValid = true;
+        urlList.append(QUrl::fromLocalFile(QString::fromStdString(path.string())));
+        anyCopied = true;
     }
 
-    if (!anyValid)
+    if (!anyCopied)
         return false;
 
     auto mimeData = std::make_unique<QMimeData>();
@@ -89,4 +89,38 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
     clipboard->setMimeData(mimeData.release());
 
     return true;
+}
+
+bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDir) {
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    const QMimeData* mime = clipboard->mimeData();
+
+    if (!mime || !mime->hasUrls())
+        return false;
+
+    if (!std::filesystem::is_directory(targetDir))
+        return false;
+
+    bool anyPasted = false;
+
+    for (const auto& url : mime->urls()) {
+        if (!url.isLocalFile())
+            continue;
+
+        std::filesystem::path src = url.toLocalFile().toStdString();
+        if (!std::filesystem::exists(src))
+            continue;
+
+        try {
+            std::filesystem::copy(
+                src,
+                targetDir / src.filename(),
+                std::filesystem::copy_options::recursive |
+                std::filesystem::copy_options::overwrite_existing
+            );
+            anyPasted = true;
+        } catch (const std::filesystem::filesystem_error&) {}
+    }
+
+    return anyPasted;
 }
