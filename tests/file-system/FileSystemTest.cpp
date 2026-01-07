@@ -1,10 +1,14 @@
 #include "FileSystemManager.h"
 #include "OverloadedStreams.h"
 
+#include <QGuiApplication>
+
 #include <iostream>
 #include <filesystem>
 
-int main() {
+int main(int argc, char *argv[]) {
+    QGuiApplication app(argc, argv);
+
     const std::filesystem::path testDir = "test_dir";
 
     const auto result = FileSystemManager::GetEntries(testDir);
@@ -36,5 +40,17 @@ int main() {
 
     std::cout << "App data path: " << appDataPath << '\n';
 
-    return 0;
+    std::vector filesToCopy = {
+        testDir / "test.txt"
+    };
+
+    std::cout << "\n[FILE CLIPBOARD]\n";
+
+    if (FileSystemManager::CopyToClipboard(filesToCopy)) {
+        std::cout << "Files have been copied\n";
+        return 0;
+    } else {
+        std::cout << "Something went wrong with copying files\n";
+        return 1;
+    }
 }
