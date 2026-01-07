@@ -18,6 +18,7 @@ class FileSystemManager {
         static std::filesystem::path GetAppDataPath(const std::string& appName);
 
         static bool CopyToClipboard(const std::vector<std::filesystem::path>& paths);
+        static bool PasteFromClipboard(const std::filesystem::path& targetDir);
 };
 
 #endif // FILE_SYSTEM_MANAGER_H
