@@ -1,7 +1,14 @@
 #include "FileSystemManager.h"
 
-#include <filesystem>
+#include <QGuiApplication>
+#include <QClipboard>
+#include <QMimeData>
+#include <QUrl>
+
+#include <vector>
 #include <cstdlib>
+#include <filesystem>
+#include <memory>
 
 DirectoryResult FileSystemManager::GetEntries(const std::filesystem::path& dirPath) {
     DirectoryResult result;
@@ -53,4 +60,33 @@ std::filesystem::path FileSystemManager::GetAppDataPath(const std::string& appNa
     }
 
     return appDataPath;
+}
+
+bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>& paths) {
+    if (paths.empty())
+        return false;
+
+    QList<QUrl> urlList;
+    urlList.reserve(static_cast<int>(paths.size()));
+
+    bool anyValid = false;
+
+    for (const auto& p : paths) {
+        if (!std::filesystem::exists(p))
+            continue;
+
+        urlList.append(QUrl::fromLocalFile(QString::fromStdString(p.string())));
+        anyValid = true;
+    }
+
+    if (!anyValid)
+        return false;
+
+    auto mimeData = std::make_unique<QMimeData>();
+    mimeData->setUrls(urlList);
+
+    QClipboard* clipboard = QGuiApplication::clipboard();
+    clipboard->setMimeData(mimeData.release());
+
+    return true;
 }
