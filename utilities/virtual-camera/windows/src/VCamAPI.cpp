@@ -7,8 +7,8 @@
 #include <comdef.h>
 #include <combaseapi.h>
 #include "framework.h"
-#include "VCamAPI.h"
 #include "Tools.h"
+#include "VCamAPI.h"
 #include <queue>
 #include <mutex>
 #include <memory>
@@ -76,7 +76,6 @@ struct PushedFrame
 
 // Global state - maps CLSID string to camera instance
 static std::mutex g_camerasMutex;
-static std::vector<bool> g_usedCLSIDs;
 static std::map<std::wstring, std::shared_ptr<VCamInstance>> g_camerasByClsid;
 static std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_cameras;
 static std::map<VCamHandle, std::string> g_lastErrors;
@@ -277,6 +276,111 @@ static bool EnsureSharedMemory(const GUID& clsid, const size_t frameSize, const 
     return true;
 }
 
+using registry_key = winrt::handle_type<registry_traits>;
+
+static bool IsProcessAlive(DWORD pid)
+{
+    HANDLE hProcess = OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION, // minimal rights
+        FALSE,
+        pid
+    );
+
+    if (!hProcess)
+        return false; // no such process or no access
+
+    DWORD exitCode = 0;
+    bool alive =
+        GetExitCodeProcess(hProcess, &exitCode) &&
+        exitCode == STILL_ACTIVE;
+
+    CloseHandle(hProcess);
+    return alive;
+}
+
+static void SetCameraActive(const GUID& clsid, DWORD value) {
+    const std::wstring str = GUID_ToStringW(clsid);
+    const std::wstring valueName = L"IsActive_" + str;
+
+    registry_key base;
+    RegWriteKey(HKEY_CURRENT_USER, L"Software\\LibreConnect_VirtualCamera", base.put());
+    RegWriteValue(base.get(), valueName.c_str(), value);
+}
+
+static void SetCameraProcess(const GUID& clsid, const DWORD value) {
+    const std::wstring str = GUID_ToStringW(clsid);
+    const std::wstring valueName = L"Process_" + str;
+
+    registry_key base;
+    RegWriteKey(HKEY_CURRENT_USER, L"Software\\LibreConnect_VirtualCamera", base.put());
+    RegWriteValue(base.get(), valueName.c_str(), value);
+}
+
+static bool IsCameraActive(const GUID& clsid) {
+    const std::wstring str = GUID_ToStringW(clsid);
+
+    registry_key base;
+    const LSTATUS status = RegCreateKeyExW(
+        HKEY_CURRENT_USER,
+        L"Software\\LibreConnect_VirtualCamera",
+        0,
+        nullptr,
+        REG_OPTION_NON_VOLATILE,
+        KEY_READ,
+        nullptr,
+        base.put(),
+        nullptr
+    );
+
+    if (status != ERROR_SUCCESS)
+    {
+        return HRESULT_FROM_WIN32(status);
+    }
+
+    DWORD isActive = 0;
+    DWORD byProcess = 0;
+
+    DWORD dwordSize = sizeof(DWORD);
+
+    LSTATUS result = RegGetValueW(
+       base.get(),
+       nullptr,
+       std::wstring(L"IsActive_" + str).c_str(),
+       RRF_RT_REG_DWORD,
+       nullptr,
+       &isActive,
+       &dwordSize
+    );
+
+    if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
+        return HRESULT_FROM_WIN32(result);
+    }
+
+    if (isActive == 0) {
+        return false;
+    }
+
+    result = RegGetValueW(
+       base.get(),
+       nullptr,
+       std::wstring(L"Process_" + str).c_str(),
+       RRF_RT_REG_DWORD,
+       nullptr,
+       &byProcess,
+       &dwordSize
+    );
+
+    if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
+        return HRESULT_FROM_WIN32(result);
+    }
+
+    if (IsProcessAlive(byProcess)) {
+        return true;
+    }
+
+    return false;
+}
+
 extern "C" {
     VCAMAPI_API VCamResult CreateCam(const char* name, const int width, const int height, const int fps, VCamFormat format, VCamHandle* handle)
     {
@@ -288,19 +392,14 @@ extern "C" {
 
         std::lock_guard<std::mutex> lock(g_camerasMutex);
 
-        if (g_usedCLSIDs.empty()) {
-            g_usedCLSIDs = std::vector<bool>(Cameras_CLSID.size(), false);
-        }
-
         GUID clsid = GUID_NULL;
 
         for (int i = 0; i < Cameras_CLSID.size(); i++) {
-            if (g_usedCLSIDs[i]) {
+            if (IsCameraActive(Cameras_CLSID[i])) {
                 continue;
             }
 
             clsid = Cameras_CLSID[i];
-            g_usedCLSIDs[i] = true;
             break;
         }
 
@@ -396,8 +495,6 @@ extern "C" {
             *handle = instance.get();
             g_cameras[*handle] = instance;
             g_camerasByClsid[clsid_str] = instance;
-
-            return VCAM_SUCCESS;
         }
         catch (const winrt::hresult_error& ex)
         {
@@ -417,6 +514,11 @@ extern "C" {
             SetError("Unknown exception during camera creation", handle);
             return VCAM_ERROR_INIT_FAILED;
         }
+
+        SetCameraActive(clsid, 1);
+        SetCameraProcess(clsid, GetCurrentProcessId());
+
+        return VCAM_SUCCESS;
     }
 
     VCAMAPI_API VCamResult DestroyCam(const VCamHandle handle)
@@ -437,6 +539,9 @@ extern "C" {
 
         const auto instance = g_cameras.at(handle);
 
+        SetCameraActive(instance->clsid, 0);
+        SetCameraProcess(instance->clsid, 0);
+
         // Remove virtual camera
         if (instance->vcam)
         {
@@ -448,6 +553,7 @@ extern "C" {
         const auto id = GUID_ToStringW_Simple(instance->clsid);
         g_camerasByClsid.erase(id);
         g_cameras.erase(handle);
+
         return VCAM_SUCCESS;
     }
 
