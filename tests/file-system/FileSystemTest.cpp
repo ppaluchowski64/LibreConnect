@@ -67,21 +67,23 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    std::cout << "App data path: " << appDataPath << '\n';
+    std::cout << "App data path: " << appDataPath << "\n\n";
 
-    std::vector filesToCopy = {
-        testDir / "test.txt"
-    };
+    std::cout << "[FILE CLIPBOARD]\n";
 
-    std::cout << "\n[FILE CLIPBOARD]\n";
-
-    if (FileSystemManager::CopyToClipboard(filesToCopy)) {
+    if (FileSystemManager::CopyToClipboard(testFile)) {
         std::cout << "Files have been copied\n";
-        if (FileSystemManager::PasteFromClipboard(copyDir)) {
-            std::cout << "Files have been pasted\n";
-            return 0;
+
+        if (FileSystemManager::FilesInClipboard()) {
+            if (FileSystemManager::PasteFromClipboard(copyDir)) {
+                std::cout << "Files have been pasted\n";
+                return 0;
+            } else {
+                std::cout << "Something went wrong with pasting files\n";
+                return 1;
+            }
         } else {
-            std::cout << "Something went wrong with pasting files\n";
+            std::cout << "Clipboard does not contain valid file references\n";
             return 1;
         }
     } else {

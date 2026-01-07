@@ -10,22 +10,6 @@
 #include <filesystem>
 #include <memory>
 
-DirectoryResult FileSystemManager::GetEntries(const std::filesystem::path& dirPath) {
-    DirectoryResult result;
-
-    if (!std::filesystem::exists(dirPath) || !std::filesystem::is_directory(dirPath))
-        return result;
-
-    try {
-        for (const auto& entry : std::filesystem::directory_iterator(dirPath)) {
-            result.entries.emplace_back(entry.path());
-        }
-        result.success = true;
-    } catch (const std::filesystem::filesystem_error&) {}
-
-    return result;
-}
-
 std::filesystem::path FileSystemManager::GetAppDataPath(const std::string& appName) {
     std::filesystem::path basePath;
 
@@ -62,8 +46,24 @@ std::filesystem::path FileSystemManager::GetAppDataPath(const std::string& appNa
     return appDataPath;
 }
 
+DirectoryResult FileSystemManager::GetEntries(const std::filesystem::path& dirPath) {
+    DirectoryResult result;
+
+    if (!std::filesystem::exists(dirPath) || !std::filesystem::is_directory(dirPath))
+        return result;
+
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator(dirPath)) {
+            result.entries.emplace_back(entry.path());
+        }
+        result.success = true;
+    } catch (const std::filesystem::filesystem_error&) {}
+
+    return result;
+}
+
 bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>& paths) {
-    if (paths.empty())
+    if (!QGuiApplication::instance() || paths.empty())
         return false;
 
     QList<QUrl> urlList;
@@ -91,7 +91,14 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
     return true;
 }
 
+bool FileSystemManager::CopyToClipboard(const std::filesystem::path& path) {
+    return CopyToClipboard(std::vector{ path });
+}
+
 bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDir) {
+    if (!QGuiApplication::instance())
+        return false;
+
     QClipboard* clipboard = QGuiApplication::clipboard();
     const QMimeData* mime = clipboard->mimeData();
 
@@ -107,14 +114,14 @@ bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDi
         if (!url.isLocalFile())
             continue;
 
-        std::filesystem::path src = url.toLocalFile().toStdString();
-        if (!std::filesystem::exists(src))
+        std::filesystem::path path = url.toLocalFile().toStdString();
+        if (!std::filesystem::exists(path))
             continue;
 
         try {
             std::filesystem::copy(
-                src,
-                targetDir / src.filename(),
+                path,
+                targetDir / path.filename(),
                 std::filesystem::copy_options::recursive |
                 std::filesystem::copy_options::overwrite_existing
             );
@@ -123,4 +130,31 @@ bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDi
     }
 
     return anyPasted;
+}
+
+bool FileSystemManager::FilesInClipboard() {
+    if (!QGuiApplication::instance())
+        return false;
+
+    const QClipboard* clipboard = QGuiApplication::clipboard();
+    const QMimeData* mime = clipboard->mimeData();
+
+    if (!mime || !mime->hasUrls())
+        return false;
+
+    bool anyFound = false;
+
+    for (const auto& url : mime->urls()) {
+        if (!url.isLocalFile())
+            continue;
+
+        std::filesystem::path path = url.toLocalFile().toStdString();
+        if (!std::filesystem::exists(path))
+            continue;
+
+        anyFound = true;
+        break;
+    }
+
+    return anyFound;
 }
