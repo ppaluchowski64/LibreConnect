@@ -133,7 +133,6 @@ HRESULT FrameGenerator::CreateRenderTargetResources(UINT width, UINT height)
 HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** outSample)
 {
 	WINTRACE(L"FrameGenerator::Generate - No external frame available, using internal generator");
-	OutputDebugStringA("FrameGenerator::PushFrame");
 	RETURN_HR_IF_NULL(E_POINTER, sample);
 	RETURN_HR_IF_NULL(E_POINTER, outSample);
 	*outSample = nullptr;
