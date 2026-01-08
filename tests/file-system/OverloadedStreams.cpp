@@ -41,16 +41,16 @@ std::ostream& operator<<(std::ostream& os, const FileEntry& entry) {
 
     std::tm tm{};
 
-    if (auto modTime = entry.GetLastModTime()) {
-        auto time = *modTime;
+    if (auto lastModTime = entry.GetLastModTime()) {
+        std::time_t time = *lastModTime;
         tm = *std::localtime(&time);
         os << "Last Modification Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
     } else {
         os << "Last Modification Time: Unknown\n";
     }
 
-    if (auto createTime = entry.GetCreationTime()) {
-        auto time = *createTime;
+    if (auto creationTime = entry.GetCreationTime()) {
+        std::time_t time = *creationTime;
         tm = *std::localtime(&time);
         os << "Creation Time: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << '\n';
     } else {

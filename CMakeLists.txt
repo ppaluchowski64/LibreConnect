@@ -55,12 +55,14 @@ if (ENABLE_TESTS)
     BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
+
     target_sources(FileEntryTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp
     )
     target_sources(FileSystemTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp
     )
+
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
 endif()
 
