@@ -38,11 +38,11 @@ static std::wstring StringToWString(const std::string& str)
     if (str.empty())
         return std::wstring();
 
-    int size_needed = MultiByteToWideChar(
+    const int size_needed = MultiByteToWideChar(
         CP_UTF8,
         0,
         str.c_str(),
-        (int)str.size(),
+        static_cast<int>(str.size()),
         nullptr,
         0
     );
@@ -60,8 +60,6 @@ static std::wstring StringToWString(const std::string& str)
 
     return wstr;
 }
-
-
 
 // Forward declaration
 struct VCamInstance;
@@ -218,6 +216,66 @@ static bool IsCLSIDRegistered(const GUID& clsid)
         return true;
     }
     return false;
+}
+
+static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr) {
+    const auto name = L"Local\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
+
+    const HANDLE sharedFrameHeaderMapping = CreateFileMappingW(
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READONLY,
+        0,
+        sizeof(SharedFrameHeader),
+        name.c_str()
+    );
+
+    if (!sharedFrameHeaderMapping) {
+        return false;
+    }
+
+    const SharedFrameHeader* sharedFrameHeaderView = static_cast<SharedFrameHeader*>(MapViewOfFile(
+        sharedFrameHeaderMapping,
+        FILE_MAP_READ,
+        0,
+        0,
+        sizeof(SharedFrameHeader))
+    );
+
+    if (!sharedFrameHeaderView) {
+        return false;
+    }
+
+    const size_t frameSize = GetFrameSize(sharedFrameHeaderView->format, sharedFrameHeaderView->width, sharedFrameHeaderView->height);
+    CloseHandle(sharedFrameHeaderMapping);
+
+    const HANDLE sharedFrameMapping = CreateFileMappingW(
+        INVALID_HANDLE_VALUE,
+        nullptr,
+        PAGE_READONLY,
+        0,
+        frameSize + sizeof(SharedFrameHeader),
+        name.c_str()
+    );
+
+    if (!sharedFrameMapping) {
+        return false;
+    }
+
+    void* sharedFrameView = MapViewOfFile(
+        sharedFrameMapping,
+        FILE_MAP_READ,
+        0,
+        0,
+        frameSize + sizeof(SharedFrameHeader)
+    );
+
+    if (!sharedFrameView) {
+        return false;
+    }
+
+    *sharedFrameMappingPtr = static_cast<uint8_t*>(sharedFrameView) + sizeof(SharedFrameHeader);;
+    return true;
 }
 
 static bool SharedMemoryExists(const GUID& clsid, const size_t frameSize, const VCamHandle handle) {
@@ -621,36 +679,48 @@ extern "C" {
 
 extern "C++"
 {
+    static std::map<std::wstring, void*> g_FrameSharedMemoryMap;
+
     __declspec(dllexport) bool VCamAPI_HasExternalFrame(const GUID& clsid)
     {
         const std::wstring clsid_str = GUID_ToStringW(clsid);
-        if (!g_camerasByClsid.contains(clsid_str)) {
+        void* frameMapping = nullptr;
+
+        if (g_FrameSharedMemoryMap.contains(clsid_str)) {
+            frameMapping = g_FrameSharedMemoryMap.at(clsid_str);
+            goto validate_frame;
+        }
+
+        if (!GetFrameSharedMemory(clsid, &frameMapping)) {
             return false;
         }
 
-        const std::shared_ptr<VCamInstance> instance = g_camerasByClsid.at(clsid_str);
-        if (!SharedMemoryExists(clsid, GetFrameSize(instance->sharedFrameHeader->format, instance->width, instance->height), instance->handle)) {
-            return false;
-        }
+        g_FrameSharedMemoryMap[clsid_str] = frameMapping;
 
-        const bool hasFrames = (instance->sharedFrameHeader->frameVersion != 0);
-        return hasFrames;
+        validate_frame:
+        const SharedFrameHeader* frameHeader = static_cast<SharedFrameHeader*>(frameMapping);
+        return frameHeader->frameVersion != 0;
     }
 
     __declspec(dllexport) bool GetExternalFrame(const GUID& clsid, PushedFrame& frame)
     {
-        const std::wstring clsid_str = GUID_ToStringW(clsid);
-        if (!g_camerasByClsid.contains(clsid_str)) {
+        if (!VCamAPI_HasExternalFrame(clsid)) {
             return false;
         }
 
-        const std::shared_ptr<VCamInstance> instance = g_camerasByClsid.at(clsid_str);
-        frame.data.resize(instance->sharedFrameDataSize);
-        memcpy(frame.data.data(), instance->sharedFrameData, GetFrameSize(instance->sharedFrameHeader->format, instance->width, instance->height));
+        const std::wstring clsid_str = GUID_ToStringW(clsid);
+        void* frameMapping = g_FrameSharedMemoryMap.at(clsid_str);
 
-        frame.width = instance->sharedFrameHeader->width;
-        frame.height = instance->sharedFrameHeader->height;
-        frame.format = instance->sharedFrameHeader->format;
+        const SharedFrameHeader* frameSharedHeader = static_cast<SharedFrameHeader*>(frameMapping);
+        const void* frameBuffer = static_cast<uint8_t*>(frameMapping) + sizeof(SharedFrameHeader);
+
+        const size_t frameSize = GetFrameSize(frameSharedHeader->format, frameSharedHeader->width, frameSharedHeader->height);
+        frame.data.resize(frameSize);
+
+        std::memcpy(frame.data.data(), frameBuffer, frameSize);
+        frame.width = frameSharedHeader->width;
+        frame.height = frameSharedHeader->height;
+        frame.format = frameSharedHeader->format;
 
         return true;
     }

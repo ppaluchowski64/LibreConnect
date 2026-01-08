@@ -246,7 +246,7 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 	if (!GetExternalFrame(clsid, frame))
 	{
 		WINTRACE(L"FrameGenerator::GenerateFromExternal - No frame in shared memory");
-		return S_FALSE;
+		return E_FAIL;
 	}
 
 	// Copy frame data to buffer
