@@ -46,7 +46,7 @@ public:
 	HRESULT Start(IMFMediaType* type);
 	HRESULT Stop();
 	void Shutdown();
-	void SetCLSID(const GUID& clsid);
+	HRESULT Configure(const GUID& clsid);
 
 private:
 #if _DEBUG
@@ -65,5 +65,9 @@ private:
 	wil::com_ptr_nothrow<IMFMediaSource> _source;
 	wil::com_ptr_nothrow<IMFVideoSampleAllocatorEx> _allocator;
 	int _index;
+
+	UINT _width;
+	UINT _height;
+	UINT _fps;
 	CLSID _clsid;
 };

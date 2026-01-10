@@ -29,7 +29,7 @@ HRESULT MediaSource::Initialize(IMFAttributes* attributes)
 
 	for (auto i = 0; i < _numStreams; i++)
 	{
-		_streams[i]->SetCLSID(_clsid);
+		_streams[i]->Configure(_clsid);
 	}
 
 	wil::com_ptr_nothrow<IMFSensorProfileCollection> collection;

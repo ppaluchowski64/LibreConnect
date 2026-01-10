@@ -241,7 +241,7 @@ static bool CreatePermissiveSecurityAttr(SECURITY_ATTRIBUTES& sa, PSECURITY_DESC
 }
 
 static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr) {
-    const auto name = L"Local\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
+    const auto name = L"Global\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
 
     const HANDLE sharedFrameMapping = OpenFileMappingW(
             FILE_MAP_READ,
@@ -250,11 +250,6 @@ static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr
     );
 
     if (!sharedFrameMapping) {
-        const DWORD err = GetLastError();
-        char buffer[256];
-        sprintf_s(buffer, "OpenFileMapping failed. Error Code: %lu\n", err);
-        OutputDebugStringA(buffer);
-        OutputDebugStringA("3");
         return false;
     }
 
@@ -267,7 +262,6 @@ static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr
     );
 
     if (!sharedFrameHeaderView) {
-        OutputDebugStringA("2");
         return false;
     }
 
@@ -283,11 +277,10 @@ static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr
     );
 
     if (!sharedFrameView) {
-        OutputDebugStringA("1");
         return false;
     }
 
-    *sharedFrameMappingPtr = static_cast<uint8_t*>(sharedFrameView) + sizeof(SharedFrameHeader);;
+    *sharedFrameMappingPtr = static_cast<uint8_t*>(sharedFrameView);
     return true;
 }
 
@@ -306,7 +299,7 @@ static bool EnsureSharedMemory(const GUID& clsid, const size_t frameSize, const 
     }
 
     const size_t totalSize = sizeof(SharedFrameHeader) + frameSize;
-    const auto name = L"Local\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
+    const auto name = L"Global\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
 
     SECURITY_ATTRIBUTES sa;
     PSECURITY_DESCRIPTOR pSD = nullptr;
@@ -729,16 +722,14 @@ extern "C++"
         }
 
         if (!GetFrameSharedMemory(clsid, &frameMapping)) {
-            OutputDebugStringW(L"FAILED");
             return false;
         }
 
         g_FrameSharedMemoryMap[clsid_str] = frameMapping;
-        OutputDebugStringW(clsid_str.c_str());
 
         validate_frame:
         const SharedFrameHeader* frameHeader = static_cast<SharedFrameHeader*>(frameMapping);
-        OutputDebugStringA(std::to_string(frameHeader->frameVersion).c_str());
+        OutputDebugStringA(std::string("Frame: " + std::to_string(frameHeader->frameVersion)).c_str());
         return frameHeader->frameVersion != 0;
     }
 
