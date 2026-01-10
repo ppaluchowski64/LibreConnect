@@ -77,16 +77,11 @@ struct PushedFrame
 
 // Global state - maps CLSID string to camera instance
 static std::mutex g_camerasMutex;
-static std::map<std::wstring, std::shared_ptr<VCamInstance>> g_camerasByClsid;
 static std::map<VCamHandle, std::shared_ptr<VCamInstance>> g_cameras;
 static std::map<VCamHandle, std::string> g_lastErrors;
 
 struct SharedFrameHeader
 {
-    UINT width;
-    UINT height;
-    UINT stride;
-    GUID format;
     volatile LONG frameVersion;
 };
 
@@ -96,18 +91,20 @@ struct VCamInstance
     UINT width;
     UINT height;
     UINT fps;
+    GUID format;
     GUID clsid;
     wil::com_ptr_nothrow<IMFVirtualCamera> vcam;
 
     VCamHandle handle;
     HANDLE sharedFrameMapping = nullptr;
+    HANDLE sharedMutexMapping = nullptr;
     SharedFrameHeader* sharedFrameHeader = nullptr;
     BYTE* sharedFrameData = nullptr;
     size_t sharedFrameDataSize = 0;
 
     VCamInstance() = delete;
-    explicit VCamInstance(const std::wstring& name, const UINT width, const UINT height, const UINT fps, const GUID clsid, VCamHandle handle)
-    : name(name), width(width), height(height), fps(fps), clsid(clsid), handle(handle) {}
+    explicit VCamInstance(const std::wstring& name, const UINT width, const UINT height, const UINT fps, const GUID format, const GUID clsid, VCamHandle handle)
+    : name(name), width(width), height(height), fps(fps), format(format), clsid(clsid), handle(handle) {}
 
     ~VCamInstance()
     {
@@ -120,16 +117,18 @@ struct VCamInstance
         if (sharedFrameHeader)
         {
             UnmapViewOfFile(sharedFrameHeader);
-            sharedFrameHeader = nullptr;
-            sharedFrameData = nullptr;
-            sharedFrameDataSize = 0;
         }
 
         if (sharedFrameMapping)
         {
             CloseHandle(sharedFrameMapping);
-            sharedFrameMapping = nullptr;
         }
+
+        if (sharedMutexMapping) {
+            CloseHandle(sharedMutexMapping);
+        }
+
+        DestroyCam(handle);
     }
 };
 
@@ -240,8 +239,13 @@ static bool CreatePermissiveSecurityAttr(SECURITY_ATTRIBUTES& sa, PSECURITY_DESC
     return true;
 }
 
-static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr) {
-    const auto name = L"Global\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
+static bool OpenSharedMemory(const std::shared_ptr<VCamInstance>& instance) {
+    const std::wstring clsid_str = GUID_ToStringW(instance->clsid);
+    const size_t frameSize = GetFrameSize(instance->format, instance->width, instance->height);
+
+    const size_t totalSize = sizeof(SharedFrameHeader) + frameSize;
+    const auto name = L"Global\\LibreConnect_VirtualCameraFrame_" + clsid_str;
+    const auto mutex= L"Global\\LibreConnect_VirtualCameraFrameMutex_" + clsid_str;
 
     const HANDLE sharedFrameMapping = OpenFileMappingW(
             FILE_MAP_READ,
@@ -262,11 +266,9 @@ static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr
     );
 
     if (!sharedFrameHeaderView) {
+        CloseHandle(sharedFrameMapping);
         return false;
     }
-
-    const size_t frameSize = GetFrameSize(sharedFrameHeaderView->format, sharedFrameHeaderView->width, sharedFrameHeaderView->height);
-    UnmapViewOfFile(sharedFrameHeaderView);
 
     void* sharedFrameView = MapViewOfFile(
         sharedFrameMapping,
@@ -277,99 +279,45 @@ static bool GetFrameSharedMemory(const GUID& clsid, void** sharedFrameMappingPtr
     );
 
     if (!sharedFrameView) {
+        CloseHandle(sharedFrameMapping);
         return false;
     }
 
-    *sharedFrameMappingPtr = static_cast<uint8_t*>(sharedFrameView);
-    return true;
-}
-
-static bool SharedMemoryExists(const GUID& clsid, const size_t frameSize, const std::shared_ptr<VCamInstance>& instance) {
-    if (instance->sharedFrameMapping && instance->sharedFrameHeader && instance->sharedFrameData && instance->sharedFrameDataSize >= frameSize) {
-        return true;
-    }
-
-    return false;
-}
-
-
-static bool EnsureSharedMemory(const GUID& clsid, const size_t frameSize, const std::shared_ptr<VCamInstance>& instance) {
-    if (SharedMemoryExists(clsid, frameSize, instance)) {
-        return true;
-    }
-
-    const size_t totalSize = sizeof(SharedFrameHeader) + frameSize;
-    const auto name = L"Global\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
-
-    SECURITY_ATTRIBUTES sa;
-    PSECURITY_DESCRIPTOR pSD = nullptr;
-    if (!CreatePermissiveSecurityAttr(sa, pSD)) {
-        SetError("Failed to create security attributes", instance->handle);
-        return false;
-    }
-
-    const HANDLE hMap = CreateFileMappingW(
-        INVALID_HANDLE_VALUE,
-        &sa,
-        PAGE_READWRITE,
-        0,
-        static_cast<DWORD>(totalSize),
-        name.c_str()
+    const HANDLE mutexMapping = OpenMutexW(
+        SYNCHRONIZE | MUTEX_MODIFY_STATE,
+        false,
+        mutex.c_str()
     );
 
-    if (pSD) LocalFree(pSD);
-
-    if (!hMap) {
-        SetError("Failed to create shared memory for frames", instance->handle);
+    if (!mutexMapping) {
+        CloseHandle(sharedFrameMapping);
         return false;
     }
 
-    void* view = MapViewOfFile(hMap, FILE_MAP_ALL_ACCESS, 0, 0, totalSize);
-
-    if (!view) {
-        CloseHandle(hMap);
-        SetError("Failed to map shared memory for frames", instance->handle);
-        return false;
-    }
-
-    instance->sharedFrameMapping = hMap;
-    instance->sharedFrameHeader = static_cast<SharedFrameHeader*>(view);
-    instance->sharedFrameData = reinterpret_cast<uint8_t*>(instance->sharedFrameHeader + 1);
+    instance->sharedMutexMapping = mutexMapping;
+    instance->sharedFrameMapping = sharedFrameMapping;
+    instance->sharedFrameHeader = static_cast<SharedFrameHeader*>(sharedFrameView);
+    instance->sharedFrameData = static_cast<uint8_t*>(sharedFrameView) + sizeof(SharedFrameHeader);
     instance->sharedFrameDataSize = frameSize;
 
-    instance->sharedFrameHeader->width = 0;
-    instance->sharedFrameHeader->height = 0;
-    instance->sharedFrameHeader->stride = 0;
-    instance->sharedFrameHeader->format = GUID_NULL;
-    instance->sharedFrameHeader->frameVersion = 0;
-
     return true;
-}
-
-static bool EnsureSharedMemory(const GUID& clsid, const size_t frameSize, const VCamHandle handle) {
-    if (!g_cameras.contains(handle)) {
-        return false;
-    }
-
-    const std::shared_ptr<VCamInstance> instance = g_cameras[handle];
-    return EnsureSharedMemory(clsid, frameSize, instance);
 }
 
 using registry_key = winrt::handle_type<registry_traits>;
 
 static bool IsProcessAlive(DWORD pid)
 {
-    HANDLE hProcess = OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION, // minimal rights
+    const HANDLE hProcess = OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION,
         FALSE,
         pid
     );
 
     if (!hProcess)
-        return false; // no such process or no access
+        return false;
 
     DWORD exitCode = 0;
-    bool alive =
+    const bool alive =
         GetExitCodeProcess(hProcess, &exitCode) &&
         exitCode == STILL_ACTIVE;
 
@@ -377,7 +325,7 @@ static bool IsProcessAlive(DWORD pid)
     return alive;
 }
 
-static void SetCameraActive(const GUID& clsid, DWORD value) {
+static void SetCameraActive(const GUID& clsid, const DWORD value) {
     const std::wstring str = GUID_ToStringW(clsid);
     const std::wstring valueName = L"IsActive_" + str;
 
@@ -487,7 +435,6 @@ extern "C" {
             return VCAM_ERROR_INIT_FAILED;
         }
 
-        // Check if CLSID is registered before attempting to create camera
         if (!IsCLSIDRegistered(clsid))
         {
             SetError("CLSID is not registered in registry.", handle);
@@ -514,8 +461,10 @@ extern "C" {
 
         try
         {
-            const auto instance = std::make_shared<VCamInstance>(StringToWString(name), width, height, fps, clsid, handle);
+            const auto mfFormat = GetMfFormat(format);
+            const auto instance = std::make_shared<VCamInstance>(StringToWString(name), width, height, fps, mfFormat, clsid, handle);
             const auto clsid_str = GUID_ToStringW_Simple(instance->clsid);
+            const auto format_str = GUID_ToStringW_Simple(mfFormat);
 
             {
                 const std::wstring regPath = L"SOFTWARE\\LibreConnect_VirtualCamera_Configs\\" + clsid_str;
@@ -526,16 +475,8 @@ extern "C" {
                     RegSetValueExW(hKey, L"Width", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&width), sizeof(width));
                     RegSetValueExW(hKey, L"Height", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&height), sizeof(height));
                     RegSetValueExW(hKey, L"Fps", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&fps), sizeof(fps));
+                    RegSetValueExW(hKey, L"Format", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&format_str[0]), format_str.size() * sizeof(wchar_t));
                     RegCloseKey(hKey);
-                }
-            }
-
-            {
-                const std::size_t frameSize = GetFrameSize(format, width, height);
-                if (!EnsureSharedMemory(instance->clsid, frameSize, instance))
-                {
-                    SetError("Failed to initialize shared memory", *handle);
-                    return VCAM_ERROR_INIT_FAILED;
                 }
             }
 
@@ -582,7 +523,6 @@ extern "C" {
 
             *handle = instance.get();
             g_cameras[*handle] = instance;
-            g_camerasByClsid[clsid_str] = instance;
         }
         catch (const winrt::hresult_error& ex)
         {
@@ -637,15 +577,16 @@ extern "C" {
             instance->vcam.reset();
         }
 
-        // Remove from both maps
         const auto id = GUID_ToStringW_Simple(instance->clsid);
-        g_camerasByClsid.erase(id);
-        g_cameras.erase(handle);
+
+        if (g_cameras.contains(handle)) {
+            g_cameras.erase(handle);
+        }
 
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data, const VCamFormat format)
+    VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data)
     {
         if (!handle || !data)
         {
@@ -662,37 +603,27 @@ extern "C" {
         }
 
         const auto instance = g_cameras.at(handle);
+        const size_t frameSize = GetFrameSize(instance->format, instance->width, instance->height);
 
-        const size_t frameSize = GetFrameSize(format, instance->width, instance->height);
-        const GUID mfFormat = GetMfFormat(format);
-
-        if (mfFormat == GUID_NULL)
+        if (!OpenSharedMemory(instance))
         {
-            SetError("Unsupported format", handle);
-            return VCAM_ERROR_INVALID_PARAM;
+            return VCAM_ERROR_FRAME_PUSH_FAILED;
         }
 
-        // Ensure shared memory for this camera (cross-process)
-        if (!EnsureSharedMemory(instance->clsid, frameSize, handle))
-        {
-            return VCAM_ERROR_INIT_FAILED;
-        }
-
-        instance->sharedFrameHeader->width = instance->width;
-        instance->sharedFrameHeader->height = instance->height;
-        instance->sharedFrameHeader->stride = (mfFormat == MFVideoFormat_RGB32) ? (instance->width * 4) : instance->width;
-        instance->sharedFrameHeader->format = mfFormat;
-
-        if (frameSize <= instance->sharedFrameDataSize)
-        {
-            memcpy(instance->sharedFrameData, data, frameSize);
-            InterlockedIncrement(&instance->sharedFrameHeader->frameVersion);
-        }
-        else
-        {
+        if (frameSize > instance->sharedFrameDataSize) {
             SetError("Shared frame buffer too small", handle);
-            return VCAM_ERROR_INVALID_PARAM;
+            return VCAM_ERROR_FRAME_PUSH_FAILED;
         }
+
+        const DWORD waitResult = WaitForSingleObject(instance->sharedMutexMapping, 100);
+
+        if (waitResult != WAIT_OBJECT_0) {
+            return VCAM_ERROR_FRAME_PUSH_FAILED;
+        }
+
+        memcpy(instance->sharedFrameData, data, frameSize);
+        ReleaseMutex(instance->sharedMutexMapping);
+        InterlockedIncrement(&instance->sharedFrameHeader->frameVersion);
 
         return VCAM_SUCCESS;
     }
@@ -709,49 +640,128 @@ extern "C" {
 
 extern "C++"
 {
-    static std::map<std::wstring, void*> g_FrameSharedMemoryMap;
+    struct VCamInstanceMinimal {
+        UINT frameSize;
+        GUID clsid;
+        HANDLE sharedFrameMapping = nullptr;
+        HANDLE sharedMutexMapping = nullptr;
+        SharedFrameHeader* sharedFrameHeader = nullptr;
+        BYTE* sharedFrameData = nullptr;
+        size_t sharedFrameDataSize = 0;
 
-    __declspec(dllexport) bool VCamAPI_HasExternalFrame(const GUID& clsid)
-    {
-        const std::wstring clsid_str = GUID_ToStringW(clsid);
-        void* frameMapping = nullptr;
+        ~VCamInstanceMinimal() {
+            if (sharedFrameHeader)
+            {
+                UnmapViewOfFile(sharedFrameHeader);
+            }
 
-        if (g_FrameSharedMemoryMap.contains(clsid_str)) {
-            frameMapping = g_FrameSharedMemoryMap.at(clsid_str);
-            goto validate_frame;
+            if (sharedFrameMapping)
+            {
+                CloseHandle(sharedFrameMapping);
+            }
+
+            if (sharedMutexMapping) {
+                CloseHandle(sharedMutexMapping);
+            }
         }
+    };
 
-        if (!GetFrameSharedMemory(clsid, &frameMapping)) {
+    static std::map<std::wstring, std::shared_ptr<VCamInstanceMinimal>> g_cameraInstancesExtern;
+
+    VCAMAPI_API bool InitializeCameraInstance(const GUID& clsid, const UINT width, const UINT height, const GUID format) {
+        const auto clsid_str = GUID_ToStringW_Simple(clsid);
+        const size_t frameSize = GetFrameSize(format, width, height);
+        const size_t totalSize = sizeof(SharedFrameHeader) + frameSize;
+        const auto name = L"Global\\LibreConnect_VirtualCameraFrame_" + GUID_ToStringW_Simple(clsid);
+        const auto mutex= L"Global\\LibreConnect_VirtualCameraFrameMutex_" + GUID_ToStringW_Simple(clsid);
+
+        const std::shared_ptr<VCamInstanceMinimal> instance = std::make_shared<VCamInstanceMinimal>();
+        g_cameraInstancesExtern[clsid_str] = instance;
+
+        SECURITY_ATTRIBUTES sa;
+        PSECURITY_DESCRIPTOR pSD = nullptr;
+        if (!CreatePermissiveSecurityAttr(sa, pSD)) {
             return false;
         }
 
-        g_FrameSharedMemoryMap[clsid_str] = frameMapping;
+        const HANDLE frameMapping = CreateFileMappingW(
+            INVALID_HANDLE_VALUE,
+            &sa,
+            PAGE_READWRITE,
+            0,
+            static_cast<DWORD>(totalSize),
+            name.c_str()
+        );
 
-        validate_frame:
-        const SharedFrameHeader* frameHeader = static_cast<SharedFrameHeader*>(frameMapping);
-        OutputDebugStringA(std::string("Frame: " + std::to_string(frameHeader->frameVersion)).c_str());
-        return frameHeader->frameVersion != 0;
+        if (pSD) LocalFree(pSD);
+
+        if (!frameMapping) {
+            return false;
+        }
+
+        void* view = MapViewOfFile(frameMapping, FILE_MAP_ALL_ACCESS, 0, 0, totalSize);
+
+        if (!view) {
+            return false;
+        }
+
+        const HANDLE mutexMapping = CreateMutexW(
+            &sa,
+            0,
+            mutex.c_str()
+        );
+
+        if (!mutexMapping) {
+            return false;
+        }
+
+        instance->sharedFrameHeader->frameVersion = 0;
+        instance->sharedFrameMapping              = frameMapping;
+        instance->sharedFrameHeader               = static_cast<SharedFrameHeader*>(view);
+        instance->sharedFrameData                 = static_cast<uint8_t*>(frameMapping) + 1;
+        instance->sharedFrameDataSize             = frameSize;
+        instance->sharedMutexMapping              = mutexMapping;
+        instance->frameSize                       = frameSize;
+
+        return true;
     }
 
-    __declspec(dllexport) bool GetExternalFrame(const GUID& clsid, PushedFrame& frame)
-    {
-        if (!VCamAPI_HasExternalFrame(clsid)) {
+    VCAMAPI_API bool HasCameraPendingExternalFrame(const GUID& clsid) {
+        const std::wstring clsid_str = GUID_ToStringW(clsid);
+
+        if (!g_cameraInstancesExtern.contains(clsid_str)) {
             return false;
         }
 
+        const std::shared_ptr<VCamInstanceMinimal> instance = g_cameraInstancesExtern.at(clsid_str);
+        return InterlockedAdd(&instance->sharedFrameHeader->frameVersion, 0) != 0;
+    }
+
+    VCAMAPI_API bool HasCameraPendingExternalFrame(const std::shared_ptr<VCamInstanceMinimal>& instance) {
+        return InterlockedAdd(&instance->sharedFrameHeader->frameVersion, 0) != 0;
+    }
+
+    VCAMAPI_API bool GetCameraExternalFrame(const GUID& clsid, PushedFrame& frame) {
         const std::wstring clsid_str = GUID_ToStringW(clsid);
-        void* frameMapping = g_FrameSharedMemoryMap.at(clsid_str);
+        if (!g_cameraInstancesExtern.contains(clsid_str)) {
+            return false;
+        }
 
-        const SharedFrameHeader* frameSharedHeader = static_cast<SharedFrameHeader*>(frameMapping);
-        const void* frameBuffer = static_cast<uint8_t*>(frameMapping) + sizeof(SharedFrameHeader);
+        const std::shared_ptr<VCamInstanceMinimal> instance = g_cameraInstancesExtern.at(clsid_str);
 
-        const size_t frameSize = GetFrameSize(frameSharedHeader->format, frameSharedHeader->width, frameSharedHeader->height);
-        frame.data.resize(frameSize);
+        if (HasCameraPendingExternalFrame(instance)) {
+            return false;
+        }
 
-        std::memcpy(frame.data.data(), frameBuffer, frameSize);
-        frame.width = frameSharedHeader->width;
-        frame.height = frameSharedHeader->height;
-        frame.format = frameSharedHeader->format;
+        frame.data.resize(instance->frameSize);
+
+        const DWORD waitResult = WaitForSingleObject(instance->sharedMutexMapping, 100);
+        if (waitResult != WAIT_OBJECT_0) {
+            return false;
+        }
+
+        std::memcpy(frame.data.data(), instance->sharedFrameData, instance->frameSize);
+        ReleaseMutex(instance->sharedMutexMapping);
 
         return true;
     }

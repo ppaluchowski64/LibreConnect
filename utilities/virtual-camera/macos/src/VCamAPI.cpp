@@ -9,7 +9,7 @@ extern "C" {
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data, const VCamFormat format) {
+    VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data) {
         return VCAM_SUCCESS;
     }
 

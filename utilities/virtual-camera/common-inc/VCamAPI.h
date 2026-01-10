@@ -56,10 +56,9 @@ extern "C" {
      * Push a frame to the virtual camera
      * @param handle Camera handle
      * @param data Pointer to frame data (RGB32 or NV12 format)
-     * @param format Frame format (VCAM_FORMAT_RGB32 or VCAM_FORMAT_NV12)
      * @return VCamResult error code
      */
-    VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data, VCamFormat format);
+    VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data);
 
     /**
      * Get the last error message (if any)
