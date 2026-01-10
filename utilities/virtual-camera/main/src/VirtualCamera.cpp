@@ -50,7 +50,7 @@ bool VirtualCamera::Stop() {
 }
 
 bool VirtualCamera::PushFrame(const void* data) const {
-    const VCamResult result = PushCamFrame(m_handle, data, m_format);
+    const VCamResult result = PushCamFrame(m_handle, data);
 
     if (result != VCAM_SUCCESS) {
         Debug::LogError("Camera push frame result {} - \"{}\"", magic_enum::enum_name(result), VCamGetLastError(m_handle));

@@ -60,7 +60,6 @@ private:
 	winrt::slim_mutex  _lock;
 	MF_STREAM_STATE _state;
 	FrameGenerator _generator;
-	GUID _format;
 	wil::com_ptr_nothrow<IMFStreamDescriptor> _descriptor;
 	wil::com_ptr_nothrow<IMFMediaEventQueue> _queue;
 	wil::com_ptr_nothrow<IMFMediaSource> _source;
@@ -75,5 +74,6 @@ private:
 	UINT _width;
 	UINT _height;
 	UINT _fps;
+	GUID _format;
 	CLSID _clsid;
 };

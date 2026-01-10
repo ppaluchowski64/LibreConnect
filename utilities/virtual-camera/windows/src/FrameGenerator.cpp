@@ -13,8 +13,8 @@ struct PushedFrame
 	GUID format;
 };
 
-extern "C++" __declspec(dllimport) bool VCamAPI_HasExternalFrame(const GUID& clsid);
-extern "C++" __declspec(dllimport) bool GetExternalFrame(const GUID& clsid, PushedFrame& frame);
+extern "C++" __declspec(dllimport) bool HasCameraPendingExternalFrame(const GUID& clsid);
+extern "C++" __declspec(dllimport) bool GetCameraExternalFrame(const GUID& clsid, PushedFrame& frame);
 
 HRESULT FrameGenerator::EnsureRenderTarget(UINT width, UINT height)
 {
@@ -242,7 +242,7 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 	*outSample = nullptr;
 
 	PushedFrame frame{};
-	if (!GetExternalFrame(clsid, frame))
+	if (!GetCameraExternalFrame(clsid, frame))
 	{
 		WINTRACE(L"FrameGenerator::GenerateFromExternal - No frame in shared memory");
 		return E_FAIL;

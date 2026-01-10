@@ -22,6 +22,7 @@ struct VCamInstance {
     int videoID{};
     int width{};
     int height{};
+    VCamFormat format{};
     std::string lastError;
 };
 
@@ -115,6 +116,7 @@ extern "C" {
             return VCAM_ERROR_INVALID_PARAM;
         }
 
+        instance->format = format;
         instance->width = width;
         instance->height = height;
 
@@ -260,7 +262,7 @@ extern "C" {
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data, const VCamFormat format) {
+    VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data) {
         std::lock_guard<std::mutex> lock(g_mutex);
         if (!g_instances.contains(handle)) {
             return VCAM_ERROR_INVALID_PARAM;
@@ -269,7 +271,7 @@ extern "C" {
         const std::shared_ptr<VCamInstance>& instance = g_instances.at(handle);
 
         int size = 0;
-        switch (format) {
+        switch (instance->format) {
             case VCAM_FORMAT_RGB32:
                 size = instance->width * instance->height * 4;
                 break;

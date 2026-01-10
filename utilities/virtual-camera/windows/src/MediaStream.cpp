@@ -6,16 +6,22 @@
 #include "MediaStream.h"
 #include "MediaSource.h"
 
-static void GetCameraConfig(const GUID& clsid, UINT& width, UINT& height, UINT& fps)
+extern "C++" __declspec(dllimport) bool InitializeCameraInstance(const GUID& clsid, const UINT width, const UINT height, const GUID format);
+
+static void GetCameraConfig(const GUID& clsid, UINT& width, UINT& height, UINT& fps, GUID& format)
 {
 	const std::wstring keyPath = L"SOFTWARE\\LibreConnect_VirtualCamera_Configs\\" + GUID_ToStringW(clsid);
+	std::wstring format_str = GUID_ToStringW(GUID_NULL);
 	HKEY hKey;
 	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS)
 	{
 		DWORD w = 0, h = 0, f = 0, size = sizeof(DWORD);
+		DWORD format_size = format_str.size() * sizeof(wchar_t);
 		if (RegQueryValueExW(hKey, L"Width", nullptr, nullptr, reinterpret_cast<LPBYTE>(&w), &size) == ERROR_SUCCESS) width = w;
 		if (RegQueryValueExW(hKey, L"Height", nullptr, nullptr, reinterpret_cast<LPBYTE>(&h), &size) == ERROR_SUCCESS) height = h;
 		if (RegQueryValueExW(hKey, L"Fps", nullptr, nullptr, reinterpret_cast<LPBYTE>(&f), &size) == ERROR_SUCCESS) fps = f;
+		if (RegQueryValueExW(hKey, L"Format", nullptr, nullptr, reinterpret_cast<LPBYTE>(&format_str[0]), &format_size) == ERROR_SUCCESS) CLSIDFromString(format_str.c_str(), &format);
+
 		RegCloseKey(hKey);
 	}
 }
@@ -23,11 +29,17 @@ static void GetCameraConfig(const GUID& clsid, UINT& width, UINT& height, UINT& 
 HRESULT MediaStream::Configure(const GUID& clsid)
 {
     _clsid = clsid;
-    GetCameraConfig(_clsid, _width, _height, _fps);
+	_format = GUID_NULL;
+    GetCameraConfig(_clsid, _width, _height, _fps, _format);
 
     if (_width == 0) _width = 640;
     if (_height == 0) _height = 480;
     if (_fps == 0) _fps = 30;
+	if (_format == GUID_NULL) _format = MFVideoFormat_RGB32;
+
+	if (!InitializeCameraInstance(_clsid, _width, _height, _format)) {
+		return E_FAIL;
+	}
 
     auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
 
@@ -238,6 +250,7 @@ void MediaStream::SampleHandlerThread() {
 	const float sleepTime = 1000/_fps;
 	const LONGLONG fixedDuration = 10000000/_fps;
 	while (_sampleThreadRunning.load()) {
+		_pendingSample = nullptr;
 		Sleep(sleepTime);
 
 		{
@@ -281,7 +294,6 @@ STDMETHODIMP MediaStream::RequestSample(IUnknown* pToken)
 	return S_OK;
 }
 
-// IMFMediaStream2
 STDMETHODIMP MediaStream::SetStreamState(const MF_STREAM_STATE value)
 {
 	WINTRACE(L"MediaStream::SetStreamState current:%u value:%u", _state, value);
