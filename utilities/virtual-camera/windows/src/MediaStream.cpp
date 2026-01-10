@@ -99,12 +99,17 @@ HRESULT MediaStream::Start(IMFMediaType* type)
 		RETURN_IF_FAILED(type->GetGUID(MF_MT_SUBTYPE, &_format));
 	}
 
-	// USE DYNAMIC WIDTH/HEIGHT HERE
 	RETURN_IF_FAILED(_generator.EnsureRenderTarget(_width, _height));
 
 	RETURN_IF_FAILED(_allocator->InitializeSampleAllocator(10, type));
 	RETURN_IF_FAILED(_queue->QueueEventParamVar(MEStreamStarted, GUID_NULL, S_OK, nullptr));
 	_state = MF_STREAM_STATE_RUNNING;
+
+	_sampleThreadRunning.store(true);
+	_sampleThread = std::thread([this]() {
+		this->SampleHandlerThread();
+	});
+
 	return S_OK;
 }
 
@@ -115,6 +120,11 @@ HRESULT MediaStream::Stop()
 	RETURN_IF_FAILED(_allocator->UninitializeSampleAllocator());
 	RETURN_IF_FAILED(_queue->QueueEventParamVar(MEStreamStopped, GUID_NULL, S_OK, nullptr));
 	_state = MF_STREAM_STATE_STOPPED;
+
+	_sampleThreadRunning.store(false);
+	if (_sampleThread.joinable()) {
+		_sampleThread.join();
+	}
 
 	return S_OK;
 }
@@ -222,36 +232,52 @@ STDMETHODIMP MediaStream::GetStreamDescriptor(IMFStreamDescriptor** ppStreamDesc
 	return S_OK;
 }
 
+#define CONTINUE_IF_FAILED(x) if(x != S_OK) continue
+
+void MediaStream::SampleHandlerThread() {
+	const float sleepTime = 1000/_fps;
+	const LONGLONG fixedDuration = 10000000/_fps;
+	while (_sampleThreadRunning.load()) {
+		Sleep(sleepTime);
+
+		{
+			winrt::slim_lock_guard lock(_lock);
+
+			if (!_allocator || !_queue) {
+				return;
+			}
+
+			wil::com_ptr_nothrow<IMFSample> sample;
+			CONTINUE_IF_FAILED(_allocator->AllocateSample(&sample));
+			CONTINUE_IF_FAILED(sample->SetSampleTime(MFGetSystemTime()));
+			CONTINUE_IF_FAILED(sample->SetSampleDuration(fixedDuration));
+
+			wil::com_ptr_nothrow<IMFSample> outSample;
+			if (FAILED(_generator.GenerateFromExternal(sample.get(), _clsid,  _format, &outSample))) {
+				CONTINUE_IF_FAILED(_generator.Generate(sample.get(), _format, &outSample));
+			}
+
+			if (_pendingSample) {
+				CONTINUE_IF_FAILED(outSample->SetUnknown(MFSampleExtension_Token, _pendingSample));
+				_pendingSample->Release();
+			}
+
+			CONTINUE_IF_FAILED(_queue->QueueEventParamUnk(MEMediaSample, GUID_NULL, S_OK, outSample.get()));
+		}
+	}
+}
+
 STDMETHODIMP MediaStream::RequestSample(IUnknown* pToken)
 {
-	WINTRACE(L"MediaStream::RequestSample pToken:%p", pToken);
 	winrt::slim_lock_guard lock(_lock);
-	RETURN_HR_IF(MF_E_SHUTDOWN, !_allocator || !_queue);
 
-	wil::com_ptr_nothrow<IMFSample> sample;
-	RETURN_IF_FAILED(_allocator->AllocateSample(&sample));
-	RETURN_IF_FAILED(sample->SetSampleTime(MFGetSystemTime()));
-	RETURN_IF_FAILED(sample->SetSampleDuration(10000000/_fps));
-
-	// generate frame
-	wil::com_ptr_nothrow<IMFSample> outSample;
-	HRESULT hr = _generator.GenerateFromExternal(sample.get(), _clsid,  _format, &outSample);
-
-	if (FAILED(hr)) {
-		if (hr == MF_E_NOT_AVAILABLE) {
-			WINTRACE(L"MediaStream::RequestSample - No external frame available, using internal generator");
-		} else {
-			WINTRACE(L"MediaStream::RequestSample - GenerateFromExternal failed: 0x%08X", hr);
-		}
-
-		RETURN_IF_FAILED(_generator.Generate(sample.get(), _format, &outSample));
-	}
+	if (_pendingSample != nullptr)
+		return S_OK;
 
 	if (pToken)
-	{
-		RETURN_IF_FAILED(outSample->SetUnknown(MFSampleExtension_Token, pToken));
-	}
-	RETURN_IF_FAILED(_queue->QueueEventParamUnk(MEMediaSample, GUID_NULL, S_OK, outSample.get()));
+		pToken->AddRef();
+
+	_pendingSample = pToken;
 	return S_OK;
 }
 
@@ -259,7 +285,7 @@ STDMETHODIMP MediaStream::RequestSample(IUnknown* pToken)
 STDMETHODIMP MediaStream::SetStreamState(const MF_STREAM_STATE value)
 {
 	WINTRACE(L"MediaStream::SetStreamState current:%u value:%u", _state, value);
-	if (_state = value)
+	if (_state == value)
 		return S_OK;
 	switch (value)
 	{

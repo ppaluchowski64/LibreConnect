@@ -47,6 +47,7 @@ public:
 	HRESULT Stop();
 	void Shutdown();
 	HRESULT Configure(const GUID& clsid);
+	void SampleHandlerThread();
 
 private:
 #if _DEBUG
@@ -65,6 +66,11 @@ private:
 	wil::com_ptr_nothrow<IMFMediaSource> _source;
 	wil::com_ptr_nothrow<IMFVideoSampleAllocatorEx> _allocator;
 	int _index;
+
+	IUnknown* _pendingSample{nullptr};
+	std::thread _sampleThread;
+
+	std::atomic<bool> _sampleThreadRunning{false};
 
 	UINT _width;
 	UINT _height;
