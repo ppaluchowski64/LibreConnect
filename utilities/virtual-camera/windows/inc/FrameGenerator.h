@@ -7,9 +7,9 @@ class FrameGenerator
 {
 	UINT _width;
 	UINT _height;
+	GUID _format;
 	ULONGLONG _frame;
 	MFTIME _prevTime;
-	UINT _fps;
 	HANDLE _deviceHandle;
 	GUID _clsid;
 	wil::com_ptr_nothrow<ID3D11Texture2D> _texture;
@@ -24,15 +24,16 @@ class FrameGenerator
 	HRESULT CreateRenderTargetResources(UINT width, UINT height);
 
 public:
-	FrameGenerator() :
-		_width(0),
-		_height(0),
+	FrameGenerator() = delete;
+
+	FrameGenerator(const UINT width, const UINT height, const GUID format) :
+		_width(width),
+		_height(height),
+		_format(format),
 		_frame(0),
-		_fps(0),
-		_clsid(GUID_NULL),
+		_prevTime(MFGetSystemTime()),
 		_deviceHandle(nullptr),
-		_prevTime(MFGetSystemTime())
-	{
+		_clsid(GUID_NULL){
 
 	}
 
