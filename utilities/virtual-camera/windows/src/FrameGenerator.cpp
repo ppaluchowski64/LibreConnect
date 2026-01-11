@@ -8,9 +8,6 @@
 struct PushedFrame
 {
 	std::vector<BYTE> data;
-	UINT width;
-	UINT height;
-	GUID format;
 };
 
 extern "C++" __declspec(dllimport) bool HasCameraPendingExternalFrame(const GUID& clsid);
@@ -260,14 +257,14 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 	RETURN_IF_FAILED(mediaBuffer->QueryInterface(IID_PPV_ARGS(&buffer2D)));
 	RETURN_IF_FAILED(buffer2D->Lock2DSize(MF2DBuffer_LockFlags_Write, &scanline, &pitch, &start, &length));
 
-	if (frame.format == MFVideoFormat_RGB32)
+	if (_format == MFVideoFormat_RGB32)
 	{
 		if (format == MFVideoFormat_RGB32)
 		{
 			// Direct copy
-			UINT expectedStride = frame.width * 4;
+			UINT expectedStride = _width * 4;
 			WINTRACE(L"FrameGenerator::GenerateFromExternal - Copying RGB32 frame: %ux%u, stride: %u (expected: %u), data size: %zu",
-				frame.width, frame.height, pitch, expectedStride, frame.data.size());
+				_width, _height, pitch, expectedStride, frame.data.size());
 
 			if (pitch == expectedStride)
 			{
@@ -278,7 +275,7 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 			{
 				// Copy line by line
 				WINTRACE(L"FrameGenerator::GenerateFromExternal - Line-by-line copy (pitch mismatch)");
-				for (UINT y = 0; y < frame.height; y++)
+				for (UINT y = 0; y < _height; y++)
 				{
 					memcpy(scanline + y * pitch, frame.data.data() + y * expectedStride, expectedStride);
 				}
@@ -287,13 +284,13 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 		else if (format == MFVideoFormat_NV12)
 		{
 			// Convert RGB32 to NV12
-			RETURN_IF_FAILED(RGB32ToNV12(frame.data.data(), (ULONG)frame.data.size(), frame.width * 4, frame.width, frame.height, scanline, length, pitch));
+			RETURN_IF_FAILED(RGB32ToNV12(frame.data.data(), (ULONG)frame.data.size(), _width * 4, _width, _height, scanline, length, pitch));
 		}
 	}
-	else if (frame.format == MFVideoFormat_NV12 && format == MFVideoFormat_NV12)
+	else if (_format == MFVideoFormat_NV12 && format == MFVideoFormat_NV12)
 	{
 		// Direct copy NV12
-		UINT expectedStride = frame.width;
+		UINT expectedStride = _width;
 		if (pitch == expectedStride)
 		{
 			memcpy(scanline, frame.data.data(), frame.data.size());
@@ -301,14 +298,14 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 		else
 		{
 			// Copy Y plane
-			for (UINT y = 0; y < frame.height; y++)
+			for (UINT y = 0; y < _height; y++)
 			{
 				memcpy(scanline + y * pitch, frame.data.data() + y * expectedStride, expectedStride);
 			}
 			// Copy UV plane
-			BYTE* uvDest = scanline + frame.height * pitch;
-			BYTE* uvSrc = frame.data.data() + frame.height * expectedStride;
-			UINT uvHeight = frame.height / 2;
+			BYTE* uvDest = scanline + _height * pitch;
+			BYTE* uvSrc = frame.data.data() + _height * expectedStride;
+			UINT uvHeight = _height / 2;
 			for (UINT y = 0; y < uvHeight; y++)
 			{
 				memcpy(uvDest + y * pitch, uvSrc + y * expectedStride, expectedStride);

@@ -36,6 +36,9 @@ HRESULT MediaStream::Configure(const GUID& clsid)
     if (_height == 0) _height = 480;
     if (_fps == 0) _fps = 30;
 	if (_format == GUID_NULL) _format = MFVideoFormat_RGB32;
+
+	_generator = std::make_unique<FrameGenerator>(_width, _height, _format);
+
 	InitializeCameraInstance(_clsid, _width, _height, _format);
 
     auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
@@ -108,7 +111,7 @@ HRESULT MediaStream::Start(IMFMediaType* type)
 		RETURN_IF_FAILED(type->GetGUID(MF_MT_SUBTYPE, &_format));
 	}
 
-	RETURN_IF_FAILED(_generator.EnsureRenderTarget(_width, _height));
+	RETURN_IF_FAILED(_generator->EnsureRenderTarget(_width, _height));
 
 	RETURN_IF_FAILED(_allocator->InitializeSampleAllocator(10, type));
 	RETURN_IF_FAILED(_queue->QueueEventParamVar(MEStreamStarted, GUID_NULL, S_OK, nullptr));
@@ -154,7 +157,7 @@ HRESULT MediaStream::SetD3DManager(IUnknown* manager)
 {
 	RETURN_HR_IF_NULL(E_POINTER, manager);
 	RETURN_IF_FAILED(_allocator->SetDirectXManager(manager));
-	RETURN_IF_FAILED(_generator.SetD3DManager(manager, _width, _height));
+	RETURN_IF_FAILED(_generator->SetD3DManager(manager, _width, _height));
 
 	return S_OK;
 }
@@ -263,8 +266,8 @@ void MediaStream::SampleHandlerThread() {
 			CONTINUE_IF_FAILED(sample->SetSampleDuration(fixedDuration));
 
 			wil::com_ptr_nothrow<IMFSample> outSample;
-			if (FAILED(_generator.GenerateFromExternal(sample.get(), _clsid,  _format, &outSample))) {
-				CONTINUE_IF_FAILED(_generator.Generate(sample.get(), _format, &outSample));
+			if (FAILED(_generator->GenerateFromExternal(sample.get(), _clsid,  _format, &outSample))) {
+				CONTINUE_IF_FAILED(_generator->Generate(sample.get(), _format, &outSample));
 			}
 
 			if (_pendingSample) {

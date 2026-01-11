@@ -226,7 +226,7 @@ static bool IsCLSIDRegistered(const GUID& clsid)
 
 static bool CreatePermissiveSecurityAttr(SECURITY_ATTRIBUTES& sa, PSECURITY_DESCRIPTOR& pSD)
 {
-    const wchar_t* sddl =  L"D:P(A;OICI;GA;;;SY)(A;OICI;GA;;;BA)(A;OICI;GWGR;;;IU)";
+    const wchar_t* sddl =  L"D:(A;;GA;;;WD)";
 
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
         sddl,
@@ -685,13 +685,9 @@ extern "C++"
         std::lock_guard<std::mutex> lock(g_cameraInstancesExternMutex);
         const auto clsid_str = GUID_ToStringW_Simple(clsid);
 
-        OutputDebugStringA(std::to_string(GetCurrentProcessId()).c_str());
-
         if (g_cameraInstancesExtern.contains(clsid_str)) {
             return true;
         }
-
-        OutputDebugStringA("Called");
 
         const size_t frameSize = GetFrameSize(format, width, height);
         const size_t totalSize = sizeof(SharedFrameHeader) + frameSize;
@@ -704,7 +700,7 @@ extern "C++"
         SECURITY_ATTRIBUTES sa;
         PSECURITY_DESCRIPTOR pSD = nullptr;
         if (!CreatePermissiveSecurityAttr(sa, pSD)) {
-            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Create permissive security attribute failed ({})", GetLastError()).c_str());
+            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Create permissive security attribute failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
             return false;
         }
 
@@ -720,14 +716,14 @@ extern "C++"
         if (pSD) LocalFree(pSD);
 
         if (!frameMapping) {
-            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Frame mapping failed ({})", GetLastError()).c_str());
+            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Frame mapping failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
             return false;
         }
 
         void* view = MapViewOfFile(frameMapping, FILE_MAP_ALL_ACCESS, 0, 0, totalSize);
 
         if (!view) {
-            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Frame mapping view failed ({})", GetLastError()).c_str());
+            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Frame mapping view failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
             return false;
         }
 
@@ -745,14 +741,14 @@ extern "C++"
         if (pSD) LocalFree(pSD);
 
         if (!mutexMapping) {
-            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Mutex mapping failed ({})", GetLastError()).c_str());
+            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Mutex mapping failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
             return false;
         }
 
         instance->sharedFrameMapping              = frameMapping;
         instance->sharedFrameHeader               = static_cast<SharedFrameHeader*>(view);
         instance->sharedFrameHeader->frameVersion = 0;
-        instance->sharedFrameData                 = static_cast<uint8_t*>(frameMapping) + sizeof(SharedFrameHeader);
+        instance->sharedFrameData                 = static_cast<uint8_t*>(view) + sizeof(SharedFrameHeader);
         instance->sharedFrameDataSize             = frameSize;
         instance->sharedMutexMapping              = mutexMapping;
         instance->frameSize                       = frameSize;
@@ -800,6 +796,8 @@ extern "C++"
         if (waitResult != WAIT_OBJECT_0) {
             return false;
         }
+
+        OutputDebugStringA(std::to_string(instance->sharedFrameHeader->frameVersion).c_str());
 
         std::memcpy(frame.data.data(), instance->sharedFrameData, instance->frameSize);
         ReleaseMutex(instance->sharedMutexMapping);
