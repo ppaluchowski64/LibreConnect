@@ -16,7 +16,7 @@ static void GetCameraConfig(const GUID& clsid, UINT& width, UINT& height, UINT& 
 	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS)
 	{
 		DWORD w = 0, h = 0, f = 0, size = sizeof(DWORD);
-		DWORD format_size = format_str.size() * sizeof(wchar_t);
+		DWORD format_size = (format_str.size() + 1) * sizeof(wchar_t);
 		if (RegQueryValueExW(hKey, L"Width", nullptr, nullptr, reinterpret_cast<LPBYTE>(&w), &size) == ERROR_SUCCESS) width = w;
 		if (RegQueryValueExW(hKey, L"Height", nullptr, nullptr, reinterpret_cast<LPBYTE>(&h), &size) == ERROR_SUCCESS) height = h;
 		if (RegQueryValueExW(hKey, L"Fps", nullptr, nullptr, reinterpret_cast<LPBYTE>(&f), &size) == ERROR_SUCCESS) fps = f;
@@ -36,10 +36,7 @@ HRESULT MediaStream::Configure(const GUID& clsid)
     if (_height == 0) _height = 480;
     if (_fps == 0) _fps = 30;
 	if (_format == GUID_NULL) _format = MFVideoFormat_RGB32;
-
-	if (!InitializeCameraInstance(_clsid, _width, _height, _format)) {
-		return E_FAIL;
-	}
+	InitializeCameraInstance(_clsid, _width, _height, _format);
 
     auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
 
