@@ -8,6 +8,7 @@
 #include "Activator.h"
 #include <fstream>
 #include <iostream>
+#include <sddl.h>
 #include <nlohmann/json.hpp>
 
 winrt::com_array<GUID> Cameras_CLSID;
@@ -191,6 +192,15 @@ STDAPI DllRegisterServer()
 	const std::wstring exePath = wil::GetModuleFileNameW(_hModule).get();
 	WINTRACE(L"DllRegisterServer '%s'", exePath.c_str());
 
+	const LPCWSTR sddl =
+	   L"D:P"
+	   L"(A;;KA;;;SY)"   // SYSTEM full
+	   L"(A;;KA;;;BA)"   // Administrators full
+	   L"(A;;KRKW;;;BU)"; // Users read/write
+
+	PSECURITY_DESCRIPTOR sd = nullptr;
+	ConvertStringSecurityDescriptorToSecurityDescriptorW(sddl, SDDL_REVISION_1, &sd, nullptr);
+
 	for (uint32_t i = 0; i < count; ++i)
 	{
 		GUID clsid;
@@ -206,7 +216,16 @@ STDAPI DllRegisterServer()
 		RETURN_IF_WIN32_ERROR(RegWriteKey(HKEY_LOCAL_MACHINE, path.c_str(), key.put()));
 		RETURN_IF_WIN32_ERROR(RegWriteValue(key.get(), nullptr, exePath));
 		RETURN_IF_WIN32_ERROR(RegWriteValue(key.get(), L"ThreadingModel", L"Both"));
+
+		std::wstring configPath = L"SOFTWARE\\LibreConnect_VirtualCamera_Configs\\" + clsid_wstring;
+		HKEY configKey;
+
+		RETURN_IF_WIN32_ERROR(RegCreateKeyExW(HKEY_LOCAL_MACHINE, configPath.c_str(), 0, nullptr, REG_OPTION_NON_VOLATILE, KEY_WRITE | WRITE_DAC, nullptr, &configKey, nullptr));
+		RETURN_IF_WIN32_ERROR(RegSetKeySecurity(configKey, DACL_SECURITY_INFORMATION, sd));
+		RegCloseKey(configKey);
 	}
+
+	LocalFree(sd);
 
 	return S_OK;
 }

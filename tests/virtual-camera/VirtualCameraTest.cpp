@@ -21,20 +21,16 @@ int main() {
     constexpr size_t frameSize = width * height * 4;
     std::vector<uint8_t> frame(frameSize);
 
-    constexpr auto frameDuration =
-        std::chrono::milliseconds(1000 / fps);
+    constexpr auto frameDuration = std::chrono::milliseconds(1000 / fps);
 
     float phase = 0.0f;
     constexpr float phaseStep = 0.02f;
 
     for (int i = 0; i < 50000; ++i) {
 
-        const uint8_t r =
-            static_cast<uint8_t>(127 + 60 * std::sin(phase));
-        const uint8_t g =
-            static_cast<uint8_t>(127 + 60 * std::sin(phase + 2.0f));
-        const uint8_t b =
-            static_cast<uint8_t>(127 + 60 * std::sin(phase + 4.0f));
+        const uint8_t r = static_cast<uint8_t>(127 + 60 * std::sin(phase));
+        const uint8_t g = static_cast<uint8_t>(127 + 60 * std::sin(phase + 2.0f));
+        const uint8_t b = static_cast<uint8_t>(127 + 60 * std::sin(phase + 4.0f));
 
         uint8_t* p = frame.data();
         for (int y = 0; y < height; ++y) {

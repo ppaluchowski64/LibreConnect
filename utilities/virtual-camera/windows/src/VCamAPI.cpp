@@ -26,6 +26,9 @@ static void SetError(HRESULT hr, VCamHandle handle);
 static void SetError(HRESULT hr, const VCamHandle* handle);
 
 
+static void SetCameraActive(const GUID& clsid, const DWORD value);
+static void SetCameraProcess(const GUID& clsid, const DWORD value);
+
 inline std::wstring GUID_ToStringW_Simple(const GUID& guid)
 {
     wchar_t buf[64];
@@ -86,6 +89,8 @@ struct SharedFrameHeader
     volatile LONG frameVersion;
 };
 
+
+
 struct VCamInstance
 {
     std::wstring name;
@@ -130,13 +135,35 @@ struct VCamInstance
             CloseHandle(sharedMutexMapping);
         }
 
-        DestroyCam(handle);
+        try {
+            SetCameraActive(clsid, 0);
+            SetCameraProcess(clsid, 0);
+
+            if (vcam)
+            {
+                vcam->Remove();
+                vcam.reset();
+            }
+
+            const auto id = GUID_ToStringW_Simple(clsid);
+
+            if (g_cameras.contains(handle)) {
+                g_cameras.erase(handle);
+            }
+        } catch (...) {}
     }
 };
 
 static void AddPrefixToError(const char* prefix, const VCamHandle handle) {
     const std::string lastError = VCamGetLastError(handle);
     g_lastErrors[handle] = prefix + lastError;
+}
+
+static void AddPrefixToError(const char* prefix, const VCamHandle* handle) {
+    if (handle != nullptr) {
+        const std::string lastError = VCamGetLastError(*handle);
+        g_lastErrors[*handle] = prefix + lastError;
+    }
 }
 
 static void ClearError(const VCamHandle handle) {
@@ -226,7 +253,7 @@ static bool IsCLSIDRegistered(const GUID& clsid)
 
 static bool CreatePermissiveSecurityAttr(SECURITY_ATTRIBUTES& sa, PSECURITY_DESCRIPTOR& pSD)
 {
-    const wchar_t* sddl =  L"D:(A;;GA;;;WD)";
+    const wchar_t* sddl = L"D:(A;;GA;;;WD)S:(ML;;NW;;;LW)";
 
     if (!ConvertStringSecurityDescriptorToSecurityDescriptorW(
         sddl,
@@ -244,6 +271,10 @@ static bool CreatePermissiveSecurityAttr(SECURITY_ATTRIBUTES& sa, PSECURITY_DESC
 }
 
 static bool OpenSharedMemory(const std::shared_ptr<VCamInstance>& instance) {
+    if (instance->sharedFrameMapping && instance->sharedMutexMapping && instance->sharedFrameHeader && instance->sharedFrameData && instance->sharedFrameDataSize > 0) {
+        return true;
+    }
+
     const std::wstring clsid_str = GUID_ToStringW(instance->clsid);
     const size_t frameSize = GetFrameSize(instance->format, instance->width, instance->height);
 
@@ -426,7 +457,6 @@ extern "C" {
         }
 
         std::lock_guard<std::mutex> lock(g_camerasMutex);
-
         GUID clsid = GUID_NULL;
 
         for (int i = 0; i < Cameras_CLSID.size(); i++) {
@@ -440,8 +470,14 @@ extern "C" {
 
         if (clsid == GUID_NULL) {
             SetError(std::to_string(Cameras_CLSID.size()).c_str(), handle);
+            g_camerasMutex.unlock();
             return VCAM_ERROR_INIT_FAILED;
         }
+
+        const auto mfFormat = GetMfFormat(format);
+        const auto instance = std::make_shared<VCamInstance>(StringToWString(name), width, height, fps, mfFormat, clsid);
+        *handle = instance.get();
+        instance->handle = *handle;
 
         if (!IsCLSIDRegistered(clsid))
         {
@@ -469,22 +505,24 @@ extern "C" {
 
         try
         {
-            const auto mfFormat = GetMfFormat(format);
-            const auto instance = std::make_shared<VCamInstance>(StringToWString(name), width, height, fps, mfFormat, clsid);
             const auto clsid_str = GUID_ToStringW_Simple(instance->clsid);
             const auto format_str = GUID_ToStringW_Simple(mfFormat);
 
             {
                 const std::wstring regPath = L"SOFTWARE\\LibreConnect_VirtualCamera_Configs\\" + clsid_str;
                 HKEY hKey;
-                if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, nullptr,
-                    REG_OPTION_NON_VOLATILE, KEY_WRITE, nullptr, &hKey, nullptr) == ERROR_SUCCESS)
+                const LSTATUS result = RegOpenKeyExW(HKEY_LOCAL_MACHINE, regPath.c_str(), 0, KEY_SET_VALUE, &hKey);
+                if (result == ERROR_SUCCESS)
                 {
                     RegSetValueExW(hKey, L"Width", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&width), sizeof(width));
                     RegSetValueExW(hKey, L"Height", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&height), sizeof(height));
                     RegSetValueExW(hKey, L"Fps", 0, REG_DWORD, reinterpret_cast<const BYTE*>(&fps), sizeof(fps));
                     RegSetValueExW(hKey, L"Format", 0, REG_SZ, reinterpret_cast<const BYTE*>(&format_str[0]), (format_str.size() + 1) * sizeof(wchar_t));
                     RegCloseKey(hKey);
+                } else {
+                    SetError(HRESULT_FROM_WIN32(result), handle);
+                    AddPrefixToError("Failed to create camera config registry key: ", handle);
+                    return VCAM_ERROR_INIT_FAILED;
                 }
             }
 
@@ -529,8 +567,6 @@ extern "C" {
                 return VCAM_ERROR_INIT_FAILED;
             }
 
-            *handle = instance.get();
-            instance->handle = *handle;
             g_cameras[*handle] = instance;
         }
         catch (const winrt::hresult_error& ex)
@@ -713,7 +749,8 @@ extern "C++"
             name.c_str()
         );
 
-        if (pSD) LocalFree(pSD);
+        if (pSD)
+            LocalFree(pSD);
 
         if (!frameMapping) {
             OutputDebugStringA(fmt::format("[InitializeCameraInstance] Frame mapping failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
@@ -729,8 +766,10 @@ extern "C++"
 
         pSD = nullptr;
         if (!CreatePermissiveSecurityAttr(sa, pSD)) {
+            OutputDebugStringA(fmt::format("[InitializeCameraInstance] Create permissive security attribute failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
             return false;
         }
+
 
         const HANDLE mutexMapping = CreateMutexW(
             &sa,
@@ -738,7 +777,8 @@ extern "C++"
             mutex.c_str()
         );
 
-        if (pSD) LocalFree(pSD);
+        if (pSD)
+            LocalFree(pSD);
 
         if (!mutexMapping) {
             OutputDebugStringA(fmt::format("[InitializeCameraInstance] Mutex mapping failed ({}), processID: ({})", GetLastError(), GetCurrentProcessId()).c_str());
