@@ -10,5 +10,6 @@ requirements:
     - "magic_enum/0.9.7"
     - "sqlitecpp/3.3.3"
     - "nlohmann_json/3.12.0"
+    - "ffmpeg/8.0.1"
   windows:
     - "wil/1.0.250325.1"
