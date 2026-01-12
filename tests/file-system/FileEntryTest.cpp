@@ -1,36 +1,64 @@
-#include <iostream>
 #include "FileEntry.h"
+#include "OverloadedStreams.h"
 
-void printEntry(const FileEntry& entry) {
-    std::cout << "Name: " << entry.name << '\n';
-    std::cout << "Path: " << entry.path << '\n';
-    std::cout << "Size: " << entry.size << '\n';
-    std::cout << "Type: " << static_cast<int>(entry.type) << '\n';
-    std::cout << "Last Modification Time: " << entry.lastModTime << '\n';
-}
+#include <vector>
+#include <iostream>
+#include <fstream>
+#include <filesystem>
 
 int main() {
-    FileEntry original;
-    original.name = "example.txt";
-    original.path = "/home/user";
-    original.size = 1024;
-    original.type = FileType::Text;
-    original.lastModTime = 1500000000;
+    const std::filesystem::path testDir = "test_dir";
+    const std::filesystem::path testFile = testDir / "test.txt";
 
-    std::cout << "[ORIGINAL]\n";
-    printEntry(original);
+    const bool fileCreated = !(std::filesystem::exists(testDir) && std::filesystem::exists(testFile));
+
+    if (!std::filesystem::exists(testDir)) {
+        std::filesystem::create_directory(testDir);
+        std::cout << "Created directory: " << testDir << '\n';
+    }
+
+    if (!std::filesystem::exists(testFile)) {
+        std::ofstream file(testFile);
+        file << "Just a test content :)\n";
+        std::cout << "Created file: " << testFile << '\n';
+    }
+
+    if (fileCreated)
+        std::cout << '\n';
 
     std::vector<uint8_t> buffer;
     size_t offset = 0;
-    buffer.resize(original.GetSerializedSize());
-    original.Serialize(buffer, offset);
 
-    FileEntry restored;
+    FileEntry originalFile(testFile);
+
+    std::cout << "[ORIGINAL FILE]\n";
+    std::cout << originalFile << '\n';
+
+    buffer.resize(originalFile.GetSerializedSize());
+    originalFile.Serialize(buffer, offset);
+
+    FileEntry restoredFile;
     offset = 0;
-    restored.Deserialize(buffer, offset);
+    restoredFile.Deserialize(buffer, offset);
 
-    std::cout << "\n[RESTORED]\n";
-    printEntry(restored);
+    std::cout << "[RESTORED FILE]\n";
+    std::cout << restoredFile << '\n';
+
+    FileEntry originalDir(testDir);
+
+    std::cout << "[ORIGINAL DIRECTORY]\n";
+    std::cout << originalDir << '\n';
+
+    offset = 0;
+    buffer.resize(originalDir.GetSerializedSize());
+    originalDir.Serialize(buffer, offset);
+
+    FileEntry restoredDir;
+    offset = 0;
+    restoredDir.Deserialize(buffer, offset);
+
+    std::cout << "[RESTORED DIRECTORY]\n";
+    std::cout << restoredDir;
 
     return 0;
 }
