@@ -27,6 +27,7 @@ endif()
 
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
+find_package(Boost           REQUIRED)
 find_package(magic_enum      REQUIRED)
 find_package(fmt             REQUIRED)
 find_package(concurrentqueue REQUIRED)
@@ -35,6 +36,7 @@ find_package(benchmark       REQUIRED)
 find_package(SQLiteCpp       REQUIRED)
 find_package(nlohmann_json   REQUIRED)
 find_package(ffmpeg          REQUIRED)
+find_package(libsrtp         REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml)
 
 FetchContent_Declare(
@@ -52,8 +54,10 @@ BuildStaticLibrary(network-component-pc utilities/network project_defaults opens
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core)
 BuildStaticLibrary(file-entry utilities/file-system project_defaults system-component-pc)
+BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core asio::asio)
+BuildStaticLibrary(network-camera-module modules/network-camera common-module srtp-stream)
 
 add_subdirectory("utilities/virtual-camera")
 
