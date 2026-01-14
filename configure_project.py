@@ -294,12 +294,14 @@ def run_conan_install_android(build_type: str):
         "-s:h", f"compiler.cppstd={cppstd}",
         "-s:h", "compiler.libcxx=c++_static",
         "-o boost/*:with_stacktrace_backtrace=False",
+        "-o boost/*:pch=False",
 
         "-pr:b", "default",
         "-s:b", f"compiler.cppstd={cppstd}",
         "-c", f"tools.android:ndk_path={ndk}",
         "-o", f"boost/*:addr2line_location={addr2line}",
-        "-o", "boost/*:without_stacktrace=True"
+        "-o", "boost/*:without_stacktrace=True",
+        "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
     ]
 
     if extra_flags:
