@@ -19,7 +19,7 @@ namespace SRTP {
     class Stream final {
     public:
         Stream() = delete;
-        Stream(IOContext& context, srtp_t sendSession, srtp_t recvSession);
+        Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey);
 
         void Bind(const UDPEndpoint& endpoint);
         void Bind(UDPEndpoint&& endpoint);
@@ -30,8 +30,11 @@ namespace SRTP {
         asio::awaitable<void> AsyncReceive(std::vector<uint8_t>& payload);
         asio::awaitable<void> AsyncSend(const std::vector<uint8_t>& payload);
 
+        static std::vector<uint8_t> GenerateKey();
+
     private:
         void BuildRtpHeader(void* dst, bool marker);
+        static srtp_t CreateSrtpSession(const std::vector<uint8_t>& key, uint32_t ssrc, srtp_ssrc_type_t type);
 
         UDPSocket m_socket;
         IOContext& m_context;
