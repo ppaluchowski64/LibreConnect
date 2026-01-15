@@ -106,7 +106,7 @@ private:
     asio::awaitable<void> DisableHelper() {
         SetModuleState(ModuleState::Disabling);
         try {
-            co_await OnEnable();
+            co_await OnDisable();
             SetModuleState(ModuleState::Disabled);
         } catch (const std::exception& exc) {
             SetModuleState(ModuleState::Disabled);

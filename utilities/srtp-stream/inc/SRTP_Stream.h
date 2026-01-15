@@ -23,6 +23,7 @@ namespace SRTP {
 
         void Bind(const UDPEndpoint& endpoint);
         void Bind(UDPEndpoint&& endpoint);
+        UDPEndpoint Bind();
 
         void Receive(std::vector<uint8_t>& payload);
         void Send(const std::vector<uint8_t>& payload);

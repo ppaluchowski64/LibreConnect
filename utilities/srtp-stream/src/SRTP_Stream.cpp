@@ -27,6 +27,11 @@ namespace SRTP {
         m_socket.connect(endpoint);
     }
 
+    UDPEndpoint Stream::Bind() {
+        m_socket.bind(UDPEndpoint(asio::ip::udp::v4(), 0));
+        return m_socket.local_endpoint();
+    }
+
     void Stream::Receive(std::vector<uint8_t>& payload) {
         std::vector<uint8_t> buffer(1500);
 
@@ -137,7 +142,7 @@ namespace SRTP {
         constexpr uint8_t PayloadType = 96;
 
         Header header{};
-        header.v_p_x_cc = boost::endian::native_to_big(0x80);
+        header.v_p_x_cc = 0x80;
         header.m_pt = boost::endian::native_to_big(marker ? 0x80 : 0x00 | PayloadType & 0x7F);
         header.seq = boost::endian::native_to_big(m_sequence.fetch_add(1));
         header.timestamp = boost::endian::native_to_big(m_timestamp.fetch_add(1));
