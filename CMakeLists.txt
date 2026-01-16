@@ -25,6 +25,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
 endif()
 
+
 find_package(OpenSSL         REQUIRED)
 find_package(asio            REQUIRED)
 find_package(Boost           REQUIRED)
@@ -48,7 +49,12 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(debug-log)
 qt_standard_project_setup()
 
-add_library(project_defaults INTERFACE)
+add_library(project_defaults)
+if(ANDROID OR IOS)
+    target_compile_definitions(project_defaults PUBLIC MOBILE_DEVICE)
+else()
+    target_compile_definitions(project_defaults PUBLIC DESKTOP_DEVICE)
+endif()
 
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)

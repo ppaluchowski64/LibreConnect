@@ -24,21 +24,29 @@ public:
 
     void InsertOrAssign(const Key& key, Value&& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_map[key] = value;
+        m_map[key] = std::forward<Value>(value);
     }
 
     void InsertOrAssign(Key&& key, Value&& value) {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_map[key] = value;
+        m_map[key] = std::forward<Value>(value);
     }
 
     void Erase(const Key& key) {
         std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_map.contains(key)) {
+            return;
+        }
+
         m_map.erase(key);
     }
 
     void Erase(Key&& key) {
         std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_map.contains(key)) {
+            return;
+        }
+
         m_map.erase(key);
     }
 
@@ -60,6 +68,30 @@ public:
         }
 
         return std::nullopt;
+    }
+
+    std::optional<Value> Pop(const Key& key) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        if (m_map.contains(key)) {
+            std::optional<Value> value = std::move(m_map.at(key));
+            m_map.erase(key);
+
+            return value;
+        }
+
+        return std::nullopt;
+    }
+
+    bool Assign(const Key& key, Value&& value) {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        if (m_map.contains(key)) {
+            m_map.at(key) = std::move(value);
+            return true;
+        }
+
+        return false;
     }
 
     size_t Size() {

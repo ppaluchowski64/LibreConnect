@@ -17,7 +17,8 @@ enum class PackageFlag : uint8_t {
     NONE                  = 0,
     FILE_REQUEST          = 1 << 1,
     FILE_RECEIVE_INFO     = 1 << 2,
-    REQUEST_WITH_RESPONSE = 1 << 3
+    REQUEST_WITH_RESPONSE = 1 << 3,
+    REQUEST_AWAITABLE     = 1 << 4
 };
 
 inline uint8_t operator&(uint8_t l, PackageFlag r) {
