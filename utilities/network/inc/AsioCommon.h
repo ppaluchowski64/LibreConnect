@@ -10,9 +10,9 @@
 #include <asio/ssl/error.hpp>
 #include <system_error>
 #include <DebugLog.h>
+#include <PC_PackageType.h>
 
 typedef uint32_t PackageSizeInt;
-typedef uint16_t PackageTypeInt;
 
 typedef asio::io_context IOContext;
 typedef asio::executor_work_guard<asio::io_context::executor_type> IOWorkGuard;
