@@ -259,7 +259,7 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
             std::unique_ptr<Package<PC_PackageType>> value = std::move(packageOptional.value());
             const PackageHeader header = value->GetHeader();
 
-            if ((header.flags & PackageFlag::REQUEST_AWAITABLE) != 0) {
+            if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
                 size_t requestID = value->GetValue<size_t>();
                 auto flag = m_requestAwaitableMap.Pop(requestID);
 
@@ -287,6 +287,11 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
     Initialize();
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
+}
+
+void ConnectionManager::RemoveResponseHandler(const PC_PackageType type) {
+    Initialize();
+    s_instance->m_responseHandlerMap.Erase(type);
 }
 
 void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {

@@ -20,7 +20,7 @@ enum class ModuleState : uint8_t {
     Disabled
 };
 
-class BaseModule {
+class BaseModule : public std::enable_shared_from_this<BaseModule> {
 public:
     virtual ~BaseModule() = default;
 
@@ -32,6 +32,7 @@ public:
 
         SetModuleState(ModuleState::Initializing);
         m_threadCount.store(0);
+        EnableResponseCallbacks();
         OnInitialize();
         SetModuleState(ModuleState::Disabled);
     }
@@ -92,9 +93,12 @@ private:
     }
 
     asio::awaitable<void> EnableHelper() {
+        const std::shared_ptr<BaseModule> instance = shared_from_this();
+
         SetModuleState(ModuleState::Enabling);
         try {
             co_await OnEnable();
+            DisableResponseCallbacks();
             SetModuleState(ModuleState::Enabled);
         } catch (const std::exception& exc) {
             SetModuleState(ModuleState::Disabled);
@@ -104,8 +108,11 @@ private:
     }
 
     asio::awaitable<void> DisableHelper() {
+        const std::shared_ptr<BaseModule> instance = shared_from_this();
+
         SetModuleState(ModuleState::Disabling);
         try {
+            DisableResponseCallbacks();
             co_await OnDisable();
             SetModuleState(ModuleState::Disabled);
         } catch (const std::exception& exc) {
@@ -116,6 +123,8 @@ private:
     }
 
     asio::awaitable<void> ShutdownHelper() {
+        const std::shared_ptr<BaseModule> instance = shared_from_this();
+
         if (GetModuleState() == ModuleState::Enabled) {
             co_await DisableHelper();
         }
@@ -135,6 +144,9 @@ protected:
     std::vector<std::thread> m_threads;
     std::atomic<uint8_t> m_threadCount;
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
+
+    virtual void EnableResponseCallbacks() = 0;
+    virtual void DisableResponseCallbacks() = 0;
 
     virtual void OnInitialize() = 0;
     virtual asio::awaitable<void> OnEnable() = 0;

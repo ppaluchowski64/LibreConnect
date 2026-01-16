@@ -14,16 +14,6 @@
 #include <functional>
 #include <InitialConnection.h>
 
-enum class PC_PackageType : PackageTypeInt {
-    NONE = 0,
-    MESSAGE = 1,
-    PAIR_REQUEST = 2,
-    PAIR_REQUEST_DENIED = 3,
-    PAIR_REQUEST_ACCEPTED = 4,
-    OPEN_NETWORK_CAMERA_MODULE_REQUEST = 5,
-    NETWORK_CAMERA_MODULE_CONNECTION_DATA = 6
-};
-
 constexpr size_t MAX_PACKAGE_SIZE = 8192;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {

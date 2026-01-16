@@ -1,0 +1,25 @@
+#ifndef PC_PACKAGE_TYPE_H
+#define PC_PACKAGE_TYPE_H
+
+#include <cinttypes>
+
+typedef uint16_t PackageTypeInt;
+
+enum class PC_PackageType : PackageTypeInt {
+    // RESERVED (0 - 9)
+    NONE = 0,
+
+    // DEVICE PAIRING (10 - 100)
+    PAIR_REQUEST = 10,
+    PAIR_REQUEST_DENIED = 11,
+    PAIR_REQUEST_ACCEPTED = 12,
+
+    // NETWORK CAMERA MODULE (1000-1500)
+    NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY = 1000,
+    NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY_RESPONSE = 1001,
+
+
+
+};
+
+#endif //PC_PACKAGE_TYPE_H
