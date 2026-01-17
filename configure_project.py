@@ -239,6 +239,7 @@ def run_conan_install(build_type: str):
         ".",
         common_build_missing,
         common_generator_flags,
+        "-g PkgConfigDeps",
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]
