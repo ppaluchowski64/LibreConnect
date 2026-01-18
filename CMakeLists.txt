@@ -36,9 +36,8 @@ find_package(GTest           REQUIRED)
 find_package(benchmark       REQUIRED)
 find_package(SQLiteCpp       REQUIRED)
 find_package(nlohmann_json   REQUIRED)
-find_package(ffmpeg          REQUIRED)
 find_package(libsrtp         REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
         debug-log
@@ -62,10 +61,10 @@ BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaul
 BuildStaticLibrary(file-entry utilities/file-system project_defaults system-component-pc)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
-BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core asio::asio)
-BuildStaticLibrary(network-camera-module modules/network-camera common-module srtp-stream p2p-network-component-pc)
-
 add_subdirectory("utilities/virtual-camera")
+
+BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
+BuildStaticLibrary(network-camera-module modules/network-camera common-module srtp-stream p2p-network-component-pc virtual-camera)
 
 if (ANDROID)
     add_subdirectory("apps/mobile")
