@@ -32,6 +32,7 @@ private:
 
 #if defined(DESKTOP_DEVICE)
     std::vector<CameraSpecification> m_camerasSpecification;
+    asio::awaitable<void> UpdateCamerasSpecificationList();
 #endif
 
 protected:

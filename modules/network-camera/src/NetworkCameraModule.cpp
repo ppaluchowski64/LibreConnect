@@ -5,9 +5,29 @@
 std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() const {
     return m_camerasSpecification;
 }
+
+asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
+    constexpr size_t UPDATE_DELAY = 5;
+
+    while (GetModuleState() != ModuleState::Disabled && GetModuleState() != ModuleState::Uninitialized) {
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
+        if (!response.has_value()) {
+            Debug::LogWarning("NetworkCameraModule::UpdateCamerasSpecificationList: No response");
+            continue;
+        }
+
+        response.value()->GetValue(m_camerasSpecification);
+
+        asio::steady_timer timer(m_context);
+        timer.expires_after(std::chrono::seconds(UPDATE_DELAY));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+}
+
 #endif
 
 //#define MOBILE_DEVICE
+
 
 void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
@@ -49,6 +69,10 @@ void NetworkCameraModule::DisableResponseCallbacks() {
 
 void NetworkCameraModule::OnInitialize() {
     AddThreads(1);
+
+#if defined(DESKTOP_DEVICE)
+    asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
+#endif
 }
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
@@ -67,12 +91,7 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
     }
 
     {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
-        if (!response.has_value()) {
-            throw std::runtime_error("No response");
-        }
-
-        response.value()->GetValue(m_camerasSpecification);
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM)
     }
 
 #endif

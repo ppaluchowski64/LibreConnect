@@ -98,7 +98,6 @@ private:
         SetModuleState(ModuleState::Enabling);
         try {
             co_await OnEnable();
-            DisableResponseCallbacks();
             SetModuleState(ModuleState::Enabled);
         } catch (const std::exception& exc) {
             SetModuleState(ModuleState::Disabled);
@@ -112,7 +111,6 @@ private:
 
         SetModuleState(ModuleState::Disabling);
         try {
-            DisableResponseCallbacks();
             co_await OnDisable();
             SetModuleState(ModuleState::Disabled);
         } catch (const std::exception& exc) {
@@ -124,6 +122,7 @@ private:
 
     asio::awaitable<void> ShutdownHelper() {
         const std::shared_ptr<BaseModule> instance = shared_from_this();
+        DisableResponseCallbacks();
 
         if (GetModuleState() == ModuleState::Enabled) {
             co_await DisableHelper();
