@@ -37,6 +37,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
+          modules: qtmultimedia
 
       - name: Create Conan profile
         run: conan profile detect --force
@@ -111,6 +112,7 @@ jobs:
           host: 'linux'
           target: 'desktop'
           arch: 'linux_gcc_64'
+          modules: qtmultimedia
 
       - name: Create Conan profile
         run: conan profile detect --force
@@ -157,6 +159,7 @@ jobs:
           host: 'mac'
           target: 'desktop'
           arch: 'clang_64'
+          modules: qtmultimedia
 
       - name: Write Qt path to .env for CMake
         run: echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env && echo "BUILD_FOR=Desktop" >> .env
