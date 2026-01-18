@@ -80,6 +80,8 @@ if (ENABLE_TESTS)
     BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
 
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
+    add_subdirectory("tests/network-camera-module/utilities-test")
+
     LinkVirtualCameraLibs(VirtualCameraTest)
 endif()
 

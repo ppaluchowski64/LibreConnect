@@ -5,6 +5,9 @@
 #include <Packable.h>
 #include <VCamAPI.h>
 
+#include <fmt/core.h>
+#include <fmt/format.h>
+
 #ifndef NO_DISCARD
 #define NO_DISCARD [[nodiscard]]
 #endif
@@ -32,6 +35,60 @@ struct CameraSpecification {
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
     NO_DISCARD size_t GetSerializedSize() const;
+};
+
+template <>
+struct fmt::formatter<CameraFormat>
+{
+    constexpr auto parse(format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const CameraFormat& f, FormatContext& ctx) const
+    {
+        return fmt::format_to(
+            ctx.out(),
+            "CameraFormat{{ width={}, height={}, minFPS={}, maxFPS={}, pixelFormat={} }}",
+            f.width,
+            f.height,
+            f.minFrameRate,
+            f.maxFrameRate,
+            static_cast<uint32_t>(f.pixelFormat)
+        );
+    }
+};
+
+template <>
+struct fmt::formatter<CameraSpecification>
+{
+    constexpr auto parse(format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const CameraSpecification& s, FormatContext& ctx) const
+    {
+        auto out = ctx.out();
+
+        out = fmt::format_to(
+            out,
+            "CameraSpecification{{ description=\"{}\", id=\"{}\", isDefault={}, formats=[",
+            s.description,
+            s.id,
+            s.isDefault
+        );
+
+        for (size_t i = 0; i < s.formats.size(); ++i)
+        {
+            out = fmt::format_to(out, "\n{},", s.formats[i]);
+        }
+
+        out = fmt::format_to(out, "] }}");
+        return out;
+    }
 };
 
 #endif //CAMERA_SPECIFICATION_H

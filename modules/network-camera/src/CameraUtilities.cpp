@@ -1,4 +1,5 @@
 #include <CameraUtilities.h>
+#include <QThread>
 
 std::vector<CameraSpecification> FetchCamerasSpecification() {
     if (!QGuiApplication::instance()) {
@@ -7,13 +8,17 @@ std::vector<CameraSpecification> FetchCamerasSpecification() {
 
     QList<QCameraDevice> cameras;
 
-    QMetaObject::invokeMethod(
-        QGuiApplication::instance(),
-        [&cameras] {
-            cameras = QMediaDevices::videoInputs();
-        },
-        Qt::BlockingQueuedConnection
-    );
+    if (QThread::currentThread() == QGuiApplication::instance()->thread()) {
+        cameras = QMediaDevices::videoInputs();
+    } else {
+        QMetaObject::invokeMethod(
+            QGuiApplication::instance(),
+            [&cameras]() {
+                cameras = QMediaDevices::videoInputs();
+            },
+            Qt::BlockingQueuedConnection
+        );
+    }
 
     std::vector<CameraSpecification> camerasSpecifications(cameras.size());
 
@@ -42,3 +47,4 @@ std::vector<CameraSpecification> FetchCamerasSpecification() {
 
     return camerasSpecifications;
 }
+

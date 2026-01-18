@@ -7,7 +7,7 @@ std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() 
 }
 #endif
 
-//#define MOBILE_DEVICE;
+//#define MOBILE_DEVICE
 
 void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
@@ -75,15 +75,9 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         response.value()->GetValue(m_camerasSpecification);
     }
 
-
-
 #endif
 
-
     m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey);
-
-
-
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
