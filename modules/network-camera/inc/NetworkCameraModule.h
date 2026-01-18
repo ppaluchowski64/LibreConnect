@@ -6,12 +6,24 @@
 #include <SRTP_Stream.h>
 #include <CameraSpecification.h>
 
+#include <QCameraDevice>
 #include <QGuiApplication>
 #include <QMediaCaptureSession>
 #include <QMediaRecorder>
 #include <QVideoFrameInput>
 #include <QMediaFormat>
 #include <QVideoFrame>
+#include <QCamera>
+#include <QMediaCaptureSession>
+#include <QVideoSink>
+#include <QMediaDevices>
+
+enum class StreamStartFailReason : uint8_t {
+    None = 0,
+    IncorrectConfig = 1,
+    InternalError = 2
+
+};
 
 class NetworkCameraModule final : public BaseModule {
 public:
@@ -20,15 +32,16 @@ public:
     std::vector<CameraSpecification> GetCamerasSpecification() const;
 #endif
 
+    void StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
+
 private:
     std::unique_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
-    std::atomic<bool> m_listen{true};
 
-    QMediaCaptureSession m_captureSession;
-    QMediaRecorder m_mediaRecorder;
-    QVideoFrameInput m_frameInput;
+    std::unique_ptr<QMediaCaptureSession> m_captureSession;
+    std::unique_ptr<QCamera> m_camera;
+    std::unique_ptr<QVideoSink> m_videoSink;
 
 #if defined(DESKTOP_DEVICE)
     std::vector<CameraSpecification> m_camerasSpecification;

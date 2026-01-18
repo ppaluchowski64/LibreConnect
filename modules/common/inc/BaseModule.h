@@ -20,6 +20,19 @@ enum class ModuleState : uint8_t {
     Disabled
 };
 
+enum class ModuleFailReason : uint8_t
+{
+    None = 0,                 // No failure
+    IncorrectConfig,          // Invalid or missing configuration
+    NotInitialized,           // Module used before proper initialization
+    InitializationFailed,     // Initialization attempted but failed
+    UnsupportedPlatform,      // Platform or OS version is not supported
+    Timeout,                  // Operation timed out
+    InvalidState,             // Operation not allowed in current state
+    InternalError,            // Unexpected internal failure
+    Unknown                   // Fallback for unmapped or future errors
+};
+
 class BaseModule : public std::enable_shared_from_this<BaseModule> {
 public:
     virtual ~BaseModule() = default;
@@ -77,9 +90,17 @@ public:
         return m_state.load();
     }
 
+    ModuleFailReason GetModuleFailReason() const {
+        return m_failReason.load();
+    }
+
 private:
     void SetModuleState(const ModuleState state) {
         m_state.store(state);
+    }
+
+    void SetModuleFailReason(const ModuleFailReason reason) {
+        m_failReason.store(reason);
     }
 
     void JoinThreads() {
@@ -143,6 +164,7 @@ protected:
     std::vector<std::thread> m_threads;
     std::atomic<uint8_t> m_threadCount;
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
+    std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
 
     virtual void EnableResponseCallbacks() = 0;
     virtual void DisableResponseCallbacks() = 0;
