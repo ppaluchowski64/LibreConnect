@@ -13,8 +13,8 @@
 #endif
 
 struct CameraFormat {
-    uint32_t width;
-    uint32_t height;
+    int32_t width;
+    int32_t height;
     float minFrameRate;
     float maxFrameRate;
     uint8_t pixelFormat;
