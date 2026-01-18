@@ -1,0 +1,56 @@
+#include <CameraSpecification.h>
+#include <QVideoFrameFormat>
+#include <fmt/color.h>
+
+
+VCamFormat CameraFormat::GetFormat() const {
+    switch (static_cast<QVideoFrameFormat::PixelFormat>(pixelFormat)) {
+        case QVideoFrameFormat::Format_RGBA8888: return VCAM_FORMAT_RGB32;
+        case QVideoFrameFormat::Format_BGRA8888: return VCAM_FORMAT_BGRA;
+        case QVideoFrameFormat::Format_YUYV: return VCAM_FORMAT_YUYV;
+        case QVideoFrameFormat::Format_NV12: return VCAM_FORMAT_NV12;
+        case QVideoFrameFormat::Format_YUV420P: return VCAM_FORMAT_YUV420;
+        default:
+            throw std::runtime_error("Unsupported pixel format");
+    }
+}
+
+void CameraFormat::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
+    SerializeObject(width, buffer, offset);
+    SerializeObject(height, buffer, offset);
+    SerializeObject(minFrameRate, buffer, offset);
+    SerializeObject(maxFrameRate, buffer, offset);
+    SerializeObject(pixelFormat, buffer, offset);
+}
+
+void CameraFormat::Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
+    DeserializeObject(width, buffer, offset);
+    DeserializeObject(height, buffer, offset);
+    DeserializeObject(minFrameRate, buffer, offset);
+    DeserializeObject(maxFrameRate, buffer, offset);
+    DeserializeObject(pixelFormat, buffer, offset);
+}
+
+size_t CameraFormat::GetSerializedSize() const {
+    return  GetObjectSerializedSize(width) + GetObjectSerializedSize(height) +
+            GetObjectSerializedSize(minFrameRate) + GetObjectSerializedSize(maxFrameRate) +
+            GetObjectSerializedSize(pixelFormat);
+}
+
+void CameraSpecification::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
+    SerializeObject(description, buffer, offset);
+    SerializeObject(formats, buffer, offset);
+    SerializeObject(id, buffer, offset);
+    SerializeObject(isDefault, buffer, offset);
+}
+
+void CameraSpecification::Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
+    DeserializeObject(description, buffer, offset);
+    DeserializeObject(formats, buffer, offset);
+    DeserializeObject(id, buffer, offset);
+    DeserializeObject(isDefault, buffer, offset);
+}
+
+size_t CameraSpecification::GetSerializedSize() const {
+    return GetObjectSerializedSize(description) + GetObjectSerializedSize(formats) + GetObjectSerializedSize(id) + GetObjectSerializedSize(isDefault);
+}
