@@ -19,6 +19,11 @@ struct CameraFormat {
     float maxFrameRate;
     uint8_t pixelFormat;
 
+    CameraFormat() : width(0), height(0), minFrameRate(0), maxFrameRate(0), pixelFormat(0) {}
+
+    CameraFormat(const int32_t w, const int32_t h, const float minFps, const float maxFps, const uint8_t pf)
+        : width(w), height(h), minFrameRate(minFps), maxFrameRate(maxFps), pixelFormat(pf) {}
+
     VCamFormat GetFormat() const;
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
