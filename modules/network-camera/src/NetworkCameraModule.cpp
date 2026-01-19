@@ -73,20 +73,17 @@ void NetworkCameraModule::StartStream(const size_t requestID, const std::string 
                 if (!frame.isValid())
                     return;
 
-                QVideoFrame frame_(frame);
-                if (!frame_.map(QVideoFrame::ReadOnly))
-                    return;
-
-                const uint8_t* data = frame_.bits(0);
-                int width  = frame_.width();
-                int height = frame_.height();
-                QVideoFrameFormat::PixelFormat format = frame_.pixelFormat();
-
-                // TODO: Sending frames via srtp
+                asio::co_spawn(m_context, SendFrame(frame), asio::detached);
             });
         },
         Qt::QueuedConnection
     );
+}
+
+asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
+    if (!frame.map(QVideoFrame::ReadOnly))
+        co_return;
+
 }
 
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {

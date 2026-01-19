@@ -33,6 +33,7 @@ public:
 #endif
 
     void StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
+    asio::awaitable<void> SendFrame(QVideoFrame frame);
 
 private:
     std::unique_ptr<SRTP::Stream> m_videoStream;
