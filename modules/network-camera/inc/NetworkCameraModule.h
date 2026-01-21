@@ -5,6 +5,7 @@
 #include <ConnectionManager.h>
 #include <SRTP_Stream.h>
 #include <CameraSpecification.h>
+#include <CameraUtilities.h>
 
 #include <QCameraDevice>
 #include <QGuiApplication>
@@ -43,6 +44,8 @@ private:
     std::unique_ptr<QMediaCaptureSession> m_captureSession;
     std::unique_ptr<QCamera> m_camera;
     std::unique_ptr<QVideoSink> m_videoSink;
+    const AVCodec* m_codec{nullptr};
+    AVCodecContext* m_codecContext{nullptr};
 
 #if defined(DESKTOP_DEVICE)
     std::vector<CameraSpecification> m_camerasSpecification;

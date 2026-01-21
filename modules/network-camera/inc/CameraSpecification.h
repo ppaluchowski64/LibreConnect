@@ -12,6 +12,11 @@
 #define NO_DISCARD [[nodiscard]]
 #endif
 
+extern "C" {
+#include <libavcodec/avcodec.h>
+}
+
+
 struct CameraFormat {
     int32_t width;
     int32_t height;
@@ -24,7 +29,7 @@ struct CameraFormat {
     CameraFormat(const int32_t w, const int32_t h, const float minFps, const float maxFps, const uint8_t pf)
         : width(w), height(h), minFrameRate(minFps), maxFrameRate(maxFps), pixelFormat(pf) {}
 
-    VCamFormat GetFormat() const;
+    AVPixelFormat GetFormat() const;
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
