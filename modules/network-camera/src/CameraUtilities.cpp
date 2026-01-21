@@ -1,6 +1,18 @@
 #include <CameraUtilities.h>
 #include <QThread>
 
+static std::unordered_map<CodecID, std::vector<std::string>> g_encoderPriority = {
+    {CodecID::H264, {"h264_nvenc", "h264_qsv", "h264_amf"}},
+    {CodecID::H265, {"hevc_nvenc", "hevc_qsv", "hevc_amf"}},
+    {CodecID::AV1,  {"av1_nvenc", "av1_qsv", "av1_amf", "libaom-av1", "rav1e"}}
+};
+
+static std::unordered_map<CodecID, std::vector<std::string>> g_decoderPriority = {
+    {CodecID::H264, {"h264_cuvid", "h264_qsv", "h264_amf"}},
+    {CodecID::H265, {"hevc_cuvid", "hevc_qsv", "hevc_amf"}},
+    {CodecID::AV1,  {"av1_cuvid", "av1_qsv", "av1_amf","libaom-av1"}}
+};
+
 std::vector<CameraSpecification> FetchCamerasSpecification() {
     if (!QGuiApplication::instance()) {
         return {};
@@ -48,3 +60,78 @@ std::vector<CameraSpecification> FetchCamerasSpecification() {
     return camerasSpecifications;
 }
 
+static bool CanUseEncoder(const AVCodec* codec) {
+    if (!codec) return false;
+    if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
+
+    AVBufferRef* hw_device = nullptr;
+    if (av_hwdevice_ctx_create(&hw_device, AV_HWDEVICE_TYPE_D3D11VA, nullptr, nullptr, 0) < 0) {
+        return false;
+    }
+
+    AVCodecContext* ctx = avcodec_alloc_context3(codec);
+    if (!ctx) {
+      av_buffer_unref(&hw_device);
+      return false;
+    }
+
+    ctx->hw_device_ctx = av_buffer_ref(hw_device);
+
+    if (codec->pix_fmts) {
+      ctx->pix_fmt = codec->pix_fmts[0];
+    } else {
+      ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    }
+
+    ctx->width = 1920;
+    ctx->height = 1080;
+
+    ctx->time_base = {1, 30};
+    ctx->framerate = {30, 1};
+    ctx->bit_rate = 500000;
+
+    const int ret = avcodec_open2(ctx, codec, nullptr);
+
+    av_buffer_unref(&hw_device);
+    avcodec_free_context(&ctx);
+    return ret == 0;
+}
+
+
+static bool CanUseDecoder(const AVCodec* codec) {
+    if (!codec) return false;
+    if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
+
+    AVCodecContext* ctx = avcodec_alloc_context3(codec);
+    if (!ctx) return false;
+
+    bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
+
+    avcodec_free_context(&ctx);
+    return ok;
+}
+
+
+const AVCodec* GetEncoderCodec(const CodecID codecID) {
+    if (!g_encoderPriority.contains(codecID)) return nullptr;
+
+    for (const auto& codecName : g_encoderPriority.at(codecID)) {
+        const AVCodec* codec = avcodec_find_encoder_by_name(codecName.c_str());
+        if (!codec) continue;
+        if (CanUseEncoder(codec)) return codec;
+    }
+
+  return avcodec_find_encoder(static_cast<AVCodecID>(codecID));
+}
+
+const AVCodec* GetDecoderCodec(const CodecID codecID) {
+    if (!g_decoderPriority.contains(codecID)) return nullptr;
+
+    for (const auto& codecName : g_decoderPriority.at(codecID)) {
+        const AVCodec* codec = avcodec_find_decoder_by_name(codecName.c_str());
+        if (!codec) continue;
+        if (CanUseDecoder(codec)) return codec;
+    }
+
+    return avcodec_find_decoder(static_cast<AVCodecID>(codecID));
+}
