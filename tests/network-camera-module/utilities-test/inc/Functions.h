@@ -11,6 +11,7 @@ class Functions final : public QObject {
 public:
     explicit Functions(QObject *parent = nullptr) : QObject(parent) {}
     Q_INVOKABLE void FetchCamerasSpecificationCall();
+    Q_INVOKABLE void GetCodecs();
 };
 
 #endif //FUNCTIONS_H

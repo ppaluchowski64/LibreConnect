@@ -239,7 +239,11 @@ def run_conan_install(build_type: str):
         ".",
         common_build_missing,
         common_generator_flags,
-        "-g PkgConfigDeps",
+        "-s compiler.runtime=dynamic",
+        "-o ffmpeg/*:nonfree=True",
+        "-o ffmpeg/*:with_nvenc=True",
+        "-o ffmpeg/*:with_cuda=True",
+        "-o ffmpeg/*:with_libnpp=True",
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]

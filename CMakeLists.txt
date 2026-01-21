@@ -26,17 +26,20 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
 endif()
 
 
-find_package(OpenSSL         REQUIRED)
-find_package(asio            REQUIRED)
-find_package(Boost           REQUIRED)
-find_package(magic_enum      REQUIRED)
-find_package(fmt             REQUIRED)
-find_package(concurrentqueue REQUIRED)
-find_package(GTest           REQUIRED)
-find_package(benchmark       REQUIRED)
-find_package(SQLiteCpp       REQUIRED)
-find_package(nlohmann_json   REQUIRED)
-find_package(libsrtp         REQUIRED)
+find_package(OpenSSL          REQUIRED)
+find_package(asio             REQUIRED)
+find_package(Boost            REQUIRED)
+find_package(magic_enum       REQUIRED)
+find_package(fmt              REQUIRED)
+find_package(concurrentqueue  REQUIRED)
+find_package(GTest            REQUIRED)
+find_package(benchmark        REQUIRED)
+find_package(SQLiteCpp        REQUIRED)
+find_package(nlohmann_json    REQUIRED)
+find_package(libsrtp          REQUIRED)
+find_package(ffmpeg           REQUIRED)
+find_package(nv-codec-headers REQUIRED)
+find_package(libvpx           REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
@@ -64,7 +67,25 @@ BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log 
 add_subdirectory("utilities/virtual-camera")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
-BuildStaticLibrary(network-camera-module modules/network-camera common-module srtp-stream p2p-network-component-pc virtual-camera)
+BuildStaticLibrary(network-camera-module modules/network-camera
+        common-module
+        srtp-stream
+        p2p-network-component-pc
+        virtual-camera
+
+        ffmpeg::avcodec
+        ffmpeg::avformat
+        ffmpeg::avutil
+        ffmpeg::swscale
+        ffmpeg::swresample
+        ffmpeg::avfilter
+        ffmpeg::avdevice
+
+        libvpx::libvpx
+        nv-codec-headers::nv-codec-headers
+)
+
+message(STATUS "FFmpeg bin dirs:${CONAN_FFMPEG_ROOT}/bin/*.dll")
 
 if (ANDROID)
     add_subdirectory("apps/mobile")

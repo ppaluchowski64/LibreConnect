@@ -84,6 +84,8 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     if (!frame.map(QVideoFrame::ReadOnly))
         co_return;
 
+
+
 }
 
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
@@ -204,6 +206,8 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         }
     }
 #endif
+
+
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {

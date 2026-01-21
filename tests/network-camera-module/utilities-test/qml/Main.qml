@@ -9,13 +9,29 @@ ApplicationWindow {
     height: 900
     title: "Network Camera Module Utilities Test"
 
-
-    Button {
-        text: "Run FetchCamerasSpecification"
+    GridLayout {
+        id: buttonGrid
         anchors.centerIn: parent
+        columns: 2
+        rowSpacing: 20
+        columnSpacing: 20
 
-        onClicked: {
-            functions.FetchCamerasSpecificationCall();
+        Button {
+            text: "Run FetchCamerasSpecification"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            onClicked: {
+                functions.FetchCamerasSpecificationCall();
+            }
+        }
+
+        Button {
+            text: "Run GetCodecs"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            onClicked: {
+                functions.GetCodecs();
+            }
         }
     }
 }
