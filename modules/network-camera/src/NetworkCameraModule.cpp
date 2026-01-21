@@ -68,6 +68,21 @@ void NetworkCameraModule::StartStream(const size_t requestID, const std::string 
             m_captureSession->setVideoSink(m_videoSink.get());
 
             m_camera->start();
+            m_codec = GetEncoderCodec(CodecID::H264);
+
+            if (m_codec == nullptr) {
+                return;
+            }
+
+            m_codecContext = avcodec_alloc_context3(m_codec);
+            m_codecContext->bit_rate = 400000;
+            m_codecContext->width = requestedFormat.width;
+            m_codecContext->height = requestedFormat.height;
+            m_codecContext->time_base = (AVRational){1, static_cast<int>(requestedFormat.maxFrameRate)};
+            m_codecContext->framerate = (AVRational){static_cast<int>(requestedFormat.maxFrameRate), 1};
+            m_codecContext->gop_size = 10;
+            m_codecContext->max_b_frames = 1;
+            m_codecContext->pix_fmt = requestedFormat.GetFormat();
 
             QGuiApplication::instance()->connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, [&](const QVideoFrame &frame) {
                 if (!frame.isValid())
@@ -84,8 +99,38 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     if (!frame.map(QVideoFrame::ReadOnly))
         co_return;
 
+    AVFrame* avFrame = av_frame_alloc();
+    avFrame->format = m_codecContext->pix_fmt;
+    avFrame->width  = m_codecContext->width;
+    avFrame->height = m_codecContext->height;
+
+    if (av_frame_get_buffer(avFrame, 32) < 0) {
+        Debug::LogError("Could not allocate frame data");
+        co_return;
+    }
 
 
+    AVPacket *pkt = av_packet_alloc();
+
+    int ret = avcodec_send_frame(m_codecContext, avFrame);
+    if (ret < 0) {
+        Debug::LogError("Error sending frame to encoder");
+        co_return;
+    }
+
+    while (ret >= 0) {
+        ret = avcodec_receive_packet(m_codecContext, pkt);
+
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+        if (ret < 0) {
+            Debug::LogError("Error during encoding");
+            co_return;
+        }
+
+
+
+        av_packet_unref(pkt);
+    }
 }
 
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {

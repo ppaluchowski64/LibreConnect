@@ -2,14 +2,13 @@
 #include <QVideoFrameFormat>
 #include <fmt/color.h>
 
-
-VCamFormat CameraFormat::GetFormat() const {
+AVPixelFormat CameraFormat::GetFormat() const {
     switch (static_cast<QVideoFrameFormat::PixelFormat>(pixelFormat)) {
-        case QVideoFrameFormat::Format_RGBA8888: return VCAM_FORMAT_RGB32;
-        case QVideoFrameFormat::Format_BGRA8888: return VCAM_FORMAT_BGRA;
-        case QVideoFrameFormat::Format_YUYV: return VCAM_FORMAT_YUYV;
-        case QVideoFrameFormat::Format_NV12: return VCAM_FORMAT_NV12;
-        case QVideoFrameFormat::Format_YUV420P: return VCAM_FORMAT_YUV420;
+        case QVideoFrameFormat::Format_RGBA8888: return AV_PIX_FMT_RGBA;
+        case QVideoFrameFormat::Format_BGRA8888: return AV_PIX_FMT_BGRA;
+        case QVideoFrameFormat::Format_YUYV: return AV_PIX_FMT_YUYV422;
+        case QVideoFrameFormat::Format_NV12: return AV_PIX_FMT_NV12;
+        case QVideoFrameFormat::Format_YUV420P: return AV_PIX_FMT_YUV420P;
         default:
             throw std::runtime_error("Unsupported pixel format");
     }
