@@ -148,7 +148,7 @@ function(DeployQT Target)
                 VERBATIM
         )
     elseif(ANDROID)
-
+    elseif(IOS)
     elseif(UNIX)
         find_program(LINUXDEPLOY_EXECUTABLE linuxdeploy)
         find_program(PLUGIN_QT_EXECUTABLE linuxdeploy-plugin-qt)

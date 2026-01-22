@@ -29,6 +29,7 @@ default_env_content = """
 # Example:
 #   BUILD_FOR=Desktop
 #   BUILD_FOR=Android
+#   BUILD_FOR=iOS
 #
 BUILD_FOR=
 
@@ -127,6 +128,58 @@ ANDROID_CLANG_VERSION=
 #   ANDROID_OS_API_LEVEL=24
 #
 ANDROID_OS_API_LEVEL=
+
+# ===================
+# iOS only
+# ===================
+
+# ------------------------------------------------
+# IOS_SDK_DIR
+# ------------------------------------------------
+# Location of iOS SDK downloaded from Xcode. Make sure to select the correct device type for the SDK you're using later on in IOS_TARGET_DEVICE.
+# 
+# Example:
+#   IOS_SDK_DIR=/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator.sdk
+IOS_SDK_DIR=
+
+# ------------------------------------------------
+# QT_DIR_IOS
+# ------------------------------------------------
+# Full path to the Qt installation built for iOS.
+#
+# Example:
+#   QT_DIR_IOS=/Users/username/Qt/6.10.1/ios
+#
+QT_DIR_IOS=
+
+# ------------------------------------------------
+# IOS_VERSION_TARGET
+# ------------------------------------------------
+# iOS version to target.
+#
+# Example:
+#   IOS_VERSION_TARGET=26.0
+#
+IOS_VERSION_TARGET=
+
+# ------------------------------------------------
+# IOS_TARGET_DEVICE
+# ------------------------------------------------
+# iOS device type (iphonesimulator or iphoneos) to target. Currently only iphoneos is working.
+#
+# Example:
+#   IOS_TARGET_DEVICE=iphoneos
+#
+IOS_TARGET_DEVICE=
+
+# ------------------------------------------------
+# IOS_TEAM_ID
+# ------------------------------------------------
+# Team ID for signing the app. You MUST fill this out if targetting iphoneos
+#
+# Example:
+#   IOS_TEAM_ID=ABCDE12345
+#
 """
 
 
@@ -164,6 +217,13 @@ elif os.environ.get("BUILD_FOR") == "Android":
     check_env_var("ANDROID_ARCH")
     check_env_var("ANDROID_CLANG_VERSION")
     check_env_var("ANDROID_OS_API_LEVEL")
+elif os.environ.get("BUILD_FOR") == "iOS":
+    check_env_var("IOS_SDK_DIR")
+    check_env_var("QT_DIR_IOS")
+    check_env_var("IOS_VERSION_TARGET")
+    check_env_var("IOS_TARGET_DEVICE")
+    check_env_var("IOS_TEAM_ID")
+
 else:
     print(f"BUILD_FOR is not set correctly in \"{env_file_path}\"! Allowed values: [Desktop, Android].")
     input("Press Enter to continue...")
@@ -314,7 +374,56 @@ def run_conan_install_android(build_type: str):
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
 
-
+def run_conan_install_ios(build_type: str):
+    os_version = os.environ.get("IOS_VERSION_TARGET")
+    sdk = os.environ.get("IOS_SDK_DIR")
+    device_type = os.environ.get("IOS_TARGET_DEVICE")
+    team_id = os.environ.get("IOS_TEAM_ID")
+    
+    
+    
+    
+    cmd_args = [
+        "conan",
+        "install",
+        ".",
+        "--build=missing",
+        "-g", "CMakeToolchain",
+        "-g", "CMakeDeps",
+        "-s", f"build_type={build_type}",
+        "-s:h", "os=iOS",
+        "-s:h", f"os.version={os_version}",
+        "-s:h", "arch=armv8",
+        "-s:h", "compiler=apple-clang",
+        "-s:h", "compiler.version=17",
+        "-s:h", "compiler.libcxx=libc++",
+        "-s:h", f"os.sdk={device_type}",
+        "-o boost/*:with_stacktrace_backtrace=False",
+        "-c", "tools.cmake.cmaketoolchain:generator=Xcode",
+        "-c:h", f"tools.apple:sdk_path={sdk}",
+        "-s:b", f"compiler.cppstd={cppstd}",
+        "-o", "boost/*:without_stacktrace=True",
+        "-o", "sqlite3/*:build_executable=False",
+        "-c", (
+            "tools.cmake.cmaketoolchain:extra_variables={"
+            f"\"CMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM\":\"{team_id}\","
+            "\"CMAKE_XCODE_ATTRIBUTE_CODE_SIGN_STYLE\":\"Automatic\","
+            "\"CMAKE_XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER\":\"com.libreconnect.mobile\""
+            "}"
+        )
+        
+    ]
+    
+    if extra_flags:
+        cmd_args.extend(extra_flags.split())
+        
+        
+    result = subprocess.run(cmd_args, shell=False)
+    if result.returncode != 0:
+        print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
+        sys.exit(result.returncode)
+        
+        
 disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "true", "yes", "on"]
 
 if platform.startswith("linux"):
@@ -370,3 +479,7 @@ elif os.environ.get("BUILD_FOR") == "Android":
     if not disable_debug:
         run_conan_install_android("Debug")
     run_conan_install_android("Release")
+elif os.environ.get("BUILD_FOR") == "iOS":
+    if not disable_debug:
+        run_conan_install_ios("Debug")
+    run_conan_install_ios("Release")
