@@ -239,7 +239,6 @@ def run_conan_install(build_type: str):
         ".",
         common_build_missing,
         common_generator_flags,
-        "-s compiler.runtime=dynamic",
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]
@@ -365,12 +364,16 @@ shutil.rmtree("./build", ignore_errors=True)
 
 if platform == "win32":
     try:
+        print("Installing ffmpeg")
+
         cmd = [
             "winget",
             "install",
             "-e",
             "--id",
             "Gyan.FFmpeg.Shared",
+            "--version",
+            "7.1",
             "--silent",
             "--accept-package-agreements",
             "--accept-source-agreements",
@@ -385,10 +388,11 @@ if platform == "win32":
         )
 
         print("FFmpeg installed")
-    except:
-        print("FFmpeg not installed")
+    except subprocess.CalledProcessError as e:
+        print(e.returncode)
+        print(e.stdout)
+        print(e.stderr)
 
-    # Locate ffmpeg
     result = subprocess.run(
         ["where", "ffmpeg"],
         capture_output=True,
