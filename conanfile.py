@@ -42,26 +42,7 @@ class ConanApplication(ConanFile):
         "boost/*:without_type_erasure": True,
         "boost/*:without_unit_test_framework": True,
         "boost/*:without_url": True,
-        "boost/*:without_wave": True,
-
-        "ffmpeg/*:gpl": True,
-        "ffmpeg/*:nonfree": True,
-        "ffmpeg/*:version3": True,
-        "ffmpeg/*:with_libx264": True,
-        "ffmpeg/*:with_libx265": True,
-        "ffmpeg/*:with_libvpx": True,
-        "ffmpeg/*:with_libopus": True,
-        "ffmpeg/*:with_libmp3lame": True,
-        "ffmpeg/*:with_nvenc": True,
-        "ffmpeg/*:with_cuda": True,
-        "ffmpeg/*:with_libnpp": True,
-        "ffmpeg/*:with_vpl": True,
-        "ffmpeg/*:with_qsv": True,
-        "ffmpeg/*:with_amf": True,
-        "ffmpeg/*:with_vaapi": True,
-        "ffmpeg/*:with_vdpau": True,
-        "ffmpeg/*:with_videotoolbox": True,
-        "ffmpeg/*:shared": True,
+        "boost/*:without_wave": True
     }
 
     def layout(self):

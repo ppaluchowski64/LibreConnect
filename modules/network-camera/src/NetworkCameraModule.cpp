@@ -78,8 +78,8 @@ void NetworkCameraModule::StartStream(const size_t requestID, const std::string 
             m_codecContext->bit_rate = 400000;
             m_codecContext->width = requestedFormat.width;
             m_codecContext->height = requestedFormat.height;
-            m_codecContext->time_base = (AVRational){1, static_cast<int>(requestedFormat.maxFrameRate)};
-            m_codecContext->framerate = (AVRational){static_cast<int>(requestedFormat.maxFrameRate), 1};
+            m_codecContext->time_base = {1, static_cast<int>(requestedFormat.maxFrameRate)};
+            m_codecContext->framerate = {static_cast<int>(requestedFormat.maxFrameRate), 1};
             m_codecContext->gop_size = 10;
             m_codecContext->max_b_frames = 1;
             m_codecContext->pix_fmt = requestedFormat.GetFormat();

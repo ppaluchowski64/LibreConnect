@@ -184,3 +184,21 @@ function(LinkVirtualCameraLibs target)
         )
     endif ()
 endfunction()
+
+function(LinkFFMPEGLibs target)
+    if (WIN32)
+        file(GLOB FFMPEG_LIBS ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/*.lib)
+
+        if(NOT FFMPEG_LIBS)
+            message(WARNING "No FFmpeg .lib files found in ${FFMPEG_BIN_DIR}.")
+        else()
+            target_link_libraries(${target} PUBLIC ${FFMPEG_LIBS})
+        endif()
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_BINARY_DIR}/ffmpeg/bin/
+                $<TARGET_FILE_DIR:${target}>
+        )
+    endif ()
+endfunction()

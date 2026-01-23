@@ -64,23 +64,35 @@ static bool CanUseEncoder(const AVCodec* codec) {
     if (!codec) return false;
     if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
 
+    AVHWDeviceType deviceType = AV_HWDEVICE_TYPE_NONE;
+    for (int i = 0;; i++) {
+        const AVCodecHWConfig* hwcfg = avcodec_get_hw_config(codec, i);
+        if (!hwcfg)
+            break;
+
+        if (hwcfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
+            deviceType = hwcfg->device_type;
+            break;
+        }
+    }
+
     AVBufferRef* hw_device = nullptr;
-    if (av_hwdevice_ctx_create(&hw_device, AV_HWDEVICE_TYPE_D3D11VA, nullptr, nullptr, 0) < 0) {
+    if (av_hwdevice_ctx_create(&hw_device, deviceType, nullptr, nullptr, 0) < 0) {
         return false;
     }
 
     AVCodecContext* ctx = avcodec_alloc_context3(codec);
     if (!ctx) {
-      av_buffer_unref(&hw_device);
-      return false;
+        av_buffer_unref(&hw_device);
+        return false;
     }
 
     ctx->hw_device_ctx = av_buffer_ref(hw_device);
 
     if (codec->pix_fmts) {
-      ctx->pix_fmt = codec->pix_fmts[0];
+        ctx->pix_fmt = codec->pix_fmts[0];
     } else {
-      ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        ctx->pix_fmt = AV_PIX_FMT_YUV420P;
     }
 
     ctx->width = 1920;
@@ -94,6 +106,7 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
     av_buffer_unref(&hw_device);
     avcodec_free_context(&ctx);
+
     return ret == 0;
 }
 

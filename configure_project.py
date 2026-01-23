@@ -240,10 +240,6 @@ def run_conan_install(build_type: str):
         common_build_missing,
         common_generator_flags,
         "-s compiler.runtime=dynamic",
-        "-o ffmpeg/*:nonfree=True",
-        "-o ffmpeg/*:with_nvenc=True",
-        "-o ffmpeg/*:with_cuda=True",
-        "-o ffmpeg/*:with_libnpp=True",
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]
@@ -254,7 +250,7 @@ def run_conan_install(build_type: str):
     cmd = " ".join(cmd_parts)
     print(f"Running: {cmd}")
 
-    result = subprocess.run(cmd, shell=True)
+    result = subprocess.run(cmd, shell=True, env=os.environ)
     if result.returncode != 0:
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
@@ -366,6 +362,90 @@ if platform.startswith("linux"):
             f.write(export_line)
 
 shutil.rmtree("./build", ignore_errors=True)
+
+if platform == "win32":
+    try:
+        cmd = [
+            "winget",
+            "install",
+            "-e",
+            "--id",
+            "Gyan.FFmpeg.Shared",
+            "--silent",
+            "--accept-package-agreements",
+            "--accept-source-agreements",
+            "--disable-interactivity",
+        ]
+
+        result = subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        print("FFmpeg installed")
+    except:
+        print("FFmpeg not installed")
+
+    # Locate ffmpeg
+    result = subprocess.run(
+        ["where", "ffmpeg"],
+        capture_output=True,
+        text=True
+    )
+
+    path_list = result.stdout.splitlines()
+    copied = False
+
+    for path in path_list:
+        if not path:
+            continue
+
+        parent_folder = Path(path).parent
+
+        has_avcodec = any(
+            p.is_file() and p.name.startswith("avcodec")
+            for p in parent_folder.iterdir()
+        )
+
+        if not has_avcodec:
+            continue
+
+        bin_dir = Path("./build/ffmpeg/bin")
+        lib_dir = Path("./build/ffmpeg/lib")
+        include_dst = Path("./build/ffmpeg/include")
+
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        lib_dir.mkdir(parents=True, exist_ok=True)
+        include_dst.mkdir(parents=True, exist_ok=True)
+
+        dll_src = parent_folder.parent / "bin"
+        lib_src = parent_folder.parent / "lib"
+        include_src = parent_folder.parent / "include"
+
+        # Copy DLLs
+        for file in dll_src.iterdir():
+            if file.is_file() and file.suffix.lower() == ".dll":
+                shutil.copy2(file, bin_dir)
+
+        # Copy LIBs
+        for file in lib_src.iterdir():
+            if file.is_file() and file.suffix.lower() == ".lib":
+                shutil.copy2(file, lib_dir)
+
+        # Copy includes
+        if include_src.exists():
+            shutil.copytree(include_src, include_dst, dirs_exist_ok=True)
+        else:
+            print("Warning: include directory not found")
+
+        copied = True
+        break
+
+    if not copied:
+        print("Copying ffmpeg failed")
+        sys.exit(1)
 
 if os.environ.get("BUILD_FOR") == "Desktop":
     if not disable_debug:
