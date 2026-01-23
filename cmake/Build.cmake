@@ -196,8 +196,8 @@ function(LinkFFMPEGLibs target)
         endif()
 
         add_custom_command(TARGET ${target} POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_BINARY_DIR}/ffmpeg/bin/
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                ${CMAKE_BINARY_DIR}/ffmpeg/bin
                 $<TARGET_FILE_DIR:${target}>
         )
     endif ()
