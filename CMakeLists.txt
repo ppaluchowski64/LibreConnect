@@ -25,6 +25,12 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
 endif()
 
+file(GLOB_RECURSE FFMPEG_HEADER_FILES
+        ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
+)
+
+add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
+target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 
 find_package(OpenSSL          REQUIRED)
 find_package(asio             REQUIRED)
@@ -37,9 +43,6 @@ find_package(benchmark        REQUIRED)
 find_package(SQLiteCpp        REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
-find_package(ffmpeg           REQUIRED)
-find_package(nv-codec-headers REQUIRED)
-find_package(libvpx           REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
@@ -71,21 +74,9 @@ BuildStaticLibrary(network-camera-module modules/network-camera
         common-module
         srtp-stream
         p2p-network-component-pc
+        ffmpeg_headers
         virtual-camera
-
-        ffmpeg::avcodec
-        ffmpeg::avformat
-        ffmpeg::avutil
-        ffmpeg::swscale
-        ffmpeg::swresample
-        ffmpeg::avfilter
-        ffmpeg::avdevice
-
-        libvpx::libvpx
-        nv-codec-headers::nv-codec-headers
 )
-
-message(STATUS "FFmpeg bin dirs:${CONAN_FFMPEG_ROOT}/bin/*.dll")
 
 if (ANDROID)
     add_subdirectory("apps/mobile")

@@ -11,8 +11,6 @@ requirements:
     - "sqlitecpp/3.3.3"
     - "nlohmann_json/3.12.0"
     - "libsrtp/2.6.0"
-    - "nv-codec-headers/13.0.19.0"
-    - "libvpx/1.15.2"
-    - "ffmpeg/8.0.1"
+    - "pkgconf/2.5.1"
   windows:
     - "wil/1.0.250325.1"

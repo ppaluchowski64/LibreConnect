@@ -11,3 +11,4 @@ BuildQTExecutable(network-camera-module-utilities-test
 )
 
 LinkVirtualCameraLibs(network-camera-module-utilities-test)
+LinkFFMPEGLibs(network-camera-module-utilities-test)
