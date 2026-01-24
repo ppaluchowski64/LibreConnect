@@ -458,6 +458,14 @@ if platform == "win32":
     else:
         print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
         sys.exit(1)
+elif platform.startswith("linux"):
+    subprocess.run(["sudo", "add-apt-repository", "-y", "ppa:savoury1/ffmpeg7"])
+    subprocess.run(["sudo", "apt", "update"])
+    subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"])
+elif platform == "darwin":
+    subprocess.run(["brew", "update"])
+    subprocess.run(["brew", "install", "ffmpeg@7"])
+    subprocess.run(["brew", "link", "--overwrite", "ffmpeg@7"])
 
 if os.environ.get("BUILD_FOR") == "Desktop":
     if not disable_debug:
