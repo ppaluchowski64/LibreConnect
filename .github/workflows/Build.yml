@@ -9,11 +9,23 @@ jobs:
     name: Build Windows
     runs-on: windows-2022
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Upgrade Git to latest
         run: choco upgrade git -y
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Download FFmpeg 7.1 Shared
+        shell: bash
+        run: |
+          pwd
+          
+          curl -L https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.1.1-full_build-shared.7z -o ffmpeg.7z
+          7z x ffmpeg.7z -oFFmpegRaw
+          
+          mkdir FFmpeg
+          mv FFmpegRaw/ffmpeg-7.1.1-full_build-shared/* FFmpeg/
+          echo "FFMPEG_DIR=$GITHUB_WORKSPACE\FFmpeg" >> $GITHUB_ENV
 
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
@@ -50,6 +62,7 @@ jobs:
           "BUILD_FOR=Desktop" >> .env
 
       - name: Install Conan deps
+        shell: powershell
         run: python configure_project.py
 
       - name: Configure CMake
