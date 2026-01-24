@@ -362,59 +362,67 @@ if platform.startswith("linux"):
 
 shutil.rmtree("./build", ignore_errors=True)
 
+def refresh_path():
+    if sys.platform != "win32":
+        return
+
+    import winreg
+
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"System\CurrentControlSet\Control\Session Manager\Environment") as key:
+        system_path, _ = winreg.QueryValueEx(key, "Path")
+
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+        user_path, _ = winreg.QueryValueEx(key, "Path")
+
+    os.environ["PATH"] = system_path + ";" + user_path
+    os.environ["PATH"] = os.path.expandvars(os.environ["PATH"])
+
 if platform == "win32":
-    try:
-        print("Installing ffmpeg")
+    ffmpeg_root = None
 
-        cmd = [
-            "winget",
-            "install",
-            "-e",
-            "--id",
-            "Gyan.FFmpeg.Shared",
-            "--version",
-            "7.1",
-            "--silent",
-            "--accept-package-agreements",
-            "--accept-source-agreements",
-            "--disable-interactivity",
-        ]
+    raw_env_path = os.environ.get("FFMPEG_DIR", "")
+    env_ffmpeg_dir = raw_env_path.strip().strip('"').strip("'").replace("/", "\\")
 
-        result = subprocess.run(
-            cmd,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+    if env_ffmpeg_dir:
+        print(f"Found FFMPEG_DIR in environment: '{env_ffmpeg_dir}'")
+        ffmpeg_path = Path(env_ffmpeg_dir)
+        
+        if ffmpeg_path.exists():
+            ffmpeg_root = ffmpeg_path
 
-        print("FFmpeg installed")
-    except subprocess.CalledProcessError as e:
-        print(e.returncode)
-        print(e.stdout)
-        print(e.stderr)
+    if not ffmpeg_root:
+        try:
+            print("FFMPEG_DIR not set. Attempting to install ffmpeg via winget...")
+            cmd = [
+                "winget",
+                "install",
+                "-e",
+                "--id",
+                "Gyan.FFmpeg.Shared",
+                "--version",
+                "7.1.1",
+                "--source",
+                "winget",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
+                "--disable-interactivity"
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=True)
+            print("FFmpeg installed via winget")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            print("Winget installation failed or winget not found. skipping...")
 
-    result = subprocess.run(
-        ["where", "ffmpeg"],
-        capture_output=True,
-        text=True
-    )
+        refresh_path()
 
-    path_list = result.stdout.splitlines()
-    copied = False
+        result = subprocess.run(["where", "ffmpeg"], capture_output=True, text=True)
+        for path in result.stdout.splitlines():
+            if path:
+                ffmpeg_root = Path(path).parent.parent
+                break
 
-    for path in path_list:
-        if not path:
-            continue
-
-        parent_folder = Path(path).parent
-
-        has_avcodec = any(
-            p.is_file() and p.name.startswith("avcodec")
-            for p in parent_folder.iterdir()
-        )
-
-        if not has_avcodec:
-            continue
+    if ffmpeg_root and ffmpeg_root.exists():
+        print(f"Deploying FFmpeg from: {ffmpeg_root}")
 
         bin_dir = Path("./build/ffmpeg/bin")
         lib_dir = Path("./build/ffmpeg/lib")
@@ -424,31 +432,31 @@ if platform == "win32":
         lib_dir.mkdir(parents=True, exist_ok=True)
         include_dst.mkdir(parents=True, exist_ok=True)
 
-        dll_src = parent_folder.parent / "bin"
-        lib_src = parent_folder.parent / "lib"
-        include_src = parent_folder.parent / "include"
+        dll_src = ffmpeg_root / "bin"
+        lib_src = ffmpeg_root / "lib"
+        include_src = ffmpeg_root / "include"
 
         # Copy DLLs
-        for file in dll_src.iterdir():
-            if file.is_file() and file.suffix.lower() == ".dll":
-                shutil.copy2(file, bin_dir)
+        if dll_src.exists():
+            for file in dll_src.iterdir():
+                if file.is_file() and file.suffix.lower() == ".dll":
+                    shutil.copy2(file, bin_dir)
+        else:
+            print(f"Warning: dll source not found at {dll_src}")
 
         # Copy LIBs
-        for file in lib_src.iterdir():
-            if file.is_file() and file.suffix.lower() == ".lib":
-                shutil.copy2(file, lib_dir)
+        if lib_src.exists():
+            for file in lib_src.iterdir():
+                if file.is_file() and file.suffix.lower() == ".lib":
+                    shutil.copy2(file, lib_dir)
 
         # Copy includes
         if include_src.exists():
             shutil.copytree(include_src, include_dst, dirs_exist_ok=True)
-        else:
-            print("Warning: include directory not found")
 
-        copied = True
-        break
-
-    if not copied:
-        print("Copying ffmpeg failed")
+        print("FFmpeg deployed successfully.")
+    else:
+        print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
         sys.exit(1)
 
 if os.environ.get("BUILD_FOR") == "Desktop":
