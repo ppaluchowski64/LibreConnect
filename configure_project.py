@@ -2,6 +2,8 @@ import os
 import shutil
 import sys
 import subprocess
+import hashlib
+import multiprocessing
 from pathlib import Path
 
 # Environment variables
@@ -196,10 +198,42 @@ def install_linux_dependencies():
 
     try:
         print("Updating package lists...")
-        subprocess.run(["sudo", "apt-get", "update"], check=True)
 
+        subprocess.run(
+            "wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -",
+            shell=True,
+            check=True
+        )
+
+        subprocess.run(
+            "sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list",
+            shell=True,
+            check=True
+        )
+
+        subprocess.run(
+            "sudo add-apt-repository -y multiverse",
+            shell=True,
+            check=True
+        )
+
+        subprocess.run(
+            "wget -qO - https://repositories.intel.com/graphics/intel-graphics.key | sudo gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg",
+            shell=True,
+            check=True
+        )
+
+        subprocess.run(
+            'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/graphics/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/intel.list',
+            shell=True,
+            check=True
+        )
+
+        subprocess.run(["sudo", "apt-get", "update"], check=True)
         print("Installing packages...")
+
         packages = [
+            "vulkan-sdk",
             "build-essential",
             "libgl1-mesa-dev",
             "libxkbcommon-x11-0",
@@ -218,7 +252,33 @@ def install_linux_dependencies():
             "libmysqlclient-dev",
             "unixodbc",
             "unixodbc-dev",
-            "libpq-dev"
+            "libpq-dev",
+            "pkg-config",
+            "git",
+            "yasm",
+            "nasm",
+            "libdrm-dev",
+            "libva-dev",
+            "libvdpau-dev",
+            "libvpl2",
+            "libvpl-dev",
+            "intel-media-va-driver-non-free",
+            "libx264-dev",
+            "libx265-dev",
+            "libnuma-dev",
+            "libvpx-dev",
+            "libfdk-aac-dev",
+            "libmp3lame-dev",
+            "libopus-dev",
+            "libxcb1-dev",
+            "libxcb-shm0-dev",
+            "libxcb-xfixes0-dev",
+            "libwayland-dev",
+            "wayland-protocols",
+            "ocl-icd-opencl-dev",
+            "opencl-headers",
+            "nvidia-cuda-toolkit",
+            "libx11-dev"
         ]
 
         cmd = ["sudo", "apt-get", "install", "-y"] + packages
@@ -458,14 +518,92 @@ if platform == "win32":
     else:
         print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
         sys.exit(1)
-elif platform.startswith("linux"):
-    subprocess.run(["sudo", "add-apt-repository", "-y", "ppa:savoury1/ffmpeg7"])
-    subprocess.run(["sudo", "apt", "update"])
-    subprocess.run(["sudo", "apt", "install", "-y", "ffmpeg"])
-elif platform == "darwin":
-    subprocess.run(["brew", "update"])
-    subprocess.run(["brew", "install", "ffmpeg@7"])
-    subprocess.run(["brew", "link", "--overwrite", "ffmpeg@7"])
+elif sys.platform.startswith("linux"):
+    build_dir = os.path.abspath("build")
+    ffmpeg_src = os.path.join(build_dir, "ffmpeg-src")
+    nvcodec_src = os.path.join(build_dir, "nv-codec-headers-src")
+
+    os.makedirs(build_dir, exist_ok=True)
+    cuda_path = os.environ.get("CUDA_PATH", "/usr/local/cuda")
+
+    configure_cmd = [
+        "./configure",
+        "--disable-programs",
+        "--prefix=../ffmpeg",
+        "--enable-shared",
+        "--disable-static",
+        "--enable-gpl",
+        "--enable-nonfree",
+        "--enable-swresample",
+
+        "--enable-libx264",
+        "--enable-libx265",
+        "--enable-libvpx",
+        "--enable-libopus",
+        "--enable-libmp3lame",
+        "--enable-libfdk-aac",
+
+        "--enable-libdrm",
+        "--enable-vaapi",
+        "--enable-vdpau",
+        "--enable-libvpl",
+
+        "--enable-cuda-nvcc",
+        "--enable-cuvid",
+        "--enable-nvenc",
+        "--enable-libnpp",
+
+        "--enable-opencl",
+        "--enable-vulkan",
+        "--enable-libxcb",
+
+        "--extra-ldflags=-Wl,--no-as-needed",
+        f"--extra-cflags=-I{cuda_path}/include",
+        f"--extra-ldflags=-L{cuda_path}/lib64",
+    ]
+
+    data = "\n".join(configure_cmd).encode("utf-8")
+    sha256 = hashlib.sha256(data).hexdigest()
+    cache = os.path.expanduser(f"~/.LibreConnect-cache/ffmpeg-{sha256}")
+
+    def run(cmd, cwd=None):
+        subprocess.run(cmd, cwd=cwd, check=True)
+
+    if os.path.exists(cache):
+        print("ffmpeg cache hit")
+        shutil.copytree(cache, "build/ffmpeg")
+    else:
+        print("ffmpeg cache miss")
+
+        if not os.path.exists(ffmpeg_src):
+            run([
+                "git", "clone",
+                "https://github.com/FFmpeg/FFmpeg.git",
+                ffmpeg_src
+            ])
+
+        if not os.path.exists(nvcodec_src):
+            run([
+                "git", "clone",
+                "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
+                nvcodec_src
+            ])
+
+        run(["make"], cwd=nvcodec_src)
+        run(["sudo", "make", "install"], cwd=nvcodec_src)
+        run(["git", "checkout", "n7.1"], cwd=ffmpeg_src)
+
+        run(configure_cmd, cwd=ffmpeg_src)
+        run(["make", f"-j{multiprocessing.cpu_count()}"], cwd=ffmpeg_src)
+        run(["sudo", "make", "install"], cwd=ffmpeg_src)
+
+        shutil.copytree("build/ffmpeg", cache, dirs_exist_ok=True)
+
+# TO DO: MACOS, ANDROID, IOS VERSION
+# elif platform == "darwin":
+#     subprocess.run(["brew", "update"])
+#     subprocess.run(["brew", "install", "ffmpeg@7"])
+#     subprocess.run(["brew", "link", "--overwrite", "ffmpeg@7"])
 
 if os.environ.get("BUILD_FOR") == "Desktop":
     if not disable_debug:

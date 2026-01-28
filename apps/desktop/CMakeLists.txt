@@ -7,6 +7,7 @@ BuildQTExecutable(appLibreConnect_desktop
         virtual-camera
         Qt6::Quick
         Qt6::Qml
+        Qt6::Multimedia
 )
 
 LinkVirtualCameraLibs(appLibreConnect_desktop)
