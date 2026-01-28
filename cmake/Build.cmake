@@ -114,7 +114,6 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
 
     target_include_directories(${ExecutableName} PUBLIC ${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
-
     set(DEPLOY_FOLDER ${CMAKE_BINARY_DIR}/deploy/$<CONFIG>/${ExecutableName})
 
     set_target_properties(${ExecutableName} PROPERTIES
@@ -161,11 +160,24 @@ function(DeployQT Target)
             message(FATAL_ERROR "linuxdeploy-plugin-qt not found. Please ensure it's in your PATH or set its path manually.")
         endif()
 
+        get_target_property(DEPLOY_DIR ${Target} RUNTIME_OUTPUT_DIRECTORY)
+
+        set(CUSTOM_LD_LIB_PATHS
+                "${CMAKE_SOURCE_DIR}/build/ffmpeg/lib"
+        )
+
+        set_target_properties(${Target} PROPERTIES
+                RUNTIME_OUTPUT_DIRECTORY ${DEPLOY_DIR}/usr/bin
+        )
+
         add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND env
                 QMAKE=$ENV{QT_DIR_DESKTOP}/bin/qmake6
+                LD_LIBRARY_PATH=${CUSTOM_LD_LIB_PATHS}
+                QML_SOURCES_PATHS=${CMAKE_CURRENT_SOURCE_DIR}
+
                 ${LINUXDEPLOY_EXECUTABLE}
-                --appdir ${CMAKE_BINARY_DIR}/AppDir
+                --appdir ${DEPLOY_DIR}
                 --executable "$<TARGET_FILE:${Target}>"
                 --plugin qt
                 COMMENT "Deploying Qt dependencies for ${Target}..."
@@ -200,5 +212,20 @@ function(LinkFFMPEGLibs target)
                 ${CMAKE_BINARY_DIR}/ffmpeg/bin
                 $<TARGET_FILE_DIR:${target}>
         )
+    elseif(UNIX)
+        message(${CMAKE_SOURCE_DIR}/build/ffmpeg/lib)
+
+        set(FFMPEG_LIBS
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavcodec.so.61
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavdevice.so.61
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavfilter.so.10
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavformat.so.61
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavutil.so.59
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libpostproc.so.58
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libswresample.so.5
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libswscale.so.8
+        )
+
+        target_link_libraries(${target} PUBLIC ${FFMPEG_LIBS})
     endif ()
 endfunction()
