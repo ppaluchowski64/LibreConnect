@@ -331,12 +331,33 @@ def run_conan_install_android(build_type: str):
 
     exe_ext = ".exe" if sys.platform == "win32" else ""
     bin_dir = toolchain_base / host_tag / "bin"
-    addr2line_path = bin_dir / f"addr2line{exe_ext}"
 
+    # --- Locate NDK Tools ---
+    addr2line_path = bin_dir / f"llvm-addr2line{exe_ext}"
     if not addr2line_path.exists():
-        addr2line_path = bin_dir / f"llvm-addr2line{exe_ext}"
-
+        addr2line_path = bin_dir / f"addr2line{exe_ext}"
     addr2line = str(addr2line_path).replace("\\", "/")
+
+    # Tools needed to fix the "Unable to recognise format" error
+    strip_tool = str(bin_dir / f"llvm-strip{exe_ext}").replace("\\", "/")
+    ar_tool = str(bin_dir / f"llvm-ar{exe_ext}").replace("\\", "/")
+    nm_tool = str(bin_dir / f"llvm-nm{exe_ext}").replace("\\", "/")
+    ranlib_tool = str(bin_dir / f"llvm-ranlib{exe_ext}").replace("\\", "/")
+
+    # --- Determine correct compiler wrapper ---
+    ndk_arch_prefix = ""
+    if arch_type == "armv8":
+        ndk_arch_prefix = f"aarch64-linux-android{api_level}-"
+    elif arch_type == "armv7":
+        ndk_arch_prefix = f"armv7a-linux-androideabi{api_level}-"
+    elif arch_type == "x86_64":
+        ndk_arch_prefix = f"x86_64-linux-android{api_level}-"
+    elif arch_type == "x86":
+        ndk_arch_prefix = f"i686-linux-android{api_level}-"
+
+    compiler_suffix = ".cmd" if sys.platform == "win32" else ""
+    c_compiler = f"{ndk_arch_prefix}clang{compiler_suffix}"
+    cpp_compiler = f"{ndk_arch_prefix}clang++{compiler_suffix}"
 
     cmd_args = [
         "conan",
@@ -353,10 +374,22 @@ def run_conan_install_android(build_type: str):
         "-s:h", f"compiler.version={clang_version}",
         "-s:h", f"compiler.cppstd={cppstd}",
         "-s:h", "compiler.libcxx=c++_static",
-        "-o boost/*:with_stacktrace_backtrace=False",
+
+        # Pass the specific compilers to Conan
+        "-c", f"tools.build:compiler_executables={{'c': '{c_compiler}', 'cpp': '{cpp_compiler}'}}",
+
+        "-o", "boost/*:with_stacktrace_backtrace=False",
+        "-o", "ffmpeg/*:with_mediacodec=True",
+        "-o", "ffmpeg/*:with_jni=True",
+        "-o", "ffmpeg/*:with_libx264=True",
+        "-o", "ffmpeg/*:with_libx265=True",
+        "-o", "ffmpeg/*:shared=False",
+        "-o", "ffmpeg/*:fPIC=True",
+        "-o", "ffmpeg/*:all_options=True",
 
         "-pr:b", "default",
         "-s:b", f"compiler.cppstd={cppstd}",
+        "-c",  "tools.cmake.cmaketoolchain:generator=Ninja",
         "-c", f"tools.android:ndk_path={ndk}",
         "-o", f"boost/*:addr2line_location={addr2line}",
         "-o", "boost/*:without_stacktrace=True"
@@ -368,12 +401,19 @@ def run_conan_install_android(build_type: str):
     env = os.environ.copy()
     env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
 
+    # --- FIX: Explicitly set NDK tools in environment ---
+    # This ensures 'configure' and 'make' use the correct Android-capable tools
+    env["STRIP"] = strip_tool
+    env["AR"] = ar_tool
+    env["NM"] = nm_tool
+    env["RANLIB"] = ranlib_tool
+    # ----------------------------------------------------
+
     result = subprocess.run(cmd_args, shell=False, env=env)
 
     if result.returncode != 0:
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
-
 
 disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "true", "yes", "on"]
 
@@ -437,167 +477,169 @@ def refresh_path():
     os.environ["PATH"] = system_path + ";" + user_path
     os.environ["PATH"] = os.path.expandvars(os.environ["PATH"])
 
-if platform == "win32":
-    ffmpeg_root = None
 
-    raw_env_path = os.environ.get("FFMPEG_DIR", "")
-    env_ffmpeg_dir = raw_env_path.strip().strip('"').strip("'").replace("/", "\\")
+if os.environ.get("BUILD_FOR") == "Desktop":
+    if platform == "win32":
+        ffmpeg_root = None
 
-    if env_ffmpeg_dir:
-        print(f"Found FFMPEG_DIR in environment: '{env_ffmpeg_dir}'")
-        ffmpeg_path = Path(env_ffmpeg_dir)
-        
-        if ffmpeg_path.exists():
-            ffmpeg_root = ffmpeg_path
+        raw_env_path = os.environ.get("FFMPEG_DIR", "")
+        env_ffmpeg_dir = raw_env_path.strip().strip('"').strip("'").replace("/", "\\")
 
-    if not ffmpeg_root:
-        try:
-            print("FFMPEG_DIR not set. Attempting to install ffmpeg via winget...")
-            cmd = [
-                "winget",
-                "install",
-                "-e",
-                "--id",
-                "Gyan.FFmpeg.Shared",
-                "--version",
-                "7.1.1",
-                "--source",
-                "winget",
-                "--silent",
-                "--accept-package-agreements",
-                "--accept-source-agreements",
-                "--disable-interactivity"
-            ]
-            subprocess.run(cmd, check=True, capture_output=True, text=True, shell=True)
-            print("FFmpeg installed via winget")
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            print("Winget installation failed or winget not found. skipping...")
+        if env_ffmpeg_dir:
+            print(f"Found FFMPEG_DIR in environment: '{env_ffmpeg_dir}'")
+            ffmpeg_path = Path(env_ffmpeg_dir)
 
-        refresh_path()
+            if ffmpeg_path.exists():
+                ffmpeg_root = ffmpeg_path
 
-        result = subprocess.run(["where", "ffmpeg"], capture_output=True, text=True)
-        for path in result.stdout.splitlines():
-            if path:
-                ffmpeg_root = Path(path).parent.parent
-                break
+        if not ffmpeg_root:
+            try:
+                print("FFMPEG_DIR not set. Attempting to install ffmpeg via winget...")
+                cmd = [
+                    "winget",
+                    "install",
+                    "-e",
+                    "--id",
+                    "Gyan.FFmpeg.Shared",
+                    "--version",
+                    "7.1.1",
+                    "--source",
+                    "winget",
+                    "--silent",
+                    "--accept-package-agreements",
+                    "--accept-source-agreements",
+                    "--disable-interactivity"
+                ]
+                subprocess.run(cmd, check=True, capture_output=True, text=True, shell=True)
+                print("FFmpeg installed via winget")
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                print("Winget installation failed or winget not found. skipping...")
 
-    if ffmpeg_root and ffmpeg_root.exists():
-        print(f"Deploying FFmpeg from: {ffmpeg_root}")
+            refresh_path()
 
-        bin_dir = Path("./build/ffmpeg/bin")
-        lib_dir = Path("./build/ffmpeg/lib")
-        include_dst = Path("./build/ffmpeg/include")
+            result = subprocess.run(["where", "ffmpeg"], capture_output=True, text=True)
+            for path in result.stdout.splitlines():
+                if path:
+                    ffmpeg_root = Path(path).parent.parent
+                    break
 
-        bin_dir.mkdir(parents=True, exist_ok=True)
-        lib_dir.mkdir(parents=True, exist_ok=True)
-        include_dst.mkdir(parents=True, exist_ok=True)
+        if ffmpeg_root and ffmpeg_root.exists():
+            print(f"Deploying FFmpeg from: {ffmpeg_root}")
 
-        dll_src = ffmpeg_root / "bin"
-        lib_src = ffmpeg_root / "lib"
-        include_src = ffmpeg_root / "include"
+            bin_dir = Path("./build/ffmpeg/bin")
+            lib_dir = Path("./build/ffmpeg/lib")
+            include_dst = Path("./build/ffmpeg/include")
 
-        # Copy DLLs
-        if dll_src.exists():
-            for file in dll_src.iterdir():
-                if file.is_file() and file.suffix.lower() == ".dll":
-                    shutil.copy2(file, bin_dir)
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            lib_dir.mkdir(parents=True, exist_ok=True)
+            include_dst.mkdir(parents=True, exist_ok=True)
+
+            dll_src = ffmpeg_root / "bin"
+            lib_src = ffmpeg_root / "lib"
+            include_src = ffmpeg_root / "include"
+
+            # Copy DLLs
+            if dll_src.exists():
+                for file in dll_src.iterdir():
+                    if file.is_file() and file.suffix.lower() == ".dll":
+                        shutil.copy2(file, bin_dir)
+            else:
+                print(f"Warning: dll source not found at {dll_src}")
+
+            # Copy LIBs
+            if lib_src.exists():
+                for file in lib_src.iterdir():
+                    if file.is_file() and file.suffix.lower() == ".lib":
+                        shutil.copy2(file, lib_dir)
+
+            # Copy includes
+            if include_src.exists():
+                shutil.copytree(include_src, include_dst, dirs_exist_ok=True)
+
+            print("FFmpeg deployed successfully.")
         else:
-            print(f"Warning: dll source not found at {dll_src}")
+            print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
+            sys.exit(1)
+    elif sys.platform.startswith("linux"):
+        build_dir = os.path.abspath("build")
+        ffmpeg_src = os.path.join(build_dir, "ffmpeg-src")
+        nvcodec_src = os.path.join(build_dir, "nv-codec-headers-src")
 
-        # Copy LIBs
-        if lib_src.exists():
-            for file in lib_src.iterdir():
-                if file.is_file() and file.suffix.lower() == ".lib":
-                    shutil.copy2(file, lib_dir)
+        os.makedirs(build_dir, exist_ok=True)
+        cuda_path = os.environ.get("CUDA_PATH", "/usr/local/cuda")
 
-        # Copy includes
-        if include_src.exists():
-            shutil.copytree(include_src, include_dst, dirs_exist_ok=True)
+        configure_cmd = [
+            "./configure",
+            "--disable-programs",
+            "--prefix=../ffmpeg",
+            "--enable-shared",
+            "--disable-static",
+            "--enable-gpl",
+            "--enable-nonfree",
+            "--enable-swresample",
 
-        print("FFmpeg deployed successfully.")
-    else:
-        print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
-        sys.exit(1)
-elif sys.platform.startswith("linux"):
-    build_dir = os.path.abspath("build")
-    ffmpeg_src = os.path.join(build_dir, "ffmpeg-src")
-    nvcodec_src = os.path.join(build_dir, "nv-codec-headers-src")
+            "--enable-libx264",
+            "--enable-libx265",
+            "--enable-libvpx",
+            "--enable-libopus",
+            "--enable-libmp3lame",
+            "--enable-libfdk-aac",
 
-    os.makedirs(build_dir, exist_ok=True)
-    cuda_path = os.environ.get("CUDA_PATH", "/usr/local/cuda")
+            "--enable-libdrm",
+            "--enable-vaapi",
+            "--enable-vdpau",
+            "--enable-libvpl",
 
-    configure_cmd = [
-        "./configure",
-        "--disable-programs",
-        "--prefix=../ffmpeg",
-        "--enable-shared",
-        "--disable-static",
-        "--enable-gpl",
-        "--enable-nonfree",
-        "--enable-swresample",
+            "--enable-cuda-nvcc",
+            "--enable-cuvid",
+            "--enable-nvenc",
+            "--enable-libnpp",
 
-        "--enable-libx264",
-        "--enable-libx265",
-        "--enable-libvpx",
-        "--enable-libopus",
-        "--enable-libmp3lame",
-        "--enable-libfdk-aac",
+            "--enable-opencl",
+            "--enable-vulkan",
+            "--enable-libxcb",
 
-        "--enable-libdrm",
-        "--enable-vaapi",
-        "--enable-vdpau",
-        "--enable-libvpl",
+            "--extra-ldflags=-Wl,--no-as-needed",
+            f"--extra-cflags=-I{cuda_path}/include",
+            f"--extra-ldflags=-L{cuda_path}/lib64",
+        ]
 
-        "--enable-cuda-nvcc",
-        "--enable-cuvid",
-        "--enable-nvenc",
-        "--enable-libnpp",
+        data = "\n".join(configure_cmd).encode("utf-8")
+        sha256 = hashlib.sha256(data).hexdigest()
+        cache = os.path.expanduser(f"~/.LibreConnect-cache/ffmpeg-{sha256}")
 
-        "--enable-opencl",
-        "--enable-vulkan",
-        "--enable-libxcb",
+        def run(cmd, cwd=None):
+            subprocess.run(cmd, cwd=cwd, check=True)
 
-        "--extra-ldflags=-Wl,--no-as-needed",
-        f"--extra-cflags=-I{cuda_path}/include",
-        f"--extra-ldflags=-L{cuda_path}/lib64",
-    ]
+        if os.path.exists(cache):
+            print("ffmpeg cache hit")
+            shutil.copytree(cache, "build/ffmpeg")
+        else:
+            print("ffmpeg cache miss")
 
-    data = "\n".join(configure_cmd).encode("utf-8")
-    sha256 = hashlib.sha256(data).hexdigest()
-    cache = os.path.expanduser(f"~/.LibreConnect-cache/ffmpeg-{sha256}")
+            if not os.path.exists(ffmpeg_src):
+                run([
+                    "git", "clone",
+                    "https://github.com/FFmpeg/FFmpeg.git",
+                    ffmpeg_src
+                ])
 
-    def run(cmd, cwd=None):
-        subprocess.run(cmd, cwd=cwd, check=True)
+            if not os.path.exists(nvcodec_src):
+                run([
+                    "git", "clone",
+                    "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
+                    nvcodec_src
+                ])
 
-    if os.path.exists(cache):
-        print("ffmpeg cache hit")
-        shutil.copytree(cache, "build/ffmpeg")
-    else:
-        print("ffmpeg cache miss")
+            run(["make"], cwd=nvcodec_src)
+            run(["sudo", "make", "install"], cwd=nvcodec_src)
+            run(["git", "checkout", "n7.1"], cwd=ffmpeg_src)
 
-        if not os.path.exists(ffmpeg_src):
-            run([
-                "git", "clone",
-                "https://github.com/FFmpeg/FFmpeg.git",
-                ffmpeg_src
-            ])
+            run(configure_cmd, cwd=ffmpeg_src)
+            run(["make", f"-j{multiprocessing.cpu_count()}"], cwd=ffmpeg_src)
+            run(["sudo", "make", "install"], cwd=ffmpeg_src)
 
-        if not os.path.exists(nvcodec_src):
-            run([
-                "git", "clone",
-                "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
-                nvcodec_src
-            ])
-
-        run(["make"], cwd=nvcodec_src)
-        run(["sudo", "make", "install"], cwd=nvcodec_src)
-        run(["git", "checkout", "n7.1"], cwd=ffmpeg_src)
-
-        run(configure_cmd, cwd=ffmpeg_src)
-        run(["make", f"-j{multiprocessing.cpu_count()}"], cwd=ffmpeg_src)
-        run(["sudo", "make", "install"], cwd=ffmpeg_src)
-
-        shutil.copytree("build/ffmpeg", cache, dirs_exist_ok=True)
+            shutil.copytree("build/ffmpeg", cache, dirs_exist_ok=True)
 
 # TO DO: MACOS, ANDROID, IOS VERSION
 # elif platform == "darwin":
