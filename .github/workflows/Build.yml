@@ -132,6 +132,48 @@ jobs:
           name: ${{ github.ref_name }}-build-Ubuntu-Latest
           path: build
 
+  build-ubuntu-arm:
+    name: Build Linux ARM64
+    runs-on: ubuntu-22.04-arm64
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
+
+      - name: Install Qt (ARM64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'desktop'
+          arch: 'linux_gCC_arm64'
+          modules: qtmultimedia
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Write env
+        run: |
+          echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env
+          echo DISABLE_DEBUG=true >> .env
+          echo BUILD_FOR=Desktop >> .env
+
+      - name: Install deps
+        run: python configure_project.py
+
+      - name: Configure
+        run: cmake --preset conan-release
+
+      - name: Build
+        run: cmake --build --preset conan-release
+
   build-macOS:
     name: Build MacOS
     runs-on: macos-14
@@ -178,6 +220,7 @@ jobs:
         with:
           name: ${{ github.ref_name }}-build-MacOS-Latest
           path: build
+          
   build-android-armv8:
     name: Build Android (armv8)
     runs-on: ubuntu-22.04
