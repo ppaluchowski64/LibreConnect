@@ -17,4 +17,4 @@ requirements:
   windows:
     - "wil/1.0.250325.1"
   android:
-    - "ffmpeg/7.0.1"
+    - "ffmpeg/7.1.3"

@@ -4,6 +4,7 @@ import sys
 import subprocess
 import hashlib
 import multiprocessing
+import tempfile
 from pathlib import Path
 
 # Environment variables
@@ -218,7 +219,7 @@ def install_linux_dependencies():
         )
 
         subprocess.run(
-            "wget -qO - https://repositories.intel.com/graphics/intel-graphics.key | sudo gpg --dearmor --output /usr/share/keyrings/intel-graphics.gpg",
+            "wget -qO - https://repositories.intel.com/graphics/intel-graphics.key | sudo gpg --dearmor --batch --yes --output /usr/share/keyrings/intel-graphics.gpg",
             shell=True,
             check=True
         )
@@ -356,57 +357,66 @@ def run_conan_install_android(build_type: str):
     nm_tool = str(bin_dir / f"llvm-nm{exe_ext}").replace("\\", "/")
     ranlib_tool = str(bin_dir / f"llvm-ranlib{exe_ext}").replace("\\", "/")
 
-    cmd_args = [
-        "conan",
-        "install",
-        ".",
-        "--build=missing",
-        "-g", "CMakeToolchain",
-        "-g", "CMakeDeps",
-        "-s", f"build_type={build_type}",
-        "-s:h", "os=Android",
-        "-s:h", f"os.api_level={api_level}",
-        "-s:h", f"arch={arch_type}",
-        "-s:h", "compiler=clang",
-        "-s:h", f"compiler.version={clang_version}",
-        "-s:h", f"compiler.cppstd={cppstd}",
-        "-s:h", "compiler.libcxx=c++_static",
+    profile_content = f"""
+        include(default)
+        [buildenv]
+        STRIP={strip_tool}
+        AR={ar_tool}
+        NM={nm_tool}
+        RANLIB={ranlib_tool}
+    """
 
-        "-o", "boost/*:with_stacktrace_backtrace=False",
-        "-o", "ffmpeg/*:with_mediacodec=True",
-        "-o", "ffmpeg/*:with_jni=True",
-        "-o", "ffmpeg/*:with_libx264=True",
-        "-o", "ffmpeg/*:with_libx265=True",
-        "-o", "ffmpeg/*:shared=False",
-        "-o", "ffmpeg/*:fPIC=True",
-        "-o", "ffmpeg/*:all_options=True",
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".jinja") as tmp_profile:
+        tmp_profile.write(profile_content)
+        tmp_profile_path = tmp_profile.name
 
-        "-pr:b", "default",
-        "-s:b", f"compiler.cppstd={cppstd}",
-        "-c",  "tools.cmake.cmaketoolchain:generator=Ninja",
-        "-c", f"tools.build:compiler_executables={{'c': '{c_compiler}', 'cpp': '{cpp_compiler}'}}",
-        "-c", f"tools.android:ndk_path={ndk}",
-        "-o", f"boost/*:addr2line_location={addr2line}",
-        "-o", "boost/*:without_stacktrace=True"
-    ]
+    try:
+        cmd_args = [
+            "conan", "install", ".",
+            "--build=missing",
+            "-pr:h", tmp_profile_path,
+            "-pr:b", "default",
 
-    if extra_flags:
-        cmd_args.extend(extra_flags.split())
+            "-g", "CMakeToolchain",
+            "-g", "CMakeDeps",
 
-    env = os.environ.copy()
-    env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
+            "-s", f"build_type={build_type}",
+            "-s:h", "os=Android",
+            "-s:h", f"os.api_level={api_level}",
+            "-s:h", f"arch={arch_type}",
+            "-s:h", "compiler=clang",
+            "-s:h", f"compiler.version={clang_version}",
+            "-s:h", "compiler.libcxx=c++_static",
+            "-s:h", f"compiler.cppstd=20",
 
-    env["STRIP"] = strip_tool
-    env["AR"] = ar_tool
-    env["NM"] = nm_tool
-    env["RANLIB"] = ranlib_tool
-    env["AS"] = str(bin_dir / f"{ndk_arch_prefix}clang{exe_ext}").replace("\\", "/")
+            "-o", "boost/*:with_stacktrace_backtrace=False",
+            "-o", "ffmpeg/*:with_mediacodec=True",
+            "-o", "ffmpeg/*:with_jni=True",
+            "-o", "ffmpeg/*:with_libx264=True",
+            "-o", "ffmpeg/*:with_libx265=True",
+            "-o", "ffmpeg/*:shared=False",
+            "-o", "ffmpeg/*:fPIC=True",
 
-    result = subprocess.run(cmd_args, shell=False, env=env)
+            "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
+            "-c", f"tools.build:compiler_executables={{'c': '{c_compiler}', 'cpp': '{cpp_compiler}'}}",
+            "-c", f"tools.android:ndk_path={ndk}",
+            "-o", f"boost/*:addr2line_location={addr2line}",
+            "-o", "boost/*:without_stacktrace=True"
+        ]
 
-    if result.returncode != 0:
-        print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
-        sys.exit(result.returncode)
+        env = os.environ.copy()
+        env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
+
+        print(f"Running conan install with profile: {tmp_profile_path}")
+        result = subprocess.run(cmd_args, shell=False, env=env)
+
+        if result.returncode != 0:
+            print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
+            sys.exit(result.returncode)
+
+    finally:
+        if os.path.exists(tmp_profile_path):
+            os.remove(tmp_profile_path)
 
 disable_debug = os.environ.get("DISABLE_DEBUG", "").strip().lower() in ["1", "true", "yes", "on"]
 

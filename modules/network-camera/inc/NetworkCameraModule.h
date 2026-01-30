@@ -33,19 +33,23 @@ public:
     std::vector<CameraSpecification> GetCamerasSpecification() const;
 #endif
 
-    void StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
+#if defined(MOBILE_DEVICE)
+    asio::awaitable<void> StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
     asio::awaitable<void> SendFrame(QVideoFrame frame);
+#endif
 
 private:
     std::unique_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
 
+#if defined(MOBILE_DEVICE)
     std::unique_ptr<QMediaCaptureSession> m_captureSession;
     std::unique_ptr<QCamera> m_camera;
     std::unique_ptr<QVideoSink> m_videoSink;
     const AVCodec* m_codec{nullptr};
     AVCodecContext* m_codecContext{nullptr};
+#endif
 
 #if defined(DESKTOP_DEVICE)
     std::vector<CameraSpecification> m_camerasSpecification;
