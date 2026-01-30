@@ -178,3 +178,67 @@ jobs:
         with:
           name: ${{ github.ref_name }}-build-MacOS-Latest
           path: build
+  build-android-armv8:
+    name: Build Android (armv8)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Install Conan
+        uses: conan-io/setup-conan@v1
+        with:
+          cache_packages: true
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'android'
+          arch: 'android_armv8'
+          modules: qtmultimedia
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and SDK components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-24" \
+            "ndk;27.3.13750724"
+
+      - name: Write Qt path to .env for CMake
+        run: |
+          echo "BUILD_FOR=Android" >> .env 
+          echo "DISABLE_DEBUG=true" >> .env
+          echo "QT_DIR_ANDROID=$QT_ROOT_DIR" >> .env
+          echo "ANDROID_NDK_DIR=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> .env
+          echo "ANDROID_SDK_DIR=$ANDROID_SDK_ROOT" >> .env
+          echo "ANDROID_ARCH=armv8" >> .env
+          echo "ANDROID_CLANG_VERSION=18" >> .env
+          echo "ANDROID_OS_API_LEVEL=24" >> .env
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Install Conan deps
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-Android-armv8
+          path: build
