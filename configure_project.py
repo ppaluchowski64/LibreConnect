@@ -332,19 +332,11 @@ def run_conan_install_android(build_type: str):
     exe_ext = ".exe" if sys.platform == "win32" else ""
     bin_dir = toolchain_base / host_tag / "bin"
 
-    # --- Locate NDK Tools ---
     addr2line_path = bin_dir / f"llvm-addr2line{exe_ext}"
     if not addr2line_path.exists():
         addr2line_path = bin_dir / f"addr2line{exe_ext}"
     addr2line = str(addr2line_path).replace("\\", "/")
 
-    # Tools needed to fix the "Unable to recognise format" error
-    strip_tool = str(bin_dir / f"llvm-strip{exe_ext}").replace("\\", "/")
-    ar_tool = str(bin_dir / f"llvm-ar{exe_ext}").replace("\\", "/")
-    nm_tool = str(bin_dir / f"llvm-nm{exe_ext}").replace("\\", "/")
-    ranlib_tool = str(bin_dir / f"llvm-ranlib{exe_ext}").replace("\\", "/")
-
-    # --- Determine correct compiler wrapper ---
     ndk_arch_prefix = ""
     if arch_type == "armv8":
         ndk_arch_prefix = f"aarch64-linux-android{api_level}-"
@@ -358,6 +350,11 @@ def run_conan_install_android(build_type: str):
     compiler_suffix = ".cmd" if sys.platform == "win32" else ""
     c_compiler = f"{ndk_arch_prefix}clang{compiler_suffix}"
     cpp_compiler = f"{ndk_arch_prefix}clang++{compiler_suffix}"
+
+    strip_tool = str(bin_dir / f"llvm-strip{exe_ext}").replace("\\", "/")
+    ar_tool = str(bin_dir / f"llvm-ar{exe_ext}").replace("\\", "/")
+    nm_tool = str(bin_dir / f"llvm-nm{exe_ext}").replace("\\", "/")
+    ranlib_tool = str(bin_dir / f"llvm-ranlib{exe_ext}").replace("\\", "/")
 
     cmd_args = [
         "conan",
@@ -375,9 +372,6 @@ def run_conan_install_android(build_type: str):
         "-s:h", f"compiler.cppstd={cppstd}",
         "-s:h", "compiler.libcxx=c++_static",
 
-        # Pass the specific compilers to Conan
-        "-c", f"tools.build:compiler_executables={{'c': '{c_compiler}', 'cpp': '{cpp_compiler}'}}",
-
         "-o", "boost/*:with_stacktrace_backtrace=False",
         "-o", "ffmpeg/*:with_mediacodec=True",
         "-o", "ffmpeg/*:with_jni=True",
@@ -390,6 +384,7 @@ def run_conan_install_android(build_type: str):
         "-pr:b", "default",
         "-s:b", f"compiler.cppstd={cppstd}",
         "-c",  "tools.cmake.cmaketoolchain:generator=Ninja",
+        "-c", f"tools.build:compiler_executables={{'c': '{c_compiler}', 'cpp': '{cpp_compiler}'}}",
         "-c", f"tools.android:ndk_path={ndk}",
         "-o", f"boost/*:addr2line_location={addr2line}",
         "-o", "boost/*:without_stacktrace=True"
@@ -401,13 +396,11 @@ def run_conan_install_android(build_type: str):
     env = os.environ.copy()
     env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
 
-    # --- FIX: Explicitly set NDK tools in environment ---
-    # This ensures 'configure' and 'make' use the correct Android-capable tools
     env["STRIP"] = strip_tool
     env["AR"] = ar_tool
     env["NM"] = nm_tool
     env["RANLIB"] = ranlib_tool
-    # ----------------------------------------------------
+    env["AS"] = str(bin_dir / f"{ndk_arch_prefix}clang{exe_ext}").replace("\\", "/")
 
     result = subprocess.run(cmd_args, shell=False, env=env)
 
