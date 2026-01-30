@@ -51,6 +51,12 @@ class ConanApplication(ConanFile):
     def generate(self):
         pass
 
+    def build_requirements(self):
+        data = self.conan_data.get("requirements", {})
+
+        for req in data.get("tools", []):
+            self.tool_requires(req)
+
     def requirements(self):
         data = self.conan_data.get("requirements", {})
 
@@ -59,4 +65,7 @@ class ConanApplication(ConanFile):
 
         if self.settings.os == "Windows":
             for req in data.get("windows", []):
+                self.requires(req)
+        if self.settings.os == "Android":
+            for req in data.get("android", []):
                 self.requires(req)

@@ -1,4 +1,6 @@
 requirements:
+  tools:
+    - "ninja/1.13.2"
   common:
     - "boost/1.87.0"
     - "openssl/3.5.0"
@@ -14,3 +16,5 @@ requirements:
     - "pkgconf/2.5.1"
   windows:
     - "wil/1.0.250325.1"
+  android:
+    - "ffmpeg/7.0.1"
