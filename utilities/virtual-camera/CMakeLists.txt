@@ -1,6 +1,13 @@
 include(../../cmake/Build.cmake)
 
 if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT ANDROID))
+    if (WIN32)
+        add_subdirectory(windows)
+    elseif (APPLE AND NOT IOS)
+        add_subdirectory(macos)
+    elseif(UNIX)
+        add_subdirectory(linux)
+    endif()
 
     file(GLOB_RECURSE SOURCE_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/main/src/*.cpp
