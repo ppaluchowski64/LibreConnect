@@ -1,17 +1,24 @@
 #include <NetworkCameraModule.h>
 #include <CameraUtilities.h>
 #include <magic_enum/magic_enum.hpp>
+#include <asio.hpp>
+#include <asio/co_spawn.hpp>
 #include <QVideoSink>
 
 #if defined(DESKTOP_DEVICE)
+
 std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() const {
     return m_camerasSpecification;
 }
 
-void NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
+#endif
+
+#if defined(MOBILE_DEVICE)
+
+asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
     if (!QGuiApplication::instance()) {
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
-        return;
+        co_return;
     }
 
     QMetaObject::invokeMethod(
@@ -133,6 +140,10 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     }
 }
 
+#endif
+
+#if defined(DESKTOP_DEVICE)
+
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
     constexpr size_t UPDATE_DELAY = 5;
 
@@ -252,7 +263,7 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
     }
 #endif
 
-
+    co_return;
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {

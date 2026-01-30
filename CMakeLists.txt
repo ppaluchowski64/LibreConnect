@@ -25,12 +25,18 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
 endif()
 
-file(GLOB_RECURSE FFMPEG_HEADER_FILES
-        ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
-)
 
-add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
-target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
+if(ANDROID)
+    find_package(ffmpeg REQUIRED)
+    add_library(ffmpeg_headers ALIAS ffmpeg::ffmpeg)
+elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+    file(GLOB_RECURSE FFMPEG_HEADER_FILES
+            ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
+    )
+
+    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
+    target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
+endif()
 
 find_package(OpenSSL          REQUIRED)
 find_package(asio             REQUIRED)

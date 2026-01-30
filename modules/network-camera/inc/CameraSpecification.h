@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <Packable.h>
-#include <VCamAPI.h>
+#include <VCamTypes.h>
 
 #include <fmt/core.h>
 #include <fmt/format.h>
