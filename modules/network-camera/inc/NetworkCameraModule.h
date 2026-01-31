@@ -19,6 +19,10 @@
 #include <QVideoSink>
 #include <QMediaDevices>
 
+extern "C" {
+    #include <libswscale/swscale.h>
+}
+
 enum class StreamStartFailReason : uint8_t {
     None = 0,
     IncorrectConfig = 1,
@@ -49,6 +53,8 @@ private:
     std::unique_ptr<QVideoSink> m_videoSink;
     const AVCodec* m_codec{nullptr};
     AVCodecContext* m_codecContext{nullptr};
+    SwsContext* m_swsContext{nullptr};
+
 #endif
 
 #if defined(DESKTOP_DEVICE)

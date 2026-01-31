@@ -27,9 +27,11 @@ namespace SRTP {
 
         void Receive(std::vector<uint8_t>& payload);
         void Send(const std::vector<uint8_t>& payload);
+        void Send(const uint8_t* payload, size_t size);
 
         asio::awaitable<void> AsyncReceive(std::vector<uint8_t>& payload);
         asio::awaitable<void> AsyncSend(const std::vector<uint8_t>& payload);
+        asio::awaitable<void> AsyncSend(const uint8_t* payload, size_t size);
 
         static std::vector<uint8_t> GenerateKey();
 

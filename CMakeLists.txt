@@ -30,6 +30,9 @@ if(ANDROID)
     find_package(ffmpeg REQUIRED)
     add_library(ffmpeg_headers ALIAS ffmpeg::ffmpeg)
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+    find_package(GTest     REQUIRED)
+    find_package(benchmark REQUIRED)
+
     file(GLOB_RECURSE FFMPEG_HEADER_FILES
             ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
     )
@@ -44,8 +47,6 @@ find_package(Boost            REQUIRED)
 find_package(magic_enum       REQUIRED)
 find_package(fmt              REQUIRED)
 find_package(concurrentqueue  REQUIRED)
-find_package(GTest            REQUIRED)
-find_package(benchmark        REQUIRED)
 find_package(SQLiteCpp        REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)

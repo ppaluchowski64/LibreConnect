@@ -9,10 +9,10 @@ AVPixelFormat CameraFormat::GetFormat() const {
         case QVideoFrameFormat::Format_YUYV: return AV_PIX_FMT_YUYV422;
         case QVideoFrameFormat::Format_NV12: return AV_PIX_FMT_NV12;
         case QVideoFrameFormat::Format_YUV420P: return AV_PIX_FMT_YUV420P;
-        default:
-            throw std::runtime_error("Unsupported pixel format");
+        default: Debug::LogError("Unsupported pixel format"); return AV_PIX_FMT_NONE;
     }
 }
+
 
 void CameraFormat::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
     SerializeObject(width, buffer, offset);

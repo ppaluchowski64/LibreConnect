@@ -153,7 +153,7 @@ jobs:
           version: '6.8.3'
           host: 'linux'
           target: 'desktop'
-          arch: 'linux_gCC_arm64'
+          arch: 'linux_gcc_arm64'
           modules: qtmultimedia
 
       - name: Create Conan profile
