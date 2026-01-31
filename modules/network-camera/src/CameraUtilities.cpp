@@ -143,7 +143,7 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
     ctx->hw_device_ctx = av_buffer_ref(hw_device);
 
-    ctx->pix_fmt = targetPixFmt; 
+    ctx->pix_fmt = targetPixFmt;
 
     ctx->width = 1920;
     ctx->height = 1080;
