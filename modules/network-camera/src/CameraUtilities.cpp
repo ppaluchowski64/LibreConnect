@@ -1,6 +1,11 @@
 #include <CameraUtilities.h>
 #include <QThread>
 
+extern "C" {
+    #include <libavcodec/avcodec.h>
+    #include <libavutil/hwcontext.h>
+}
+
 static std::unordered_map<CodecID, std::vector<std::string>> g_encoderPriority = {
     {CodecID::H264, {
         "h264_nvenc",
@@ -112,8 +117,6 @@ static bool CanUseEncoder(const AVCodec* codec) {
     if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
 
     AVHWDeviceType deviceType = AV_HWDEVICE_TYPE_NONE;
-    AVPixelFormat targetPixFmt = AV_PIX_FMT_NONE;
-
     for (int i = 0;; i++) {
         const AVCodecHWConfig* hwcfg = avcodec_get_hw_config(codec, i);
         if (!hwcfg)
@@ -121,13 +124,8 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
         if (hwcfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
             deviceType = hwcfg->device_type;
-            targetPixFmt = hwcfg->pix_fmt;
             break;
         }
-    }
-
-    if (deviceType == AV_HWDEVICE_TYPE_NONE || targetPixFmt == AV_PIX_FMT_NONE) {
-        return false;
     }
 
     AVBufferRef* hw_device = nullptr;
@@ -143,7 +141,11 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
     ctx->hw_device_ctx = av_buffer_ref(hw_device);
 
-    ctx->pix_fmt = targetPixFmt;
+    if (codec->pix_fmts) {
+        ctx->pix_fmt = codec->pix_fmts[0];
+    } else {
+        ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    }
 
     ctx->width = 1920;
     ctx->height = 1080;
@@ -160,7 +162,6 @@ static bool CanUseEncoder(const AVCodec* codec) {
     return ret == 0;
 }
 
-
 static bool CanUseDecoder(const AVCodec* codec) {
     if (!codec) return false;
     if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
@@ -168,7 +169,7 @@ static bool CanUseDecoder(const AVCodec* codec) {
     AVCodecContext* ctx = avcodec_alloc_context3(codec);
     if (!ctx) return false;
 
-    bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
+    const bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
 
     avcodec_free_context(&ctx);
     return ok;
