@@ -37,10 +37,15 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Conan
-        uses: conan-io/setup-conan@v1
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
@@ -89,10 +94,15 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Conan
-        uses: conan-io/setup-conan@v1
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
 
       - name: Set up CUDA Toolkit
         uses: Jimver/cuda-toolkit@v0.2.21
@@ -143,15 +153,21 @@ jobs:
         with:
           python-version: "3.x"
 
-      - uses: conan-io/setup-conan@v1
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
 
       - name: Install Qt (ARM64)
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
-          host: 'linux'
+          host: 'linux_arm64'
           target: 'desktop'
           arch: 'linux_gcc_arm64'
           modules: qtmultimedia
@@ -186,10 +202,15 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Conan
-        uses: conan-io/setup-conan@v1
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
@@ -239,10 +260,15 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Install Conan
-        uses: conan-io/setup-conan@v1
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: Android-armv8-${{ env.CONAN_VERSION }}
+          restore-keys: Android-armv8-${{ env.CONAN_VERSION }}
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
