@@ -42,6 +42,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             bool formatFound = false;
             const QList<QCameraFormat> supportedFormats = cameraDevice->videoFormats();
+            QCameraFormat format = QCameraFormat();
 
             for (const auto& fm : supportedFormats) {
                 if (fm.resolution().width() != requestedFormat.width || fm.resolution().height() != requestedFormat.height) {
@@ -54,6 +55,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                     continue;
                 }
 
+                format = fm;
+
                 if (fm.pixelFormat() != static_cast<QVideoFrameFormat::PixelFormat>(requestedFormat.pixelFormat)) {
                     continue;
                 }
@@ -64,8 +67,12 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             }
 
             if (!formatFound) {
-                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
-                return;
+                if (format.isNull()) {
+                    ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                    return;
+                }
+
+                m_camera->setCameraFormat(format);
             }
 
             m_videoSink = std::make_unique<QVideoSink>();
@@ -81,15 +88,41 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                 return;
             }
 
+            if (m_codecContext) {
+                avcodec_free_context(&m_codecContext);
+            }
+
             m_codecContext = avcodec_alloc_context3(m_codec);
             m_codecContext->bit_rate = 400000;
-            m_codecContext->width = requestedFormat.width;
-            m_codecContext->height = requestedFormat.height;
-            m_codecContext->time_base = {1, static_cast<int>(requestedFormat.maxFrameRate)};
-            m_codecContext->framerate = {static_cast<int>(requestedFormat.maxFrameRate), 1};
+            m_codecContext->width = format.resolution().width();
+            m_codecContext->height = format.resolution().height();
+            m_codecContext->time_base = {1, static_cast<int>(format.maxFrameRate())};
+            m_codecContext->framerate = {static_cast<int>(format.maxFrameRate()), 1};
             m_codecContext->gop_size = 10;
             m_codecContext->max_b_frames = 1;
-            m_codecContext->pix_fmt = requestedFormat.GetFormat();
+            m_codecContext->pix_fmt = static_cast<AVPixelFormat>(requestedFormat.pixelFormat);
+
+            if (m_swsContext) {
+                sws_freeContext(m_swsContext);
+            }
+
+            m_swsContext = sws_getContext(
+                m_codecContext->width,
+                m_codecContext->height,
+                GetFormat(format.pixelFormat()),
+                m_codecContext->width,
+                m_codecContext->height,
+                m_codecContext->pix_fmt,
+                SWS_BILINEAR,
+                nullptr,
+                nullptr,
+                nullptr
+            );
+
+            if (!m_swsContext) {
+                Debug::LogError("Could not initialize SwsContext");
+                return;
+            }
 
             QGuiApplication::instance()->connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, [&](const QVideoFrame &frame) {
                 if (!frame.isValid())
@@ -106,38 +139,66 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     if (!frame.map(QVideoFrame::ReadOnly))
         co_return;
 
+    const AVPixelFormat inputFmt = GetFormat(frame.pixelFormat());
+
+    if (inputFmt == AV_PIX_FMT_NONE) {
+        Debug::LogError("Unsupported input pixel format");
+        frame.unmap();
+        co_return;
+    }
+
     AVFrame* avFrame = av_frame_alloc();
+    if (!avFrame) { frame.unmap(); co_return; }
+
     avFrame->format = m_codecContext->pix_fmt;
     avFrame->width  = m_codecContext->width;
     avFrame->height = m_codecContext->height;
 
+    static int64_t pts_counter = 0;
+    avFrame->pts = pts_counter++;
+
     if (av_frame_get_buffer(avFrame, 32) < 0) {
         Debug::LogError("Could not allocate frame data");
+        av_frame_free(&avFrame);
+        frame.unmap();
         co_return;
     }
 
+    const uint8_t* srcSlice[4] = {};
+    int srcStride[4] = {};
+
+    for (int i = 0; i < frame.planeCount(); ++i) {
+        srcSlice[i]  = frame.bits(i);
+        srcStride[i] = frame.bytesPerLine(i);
+    }
+
+    sws_scale(m_swsContext, srcSlice, srcStride, 0, frame.height(), avFrame->data, avFrame->linesize);
+    frame.unmap();
 
     AVPacket *pkt = av_packet_alloc();
-
     int ret = avcodec_send_frame(m_codecContext, avFrame);
+
+    av_frame_free(&avFrame);
+
     if (ret < 0) {
         Debug::LogError("Error sending frame to encoder");
+        av_packet_free(&pkt);
         co_return;
     }
 
     while (ret >= 0) {
         ret = avcodec_receive_packet(m_codecContext, pkt);
-
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         if (ret < 0) {
             Debug::LogError("Error during encoding");
-            co_return;
+            break;
         }
 
-
+        co_await m_videoStream->AsyncSend(pkt->data, pkt->size);
 
         av_packet_unref(pkt);
     }
+    av_packet_free(&pkt);
 }
 
 #endif

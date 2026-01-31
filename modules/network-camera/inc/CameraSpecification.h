@@ -2,8 +2,11 @@
 #define CAMERA_SPECIFICATION_H
 
 #include <vector>
-#include <Packable.h>
+#include <QVideoFrameFormat>
+
 #include <VCamTypes.h>
+#include <Packable.h>
+#include <DebugLog.h>
 
 #include <fmt/core.h>
 #include <fmt/format.h>
@@ -22,7 +25,7 @@ struct CameraFormat {
     int32_t height;
     float minFrameRate;
     float maxFrameRate;
-    uint8_t pixelFormat;
+    int32_t pixelFormat;
 
     CameraFormat() : width(0), height(0), minFrameRate(0), maxFrameRate(0), pixelFormat(0) {}
 
@@ -35,6 +38,20 @@ struct CameraFormat {
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
     NO_DISCARD size_t GetSerializedSize() const;
 };
+
+AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format);
+
+// ReSharper disable once CppPassValueParameterByConstReference
+inline AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format) {
+    switch (format) {
+        case QVideoFrameFormat::Format_RGBA8888: return AV_PIX_FMT_RGBA;
+        case QVideoFrameFormat::Format_BGRA8888: return AV_PIX_FMT_BGRA;
+        case QVideoFrameFormat::Format_YUYV: return AV_PIX_FMT_YUYV422;
+        case QVideoFrameFormat::Format_NV12: return AV_PIX_FMT_NV12;
+        case QVideoFrameFormat::Format_YUV420P: return AV_PIX_FMT_YUV420P;
+        default: Debug::LogError("Unsupported pixel format"); return AV_PIX_FMT_NONE;
+    }
+}
 
 struct CameraSpecification {
     std::string description;
