@@ -134,7 +134,7 @@ jobs:
 
   build-ubuntu-arm:
     name: Build Linux ARM64
-    runs-on: ubuntu-22.04-arm64
+    runs-on: ubuntu-22.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
