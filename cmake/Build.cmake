@@ -212,7 +212,7 @@ function(LinkFFMPEGLibs target)
                 ${CMAKE_BINARY_DIR}/ffmpeg/bin
                 $<TARGET_FILE_DIR:${target}>
         )
-    elseif(UNIX)
+    elseif(UNIX AND NOT APPLE AND NOT ANDROID)
         message(${CMAKE_SOURCE_DIR}/build/ffmpeg/lib)
 
         set(FFMPEG_LIBS

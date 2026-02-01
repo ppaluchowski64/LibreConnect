@@ -21,8 +21,10 @@ if (ANDROID)
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_ANDROID}/lib/cmake)
     set(ANDROID_SDK_ROOT $ENV{ANDROID_SDK_DIR})
     set(ENABLE_TESTS OFF)
+    set(ENABLE_MOBILE_TEST_PROGRAMS ON)
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
+    set(ENABLE_MOBILE_TEST_PROGRAMS OFF)
 endif()
 
 
@@ -104,6 +106,9 @@ if (ENABLE_TESTS)
     LinkVirtualCameraLibs(VirtualCameraTest)
 endif()
 
+if (ENABLE_MOBILE_TEST_PROGRAMS)
+    add_subdirectory("tests/network-camera-module/utilities-test-mobile")
+endif ()
 
 if (ANDROID)
 elseif(APPLE AND NOT IOS)

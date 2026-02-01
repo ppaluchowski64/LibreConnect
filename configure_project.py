@@ -317,7 +317,7 @@ def run_conan_install(build_type: str):
 
 def run_conan_install_android(build_type: str):
     arch_type = os.environ.get("ANDROID_ARCH")
-    ndk = os.environ.get("ANDROID_NDK_DIR")
+    ndk = Path(os.environ.get("ANDROID_NDK_DIR")).expanduser()
     clang_version = os.environ.get("ANDROID_CLANG_VERSION")
     api_level = os.environ.get("ANDROID_OS_API_LEVEL")
 
@@ -395,7 +395,14 @@ def run_conan_install_android(build_type: str):
             "-o", "ffmpeg/*:with_libx264=True",
             "-o", "ffmpeg/*:with_libx265=True",
             "-o", "ffmpeg/*:shared=False",
+            "-o", "ffmpeg/*:with_asm=False",
+
             "-o", "ffmpeg/*:fPIC=True",
+            "-o", "*:fPIC=True",
+            "-o", "ffmpeg/*:extra_cflags=-fPIC",
+            "-o", "ffmpeg/*:extra_ldflags=-fPIC",
+            "-c", "tools.build:cflags=['-fPIC']",
+            "-c", "tools.build:cxxflags=['-fPIC']",
 
             "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
             "-c", f"tools.build:compiler_executables={{'c': '{c_compiler}', 'cpp': '{cpp_compiler}'}}",
@@ -408,7 +415,7 @@ def run_conan_install_android(build_type: str):
         env["PATH"] = str(bin_dir) + os.pathsep + env["PATH"]
 
         print(f"Running conan install with profile: {tmp_profile_path}")
-        result = subprocess.run(cmd_args, shell=False, env=env)
+        result = subprocess.run(cmd_args, env=env)
 
         if result.returncode != 0:
             print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
