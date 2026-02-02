@@ -10,9 +10,9 @@
 #include <asio/ssl/error.hpp>
 #include <system_error>
 #include <DebugLog.h>
+#include <PC_PackageType.h>
 
 typedef uint32_t PackageSizeInt;
-typedef uint16_t PackageTypeInt;
 
 typedef asio::io_context IOContext;
 typedef asio::executor_work_guard<asio::io_context::executor_type> IOWorkGuard;
@@ -41,7 +41,7 @@ constexpr PackageSizeInt FILE_BUFFER_SIZE = 128 * 1024;
 constexpr uint32_t PACKAGES_WARN_THRESHOLD = 10000;
 constexpr uint32_t MAX_NUMBER_OF_VERIFICATION_TRIES = 5;
 
-const asio::ip::address_v4 DEVICE_DISCOVERY_MULTICAST_ADDRESS = asio::ip::make_address_v4("239.255.123.242");
+const asio::ip::address_v4 DEVICE_DISCOVERY_MULTICAST_ADDRESS = asio::ip::make_address_v4("224.0.0.251");
 constexpr uint16_t DEVICE_DISCOVERY_MULTICAST_PORT            = 5430;
 
 template <typename T>

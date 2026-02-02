@@ -144,6 +144,7 @@ extern "C" {
             deviceID = std::stoi(parsed);
         }
 
+
         const std::string device = fmt::format("/dev/video{}", deviceID);
         instance->v4l2Device = open(device.c_str(), O_WRONLY);
         instance->videoID = deviceID;

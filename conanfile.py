@@ -42,7 +42,7 @@ class ConanApplication(ConanFile):
         "boost/*:without_type_erasure": True,
         "boost/*:without_unit_test_framework": True,
         "boost/*:without_url": True,
-        "boost/*:without_wave": True,
+        "boost/*:without_wave": True
     }
 
     def layout(self):
@@ -51,12 +51,26 @@ class ConanApplication(ConanFile):
     def generate(self):
         pass
 
+    def build_requirements(self):
+        data = self.conan_data.get("requirements", {})
+
+        for req in data.get("tools", []):
+            self.tool_requires(req)
+
     def requirements(self):
         data = self.conan_data.get("requirements", {})
 
         for req in data.get("common", []):
             self.requires(req)
 
+        if self.settings.os != "Android" and self.settings.os != "iOS":
+            for req in data.get("desktop", []):
+                self.requires(req)
+
         if self.settings.os == "Windows":
             for req in data.get("windows", []):
+                self.requires(req)
+
+        if self.settings.os == "Android":
+            for req in data.get("android", []):
                 self.requires(req)

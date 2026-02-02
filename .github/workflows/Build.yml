@@ -12,6 +12,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Upgrade Git to latest
+        run: choco upgrade git -y
+
+      - name: Download FFmpeg 7.1 Shared
+        shell: bash
+        run: |
+          pwd
+          
+          curl -L https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.1.1-full_build-shared.7z -o ffmpeg.7z
+          7z x ffmpeg.7z -oFFmpegRaw
+          
+          mkdir FFmpeg
+          mv FFmpegRaw/ffmpeg-7.1.1-full_build-shared/* FFmpeg/
+          echo "FFMPEG_DIR=$GITHUB_WORKSPACE\FFmpeg" >> $GITHUB_ENV
+
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -22,10 +37,22 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Conan
+      - name: "Setup Conan"
         uses: conan-io/setup-conan@v1
+
+      - name: "Set Conan Env"
+        shell: pwsh
+        run: |
+          $conan_version = conan --version -q | ForEach-Object { ($_ -match '\d+\.\d+\.\d+')[0] }
+          echo "CONAN_VERSION=$conan_version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
@@ -34,6 +61,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
+          modules: qtmultimedia
 
       - name: Create Conan profile
         run: conan profile detect --force
@@ -46,6 +74,7 @@ jobs:
           "BUILD_FOR=Desktop" >> .env
 
       - name: Install Conan deps
+        shell: powershell
         run: python configure_project.py
 
       - name: Configure CMake
@@ -72,34 +101,29 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Conan
+      - name: "Setup Conan"
         uses: conan-io/setup-conan@v1
-        with:
-          cache_packages: true
 
-      - name: Install system packages
+      - name: "Set Conan Env"
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-          build-essential \
-          libgl1-mesa-dev \
-          libxkbcommon-x11-0 \
-          libdbus-1-dev \
-          libfontconfig1 \
-          libxcb-icccm4 \
-          libxcb-image0 \
-          libxcb-keysyms1 \
-          libxcb-randr0 \
-          libxcb-render-util0 \
-          libxcb-shape0 \
-          libxcb-xinerama0 \
-          libxcb-xkb1 \
-          libxkbcommon-dev \
-          libxkbcommon-x11-dev \
-          libmysqlclient21 \
-          unixodbc \
-          unixodbc-dev \
-          libpq-dev
+          CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: Set up CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.21
+        id: cuda-toolkit
+        with:
+          cuda: '12.8.0'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart-dev", "cccl", "thrust"]'
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
@@ -108,6 +132,7 @@ jobs:
           host: 'linux'
           target: 'desktop'
           arch: 'linux_gcc_64'
+          modules: qtmultimedia
 
       - name: Create Conan profile
         run: conan profile detect --force
@@ -130,6 +155,60 @@ jobs:
           name: ${{ github.ref_name }}-build-Ubuntu-Latest
           path: build
 
+  build-ubuntu-arm:
+    name: Build Linux ARM64
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
+
+      - name: "Set Conan Env"
+        shell: bash
+        run: |
+          CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: Install Qt (ARM64)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux_arm64'
+          target: 'desktop'
+          arch: 'linux_gcc_arm64'
+          modules: qtmultimedia
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Write env
+        run: |
+          echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env
+          echo DISABLE_DEBUG=true >> .env
+          echo BUILD_FOR=Desktop >> .env
+
+      - name: Install deps
+        run: python configure_project.py
+
+      - name: Configure
+        run: cmake --preset conan-release
+
+      - name: Build
+        run: cmake --build --preset conan-release
+
   build-macOS:
     name: Build macOS
     runs-on: macos-15
@@ -142,10 +221,21 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Install Conan
+      - name: "Setup Conan"
         uses: conan-io/setup-conan@v1
+
+      - name: Set Conan Env
+        shell: bash
+        run: |
+          CONAN_VERSION=$(conan --version | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> "$GITHUB_ENV"
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
         with:
-          cache_packages: true
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
 
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
@@ -154,6 +244,7 @@ jobs:
           host: 'mac'
           target: 'desktop'
           arch: 'clang_64'
+          modules: qtmultimedia
 
       - name: Write Qt path to .env for CMake
         run: echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env && echo "BUILD_FOR=Desktop" >> .env
@@ -174,4 +265,86 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.ref_name }}-build-macOS-Latest
+          path: build
+          
+  build-android-armv8:
+    name: Build Android (armv8)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: "Setup Conan"
+        uses: conan-io/setup-conan@v1
+
+      - name: "Set Conan Env"
+        shell: bash
+        run: |
+          CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/
+          key: Android-armv8-${{ env.CONAN_VERSION }}
+          restore-keys: Android-armv8-${{ env.CONAN_VERSION }}
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          modules: qtmultimedia
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and SDK components
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-24" \
+            "ndk;27.3.13750724"
+
+      - name: Write Qt path to .env for CMake
+        run: |
+          echo "BUILD_FOR=Android" >> .env 
+          echo "DISABLE_DEBUG=true" >> .env
+          echo "QT_DIR_ANDROID=$QT_ROOT_DIR" >> .env
+          echo "ANDROID_NDK_DIR=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> .env
+          echo "ANDROID_SDK_DIR=$ANDROID_SDK_ROOT" >> .env
+          echo "ANDROID_ARCH=armv8" >> .env
+          echo "ANDROID_CLANG_VERSION=18" >> .env
+          echo "ANDROID_OS_API_LEVEL=24" >> .env
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Install Conan deps
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-Android-armv8
           path: build

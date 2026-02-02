@@ -21,20 +21,38 @@ if (ANDROID)
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_ANDROID}/lib/cmake)
     set(ANDROID_SDK_ROOT $ENV{ANDROID_SDK_DIR})
     set(ENABLE_TESTS OFF)
+    set(ENABLE_MOBILE_TEST_PROGRAMS ON)
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
+    set(ENABLE_MOBILE_TEST_PROGRAMS OFF)
 endif()
 
-find_package(OpenSSL         REQUIRED)
-find_package(asio            REQUIRED)
-find_package(magic_enum      REQUIRED)
-find_package(fmt             REQUIRED)
-find_package(concurrentqueue REQUIRED)
-find_package(GTest           REQUIRED)
-find_package(benchmark       REQUIRED)
-find_package(SQLiteCpp       REQUIRED)
-find_package(nlohmann_json   REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml)
+
+if(ANDROID)
+    find_package(ffmpeg REQUIRED)
+    add_library(ffmpeg_headers ALIAS ffmpeg::ffmpeg)
+elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+    find_package(GTest     REQUIRED)
+    find_package(benchmark REQUIRED)
+
+    file(GLOB_RECURSE FFMPEG_HEADER_FILES
+            ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
+    )
+
+    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
+    target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
+endif()
+
+find_package(OpenSSL          REQUIRED)
+find_package(asio             REQUIRED)
+find_package(Boost            REQUIRED)
+find_package(magic_enum       REQUIRED)
+find_package(fmt              REQUIRED)
+find_package(concurrentqueue  REQUIRED)
+find_package(SQLiteCpp        REQUIRED)
+find_package(nlohmann_json    REQUIRED)
+find_package(libsrtp          REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
         debug-log
@@ -45,14 +63,29 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(debug-log)
 qt_standard_project_setup()
 
-add_library(project_defaults INTERFACE)
+add_library(project_defaults)
+if(ANDROID OR IOS)
+    target_compile_definitions(project_defaults PUBLIC MOBILE_DEVICE)
+else()
+    target_compile_definitions(project_defaults PUBLIC DESKTOP_DEVICE)
+endif()
 
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum SQLiteCpp)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
+BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
 add_subdirectory("utilities/virtual-camera")
+
+BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
+BuildStaticLibrary(network-camera-module modules/network-camera
+        common-module
+        srtp-stream
+        p2p-network-component-pc
+        ffmpeg_headers
+        virtual-camera
+)
 
 if (ANDROID)
     add_subdirectory("apps/mobile")
@@ -76,9 +109,14 @@ if (ENABLE_TESTS)
     )
 
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
+    add_subdirectory("tests/network-camera-module/utilities-test")
+
     LinkVirtualCameraLibs(VirtualCameraTest)
 endif()
 
+if (ENABLE_MOBILE_TEST_PROGRAMS)
+    add_subdirectory("tests/network-camera-module/utilities-test-mobile")
+endif ()
 
 if (ANDROID)
 elseif(APPLE AND NOT IOS)
