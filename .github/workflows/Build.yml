@@ -224,11 +224,11 @@ jobs:
       - name: "Setup Conan"
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
-          CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
-          echo "CONAN_VERSION=$CONAN_VERSION" >> $GITHUB_ENV
+          CONAN_VERSION=$(conan --version | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> "$GITHUB_ENV"
 
       - name: Cache Conan Packages
         uses: actions/cache@v4
