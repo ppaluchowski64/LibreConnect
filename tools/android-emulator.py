@@ -1,4 +1,4 @@
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 import tkinter as tk
 import subprocess
 import threading
@@ -6,6 +6,8 @@ import json
 import os
 
 CONFIG_FILE = os.path.expanduser("~/.LibreConnect-cache/emulator_config.json")
+SIGN_KEY_PATH = os.path.expanduser("~/.LibreConnect-cache/apk_key.key")
+KEY_PASSWORD = "MyKeyPassword123"
 
 window = tk.Tk()
 window.geometry("400x500")
@@ -24,13 +26,47 @@ def load_last_apk():
             return ""
     return ""
 
-def save_last_apk(path):
+def save_last_apk(_path):
     try:
         os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
         with open(CONFIG_FILE, "w") as f:
-            json.dump({"last_apk": path}, f)
+            json.dump({"last_apk": _path}, f)
     except IOError:
         pass
+
+def sign_apk(_apk_path: str):
+    os.makedirs(os.path.dirname(SIGN_KEY_PATH), exist_ok=True)
+
+    if not os.path.exists(SIGN_KEY_PATH):
+        print("hit")
+        subprocess.run([
+            "keytool",
+            "-genkeypair",
+            "-keystore", SIGN_KEY_PATH,
+            "-storepass", KEY_PASSWORD,
+            "-keypass", KEY_PASSWORD,
+            "-alias", "app_release",
+            "-keyalg", "RSA",
+            "-keysize", "2048",
+            "-validity", "10000",
+            "-dname", "CN=John, OU=Mobile, O=MyCompany, L=Yes, S=DF, C=HD"
+        ])
+
+    name = f"{os.path.dirname(_apk_path)}/signed-{os.path.basename(_apk_path)}"
+
+    try:
+        subprocess.run([
+            "apksigner", "sign",
+            "--ks", SIGN_KEY_PATH,
+            "--ks-pass", f"pass:{KEY_PASSWORD}",
+            "--key-pass", f"pass:{KEY_PASSWORD}",
+            "--out", name,
+            _apk_path,
+        ], check=True, shell=True)
+        return name
+    except subprocess.CalledProcessError as e:
+        messagebox.showerror("Signing Error", f"Failed to sign APK.\n{e}")
+        return ""
 
 def refresh_devices_list(_devices: tk.Listbox):
     try:
@@ -63,17 +99,21 @@ def start_emulator(_device: str):
     threading.Thread(target=run, daemon=True).start()
 
 def install_apk(_apk_path: str):
-    subprocess.run(["adb", "install", "-r", _apk_path])
-    save_last_apk(_apk_path)
+    signed_apk_dir = sign_apk(_apk_path)
 
-def browse_apk(entry: tk.Entry):
+    if os.path.exists(signed_apk_dir):
+        subprocess.run(["adb", "install", "-r", signed_apk_dir])
+        save_last_apk(_apk_path)
+
+def browse_apk(_entry: tk.Entry):
     apk_path = filedialog.askopenfilename(
         title="Select APK file",
         filetypes=[("Android APK", "*.apk")],
     )
+
     if apk_path:
-        entry.delete(0, tk.END)
-        entry.insert(0, apk_path)
+        _entry.delete(0, tk.END)
+        _entry.insert(0, apk_path)
         save_last_apk(apk_path)
 
 main_frame.pack(fill="both", expand=True)
