@@ -20,9 +20,7 @@ class InitialConnection;
 class LanDeviceScanner;
 
 void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
         s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
@@ -34,9 +32,7 @@ void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
 }
 
 void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
         s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
@@ -48,9 +44,7 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
 }
 
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     const std::shared_ptr<InitialConnection> connection = InitialConnection::Create(s_instance->m_context);
 
@@ -78,9 +72,7 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
 }
 
 void ConnectionManager::StartAcceptingConnections() {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
@@ -98,9 +90,7 @@ void ConnectionManager::StartAcceptingConnections() {
 }
 
 void ConnectionManager::StopAcceptingConnections() {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     std::lock_guard<std::mutex> lock(s_mutex);
 
@@ -119,9 +109,7 @@ void ConnectionManager::StopAcceptingConnections() {
 }
 
 void ConnectionManager::Connect(const std::string& address, const uint16_t port, const InitialConnectionMode mode) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     if (s_instance->m_initialConnectionOut == nullptr) {
         return;
@@ -190,9 +178,7 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
 }
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
 
@@ -254,9 +240,7 @@ void ConnectionManager::RunContext() {
 }
 
 void ConnectionManager::SetSeekingEndpoint(TCPEndpoint endpoint) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     std::lock_guard<std::mutex> lock(s_mutex);
     s_instance->m_seekingEndpoint = std::move(endpoint);
@@ -275,14 +259,13 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
             std::unique_ptr<Package<PC_PackageType>> value = std::move(packageOptional.value());
             const PackageHeader header = value->GetHeader();
 
-            if ((header.flags & PackageFlag::REQUEST_WITH_RESPONSE) != 0) {
+            if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
                 size_t requestID = value->GetValue<size_t>();
-                std::optional<RequestCallbackType> callbackOptional = m_requestCallbackMap.Get(requestID);
+                auto flag = m_requestAwaitableMap.Pop(requestID);
 
-                if (callbackOptional.has_value()) {
-                    asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
-                        callback(std::move(package));
-                    });
+                if (flag.has_value()) {
+                    m_requestPackageMap.InsertOrAssign(requestID, std::move(value));
+                    flag.value()->Signal();
                 }
 
             } else {
@@ -302,26 +285,24 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 }
 
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
-
+    Initialize();
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
 }
 
+void ConnectionManager::RemoveResponseHandler(const PC_PackageType type) {
+    Initialize();
+    s_instance->m_responseHandlerMap.Erase(type);
+}
+
 void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     std::lock_guard<std::mutex> lock(s_mutex);
     s_instance->m_eventObjects.push_back(object);
 }
 
 TCPEndpoint ConnectionManager::GetSeekEndpoint() {
-    if (!s_isInitialized.load()) {
-        Initialize();
-    }
+    Initialize();
 
     std::lock_guard<std::mutex> lock(s_mutex);
     return s_instance->m_seekingEndpoint;
@@ -339,11 +320,11 @@ ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_con
 }
 
 void ConnectionManager::Initialize() {
-    std::lock_guard<std::mutex> lock(s_mutex);
-
     if (s_isInitialized.load()) {
         return;
     }
+
+    std::lock_guard<std::mutex> lock(s_mutex);
 
     s_instance = new ConnectionManager();
     s_isInitialized.store(true);
@@ -351,13 +332,10 @@ void ConnectionManager::Initialize() {
 
 void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
     std::vector<QPointer<QObject>> targets;
+    Initialize();
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
-
-        if (!s_isInitialized.load()) {
-            Initialize();
-        }
 
         auto& objects = s_instance->m_eventObjects;
         std::erase_if(objects, [](const QPointer<QObject>& obj) {

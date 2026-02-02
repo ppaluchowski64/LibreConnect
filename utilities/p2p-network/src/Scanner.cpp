@@ -90,13 +90,14 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
             {
                 UDPSocket socket(m_context);
                 socket.open(asio::ip::udp::v4());
+                socket.bind(asio::ip::udp::endpoint(address.to_v4(), 0));
                 socket.set_option(asio::ip::multicast::enable_loopback(false));
                 socket.set_option(asio::socket_base::reuse_address(true));
+                socket.set_option(asio::ip::multicast::hops(8));
 #ifdef SO_REUSEPORT
                 int reuse = 1;
                 ::setsockopt(socket.native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 #endif
-                socket.bind(asio::ip::udp::endpoint(address.to_v4(), 0));
                 socket.set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
                 m_sendSockets.push_back(std::move(socket));
             }

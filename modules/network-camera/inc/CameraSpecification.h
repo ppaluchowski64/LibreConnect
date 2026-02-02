@@ -1,0 +1,121 @@
+#ifndef CAMERA_SPECIFICATION_H
+#define CAMERA_SPECIFICATION_H
+
+#include <vector>
+#include <QVideoFrameFormat>
+
+#include <VCamTypes.h>
+#include <Packable.h>
+#include <DebugLog.h>
+
+#include <fmt/core.h>
+#include <fmt/format.h>
+
+#ifndef NO_DISCARD
+#define NO_DISCARD [[nodiscard]]
+#endif
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+}
+
+
+struct CameraFormat {
+    int32_t width;
+    int32_t height;
+    float minFrameRate;
+    float maxFrameRate;
+    int32_t pixelFormat;
+
+    CameraFormat() : width(0), height(0), minFrameRate(0), maxFrameRate(0), pixelFormat(0) {}
+
+    CameraFormat(const int32_t w, const int32_t h, const float minFps, const float maxFps, const uint8_t pf)
+        : width(w), height(h), minFrameRate(minFps), maxFrameRate(maxFps), pixelFormat(pf) {}
+
+    AVPixelFormat GetFormat() const;
+
+    void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
+    void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
+    NO_DISCARD size_t GetSerializedSize() const;
+};
+
+AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format);
+
+// ReSharper disable once CppPassValueParameterByConstReference
+inline AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format) {
+    switch (format) {
+        case QVideoFrameFormat::Format_RGBA8888: return AV_PIX_FMT_RGBA;
+        case QVideoFrameFormat::Format_BGRA8888: return AV_PIX_FMT_BGRA;
+        case QVideoFrameFormat::Format_YUYV: return AV_PIX_FMT_YUYV422;
+        case QVideoFrameFormat::Format_NV12: return AV_PIX_FMT_NV12;
+        case QVideoFrameFormat::Format_YUV420P: return AV_PIX_FMT_YUV420P;
+        default: Debug::LogError("Unsupported pixel format"); return AV_PIX_FMT_NONE;
+    }
+}
+
+struct CameraSpecification {
+    std::string description;
+    std::vector<CameraFormat> formats;
+    std::string id;
+    bool isDefault;
+
+    void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
+    void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
+    NO_DISCARD size_t GetSerializedSize() const;
+};
+
+template <>
+struct fmt::formatter<CameraFormat>
+{
+    constexpr auto parse(format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const CameraFormat& f, FormatContext& ctx) const
+    {
+        return fmt::format_to(
+            ctx.out(),
+            "CameraFormat{{ width={}, height={}, minFPS={}, maxFPS={}, pixelFormat={} }}",
+            f.width,
+            f.height,
+            f.minFrameRate,
+            f.maxFrameRate,
+            static_cast<uint32_t>(f.pixelFormat)
+        );
+    }
+};
+
+template <>
+struct fmt::formatter<CameraSpecification>
+{
+    constexpr auto parse(format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename FormatContext>
+    auto format(const CameraSpecification& s, FormatContext& ctx) const
+    {
+        auto out = ctx.out();
+
+        out = fmt::format_to(
+            out,
+            "CameraSpecification{{ description=\"{}\", id=\"{}\", isDefault={}, formats=[",
+            s.description,
+            s.id,
+            s.isDefault
+        );
+
+        for (size_t i = 0; i < s.formats.size(); ++i)
+        {
+            out = fmt::format_to(out, "\n{},", s.formats[i]);
+        }
+
+        out = fmt::format_to(out, "] }}");
+        return out;
+    }
+};
+
+#endif //CAMERA_SPECIFICATION_H

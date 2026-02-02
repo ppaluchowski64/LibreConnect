@@ -1,14 +1,22 @@
 requirements:
+  tools:
+    - "ninja/1.13.2"
+    - "cmake/4.2.2"
+    - "pkgconf/2.5.1"
   common:
     - "boost/1.87.0"
     - "openssl/3.5.0"
     - "asio/1.34.2"
-    - "gtest/1.17.0"
-    - "benchmark/1.9.4"
     - "concurrentqueue/1.0.4"
     - "fmt/12.0.0"
     - "magic_enum/0.9.7"
     - "sqlitecpp/3.3.3"
     - "nlohmann_json/3.12.0"
+    - "libsrtp/2.6.0"
+  desktop:
+    - "gtest/1.17.0"
+    - "benchmark/1.9.4"
   windows:
     - "wil/1.0.250325.1"
+  android:
+    - "ffmpeg/7.1.3"

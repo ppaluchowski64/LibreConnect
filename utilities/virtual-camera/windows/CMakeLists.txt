@@ -33,3 +33,4 @@ target_link_libraries(virtual-camera-platform-implementation PRIVATE
 
 target_include_directories(virtual-camera-platform-implementation PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 target_include_directories(virtual-camera-platform-implementation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../common-inc)
+target_include_directories(virtual-camera-platform-implementation PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../global-inc)

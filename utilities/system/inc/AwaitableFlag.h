@@ -4,12 +4,13 @@
 #include <asio.hpp>
 #include <asio/awaitable.hpp>
 #include <asio/steady_timer.hpp>
+#include <chrono>
 #include <atomic>
 
 class AwaitableFlag {
 public:
-    explicit AwaitableFlag(asio::any_io_executor executor)
-        : m_executor(executor), m_timer(executor), m_flag(false) {}
+    explicit AwaitableFlag(asio::any_io_executor executor, const std::chrono::time_point<std::chrono::steady_clock> timeout = asio::steady_timer::time_point::max())
+        : m_executor(executor), m_timer(executor, timeout), m_flag(false) {}
 
     void Reset() {
         m_flag.store(false, std::memory_order_release);

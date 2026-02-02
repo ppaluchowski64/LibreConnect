@@ -10,7 +10,7 @@ int main() {
 
     std::vector<DeviceInfo> devices;
 
-    ConnectionManager::AddResponseHandler(PC_PackageType::MESSAGE, [](std::unique_ptr<Package<PC_PackageType>>&& package) {
+    ConnectionManager::AddResponseHandler(PC_PackageType::NONE, [](std::unique_ptr<Package<PC_PackageType>>&& package) {
         std::string value;
         package->GetValue(value);
         Debug::Log(value);
@@ -23,7 +23,7 @@ int main() {
             Debug::Log("Send message");
             std::string text;
             std::getline(std::cin, text);
-            ConnectionManager::Send(PC_PackageType::MESSAGE, std::move(text));
+            ConnectionManager::Send(PC_PackageType::NONE, std::move(text));
         }
 
         std::cout << "============= COMMANDS =============\n\n"

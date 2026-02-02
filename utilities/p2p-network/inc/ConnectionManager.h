@@ -4,20 +4,22 @@
 #include <atomic>
 #include <filesystem>
 #include <Packable.h>
+#include <optional>
 
 #include <QObject>
 #include <PrimaryConnection.h>
 #include <InitialConnection.h>
+#include <AwaitableFlag.h>
 #include <ConcurrentUnorderedMap.h>
 #include <boost/uuid/nil_generator.hpp>
 
 enum class InitialConnectionMode : uint8_t;
+typedef std::unique_ptr<Package<PC_PackageType>> PC_Package;
+typedef std::function<void(PC_Package&&)> RequestCallbackType;
+typedef std::function<void(bool)> CallbackWithResult;
 
 class ConnectionManager final {
 public:
-    typedef std::function<void(std::unique_ptr<Package<PC_PackageType>>&&)> RequestCallbackType;
-    typedef std::function<void(bool)> CallbackWithResult;
-
     static void StartAcceptingConnections();
     static void StopAcceptingConnections();
     static void Connect(const std::string& address, uint16_t port, InitialConnectionMode mode);
@@ -26,30 +28,40 @@ public:
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
+    static void RemoveResponseHandler(PC_PackageType type);
     static void AddEventListener(const QPointer<QObject>& object);
     static TCPEndpoint GetSeekEndpoint();
 
     template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {
-        if (!s_isInitialized.load()) {
-            std::lock_guard<std::mutex> lock(s_mutex);
-            Initialize();
-        }
+        Initialize();
 
         s_instance->m_primaryConnection->Send(type, std::forward<Args>(args)...);
     }
 
     template <Serializable... Args>
-    static void SendRequest(PC_PackageType type, RequestCallbackType&& requestResponseCallback, Args&&... args) {
-        if (!s_isInitialized.load()) {
-            std::lock_guard<std::mutex> lock(s_mutex);
-            Initialize();
-        }
+    static void SendRequestResponse(const size_t requestID, PC_PackageType type, Args&&... args) {
+        Initialize();
 
-        constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_WITH_RESPONSE);
+        constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE_RESPONSE);
+        s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
+    }
+
+    template <Serializable... Args>
+    // ReSharper disable once CppParameterMayBeConst
+    static asio::awaitable<std::optional<std::unique_ptr<Package<PC_PackageType>>>> SendRequest(PC_PackageType type, Args&&... args) {
+        Initialize();
+
+        constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE);
         const size_t requestID = s_instance->m_currentRequestID.fetch_add(1);
         s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
-        s_instance->m_requestCallbackMap.InsertOrAssign(requestID, std::forward<RequestCallbackType>(requestResponseCallback));
+
+        const std::shared_ptr<AwaitableFlag> flag = std::make_shared<AwaitableFlag>(s_instance->m_context.get_executor(), std::chrono::time_point<std::chrono::steady_clock>(std::chrono::milliseconds(500)));
+        s_instance->m_requestAwaitableMap.InsertOrAssign(requestID, flag);
+        co_await flag->Wait();
+        s_instance->m_requestAwaitableMap.Erase(requestID);
+
+        co_return s_instance->m_requestPackageMap.Pop(requestID);
     }
 
 
@@ -71,6 +83,7 @@ private:
     static bool VerifyCallbackAlwaysAccept(bool preverified, asio::ssl::verify_context& ctx);
     static void RunContext();
     static void SetSeekingEndpoint(TCPEndpoint endpoint);
+
 
     asio::awaitable<void> CoProcessPackages();
 
@@ -94,7 +107,10 @@ private:
 
     std::vector<std::thread> m_threads;
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
-    ConcurrentUnorderedMap<size_t, RequestCallbackType> m_requestCallbackMap;
+
+    ConcurrentUnorderedMap<size_t, std::shared_ptr<AwaitableFlag>> m_requestAwaitableMap;
+    ConcurrentUnorderedMap<size_t, std::unique_ptr<Package<PC_PackageType>>> m_requestPackageMap;
+
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
 
     std::shared_ptr<InitialConnection> m_initialConnectionOut;
