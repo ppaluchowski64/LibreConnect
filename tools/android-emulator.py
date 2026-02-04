@@ -4,6 +4,7 @@ import subprocess
 import threading
 import json
 import os
+import platform
 
 CONFIG_FILE = os.path.expanduser("~/.LibreConnect-cache/emulator_config.json")
 SIGN_KEY_PATH = os.path.expanduser("~/.LibreConnect-cache/apk_key.key")
@@ -16,6 +17,51 @@ window.title("Emulator")
 main_frame = tk.Frame(window)
 running_frame = tk.Frame(window)
 
+env_file_path = "../.env"
+
+# Check for environment variables file
+if not os.path.exists(env_file_path):
+    print("No .env file found")
+    input("Press Enter to continue...")
+    exit(-1)
+
+# Load .env
+with open(env_file_path, "r") as f:
+    for line in f:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            key, _, value = line.partition("=")
+            os.environ[key.strip()] = value.strip()
+
+sdk_dir = os.path.expanduser(os.environ.get("ANDROID_SDK_DIR", ""))
+if not sdk_dir:
+    raise EnvironmentError("ANDROID_SDK_DIR environment variable is not set.")
+
+is_windows = platform.system() == "Windows"
+exe_suffix = ".exe" if is_windows else ""
+bat_suffix = ".bat" if is_windows else ""
+
+build_tools_base = os.path.join(sdk_dir, "build-tools")
+build_tools_version = 0
+build_tools_max_version_dir = ""
+
+if os.path.exists(build_tools_base):
+    for entry in os.listdir(build_tools_base):
+        full_path = os.path.join(build_tools_base, entry)
+        if os.path.isdir(full_path):
+            try:
+                major_v = int(entry.split(".")[0])
+                if major_v >= build_tools_version:
+                    build_tools_max_version_dir = entry
+                    build_tools_version = major_v
+            except ValueError:
+                continue
+
+build_tools_dir = os.path.join(build_tools_base, build_tools_max_version_dir)
+
+emulator_path = os.path.join(sdk_dir, "emulator", f"emulator{exe_suffix}")
+adb_path = os.path.join(sdk_dir, "platform-tools", f"adb{exe_suffix}")
+apk_signer_path = os.path.join(build_tools_dir, f"apksigner{bat_suffix}")
 def load_last_apk():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -56,7 +102,7 @@ def sign_apk(_apk_path: str):
 
     try:
         subprocess.run([
-            "apksigner", "sign",
+            apk_signer_path, "sign",
             "--ks", SIGN_KEY_PATH,
             "--ks-pass", f"pass:{KEY_PASSWORD}",
             "--key-pass", f"pass:{KEY_PASSWORD}",
@@ -72,7 +118,7 @@ def refresh_devices_list(_devices: tk.Listbox):
     try:
         _devices.delete(0, tk.END)
         result = subprocess.run(
-            ["emulator", "-list-avds"],
+            [emulator_path, "-list-avds"],
             capture_output=True,
             text=True,
             check=True
@@ -92,7 +138,7 @@ def start_emulator(_device: str):
     def run():
         main_frame.pack_forget()
         running_frame.pack(fill="both", expand=True)
-        subprocess.run(["emulator", "-avd", _device, "-no-snapshot", "-wipe-data"])
+        subprocess.run([emulator_path, "-avd", _device, "-no-snapshot", "-wipe-data"])
         running_frame.pack_forget()
         main_frame.pack(fill="both", expand=True)
 
@@ -102,7 +148,7 @@ def install_apk(_apk_path: str):
     signed_apk_dir = sign_apk(_apk_path)
 
     if os.path.exists(signed_apk_dir):
-        subprocess.run(["adb", "install", "-r", signed_apk_dir])
+        subprocess.run([adb_path, "install", "-r", signed_apk_dir])
         save_last_apk(_apk_path)
 
 def browse_apk(_entry: tk.Entry):
