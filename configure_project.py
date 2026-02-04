@@ -279,11 +279,14 @@ def install_linux_dependencies():
             "ocl-icd-opencl-dev",
             "opencl-headers",
             "nvidia-cuda-toolkit",
-            "libx11-dev"
+            "libx11-dev",
         ]
 
         cmd = ["sudo", "apt-get", "install", "-y"] + packages
+
+        subprocess.run(["sudo", "apt-get", "install", "libyaml-cpp0.7"], check=True)
         subprocess.run(cmd, check=True)
+
         print("System dependencies installed successfully.")
 
     except subprocess.CalledProcessError as e:
