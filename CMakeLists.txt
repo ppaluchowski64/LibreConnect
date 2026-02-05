@@ -79,13 +79,31 @@ BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log 
 add_subdirectory("utilities/virtual-camera")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
-BuildStaticLibrary(network-camera-module modules/network-camera
-        common-module
-        srtp-stream
-        p2p-network-component-pc
-        ffmpeg_headers
-        virtual-camera
-)
+
+if (ANDROID OR IOS)
+
+    BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/mobile
+            common-module
+            srtp-stream
+            p2p-network-component-pc
+            ffmpeg_headers
+            virtual-camera
+    )
+
+elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+
+
+    BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
+            common-module
+            srtp-stream
+            p2p-network-component-pc
+            ffmpeg_headers
+            virtual-camera
+    )
+
+endif ()
+
+
 
 if (ANDROID)
     add_subdirectory("apps/mobile")

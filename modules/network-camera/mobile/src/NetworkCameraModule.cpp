@@ -1,19 +1,18 @@
 #include <NetworkCameraModule.h>
 #include <CameraUtilities.h>
+
 #include <magic_enum/magic_enum.hpp>
+
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
+
 #include <QVideoSink>
-
-#if defined(DESKTOP_DEVICE)
-
-std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() const {
-    return m_camerasSpecification;
-}
-
-#endif
-
-#if defined(MOBILE_DEVICE)
+#include <QMediaDevices>
+#include <QCameraDevice>
+#include <QGuiApplication>
+#include <QMediaCaptureSession>
+#include <QMediaRecorder>
+#include <QVideoFrameInput>
 
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
     if (!QGuiApplication::instance()) {
@@ -201,37 +200,9 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     av_packet_free(&pkt);
 }
 
-#endif
-
-#if defined(DESKTOP_DEVICE)
-
-asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
-    constexpr size_t UPDATE_DELAY = 5;
-
-    while (GetModuleState() != ModuleState::Disabled && GetModuleState() != ModuleState::Uninitialized) {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
-        if (!response.has_value()) {
-            Debug::LogWarning("NetworkCameraModule::UpdateCamerasSpecificationList: No response");
-            continue;
-        }
-
-        response.value()->GetValue(m_camerasSpecification);
-
-        asio::steady_timer timer(m_context);
-        timer.expires_after(std::chrono::seconds(UPDATE_DELAY));
-        co_await timer.async_wait(asio::use_awaitable);
-    }
-}
-
-#endif
-
-//#define MOBILE_DEVICE
-
-
 void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
-#if defined(MOBILE_DEVICE)
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, [instance, this](PC_Package&& package) mutable {
         if (GetModuleState() != ModuleState::Disabled) {
             return;
@@ -271,58 +242,22 @@ void NetworkCameraModule::EnableResponseCallbacks() {
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM, [instance, this](PC_Package&& package) mutable {
         Disable();
     });
-
-#endif
 }
 
 void NetworkCameraModule::DisableResponseCallbacks() {
-#if defined(MOBILE_DEVICE)
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
-#endif
 }
 
 void NetworkCameraModule::OnInitialize() {
     AddThreads(1);
-
-#if defined(DESKTOP_DEVICE)
-    asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
-#endif
 }
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-
-#if defined(DESKTOP_DEVICE)
-    m_localKey = SRTP::Stream::GenerateKey();
-
-    {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, std::vector(m_localKey));
-        if (!response.has_value()) {
-            throw std::runtime_error("No response");
-        }
-
-        response.value()->GetValue(m_remoteKey);
-    }
-#endif
-
     m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey);
-
-#if defined(DESKTOP_DEVICE)
-    {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM);
-        if (!response.has_value()) {
-            throw std::runtime_error("No response");
-        }
-
-        const StreamStartFailReason reason = response.value()->GetValue<StreamStartFailReason>();
-        if (reason != StreamStartFailReason::None) {
-            throw std::runtime_error(fmt::format("Failed to start stream: {}", magic_enum::enum_name(reason)));
-        }
-    }
-#endif
 
     co_return;
 }
@@ -331,15 +266,10 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     m_videoStream.reset();
 
-#if defined(DESKTOP_DEVICE)
-    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
-#endif
-
     co_return;
 }
 
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-
     co_return;
 }

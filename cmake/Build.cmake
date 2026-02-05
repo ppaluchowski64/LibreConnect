@@ -15,6 +15,32 @@ function(BuildStaticLibrary StaticLibraryName RootPath)
     target_include_directories(${StaticLibraryName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/)
 endfunction()
 
+function(BuildApplicationModule ModuleName CommonPath RootPath)
+    file(GLOB_RECURSE SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
+
+            ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/src/*.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/src/*.cxx
+            ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/src/*.cc
+    )
+
+    file(GLOB_RECURSE HEADER_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
+
+            ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/inc/*.h
+            ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/inc/*.hpp
+    )
+
+    add_library(${ModuleName} STATIC ${SOURCE_FILES} ${HEADER_FILES})
+    target_link_libraries(${ModuleName} PUBLIC ${ARGN})
+
+    target_include_directories(${ModuleName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/)
+    target_include_directories(${ModuleName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/inc/)
+endfunction()
+
 function(BuildSharedLibrary SharedLibraryName RootPath)
     file(GLOB_RECURSE SOURCE_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp

@@ -7,17 +7,10 @@
 #include <CameraSpecification.h>
 #include <CameraUtilities.h>
 
-#include <QCameraDevice>
-#include <QGuiApplication>
-#include <QMediaCaptureSession>
-#include <QMediaRecorder>
-#include <QVideoFrameInput>
-#include <QMediaFormat>
 #include <QVideoFrame>
 #include <QCamera>
 #include <QMediaCaptureSession>
 #include <QVideoSink>
-#include <QMediaDevices>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -31,23 +24,14 @@ enum class StreamStartFailReason : uint8_t {
 };
 
 class NetworkCameraModule final : public BaseModule {
-public:
-
-#if defined(DESKTOP_DEVICE)
-    std::vector<CameraSpecification> GetCamerasSpecification() const;
-#endif
-
-#if defined(MOBILE_DEVICE)
+private:
     asio::awaitable<void> StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
     asio::awaitable<void> SendFrame(QVideoFrame frame);
-#endif
 
-private:
     std::unique_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
 
-#if defined(MOBILE_DEVICE)
     std::unique_ptr<QMediaCaptureSession> m_captureSession;
     std::unique_ptr<QCamera> m_camera;
     std::unique_ptr<QVideoSink> m_videoSink;
@@ -55,18 +39,11 @@ private:
     AVCodecContext* m_codecContext{nullptr};
     SwsContext* m_swsContext{nullptr};
 
-#endif
-
-#if defined(DESKTOP_DEVICE)
-    std::vector<CameraSpecification> m_camerasSpecification;
-    asio::awaitable<void> UpdateCamerasSpecificationList();
-#endif
-
 protected:
     void EnableResponseCallbacks() override;
     void DisableResponseCallbacks() override;
-
     void OnInitialize() override;
+
     asio::awaitable<void> OnEnable() override;
     asio::awaitable<void> OnDisable() override;
     asio::awaitable<void> OnShutdown() override;
