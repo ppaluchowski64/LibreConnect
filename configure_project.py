@@ -194,47 +194,33 @@ common_build_missing = "--build=missing"
 def install_linux_dependencies():
     if not shutil.which("apt-get"):
         print("WARNING: 'apt-get' not found. Skipping system dependency installation.")
-        print("Please ensure the required build packages are installed manually.")
         return
 
     try:
+        arch = subprocess.check_output(["dpkg", "--print-architecture"], text=True).strip()
+        codename = subprocess.check_output(["lsb_release", "-cs"], text=True).strip()
+        print(f"Detected architecture: {arch}, Ubuntu codename: {codename}")
+
+        if arch == "amd64":
+            print("Setting up LunarG repository for x86_64...")
+            subprocess.run(
+                "wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo gpg --dearmor --yes -o /usr/share/keyrings/lunarg-signing-key-pub.gpg",
+                shell=True, check=True
+            )
+            vulkan_repo = f"deb [signed-by=/usr/share/keyrings/lunarg-signing-key-pub.gpg] https://packages.lunarg.com/vulkan {codename} main"
+            subprocess.run(f'echo "{vulkan_repo}" | sudo tee /etc/apt/sources.list.d/lunarg-vulkan.list', shell=True, check=True)
+
+        subprocess.run("sudo add-apt-repository -y multiverse", shell=True, check=True)
+
         print("Updating package lists...")
-
-        subprocess.run(
-            "wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -",
-            shell=True,
-            check=True
-        )
-
-        subprocess.run(
-            "sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list https://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list",
-            shell=True,
-            check=True
-        )
-
-        subprocess.run(
-            "sudo add-apt-repository -y multiverse",
-            shell=True,
-            check=True
-        )
-
-        subprocess.run(
-            "wget -qO - https://repositories.intel.com/graphics/intel-graphics.key | sudo gpg --dearmor --batch --yes --output /usr/share/keyrings/intel-graphics.gpg",
-            shell=True,
-            check=True
-        )
-
-        subprocess.run(
-            'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/graphics/ubuntu jammy main" | sudo tee /etc/apt/sources.list.d/intel.list',
-            shell=True,
-            check=True
-        )
-
         subprocess.run(["sudo", "apt-get", "update"], check=True)
+
         print("Installing packages...")
 
         packages = [
-            "vulkan-sdk",
+            "libyaml-cpp-dev",
+            "libvulkan-dev",
+            "vulkan-tools",
             "build-essential",
             "libgl1-mesa-dev",
             "libxkbcommon-x11-0",
@@ -249,9 +235,7 @@ def install_linux_dependencies():
             "libxcb-xinerama0",
             "libxcb-xkb1",
             "libxkbcommon-dev",
-            "libmysqlclient21",
             "libmysqlclient-dev",
-            "unixodbc",
             "unixodbc-dev",
             "libpq-dev",
             "pkg-config",
@@ -261,9 +245,6 @@ def install_linux_dependencies():
             "libdrm-dev",
             "libva-dev",
             "libvdpau-dev",
-            "libvpl2",
-            "libvpl-dev",
-            "intel-media-va-driver-non-free",
             "libx264-dev",
             "libx265-dev",
             "libnuma-dev",
@@ -278,24 +259,27 @@ def install_linux_dependencies():
             "wayland-protocols",
             "ocl-icd-opencl-dev",
             "opencl-headers",
-            "nvidia-cuda-toolkit",
             "libx11-dev",
         ]
 
-        cmd = ["sudo", "apt-get", "install", "-y"] + packages
+        if arch == "amd64":
+            packages.extend([
+                "vulkan-sdk",
+                "libvpl-dev",
+                "intel-media-va-driver-non-free",
+                "nvidia-cuda-toolkit"
+            ])
 
-        subprocess.run(["sudo", "apt-get", "install", "libyaml-cpp0.7"], check=True)
+        cmd = ["sudo", "apt-get", "install", "-y"] + packages
         subprocess.run(cmd, check=True)
 
         print("System dependencies installed successfully.")
 
     except subprocess.CalledProcessError as e:
         print(f"ERROR: Failed to install system dependencies. {e}")
-        print("Please try running the 'sudo apt-get ...' commands manually.")
         sys.exit(e.returncode)
-    except FileNotFoundError:
-        print("ERROR: 'sudo' command not found. Cannot install system dependencies.")
-        sys.exit(1)
+
+
 def run_conan_install(build_type: str):
     cmd_parts = [
         "conan",
@@ -578,6 +562,9 @@ if os.environ.get("BUILD_FOR") == "Desktop":
         ffmpeg_src = os.path.join(build_dir, "ffmpeg-src")
         nvcodec_src = os.path.join(build_dir, "nv-codec-headers-src")
 
+        arch = os.uname().machine
+        is_arm = (arch == "aarch64" or arch == "arm64")
+
         os.makedirs(build_dir, exist_ok=True)
         cuda_path = os.environ.get("CUDA_PATH", "/usr/local/cuda")
 
@@ -597,25 +584,28 @@ if os.environ.get("BUILD_FOR") == "Desktop":
             "--enable-libopus",
             "--enable-libmp3lame",
             "--enable-libfdk-aac",
-
             "--enable-libdrm",
-            "--enable-vaapi",
-            "--enable-vdpau",
-            "--enable-libvpl",
-
-            "--enable-cuda-nvcc",
-            "--enable-cuvid",
-            "--enable-nvenc",
-            "--enable-libnpp",
 
             "--enable-opencl",
-            "--enable-vulkan",
             "--enable-libxcb",
 
             "--extra-ldflags=-Wl,--no-as-needed",
-            f"--extra-cflags=-I{cuda_path}/include",
-            f"--extra-ldflags=-L{cuda_path}/lib64",
         ]
+
+        if not is_arm:
+            configure_cmd.extend([
+                "--enable-libvpl",
+                "--enable-vaapi",
+                "--enable-vdpau",
+                "--enable-cuda-nvcc",
+                "--enable-cuvid",
+                "--enable-nvenc",
+                "--enable-libnpp",
+                "--enable-vulkan",
+
+                f"--extra-cflags=-I{cuda_path}/include",
+                f"--extra-ldflags=-L{cuda_path}/lib64",
+            ])
 
         data = "\n".join(configure_cmd).encode("utf-8")
         sha256 = hashlib.sha256(data).hexdigest()
