@@ -7,8 +7,8 @@ namespace SRTP {
     static std::atomic<bool> g_isStrpInited{false};
     static constexpr size_t MAX_PAYLOAD_SIZE = 1024;
 
-    Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context),
-        m_context(context), m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate) {
+    Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context), m_context(context),
+        m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate) {
 
         if (!g_isStrpInited.exchange(true)) {
             srtp_init();
@@ -16,6 +16,7 @@ namespace SRTP {
 
         m_sendSession = CreateSrtpSession(localKey, 3345, ssrc_any_outbound);
         m_recvSession = CreateSrtpSession(remoteKey, 3345, ssrc_any_inbound);
+        m_buffer.reserve(1500);
     }
 
     void Stream::Bind(const UDPEndpoint& endpoint) {
@@ -32,19 +33,42 @@ namespace SRTP {
     }
 
     void Stream::Receive(std::vector<uint8_t>& payload) {
-        std::vector<uint8_t> buffer(1500);
+        payload.clear();
+        bool frameComplete = false;
+        uint32_t currentFrameTimestamp = 0;
 
-        int length = m_socket.receive(asio::mutable_buffer(buffer.data(), buffer.size()));
+        while (!frameComplete) {
+            int length = m_socket.receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
 
-        if (srtp_unprotect(m_recvSession, buffer.data(), &length) != srtp_err_status_ok) {
-            return;
-        }
+            if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                continue;
+            }
 
-        if (length > sizeof(Header)) {
-            payload.resize(length - sizeof(Header));
-            std::memcpy(payload.data(), buffer.data() + sizeof(Header), length - sizeof(Header));
-        } else {
-            payload.clear();
+            if (length <= sizeof(Header)) continue;
+
+            const Header* header = reinterpret_cast<Header*>(m_buffer.data());
+            frameComplete = (header->m_pt & 0x80) != 0;
+
+            const uint8_t* rtpPayload = m_buffer.data() + sizeof(Header);
+            const size_t rtpPayloadLen = length - sizeof(Header);
+
+            const uint8_t firstByte = rtpPayload[0];
+            const uint8_t nalType = firstByte & 0x1F;
+
+            if (nalType == 28) {
+                const uint8_t fuHeader = rtpPayload[1];
+                const bool isStart = (fuHeader & 0x80) != 0;
+
+                if (isStart) {
+                    uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
+                    payload.push_back(reconstructedNalHeader);
+                }
+
+                payload.insert(payload.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
+
+            } else {
+                payload.insert(payload.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+            }
         }
     }
 
@@ -59,13 +83,13 @@ namespace SRTP {
             Header header;
             BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), true);
 
-            std::vector<uint8_t> outBuf(sizeof(Header) + size + 16, 0);
-            std::memcpy(outBuf.data(), &header, sizeof(Header));
-            std::memcpy(outBuf.data() + sizeof(Header), payload, size);
+            m_buffer.resize(sizeof(Header) + size + 16, 0);
+            std::memcpy(m_buffer.data(), &header, sizeof(Header));
+            std::memcpy(m_buffer.data() + sizeof(Header), payload, size);
 
             int length = sizeof(Header) + size;
-            srtp_protect(m_sendSession, outBuf.data(), &length);
-            m_socket.send(asio::const_buffer(outBuf.data(), length));
+            srtp_protect(m_sendSession, m_buffer.data(), &length);
+            m_socket.send(asio::const_buffer(m_buffer.data(), length));
         } else {
             const uint8_t nalHeader = payload[0];
             const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
@@ -86,16 +110,16 @@ namespace SRTP {
                 Header header;
                 BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), isLast);
 
-                std::vector<uint8_t> outBuf(sizeof(Header) + 2 + fragmentSize + 16, 0);
-                std::memcpy(outBuf.data(), &header, sizeof(Header));
-                outBuf[sizeof(Header)] = fuIndicator;
-                outBuf[sizeof(Header) + 1] = fuHeader;
-                std::memcpy(outBuf.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
+                m_buffer.resize(sizeof(Header) + 2 + fragmentSize + 16, 0);
+                std::memcpy(m_buffer.data(), &header, sizeof(Header));
+                m_buffer[sizeof(Header)] = fuIndicator;
+                m_buffer[sizeof(Header) + 1] = fuHeader;
+                std::memcpy(m_buffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
                 int length = sizeof(Header) + 2 + fragmentSize;
-                srtp_protect(m_sendSession, outBuf.data(), &length);
+                srtp_protect(m_sendSession, m_buffer.data(), &length);
 
-                m_socket.send(asio::const_buffer(outBuf.data(), length));
+                m_socket.send(asio::const_buffer(m_buffer.data(), length));
 
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
@@ -111,13 +135,13 @@ namespace SRTP {
             Header header;
             BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), true);
 
-            std::vector<uint8_t> outBuf(sizeof(Header) + size + 16, 0);
-            std::memcpy(outBuf.data(), &header, sizeof(Header));
-            std::memcpy(outBuf.data() + sizeof(Header), payload, size);
+            m_buffer.resize(sizeof(Header) + size + 16, 0);
+            std::memcpy(m_buffer.data(), &header, sizeof(Header));
+            std::memcpy(m_buffer.data() + sizeof(Header), payload, size);
 
             int length = sizeof(Header) + size;
-            srtp_protect(m_sendSession, outBuf.data(), &length);
-            m_socket.send(asio::const_buffer(outBuf.data(), length));
+            srtp_protect(m_sendSession, m_buffer.data(), &length);
+            m_socket.send(asio::const_buffer(m_buffer.data(), length));
         } else {
             const uint8_t nalHeader = payload[0];
             const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
@@ -138,16 +162,16 @@ namespace SRTP {
                 Header header;
                 BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), isLast);
 
-                std::vector<uint8_t> outBuf(sizeof(Header) + 2 + fragmentSize + 16, 0);
-                std::memcpy(outBuf.data(), &header, sizeof(Header));
-                outBuf[sizeof(Header)] = fuIndicator;
-                outBuf[sizeof(Header) + 1] = fuHeader;
-                std::memcpy(outBuf.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
+                m_buffer.resize(sizeof(Header) + 2 + fragmentSize + 16, 0);
+                std::memcpy(m_buffer.data(), &header, sizeof(Header));
+                m_buffer[sizeof(Header)] = fuIndicator;
+                m_buffer[sizeof(Header) + 1] = fuHeader;
+                std::memcpy(m_buffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
                 int length = sizeof(Header) + 2 + fragmentSize;
-                srtp_protect(m_sendSession, outBuf.data(), &length);
+                srtp_protect(m_sendSession, m_buffer.data(), &length);
 
-                m_socket.send(asio::const_buffer(outBuf.data(), length));
+                m_socket.send(asio::const_buffer(m_buffer.data(), length));
 
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
@@ -163,13 +187,13 @@ namespace SRTP {
             Header header;
             BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), true);
 
-            std::vector<uint8_t> outBuf(sizeof(Header) + size + 16, 0);
-            std::memcpy(outBuf.data(), &header, sizeof(Header));
-            std::memcpy(outBuf.data() + sizeof(Header), payload, size);
+            m_buffer.resize(sizeof(Header) + size + 16, 0);
+            std::memcpy(m_buffer.data(), &header, sizeof(Header));
+            std::memcpy(m_buffer.data() + sizeof(Header), payload, size);
 
             int length = sizeof(Header) + size;
-            srtp_protect(m_sendSession, outBuf.data(), &length);
-            co_await m_socket.async_send(asio::const_buffer(outBuf.data(), length));
+            srtp_protect(m_sendSession, m_buffer.data(), &length);
+            co_await m_socket.async_send(asio::const_buffer(m_buffer.data(), length));
         } else {
             const uint8_t nalHeader = payload[0];
             const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
@@ -190,16 +214,16 @@ namespace SRTP {
                 Header header;
                 BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), isLast);
 
-                std::vector<uint8_t> outBuf(sizeof(Header) + 2 + fragmentSize + 16, 0);
-                std::memcpy(outBuf.data(), &header, sizeof(Header));
-                outBuf[sizeof(Header)] = fuIndicator;
-                outBuf[sizeof(Header) + 1] = fuHeader;
-                std::memcpy(outBuf.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
+                m_buffer.resize(sizeof(Header) + 2 + fragmentSize + 16, 0);
+                std::memcpy(m_buffer.data(), &header, sizeof(Header));
+                m_buffer[sizeof(Header)] = fuIndicator;
+                m_buffer[sizeof(Header) + 1] = fuHeader;
+                std::memcpy(m_buffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
                 int length = sizeof(Header) + 2 + fragmentSize;
-                srtp_protect(m_sendSession, outBuf.data(), &length);
+                srtp_protect(m_sendSession, m_buffer.data(), &length);
 
-                co_await m_socket.async_send(asio::const_buffer(outBuf.data(), length));
+                co_await m_socket.async_send(asio::const_buffer(m_buffer.data(), length));
 
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
@@ -208,22 +232,42 @@ namespace SRTP {
     }
 
     asio::awaitable<void> Stream::AsyncReceive(std::vector<uint8_t>& payload) {
-        std::vector<uint8_t> buffer(1500);
+        payload.clear();
+        bool frameComplete = false;
+        uint32_t currentFrameTimestamp = 0;
 
-        int length = co_await m_socket.async_receive(
-            asio::mutable_buffer(buffer.data(), buffer.size()),
-            asio::use_awaitable
-        );
+        while (!frameComplete) {
+            int length = co_await m_socket.async_receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
 
-        if (srtp_unprotect(m_recvSession, buffer.data(), &length) != srtp_err_status_ok) {
-            co_return;
-        }
+            if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                continue;
+            }
 
-        if (length > sizeof(Header)) {
-            payload.resize(length - sizeof(Header));
-            std::memcpy(payload.data(), buffer.data() + sizeof(Header), length - sizeof(Header));
-        } else {
-            payload.clear();
+            if (length <= sizeof(Header)) continue;
+
+            const Header* header = reinterpret_cast<Header*>(m_buffer.data());
+            frameComplete = (header->m_pt & 0x80) != 0;
+
+            const uint8_t* rtpPayload = m_buffer.data() + sizeof(Header);
+            const size_t rtpPayloadLen = length - sizeof(Header);
+
+            const uint8_t firstByte = rtpPayload[0];
+            const uint8_t nalType = firstByte & 0x1F;
+
+            if (nalType == 28) {
+                const uint8_t fuHeader = rtpPayload[1];
+                const bool isStart = (fuHeader & 0x80) != 0;
+
+                if (isStart) {
+                    uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
+                    payload.push_back(reconstructedNalHeader);
+                }
+
+                payload.insert(payload.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
+
+            } else {
+                payload.insert(payload.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+            }
         }
     }
 
@@ -238,13 +282,13 @@ namespace SRTP {
             Header header;
             BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), true);
 
-            std::vector<uint8_t> outBuf(sizeof(Header) + size + 16, 0);
-            std::memcpy(outBuf.data(), &header, sizeof(Header));
-            std::memcpy(outBuf.data() + sizeof(Header), payload, size);
+            m_buffer.resize(sizeof(Header) + size + 16, 0);
+            std::memcpy(m_buffer.data(), &header, sizeof(Header));
+            std::memcpy(m_buffer.data() + sizeof(Header), payload, size);
 
             int length = sizeof(Header) + size;
-            srtp_protect(m_sendSession, outBuf.data(), &length);
-            co_await m_socket.async_send(asio::const_buffer(outBuf.data(), length));
+            srtp_protect(m_sendSession, m_buffer.data(), &length);
+            co_await m_socket.async_send(asio::const_buffer(m_buffer.data(), length));
         } else {
             const uint8_t nalHeader = payload[0];
             const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
@@ -265,16 +309,16 @@ namespace SRTP {
                 Header header;
                 BuildRtpHeader(&header, currentTimestamp, m_sequence.fetch_add(1), isLast);
 
-                std::vector<uint8_t> outBuf(sizeof(Header) + 2 + fragmentSize + 16, 0);
-                std::memcpy(outBuf.data(), &header, sizeof(Header));
-                outBuf[sizeof(Header)] = fuIndicator;
-                outBuf[sizeof(Header) + 1] = fuHeader;
-                std::memcpy(outBuf.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
+                m_buffer.resize(sizeof(Header) + 2 + fragmentSize + 16, 0);
+                std::memcpy(m_buffer.data(), &header, sizeof(Header));
+                m_buffer[sizeof(Header)] = fuIndicator;
+                m_buffer[sizeof(Header) + 1] = fuHeader;
+                std::memcpy(m_buffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
                 int length = sizeof(Header) + 2 + fragmentSize;
-                srtp_protect(m_sendSession, outBuf.data(), &length);
+                srtp_protect(m_sendSession, m_buffer.data(), &length);
 
-                co_await m_socket.async_send(asio::const_buffer(outBuf.data(), length));
+                co_await m_socket.async_send(asio::const_buffer(m_buffer.data(), length));
 
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
