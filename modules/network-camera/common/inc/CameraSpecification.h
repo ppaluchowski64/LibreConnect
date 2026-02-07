@@ -23,20 +23,26 @@ extern "C" {
 struct CameraFormat {
     int32_t width;
     int32_t height;
-    float minFrameRate;
-    float maxFrameRate;
-    int32_t pixelFormat;
+    uint16_t framerate;
 
-    CameraFormat() : width(0), height(0), minFrameRate(0), maxFrameRate(0), pixelFormat(0) {}
-
-    CameraFormat(const int32_t w, const int32_t h, const float minFps, const float maxFps, const uint8_t pf)
-        : width(w), height(h), minFrameRate(minFps), maxFrameRate(maxFps), pixelFormat(pf) {}
-
-    AVPixelFormat GetFormat() const;
+    CameraFormat() : width(0), height(0), framerate(0) {}
+    CameraFormat(const int32_t w, const int32_t h, const uint16_t f)
+        : width(w), height(h), framerate(f) {}
 
     void Serialize(std::vector<uint8_t>& buffer, size_t& offset) const;
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
     NO_DISCARD size_t GetSerializedSize() const;
+};
+
+struct CameraFormatFull {
+    int32_t width;
+    int32_t height;
+    uint16_t framerate;
+    VCamFormat pixelFormat;
+
+    CameraFormatFull() : width(0), height(0), framerate(0), pixelFormat(VCAM_FORMAT_NV12) {}
+    CameraFormatFull(const int32_t w, const int32_t h, const uint16_t f, const VCamFormat pf)
+        : width(w), height(h), framerate(f), pixelFormat(pf) {}
 };
 
 AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format);
@@ -77,12 +83,10 @@ struct fmt::formatter<CameraFormat>
     {
         return fmt::format_to(
             ctx.out(),
-            "CameraFormat{{ width={}, height={}, minFPS={}, maxFPS={}, pixelFormat={} }}",
+            "CameraFormat{{ width={}, height={}, framerate{}}}",
             f.width,
             f.height,
-            f.minFrameRate,
-            f.maxFrameRate,
-            static_cast<uint32_t>(f.pixelFormat)
+            f.framerate
         );
     }
 };
