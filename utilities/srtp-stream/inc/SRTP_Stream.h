@@ -49,6 +49,8 @@ namespace SRTP {
         uint32_t m_remoteSSRC;
         uint32_t m_timestampInc;
 
+        std::vector<uint8_t> m_buffer;
+
         std::atomic<uint16_t> m_sequence{0};
         std::atomic<uint32_t> m_timestamp{0};
     };
