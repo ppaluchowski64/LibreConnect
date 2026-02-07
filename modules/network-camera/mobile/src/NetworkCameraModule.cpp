@@ -49,14 +49,14 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                 }
 
                 constexpr float diff = 0.01f;
-                if (std::abs(fm.minFrameRate() - requestedFormat.minFrameRate) > diff ||
-                    std::abs(fm.maxFrameRate() - requestedFormat.maxFrameRate) > diff) {
+                if (fm.minFrameRate() - requestedFormat.framerate < diff ||
+                    fm.maxFrameRate() - requestedFormat.framerate > -diff) {
                     continue;
                 }
 
                 format = fm;
 
-                if (fm.pixelFormat() != static_cast<QVideoFrameFormat::PixelFormat>(requestedFormat.pixelFormat)) {
+                if (fm.pixelFormat() != QVideoFrameFormat::Format_NV12) {
                     continue;
                 }
 
@@ -99,29 +99,35 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             m_codecContext->framerate = {static_cast<int>(format.maxFrameRate()), 1};
             m_codecContext->gop_size = 10;
             m_codecContext->max_b_frames = 1;
-            m_codecContext->pix_fmt = static_cast<AVPixelFormat>(requestedFormat.pixelFormat);
+            m_codecContext->pix_fmt = AV_PIX_FMT_NV12;
+
+            m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, requestedFormat.framerate);
 
             if (m_swsContext) {
                 sws_freeContext(m_swsContext);
             }
 
-            m_swsContext = sws_getContext(
-                m_codecContext->width,
-                m_codecContext->height,
-                GetFormat(format.pixelFormat()),
-                m_codecContext->width,
-                m_codecContext->height,
-                m_codecContext->pix_fmt,
-                SWS_BILINEAR,
-                nullptr,
-                nullptr,
-                nullptr
-            );
+            if (format.pixelFormat() != QVideoFrameFormat::Format_NV12) {
+                m_swsContext = sws_getContext(
+                    m_codecContext->width,
+                    m_codecContext->height,
+                    GetFormat(format.pixelFormat()),
+                    m_codecContext->width,
+                    m_codecContext->height,
+                    m_codecContext->pix_fmt,
+                    SWS_BILINEAR,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                );
 
-            if (!m_swsContext) {
-                Debug::LogError("Could not initialize SwsContext");
-                return;
+                if (!m_swsContext) {
+                    Debug::LogError("Could not initialize SwsContext");
+                    return;
+                }
             }
+
+            m_ptsCounter = 0;
 
             QGuiApplication::instance()->connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, [&](const QVideoFrame &frame) {
                 if (!frame.isValid())
@@ -146,15 +152,15 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
         co_return;
     }
 
+    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+
     AVFrame* avFrame = av_frame_alloc();
     if (!avFrame) { frame.unmap(); co_return; }
 
     avFrame->format = m_codecContext->pix_fmt;
     avFrame->width  = m_codecContext->width;
     avFrame->height = m_codecContext->height;
-
-    static int64_t pts_counter = 0;
-    avFrame->pts = pts_counter++;
+    avFrame->pts = m_ptsCounter++;
 
     if (av_frame_get_buffer(avFrame, 32) < 0) {
         Debug::LogError("Could not allocate frame data");
@@ -163,15 +169,21 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
         co_return;
     }
 
-    const uint8_t* srcSlice[4] = {};
-    int srcStride[4] = {};
+    if (frame.pixelFormat() != QVideoFrameFormat::Format_NV12) {
+        const uint8_t* srcSlice[4] = {};
+        int srcStride[4] = {};
 
-    for (int i = 0; i < frame.planeCount(); ++i) {
-        srcSlice[i]  = frame.bits(i);
-        srcStride[i] = frame.bytesPerLine(i);
+        for (int i = 0; i < frame.planeCount(); ++i) {
+            srcSlice[i]  = frame.bits(i);
+            srcStride[i] = frame.bytesPerLine(i);
+        }
+
+        sws_scale(m_swsContext, srcSlice, srcStride, 0, frame.height(), avFrame->data, avFrame->linesize);
+    } else {
+        std::memcpy(avFrame->data[0], frame.bits(0), frame.bytesPerLine(0) * frame.height());
+        std::memcpy(avFrame->data[1], frame.bits(1), frame.bytesPerLine(1) * frame.height() / 2);
     }
 
-    sws_scale(m_swsContext, srcSlice, srcStride, 0, frame.height(), avFrame->data, avFrame->linesize);
     frame.unmap();
 
     AVPacket *pkt = av_packet_alloc();
@@ -193,7 +205,7 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
             break;
         }
 
-        co_await m_videoStream->AsyncSend(pkt->data, pkt->size);
+        co_await stream->AsyncSend(pkt->data, pkt->size);
 
         av_packet_unref(pkt);
     }
@@ -257,8 +269,6 @@ void NetworkCameraModule::OnInitialize() {
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-    m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey);
-
     co_return;
 }
 
@@ -271,5 +281,16 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+
+    if (m_codecContext) {
+        avcodec_free_context(&m_codecContext);
+        m_codecContext = nullptr;
+    }
+
+    if (m_swsContext) {
+        sws_freeContext(m_swsContext);
+        m_swsContext = nullptr;
+    }
+
     co_return;
 }

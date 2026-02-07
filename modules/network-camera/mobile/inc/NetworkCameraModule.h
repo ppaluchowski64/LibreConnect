@@ -28,13 +28,15 @@ private:
     asio::awaitable<void> StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
     asio::awaitable<void> SendFrame(QVideoFrame frame);
 
-    std::unique_ptr<SRTP::Stream> m_videoStream;
+    std::shared_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
 
     std::unique_ptr<QMediaCaptureSession> m_captureSession;
     std::unique_ptr<QCamera> m_camera;
     std::unique_ptr<QVideoSink> m_videoSink;
+
+    int64_t m_ptsCounter{0};
     const AVCodec* m_codec{nullptr};
     AVCodecContext* m_codecContext{nullptr};
     SwsContext* m_swsContext{nullptr};

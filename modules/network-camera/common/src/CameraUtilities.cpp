@@ -100,9 +100,7 @@ std::vector<CameraSpecification> FetchCamerasSpecification() {
             specification.formats.emplace_back(
                 format.resolution().height(),
                 format.resolution().width(),
-                format.minFrameRate(),
-                format.maxFrameRate(),
-                format.pixelFormat()
+                std::floor(format.maxFrameRate())
             );
         }
 
