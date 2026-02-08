@@ -8,6 +8,40 @@ std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() 
     return m_camerasSpecification;
 }
 
+void NetworkCameraModule::SetCameraSettings(CameraSettings settings) {
+    asio::post(m_context, [this, settings]() {
+        m_cameraSettings = settings;
+    });
+}
+
+void NetworkCameraModule::StartStream() {
+    asio::post(m_context, [this]() {
+        CameraSpecification cameraSpecification;
+        for (const auto& spec : m_camerasSpecification) {
+            if (spec.id == m_cameraSettings.id) {
+                cameraSpecification = spec;
+            }
+        }
+
+        const std::string& cameraName = m_cameraSettings.customCameraNameEnabled ? m_cameraSettings.cameraName : cameraSpecification.description;
+        if (!m_camera.Start(cameraName, m_cameraSettings.pixelFormat, m_cameraSettings.width, m_cameraSettings.height, m_cameraSettings.framerate)) {
+            Debug::LogError("NetworkCameraModule::StartStream Failed to start camera");
+            return;
+        }
+
+        asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
+    });
+}
+
+asio::awaitable<void> NetworkCameraModule::ReceiveFrames() const {
+    std::vector<uint8_t> frameBuffer;
+    frameBuffer.reserve(1024 * 1024 * 2); // 2 MiB
+
+    while (GetModuleState() == ModuleState::Enabled) {
+        co_await m_videoStream->AsyncReceive(frameBuffer);
+    }
+}
+
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
     constexpr size_t UPDATE_DELAY = 5;
 
@@ -38,36 +72,43 @@ void NetworkCameraModule::DisableResponseCallbacks() {
 
 void NetworkCameraModule::OnInitialize() {
     AddThreads(1);
+    asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
 }
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-    asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
-
     m_localKey = SRTP::Stream::GenerateKey();
 
     {
         const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, std::vector(m_localKey));
         if (!response.has_value()) {
-            throw std::runtime_error("No response");
+            Debug::LogError("No response");
+            co_return;
         }
 
         response.value()->GetValue(m_remoteKey);
     }
 
-    m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey);
+    m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey, m_cameraSettings.framerate);
 
     {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM);
+        CameraFormat cameraFormat(m_cameraSettings.width, m_cameraSettings.height, m_cameraSettings.framerate);
+        std::string cameraID = m_cameraSettings.id;
+
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM, std::move(cameraID), std::move(cameraFormat));
         if (!response.has_value()) {
-            throw std::runtime_error("No response");
+            Debug::LogError("No response");
+            co_return;
         }
 
         const StreamStartFailReason reason = response.value()->GetValue<StreamStartFailReason>();
         if (reason != StreamStartFailReason::None) {
-            throw std::runtime_error(fmt::format("Failed to start stream: {}", magic_enum::enum_name(reason)));
+            Debug::LogError("Failed to start stream: {}", magic_enum::enum_name(reason));
+            co_return;
         }
     }
+
+
 
     co_return;
 }

@@ -34,15 +34,18 @@ struct CameraFormat {
     NO_DISCARD size_t GetSerializedSize() const;
 };
 
-struct CameraFormatFull {
+struct CameraSettings {
+    std::string cameraName;
+    bool customCameraNameEnabled;
     int32_t width;
     int32_t height;
     uint16_t framerate;
     VCamFormat pixelFormat;
+    std::string id;
 
-    CameraFormatFull() : width(0), height(0), framerate(0), pixelFormat(VCAM_FORMAT_NV12) {}
-    CameraFormatFull(const int32_t w, const int32_t h, const uint16_t f, const VCamFormat pf)
-        : width(w), height(h), framerate(f), pixelFormat(pf) {}
+    CameraSettings() : cameraName(""), customCameraNameEnabled(false), width(0), height(0), framerate(0), pixelFormat(VCAM_FORMAT_NV12), id("") {}
+    CameraSettings(const std::string_view cameraName, const bool customCameraNameEnabled, const int32_t w, const int32_t h, const uint16_t f, const VCamFormat pf, const std::string& id)
+        : cameraName(cameraName), customCameraNameEnabled(customCameraNameEnabled), width(w), height(h), framerate(f), pixelFormat(pf), id(id) {}
 };
 
 AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format);
