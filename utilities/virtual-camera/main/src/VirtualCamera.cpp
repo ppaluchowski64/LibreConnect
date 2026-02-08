@@ -15,6 +15,10 @@ VirtualCamera::VirtualCamera() : m_format(VCamFormat::VCAM_FORMAT_RGB32), m_hand
     m_cameraID = generator();
 }
 
+VirtualCamera::~VirtualCamera() {
+    Stop();
+}
+
 bool VirtualCamera::Start(const std::string& name, const VCamFormat format, const int width, const int height, const int fps) {
     if (m_active) {
         Debug::LogWarning("Stream already started");

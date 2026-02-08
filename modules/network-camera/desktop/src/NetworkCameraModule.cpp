@@ -159,8 +159,6 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         }
     }
 
-
-
     co_return;
 }
 
