@@ -11,6 +11,8 @@ public:
     VirtualCamera(const VirtualCamera&) = delete;
     VirtualCamera& operator=(const VirtualCamera&) = delete;
 
+    ~VirtualCamera();
+
     bool Start(const std::string& name, VCamFormat format, int width, int height, int fps);
     bool Stop();
     bool PushFrame(const void* data) const;
