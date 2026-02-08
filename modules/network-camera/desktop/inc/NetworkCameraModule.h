@@ -9,6 +9,9 @@
 
 extern "C" {
     #include <libswscale/swscale.h>
+    #include <libavcodec/avcodec.h>
+    #include <libavformat/avformat.h>
+    #include <libavutil/imgutils.h>
 }
 
 enum class StreamStartFailReason : uint8_t {
@@ -24,6 +27,7 @@ public:
 
 private:
     void StartStream();
+    void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) const;
     asio::awaitable<void> ReceiveFrames() const;
 
     std::unique_ptr<SRTP::Stream> m_videoStream;
@@ -34,6 +38,12 @@ private:
 
     VirtualCamera m_camera;
     CameraSettings m_cameraSettings{};
+
+    AVCodecContext* m_codecContext{nullptr};
+    const AVCodec* m_codec{nullptr};
+
+    AVFrame* m_frame{nullptr};
+    AVPacket* m_packet{nullptr};
 
 protected:
     void EnableResponseCallbacks() override;
