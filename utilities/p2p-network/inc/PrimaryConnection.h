@@ -63,7 +63,7 @@ private:
     static void SavePairData(const InitialConnectionData& data);
     void SaveCertificate(const InitialConnectionData& data) const;
 
-    IOContext&      m_context;
+    IOContext& m_context;
     asio::strand<asio::io_context::executor_type> m_strand;
 
     std::shared_ptr<SSLContext> m_sslContext;

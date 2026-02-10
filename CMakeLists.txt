@@ -90,6 +90,11 @@ if (ANDROID OR IOS)
             virtual-camera
     )
 
+    BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/mobile
+            common-module
+            p2p-network-component-pc
+    )
+
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
 
 
@@ -100,6 +105,12 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             ffmpeg_headers
             virtual-camera
     )
+
+    BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/desktop
+            common-module
+            p2p-network-component-pc
+    )
+
 
 endif ()
 
