@@ -84,7 +84,6 @@ private:
     static void RunContext();
     static void SetSeekingEndpoint(TCPEndpoint endpoint);
 
-
     asio::awaitable<void> CoProcessPackages();
 
     enum class SSLContextCurrentMode : uint8_t {

@@ -10,6 +10,8 @@ size_t TransferChannel::FetchTransferProgress() const {
 }
 
 asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+
     try {
         m_connectionState.store(ConnectionState::CONNECTING);
 
@@ -24,11 +26,13 @@ asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        co_await Disconnect();
+        co_spawn(m_context, Disconnect(), asio::detached);
     }
 }
 
 asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+
     try {
         m_connectionState.store(ConnectionState::CONNECTING);
 
@@ -36,6 +40,7 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         TCPAcceptor acceptor(m_context);
+        acceptor.listen();
         port = acceptor.local_endpoint().port();
 
         flag.Signal();
@@ -48,12 +53,13 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        co_await Disconnect();
+        co_spawn(m_context, Disconnect(), asio::detached);
     }
 }
 
 asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file, const uint32_t partitionCount, const uint32_t index) {
-    assert(index >= partitionCount);
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+    assert(index < partitionCount);
 
     try {
         if (m_connectionState.load() != ConnectionState::CONNECTED) {
@@ -71,7 +77,7 @@ asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file
         size_t currentOffset = unitSize * index;
         const size_t endOffset = unitSize * (index + 1) > fileSize ? fileSize : unitSize * (index + 1);
 
-        std::ofstream fileStream(file, std::ios::binary | std::ios::app);
+        std::fstream fileStream(file, std::ios::binary | std::ios::in | std::ios::out);
         fileStream.seekp(currentOffset);
 
         m_progress.store(0);
@@ -81,20 +87,21 @@ asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file
             currentOffset += bufferSize;
 
             asio::mutable_buffer buffer(m_buffer.data(), bufferSize);
-            co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
+            const size_t bytes = co_await m_socket->async_read_some(buffer, asio::use_awaitable);
 
-            fileStream.write(reinterpret_cast<const char*>(m_buffer.data()), bufferSize);
-            m_progress.fetch_add(bufferSize);
+            fileStream.write(reinterpret_cast<const char*>(m_buffer.data()), bytes);
+            m_progress.fetch_add(bytes);
         }
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        co_await Disconnect();
+        co_spawn(m_context, Disconnect(), asio::detached);
     }
 }
 
 asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, const uint32_t partitionCount, const uint32_t index) {
-    assert(index >= partitionCount);
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+    assert(index < partitionCount);
 
     try {
         if (m_connectionState.load() != ConnectionState::CONNECTED) {
@@ -112,7 +119,7 @@ asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, co
         size_t currentOffset = unitSize * index;
         const size_t endOffset = unitSize * (index + 1) > fileSize ? fileSize : unitSize * (index + 1);
 
-        std::ifstream fileStream(file, std::ios::binary | std::ios::app);
+        std::ifstream fileStream(file, std::ios::binary);
         fileStream.seekg(currentOffset);
 
         m_progress.store(0);
@@ -130,7 +137,7 @@ asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, co
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        co_await Disconnect();
+        co_spawn(m_context, Disconnect(), asio::detached);
     }
 }
 
