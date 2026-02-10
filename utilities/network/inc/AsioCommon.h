@@ -120,6 +120,22 @@ inline void HandleAsioError(const std::error_code& ec)
     Debug::LogError("Fatal connection error: {}", ec.message());
 }
 
+inline asio::awaitable<void> CleanupSSLSocket(SSLSocket* socket) {
+    if (!socket) {
+        co_return;
+    }
+
+    try {
+        if (socket->lowest_layer().is_open()) {
+            socket->lowest_layer().cancel();
+            co_await socket->async_shutdown(asio::use_awaitable);
+            socket->lowest_layer().close();
+        }
+    } catch (std::system_error& error) {
+        HandleAsioError(error.code());
+    }
+}
+
 inline bool PackageTypeIntHasFlag(const PackageTypeInt type, const PackageTypeInt flag) {
     return (type & flag) != 0;
 }

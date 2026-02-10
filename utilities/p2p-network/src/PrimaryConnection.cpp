@@ -137,27 +137,14 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
 
 asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-    if (!m_socket) {
-        co_return;
-    }
-
-    try {
-        if (m_socket->lowest_layer().is_open()) {
-            m_socket->lowest_layer().cancel();
-            co_await m_socket->async_shutdown(asio::use_awaitable);
-            m_socket->lowest_layer().close();
-        }
-
-        m_socket.reset();
-    } catch (std::system_error& error) {
-        HandleAsioError(error.code());
-    }
+    co_await CleanupSSLSocket(m_socket.get());
+    m_socket.reset();
 }
 
 asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
-    if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
+    if (m_connectionState.load() == ConnectionState::DISCONNECTED || m_connectionState.load() == ConnectionState::DISCONNECTING) {
         co_return;
     }
 
