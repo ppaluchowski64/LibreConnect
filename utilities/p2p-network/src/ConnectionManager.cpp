@@ -308,6 +308,11 @@ TCPEndpoint ConnectionManager::GetSeekEndpoint() {
     return s_instance->m_seekingEndpoint;
 }
 
+std::shared_ptr<SSLContext> ConnectionManager::GetSSLContext() {
+    Initialize();
+    return s_instance->m_sslContext;
+}
+
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
     s_instance = this;
 

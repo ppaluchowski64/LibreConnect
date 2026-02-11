@@ -9,6 +9,8 @@
 #include <DebugLog.h>
 #include <asio.hpp>
 
+#include <AsioCommon.h>
+
 typedef asio::io_context IOContext;
 
 enum class ModuleState : uint8_t {
@@ -35,6 +37,7 @@ enum class ModuleFailReason : uint8_t
 
 class BaseModule : public std::enable_shared_from_this<BaseModule> {
 public:
+    explicit BaseModule() : m_workGuard(asio::make_work_guard(m_context)) {}
     virtual ~BaseModule() = default;
 
     void Initialize() {
@@ -161,6 +164,7 @@ private:
 
 protected:
     IOContext m_context;
+    IOWorkGuard m_workGuard;
     std::vector<std::thread> m_threads;
     std::atomic<uint8_t> m_threadCount;
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;

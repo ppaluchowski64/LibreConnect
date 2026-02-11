@@ -9,6 +9,14 @@ size_t TransferChannel::FetchTransferProgress() const {
     return m_progress.load();
 }
 
+bool TransferChannel::IsUsed() const {
+    return m_isUsed.load();
+}
+
+ConnectionState TransferChannel::GetConnectionState() const {
+    return m_connectionState.load();
+}
+
 asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
@@ -71,6 +79,12 @@ asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file
             co_return;
         }
 
+        if (m_isUsed.load()) {
+            co_return;
+        }
+
+        m_isUsed.store(true);
+
         const size_t fileSize = std::filesystem::file_size(file);
         const size_t unitSize = fileSize / partitionCount;
 
@@ -97,6 +111,8 @@ asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file
         HandleAsioError(error.code());
         co_spawn(m_context, Disconnect(), asio::detached);
     }
+
+    m_isUsed.store(false);
 }
 
 asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, const uint32_t partitionCount, const uint32_t index) {
@@ -112,6 +128,12 @@ asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, co
             Debug::LogError("File doesnt exists");
             co_return;
         }
+
+        if (m_isUsed.load()) {
+            co_return;
+        }
+
+        m_isUsed.store(true);
 
         const size_t fileSize = std::filesystem::file_size(file);
         const size_t unitSize = fileSize / partitionCount;
@@ -139,6 +161,8 @@ asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, co
         HandleAsioError(error.code());
         co_spawn(m_context, Disconnect(), asio::detached);
     }
+
+    m_isUsed.store(false);
 }
 
 asio::awaitable<void> TransferChannel::Disconnect() {

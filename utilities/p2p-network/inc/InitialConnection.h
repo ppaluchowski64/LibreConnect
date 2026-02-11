@@ -77,13 +77,13 @@ private:
 
     AwaitableFlag m_sendFlag;
     TCPSocket m_socket;
-
-    int32_t m_challengeLeftTries;
     std::string m_challengeResult;
 
     std::deque<std::unique_ptr<Package<InitialConnectionPackageType>>> m_packagesOut;
-    ConnectionState m_connectionState{ConnectionState::DISCONNECTED};
     std::shared_ptr<InitialConnection> m_temporaryOwnership;
+
+    ConnectionState m_connectionState{ConnectionState::DISCONNECTED};
+    int32_t m_challengeLeftTries;
 };
 
 #endif //INITIAL_CONNECTION_H
