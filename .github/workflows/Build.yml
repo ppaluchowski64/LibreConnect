@@ -18,9 +18,7 @@ jobs:
       - name: Download FFmpeg 7.1 Shared
         shell: bash
         run: |
-          pwd
-          
-          curl -L https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.1.1-full_build-shared.7z -o ffmpeg.7z
+          curl -L --fail --retry 5 --retry-delay 5 https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.1.1-full_build-shared.7z -o ffmpeg.7z
           7z x ffmpeg.7z -oFFmpegRaw
           
           mkdir FFmpeg
