@@ -64,6 +64,8 @@ public:
         co_return s_instance->m_requestPackageMap.Pop(requestID);
     }
 
+    static std::shared_ptr<SSLContext> GetSSLContext();
+
 
 private:
     ConnectionManager();
@@ -99,10 +101,8 @@ private:
     IOContext  m_context;
     std::shared_ptr<SSLContext> m_sslContext;
     IOWorkGuard m_workGuard;
-    TCPEndpoint m_seekingEndpoint;
 
     std::atomic<size_t> m_currentRequestID{0};
-    std::atomic<SSLContextCurrentMode> m_currentSSLContextCurrentMode{SSLContextCurrentMode::NONE};
 
     std::vector<std::thread> m_threads;
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
@@ -116,6 +116,8 @@ private:
     std::vector<std::weak_ptr<InitialConnection>> m_initialConnectionsIn;
 
     std::vector<QPointer<QObject>> m_eventObjects;
+    TCPEndpoint m_seekingEndpoint;
+    std::atomic<SSLContextCurrentMode> m_currentSSLContextCurrentMode{SSLContextCurrentMode::NONE};
 
 };
 

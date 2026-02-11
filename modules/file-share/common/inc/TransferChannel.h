@@ -18,6 +18,8 @@ public:
     explicit TransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context);
 
     size_t FetchTransferProgress() const;
+    bool IsUsed() const;
+    ConnectionState GetConnectionState() const;
 
     asio::awaitable<void> Connect(TCPEndpoint endpoint);
     asio::awaitable<void> Seek(AwaitableFlag& flag, uint16_t& port);
@@ -31,8 +33,9 @@ private:
     std::unique_ptr<SSLSocket> m_socket;
     std::shared_ptr<SSLContext> m_sslContext;
     std::vector<uint8_t> m_buffer;
-    std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
     std::atomic<size_t> m_progress{0};
+    std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
+    std::atomic<bool> m_isUsed{false};
 
 };
 

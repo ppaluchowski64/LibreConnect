@@ -1,14 +1,19 @@
 #ifndef FILE_SHARE_MODULE_H
 #define FILE_SHARE_MODULE_H
 
+#include <vector>
+#include <memory>
+
 #include <BaseModule.h>
+#include <TransferChannel.h>
+#include <ConnectionManager.h>
 
 class FileShareModule final : public BaseModule {
 public:
-
+    explicit FileShareModule();
 
 private:
-
+    std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 
 protected:
     void EnableResponseCallbacks() override;
