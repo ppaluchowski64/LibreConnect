@@ -96,17 +96,14 @@ private:
 
     static ConnectionManager* s_instance;
     static std::mutex         s_mutex;
-    static std::atomic<bool>  s_isInitialized;
+    static std::once_flag     s_flag;
 
-    IOContext  m_context;
+    IOContext& m_context;
     std::shared_ptr<SSLContext> m_sslContext;
-    IOWorkGuard m_workGuard;
 
     std::atomic<size_t> m_currentRequestID{0};
 
-    std::vector<std::thread> m_threads;
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
-
     ConcurrentUnorderedMap<size_t, std::shared_ptr<AwaitableFlag>> m_requestAwaitableMap;
     ConcurrentUnorderedMap<size_t, std::unique_ptr<Package<PC_PackageType>>> m_requestPackageMap;
 

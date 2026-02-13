@@ -18,10 +18,9 @@ constexpr size_t MAX_PACKAGE_SIZE = 8192;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
-    explicit PrimaryConnection(IOContext& context);
-    PrimaryConnection() = delete;
+    explicit PrimaryConnection();
 
-    static std::shared_ptr<PrimaryConnection> Create(IOContext& context);
+    static std::shared_ptr<PrimaryConnection> Create();
 
     void Connect(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data);
     void Seek(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback);
@@ -64,7 +63,7 @@ private:
     void SaveCertificate(const InitialConnectionData& data) const;
 
     IOContext& m_context;
-    asio::strand<asio::io_context::executor_type> m_strand;
+    IOContextStrand m_strand;
 
     std::shared_ptr<SSLContext> m_sslContext;
     std::unique_ptr<SSLSocket> m_socket;

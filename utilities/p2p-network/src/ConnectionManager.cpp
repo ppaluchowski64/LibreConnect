@@ -10,17 +10,18 @@
 #include <InitialConnection.h>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <ThreadPool.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
-std::atomic<bool>  ConnectionManager::s_isInitialized{false};
+std::once_flag     ConnectionManager::s_flag{};
 
 class PrimaryConnection;
 class InitialConnection;
 class LanDeviceScanner;
 
 void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
         s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
@@ -32,7 +33,7 @@ void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
 }
 
 void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
         s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
@@ -44,7 +45,7 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
 }
 
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     const std::shared_ptr<InitialConnection> connection = InitialConnection::Create(s_instance->m_context);
 
@@ -72,7 +73,7 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
 }
 
 void ConnectionManager::StartAcceptingConnections() {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
@@ -90,7 +91,7 @@ void ConnectionManager::StartAcceptingConnections() {
 }
 
 void ConnectionManager::StopAcceptingConnections() {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     std::lock_guard<std::mutex> lock(s_mutex);
 
@@ -109,7 +110,7 @@ void ConnectionManager::StopAcceptingConnections() {
 }
 
 void ConnectionManager::Connect(const std::string& address, const uint16_t port, const InitialConnectionMode mode) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     if (s_instance->m_initialConnectionOut == nullptr) {
         return;
@@ -178,7 +179,7 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
 }
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
 
@@ -240,7 +241,7 @@ void ConnectionManager::RunContext() {
 }
 
 void ConnectionManager::SetSeekingEndpoint(TCPEndpoint endpoint) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     std::lock_guard<std::mutex> lock(s_mutex);
     s_instance->m_seekingEndpoint = std::move(endpoint);
@@ -285,59 +286,46 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 }
 
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
 }
 
 void ConnectionManager::RemoveResponseHandler(const PC_PackageType type) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
     s_instance->m_responseHandlerMap.Erase(type);
 }
 
 void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     std::lock_guard<std::mutex> lock(s_mutex);
     s_instance->m_eventObjects.push_back(object);
 }
 
 TCPEndpoint ConnectionManager::GetSeekEndpoint() {
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     std::lock_guard<std::mutex> lock(s_mutex);
     return s_instance->m_seekingEndpoint;
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::GetSSLContext() {
-    Initialize();
+    std::call_once(s_flag, Initialize);
     return s_instance->m_sslContext;
 }
 
-ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
-    s_instance = this;
-
-    for (int i = 0; i < 2; i++) {
-        m_threads.emplace_back(RunContext);
-    }
-
-    m_primaryConnection = PrimaryConnection::Create(m_context);
-    asio::co_spawn(m_context, CoProcessPackages(), asio::detached);
-}
+ConnectionManager::ConnectionManager() : m_context(ThreadPool::GetContext()) { }
 
 void ConnectionManager::Initialize() {
-    if (s_isInitialized.load()) {
-        return;
-    }
-
-    std::lock_guard<std::mutex> lock(s_mutex);
-
     s_instance = new ConnectionManager();
-    s_isInitialized.store(true);
+
+    s_instance->m_primaryConnection = PrimaryConnection::Create();
+    asio::co_spawn(s_instance->m_context, s_instance->CoProcessPackages(), asio::detached);
 }
 
 void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
     std::vector<QPointer<QObject>> targets;
-    Initialize();
+    std::call_once(s_flag, Initialize);
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
