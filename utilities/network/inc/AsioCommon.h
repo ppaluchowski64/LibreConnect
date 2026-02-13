@@ -28,7 +28,7 @@ typedef asio::ip::address IPAddress;
 typedef asio::ip::udp::endpoint UDPEndpoint;
 typedef asio::ip::udp::resolver UDPResolver;
 typedef asio::ip::udp::socket UDPSocket;
-typedef asio::io_context::strand IOContextStrand;
+typedef asio::strand<asio::io_context::executor_type> IOContextStrand;
 
 typedef std::function<void(bool)> ConnectionCallbackType;
 typedef std::function<void(std::string, uint16_t)> SeekReadyCallbackType;
