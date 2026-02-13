@@ -1,6 +1,7 @@
 #include <CryptographicIdentityManager.h>
 #include <nlohmann/json.hpp>
 
+#include <ThreadPool.h>
 #include <ConnectionManager.h>
 #include <Events.h>
 #include <PrimaryConnection.h>
@@ -8,13 +9,13 @@
 
 class ConnectionManager;
 
-PrimaryConnection::PrimaryConnection(IOContext& context)
-    : m_context(context), m_strand(asio::make_strand(context)), m_sslContext(nullptr), m_socket(nullptr),
-      m_sendFlag(context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(context.get_executor())) {
+PrimaryConnection::PrimaryConnection()
+    : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)), m_sslContext(nullptr), m_socket(nullptr),
+      m_sendFlag(m_context.get_executor()), m_receiveFlag(std::make_shared<AwaitableFlag>(m_context.get_executor())) {
 }
 
-std::shared_ptr<PrimaryConnection> PrimaryConnection::Create(IOContext& context) {
-    return std::make_shared<PrimaryConnection>(context);
+std::shared_ptr<PrimaryConnection> PrimaryConnection::Create() {
+    return std::make_shared<PrimaryConnection>();
 }
 
 void PrimaryConnection::Connect(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data) {
