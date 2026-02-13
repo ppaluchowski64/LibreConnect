@@ -13,7 +13,6 @@ void FileShareModule::DisableResponseCallbacks() {
 }
 
 void FileShareModule::OnInitialize() {
-    AddThreads(TRANSFER_CHANNELS_COUNT);
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
 
     std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContext();

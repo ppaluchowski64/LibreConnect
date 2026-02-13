@@ -122,7 +122,6 @@ void NetworkCameraModule::DisableResponseCallbacks() {
 }
 
 void NetworkCameraModule::OnInitialize() {
-    AddThreads(1);
     asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
 }
 

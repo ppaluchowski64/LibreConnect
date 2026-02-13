@@ -2,15 +2,15 @@
 #include <asio/buffer.hpp>
 #include <Events.h>
 #include <ConnectionManager.h>
+#include <ThreadPool.h>
 
 typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnectionPackagePtr;
 
-InitialConnection::InitialConnection(IOContext& context) : m_context(context), m_strand(asio::make_strand(context)),
-                                                           m_sendFlag(context.get_executor()), m_socket(context), m_challengeLeftTries(0){
-}
+InitialConnection::InitialConnection() : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)),
+                                        m_sendFlag(m_context.get_executor()), m_socket(m_context), m_challengeLeftTries(0) { }
 
-std::shared_ptr<InitialConnection> InitialConnection::Create(IOContext& context) {
-    return std::make_shared<InitialConnection>(context);
+std::shared_ptr<InitialConnection> InitialConnection::Create() {
+    return std::make_shared<InitialConnection>();
 }
 
 void InitialConnection::Connect(TCPEndpoint&& endpoint, const InitialConnectionMode mode) {
