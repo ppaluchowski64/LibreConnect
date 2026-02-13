@@ -263,9 +263,7 @@ void NetworkCameraModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
 }
 
-void NetworkCameraModule::OnInitialize() {
-    AddThreads(1);
-}
+void NetworkCameraModule::OnInitialize() {}
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();

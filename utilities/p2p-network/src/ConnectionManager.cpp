@@ -47,7 +47,7 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
     std::call_once(s_flag, Initialize);
 
-    const std::shared_ptr<InitialConnection> connection = InitialConnection::Create(s_instance->m_context);
+    const std::shared_ptr<InitialConnection> connection = InitialConnection::Create();
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
@@ -82,7 +82,7 @@ void ConnectionManager::StartAcceptingConnections() {
             s_instance->m_initialConnectionOut->Disconnect();
         }
 
-        s_instance->m_initialConnectionOut = InitialConnection::Create(s_instance->m_context);
+        s_instance->m_initialConnectionOut = InitialConnection::Create();
     }
 
     const TCPEndpoint endpoint(asio::ip::tcp::v4(), 0);

@@ -10,6 +10,7 @@
 #include <asio.hpp>
 
 #include <AsioCommon.h>
+#include <ThreadPool.h>
 
 typedef asio::io_context IOContext;
 
@@ -37,7 +38,7 @@ enum class ModuleFailReason : uint8_t
 
 class BaseModule : public std::enable_shared_from_this<BaseModule> {
 public:
-    explicit BaseModule() : m_workGuard(asio::make_work_guard(m_context)) {}
+    explicit BaseModule() : m_context(ThreadPool::GetContext()), m_moduleStrand(asio::make_strand(m_context)) {}
     virtual ~BaseModule() = default;
 
     void Initialize() {
@@ -47,7 +48,6 @@ public:
         }
 
         SetModuleState(ModuleState::Initializing);
-        m_threadCount.store(0);
         EnableResponseCallbacks();
         OnInitialize();
         SetModuleState(ModuleState::Disabled);
@@ -66,7 +66,7 @@ public:
             return;
         }
 
-        asio::co_spawn(m_context, EnableHelper(), asio::detached);
+        asio::co_spawn(m_moduleStrand, EnableHelper(), asio::detached);
     }
 
     void Disable() {
@@ -76,7 +76,7 @@ public:
             return;
         }
 
-        asio::co_spawn(m_context, DisableHelper(), asio::detached);
+        asio::co_spawn(m_moduleStrand, DisableHelper(), asio::detached);
     }
 
     void Shutdown() {
@@ -86,7 +86,7 @@ public:
             return;
         }
 
-        asio::co_spawn(m_context, ShutdownHelper(), asio::detached);
+        asio::co_spawn(m_moduleStrand, ShutdownHelper(), asio::detached);
     }
 
     ModuleState GetModuleState() const {
@@ -104,16 +104,6 @@ private:
 
     void SetModuleFailReason(const ModuleFailReason reason) {
         m_failReason.store(reason);
-    }
-
-    void JoinThreads() {
-        m_context.stop();
-
-        for (auto& thread : m_threads) {
-            if (thread.joinable()) {
-                thread.join();
-            }
-        }
     }
 
     asio::awaitable<void> EnableHelper() {
@@ -159,14 +149,12 @@ private:
         }
 
         SetModuleState(ModuleState::Uninitialized);
-        JoinThreads();
     }
 
 protected:
-    IOContext m_context;
-    IOWorkGuard m_workGuard;
-    std::vector<std::thread> m_threads;
-    std::atomic<uint8_t> m_threadCount;
+    IOContext& m_context;
+    IOContextStrand m_moduleStrand;
+
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
     std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
 
@@ -177,28 +165,6 @@ protected:
     virtual asio::awaitable<void> OnEnable() = 0;
     virtual asio::awaitable<void> OnDisable() = 0;
     virtual asio::awaitable<void> OnShutdown() = 0;
-
-    void AddThreads(const uint8_t count) {
-        const ModuleState state = GetModuleState();
-
-        if (state != ModuleState::Initializing) {
-            Debug::LogWarning("[Module::AddThreads] Thread count can be modified only during initialization of module");
-            return;
-        }
-
-        uint8_t threadCount = m_threadCount.load();
-        if (UINT8_MAX - threadCount < count) {
-            Debug::LogWarning("[Module::AddThreads] Thread amount limit reached");
-            return;
-        }
-
-        threadCount += count;
-        m_threadCount.store(threadCount);
-
-        for (uint8_t i = 0; i < count; i++) {
-            m_threads.emplace_back(std::thread([this] {m_context.run();}));
-        }
-    }
 };
 
 #endif //BASE_MODULE_H

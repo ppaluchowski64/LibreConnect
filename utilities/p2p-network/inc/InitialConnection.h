@@ -50,10 +50,8 @@ class ConnectionManager;
 
 class InitialConnection final : public std::enable_shared_from_this<InitialConnection> {
 public:
-    explicit InitialConnection(IOContext& context);
-    InitialConnection() = delete;
-
-    static std::shared_ptr<InitialConnection> Create(IOContext& context);
+    explicit InitialConnection();
+    static std::shared_ptr<InitialConnection> Create();
 
     void Connect(TCPEndpoint&& endpoint, InitialConnectionMode mode);
     void Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint endpoint)>&& callback);
@@ -73,7 +71,7 @@ private:
     asio::awaitable<void> CoPrimaryConnectionCallback(InitialConnectionData data);
 
     IOContext& m_context;
-    asio::strand<asio::io_context::executor_type> m_strand;
+    IOContextStrand m_strand;
 
     AwaitableFlag m_sendFlag;
     TCPSocket m_socket;
