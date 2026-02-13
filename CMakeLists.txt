@@ -108,6 +108,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
 
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/desktop
             common-module
+            file-system
             p2p-network-component-pc
     )
 

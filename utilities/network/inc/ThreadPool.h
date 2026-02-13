@@ -16,9 +16,9 @@ public:
     static IOContext& GetContext();
 
     template<typename T>
-    static void Post(std::function<T>&& function) {
+    static void Post(T&& function) {
         std::call_once(s_flag, Initialize);
-        asio::post(s_instance->m_context, std::forward<std::function<T>>(function));
+        asio::post(s_instance->m_context, std::forward<T>(function));
     }
 
     template<typename T>

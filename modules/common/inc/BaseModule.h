@@ -36,6 +36,8 @@ enum class ModuleFailReason : uint8_t
     Unknown                   // Fallback for unmapped or future errors
 };
 
+constexpr const char* APPLICATION_NAME = "LibreConnect";
+
 class BaseModule : public std::enable_shared_from_this<BaseModule> {
 public:
     explicit BaseModule() : m_context(ThreadPool::GetContext()), m_moduleStrand(asio::make_strand(m_context)) {}

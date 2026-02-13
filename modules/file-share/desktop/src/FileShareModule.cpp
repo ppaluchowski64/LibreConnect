@@ -1,8 +1,51 @@
 #include <FileShareModule.h>
 
+#include <QGuiApplication>
+
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 
 FileShareModule::FileShareModule() { }
+
+void FileShareModule::FetchDirectoryEntries(const std::string& path, const std::function<void(std::vector<FileEntry>&&)> callback) const {
+    asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(path, std::move(callback)), asio::detached);
+}
+
+asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path, std::function<void(std::vector<FileEntry>&&)> callback) const {
+    const std::shared_ptr<const BaseModule> instance = shared_from_this();
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, std::move(path));
+    std::vector<FileEntry> entries;
+
+    if (response) {
+        response.value()->GetValue(entries);
+    }
+
+    QMetaObject::invokeMethod(
+        QGuiApplication::instance(),
+        [callback = std::move(callback), entries = std::move(entries)]() mutable {
+            callback(std::move(entries));
+        },
+        Qt::QueuedConnection
+    );
+}
+
+// Function fetch progress is available via qt events
+void FileShareModule::FetchEntry(const std::string& path, const std::string& destination) {
+    
+}
+
+void FileShareModule::CopyEntryToClipboard(const std::string& path) {
+
+}
+
+void FileShareModule::PostEntry(const std::string& path, const std::string& destination) {
+
+}
+
+void FileShareModule::PasteEntryFromClipboard(const std::string& path, const std::string& destination) {
+
+}
+
 
 void FileShareModule::EnableResponseCallbacks() {
 
@@ -22,6 +65,9 @@ void FileShareModule::OnInitialize() {
             std::make_shared<TransferChannel>(sslContext, m_context)
         );
     }
+
+    const std::filesystem::path applicationDataPath = FileSystemManager::GetAppDataPath(APPLICATION_NAME) / "temp/";
+    std::filesystem::create_directories(applicationDataPath);
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
