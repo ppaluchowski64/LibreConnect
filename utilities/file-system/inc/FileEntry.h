@@ -20,6 +20,8 @@ enum class FileType : uint8_t {
 
 class FileEntry {
     private:
+        // Optional name and path ??? what ??
+
         std::optional<std::string> name;
         std::optional<std::string> path;
         std::optional<uint64_t> size;

@@ -78,17 +78,13 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
         m_outSocket->set_option(asio::socket_base::reuse_address(true));
         m_outSocket->set_option(asio::ip::multicast::hops(8));
 
-#ifdef SO_REUSEPORT
-        int reuse = 1;
-        ::setsockopt(m_outSocket->native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
-#endif
-
         m_inSocket->open(asio::ip::udp::v4());
         m_inSocket->set_option(asio::socket_base::reuse_address(true));
         m_inSocket->set_option(asio::ip::multicast::enable_loopback(false));
 
 #ifdef SO_REUSEPORT
-int reuse = 1;
+        int reuse = 1;
+        ::setsockopt(m_outSocket->native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
         ::setsockopt(m_inSocket->native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 #endif
 
