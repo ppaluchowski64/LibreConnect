@@ -9,7 +9,6 @@
 #include <AsioCommon.h>
 #include <AwaitableFlag.h>
 
-
 class TransferChannel final : public std::enable_shared_from_this<TransferChannel>{
 public:
     TransferChannel() = delete;
@@ -18,14 +17,14 @@ public:
     explicit TransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context);
 
     size_t FetchTransferProgress() const;
-    bool IsUsed() const;
+    bool IsUsed(bool outTransfer) const;
     ConnectionState GetConnectionState() const;
 
     asio::awaitable<void> Connect(TCPEndpoint endpoint);
     asio::awaitable<void> Seek(AwaitableFlag& flag, uint16_t& port);
     asio::awaitable<void> Disconnect();
-    asio::awaitable<void> Receive(const std::filesystem::path& file, uint32_t partitionCount, uint32_t index);
-    asio::awaitable<void> Send(std::filesystem::path file, uint32_t partitionCount, uint32_t index);
+    asio::awaitable<void> Receive(const std::filesystem::path& file, uint64_t length);
+    asio::awaitable<void> Send(std::filesystem::path file, uint64_t length);
     asio::awaitable<void> CleanupConnection();
 
 private:
@@ -35,8 +34,8 @@ private:
     std::vector<uint8_t> m_buffer;
     std::atomic<size_t> m_progress{0};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
-    std::atomic<bool> m_isUsed{false};
-
+    std::atomic<bool> m_recv{false};
+    std::atomic<bool> m_send{false};
 };
 
 #endif //TRANSFER_CHANNEL_H

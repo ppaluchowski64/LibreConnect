@@ -1,13 +1,30 @@
-#include <FileShareModule.h>
+#include <stack>
 
+#include <FileShareModule.h>
+#include <FileEntry.h>
 #include <QGuiApplication>
+#include <TransferInfo.h>
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 
 FileShareModule::FileShareModule() { }
 
-void FileShareModule::FetchDirectoryEntries(const std::string& path, const std::function<void(std::vector<FileEntry>&&)> callback) const {
-    asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(path, std::move(callback)), asio::detached);
+void FileShareModule::FetchDirectoryEntries(const FileEntry& entry, std::function<void(std::vector<FileEntry>&&)> callback) const {
+    const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+
+    if (path.empty()) {
+        QMetaObject::invokeMethod(
+            QGuiApplication::instance(),
+            [callback = std::move(callback)]() mutable {
+                callback(std::vector<FileEntry>{});
+            },
+            Qt::QueuedConnection
+        );
+
+        return;
+    }
+
+    asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(std::move(path), std::move(callback)), asio::detached);
 }
 
 asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path, std::function<void(std::vector<FileEntry>&&)> callback) const {
@@ -29,9 +46,67 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
     );
 }
 
+asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
+    const std::shared_ptr<const BaseModule> instance = shared_from_this();
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, std::move(path));
+    std::vector<FileEntry> entries;
+
+    if (response) {
+        response.value()->GetValue(entries);
+    }
+
+    co_return entries;
+}
+
 // Function fetch progress is available via qt events
-void FileShareModule::FetchEntry(const std::string& path, const std::string& destination) {
-    
+void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& destination) {
+    asio::co_spawn(m_context, FetchEntryAwaitable(entry, destination), asio::detached);
+}
+
+asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) {
+    const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    if (entryPath.empty()) {
+        // TODO
+        // THROW SOME EVENT
+        co_return;
+    }
+
+    std::filesystem::path filePath(destination);
+    if (std::filesystem::is_directory(filePath)) {
+        // TODO
+        // THROW SOME EVENT
+        co_return;
+    }
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_ENTRY_REQUEST, entry);
+    if (response) {
+        // TODO
+        // THROW SOME EVENT
+        co_return;
+    }
+
+    const TransferInfo transferInfo = response.value()->GetValue<TransferInfo>();
+    if (m_transferChannels.size() >= transferInfo.channel) {
+        Debug::LogError("Transfer channel {} doesn't exists", transferInfo.channel);
+        // TODO
+        // SEND SOME ERROR
+        co_return;
+    }
+
+    TransferChannel* channel = m_transferChannels[transferInfo.channel].get();
+    if (channel->IsUsed(false)) {
+        Debug::LogError("Transfer channel {} is in use", transferInfo.channel);
+        // TODO
+        // SEND SOME ERROR
+        co_return;
+    }
+
+    uuid tempFileName = boost::uuids::random_generator()();
+    std::filesystem::path tempFile = std::filesystem::temp_directory_path() / boost::uuids::to_string(tempFileName);
+
+    co_await channel->Receive(tempFile, transferInfo.size);
+
 }
 
 void FileShareModule::CopyEntryToClipboard(const std::string& path) {

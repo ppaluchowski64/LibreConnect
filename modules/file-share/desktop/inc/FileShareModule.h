@@ -14,8 +14,8 @@ class FileShareModule final : public BaseModule {
 public:
     explicit FileShareModule();
 
-    void FetchDirectoryEntries(const std::string& path, std::function<void(std::vector<FileEntry>&&)> callback) const;
-    void FetchEntry(const std::string& path, const std::string& destination);
+    void FetchDirectoryEntries(const FileEntry& entry, std::function<void(std::vector<FileEntry>&&)> callback) const;
+    void FetchEntry(const FileEntry& entry, const std::string& destination);
     void CopyEntryToClipboard(const std::string& path);
 
     void PostEntry(const std::string& path, const std::string& destination);
@@ -23,6 +23,9 @@ public:
 
 private:
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path, std::function<void(std::vector<FileEntry>&&)> callback) const;
+    asio::awaitable<std::vector<FileEntry>> FetchDirectoryEntriesAwaitable(std::string path);
+
+    asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination);
 
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 
