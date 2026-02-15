@@ -105,8 +105,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     uuid tempFileName = boost::uuids::random_generator()();
     std::filesystem::path tempFile = std::filesystem::temp_directory_path() / boost::uuids::to_string(tempFileName);
 
-    co_await channel->Receive(tempFile, transferInfo.size);
-
+    co_return;
 }
 
 void FileShareModule::CopyEntryToClipboard(const std::string& path) {
