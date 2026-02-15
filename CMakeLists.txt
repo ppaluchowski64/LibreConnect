@@ -52,6 +52,7 @@ find_package(concurrentqueue  REQUIRED)
 find_package(SQLiteCpp        REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
+find_package(zstd             REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
@@ -109,6 +110,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/desktop
             common-module
             file-system
+            zstd::libzstd_static
             p2p-network-component-pc
     )
 

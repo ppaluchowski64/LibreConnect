@@ -1,16 +1,17 @@
 #include <TransferChannel.h>
 #include <fstream>
+#include <zstd.h>
 
-static constexpr size_t TRANSFER_BUFFER_SIZE = 1024 * 256;
+constexpr int FILE_COMPRESSION_LEVEL = 3;
 
-TransferChannel::TransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_buffer(TRANSFER_BUFFER_SIZE) { }
+TransferChannel::TransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_bufferIn(ZSTD_CStreamInSize()), m_bufferOut(ZSTD_CStreamOutSize()) { }
 
 size_t TransferChannel::FetchTransferProgress() const {
     return m_progress.load();
 }
 
 bool TransferChannel::IsUsed(const bool outTransfer) const {
-    return outTransfer ? m_send.load() : m_recv.load();
+    return outTransfer ? m_send.load() : m_receive.load();
 }
 
 ConnectionState TransferChannel::GetConnectionState() const {
@@ -70,7 +71,7 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
     }
 }
 
-asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file, const uint64_t length) {
+asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path destination) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
     try {
@@ -78,41 +79,71 @@ asio::awaitable<void> TransferChannel::Receive(const std::filesystem::path& file
             co_return;
         }
 
-        if (std::filesystem::is_directory(file)) {
-            Debug::LogError("File doesnt exists");
+        // Prevent concurrent operations if needed, similar to Send
+        if (m_receive.load()) {
+            co_return;
+        }
+        m_receive.store(true);
+
+        std::ofstream fileStream(destination, std::ios::binary);
+        if (!fileStream.is_open()) {
+            Debug::LogError("Failed to open destination file");
+            m_receive.store(false);
             co_return;
         }
 
-        if (m_recv.load()) {
-            co_return;
+        const std::unique_ptr<ZSTD_DStream, decltype(&ZSTD_freeDStream)> dStream(ZSTD_createDStream(), &ZSTD_freeDStream);
+        size_t initResult = ZSTD_initDStream(dStream.get());
+        if (ZSTD_isError(initResult)) {
+            throw std::runtime_error("ZSTD Init failed");
         }
 
-        m_recv.store(true);
-
-        std::fstream fileStream(file, std::ios::binary | std::ios::in | std::ios::out | std::ios::trunc);
-        size_t offset = 0;
         m_progress.store(0);
 
-        while (offset < length) {
-            const size_t bufferSize = std::min(m_buffer.size(), length - offset);
-            offset += bufferSize;
+        size_t zstdRet = 1;
+        while (zstdRet != 0) {
+            size_t bytesRead = co_await m_socket->async_read_some(asio::buffer(m_bufferIn), asio::use_awaitable);
 
-            asio::mutable_buffer buffer(m_buffer.data(), bufferSize);
-            co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
+            ZSTD_inBuffer input = { m_bufferIn.data(), bytesRead, 0 };
 
-            fileStream.write(reinterpret_cast<const char*>(m_buffer.data()), bufferSize);
-            m_progress.fetch_add(bufferSize);
+            while (input.pos < input.size) {
+                ZSTD_outBuffer output = { m_bufferOut.data(), m_bufferOut.size(), 0 };
+
+                zstdRet = ZSTD_decompressStream(dStream.get(), &output, &input);
+
+                if (ZSTD_isError(zstdRet)) {
+                    throw std::runtime_error(std::string("ZSTD Decompression failed: ") + ZSTD_getErrorName(zstdRet));
+                }
+
+                if (output.pos > 0) {
+                    m_progress.fetch_add(output.pos);
+                    fileStream.write(reinterpret_cast<char*>(m_bufferOut.data()), output.pos);
+                }
+
+                if (zstdRet == 0) {
+                    break;
+                }
+            }
         }
+
+        fileStream.close();
+        Debug::Log("File received successfully");
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
         co_spawn(m_context, Disconnect(), asio::detached);
+    } catch (std::exception& ex) {
+        Debug::LogError(ex.what());
+        co_spawn(m_context, Disconnect(), asio::detached);
     }
 
-    m_recv.store(false);
+    m_receive.store(false);
+}
+asio::awaitable<void> TransferChannel::ReceiveDirectory(const std::filesystem::path& path, uint64_t length) {
+    co_return;
 }
 
-asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, const uint64_t length) {
+asio::awaitable<void> TransferChannel::SendDirectory(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
     try {
@@ -120,8 +151,8 @@ asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, co
             co_return;
         }
 
-        if (!std::filesystem::exists(file) || std::filesystem::is_directory(file)) {
-            Debug::LogError("File doesnt exists");
+        if (!std::filesystem::exists(path)) {
+            Debug::LogError("Path doesnt exists");
             co_return;
         }
 
@@ -131,21 +162,78 @@ asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file, co
 
         m_send.store(true);
 
-        std::ifstream fileStream(file, std::ios::binary);
-
-        size_t offset = 0;
+        std::ifstream fileStream(path, std::ios::binary);
         m_progress.store(0);
 
-        while (offset < length) {
-            const size_t bufferSize = std::min(m_buffer.size(), length - offset);
-            offset += bufferSize;
 
-            fileStream.read(reinterpret_cast<char*>(m_buffer.data()), bufferSize);
-            asio::const_buffer buffer(m_buffer.data(), bufferSize);
+    } catch (std::system_error& error) {
+        HandleAsioError(error.code());
+        co_spawn(m_context, Disconnect(), asio::detached);
+    }
 
-            co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
-            m_progress.fetch_add(bufferSize);
+    m_send.store(false);
+}
+
+asio::awaitable<void> TransferChannel::Send(const std::filesystem::path file) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+
+    try {
+        if (m_connectionState.load() != ConnectionState::CONNECTED) {
+            co_return;
         }
+
+        if (!std::filesystem::exists(file)) {
+            Debug::LogError("Path doesnt exists");
+            co_return;
+        }
+
+        if (m_send.load()) {
+            co_return;
+        }
+
+        m_send.store(true);
+
+        const size_t length = std::filesystem::file_size(file);
+        std::ifstream fileStream(file, std::ios::binary);
+        m_progress.store(0);
+
+        const std::unique_ptr<ZSTD_CStream, decltype(&ZSTD_freeCStream)> cStream(ZSTD_createCStream(), &ZSTD_freeCStream);
+        ZSTD_initCStream(cStream.get(), FILE_COMPRESSION_LEVEL);
+
+        size_t totalRead = 0;
+        while (totalRead < length) {
+            const size_t toRead = std::min(m_bufferIn.size(), length - totalRead);
+            fileStream.read(reinterpret_cast<char*>(m_bufferIn.data()), toRead);
+            totalRead += toRead;
+
+            ZSTD_inBuffer input = { m_bufferIn.data(), toRead, 0 };
+
+            while (input.pos < input.size) {
+                ZSTD_outBuffer output = { m_bufferOut.data(), m_bufferOut.size(), 0 };
+
+                size_t const remaining = ZSTD_compressStream(cStream.get(), &output, &input);
+                if (ZSTD_isError(remaining)) {
+                    throw std::runtime_error("ZSTD Compression failed");
+                }
+
+                if (output.pos > 0) {
+                    co_await asio::async_write(*m_socket, asio::buffer(output.dst, output.pos), asio::use_awaitable);
+                }
+            }
+
+            m_progress.store(totalRead);
+        }
+
+        size_t remaining = 0;
+        do {
+            ZSTD_outBuffer output = { m_bufferOut.data(), m_bufferOut.size(), 0 };
+            remaining = ZSTD_endStream(cStream.get(), &output);
+
+            if (output.pos > 0) {
+                co_await asio::async_write(*m_socket, asio::buffer(output.dst, output.pos), asio::use_awaitable);
+            }
+
+        } while (remaining != 0);
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());

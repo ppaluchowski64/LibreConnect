@@ -72,7 +72,7 @@ asio::awaitable<void> Execute() {
     std::shared_ptr<SSLContext> serverSSLContext = CreateSSLContext(true);
     std::shared_ptr<SSLContext> clientSSLContext = CreateSSLContext(false);
 
-    constexpr size_t TEST_FILE_SIZE = 1024 * 1024 * 2;
+    constexpr size_t TEST_FILE_SIZE = 1024 * 1024 * 1024;
     CreateTestFile(TEST_FILE_SIZE);
 
     std::shared_ptr<TransferChannel> serverChannel = std::make_shared<TransferChannel>(serverSSLContext, context);
@@ -89,11 +89,14 @@ asio::awaitable<void> Execute() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     const size_t size = std::filesystem::file_size("test.txt");
-    asio::co_spawn(context, serverChannel->Send(std::filesystem::path("./test.txt"), size), asio::detached);
-    asio::co_spawn(context, clientChannel->Receive(std::filesystem::path("./result.txt"), size), asio::detached);
+    asio::co_spawn(context, serverChannel->Send(std::filesystem::path("./test.txt")), asio::detached);
+    auto fut = asio::co_spawn(context, clientChannel->Receive(std::filesystem::path("./result.txt")), asio::use_future);
 
     size_t currentProgress = 0;
-    while (currentProgress != size) {
+
+    auto start = std::chrono::high_resolution_clock::now();
+
+    while (fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         Debug::Log("Progress: {} MB", currentProgress / (1024.f * 1024));
         currentProgress = clientChannel->FetchTransferProgress();
 
@@ -102,8 +105,10 @@ asio::awaitable<void> Execute() {
 
         co_await timer.async_wait();
     }
-
     Debug::Log("Progress: {} MB", currentProgress / (1024.f * 1024));
+    auto end = std::chrono::high_resolution_clock::now();
+
+    Debug::Log("Result: {}MBs", TEST_FILE_SIZE / std::chrono::duration<double>(end - start).count() / (1024.f * 1024));
 }
 
 int main() {
