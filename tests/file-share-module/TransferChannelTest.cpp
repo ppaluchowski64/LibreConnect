@@ -35,9 +35,7 @@ std::shared_ptr<SSLContext> CreateSSLContext(const bool isServer) {
 void CreateTestFile(const size_t size) {
     std::ofstream file("test.txt", std::ios::binary);
     constexpr size_t bufferSize = 1024 * 1024;
-    std::vector<char> buffer(bufferSize);
-    for (size_t i = 0; i < bufferSize; ++i) buffer[i] = '0' + (i % 9);
-
+    std::vector<char> buffer(bufferSize, '0');
     size_t written = 0;
     while (written < size) {
         const size_t toWrite = std::min(bufferSize, size - written);
@@ -92,9 +90,9 @@ asio::awaitable<void> Execute() {
     asio::co_spawn(context, serverChannel->Send(std::filesystem::path("./test.txt")), asio::detached);
     auto fut = asio::co_spawn(context, clientChannel->Receive(std::filesystem::path("./result.txt")), asio::use_future);
 
-    size_t currentProgress = 0;
-
     auto start = std::chrono::high_resolution_clock::now();
+
+    size_t currentProgress = 0;
 
     while (fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         Debug::Log("Progress: {} MB", currentProgress / (1024.f * 1024));
@@ -108,7 +106,7 @@ asio::awaitable<void> Execute() {
     Debug::Log("Progress: {} MB", currentProgress / (1024.f * 1024));
     auto end = std::chrono::high_resolution_clock::now();
 
-    Debug::Log("Result: {}MBs", TEST_FILE_SIZE / std::chrono::duration<double>(end - start).count() / (1024.f * 1024));
+    Debug::Log("Result: {}MBs , total time {}", TEST_FILE_SIZE / std::chrono::duration<double>(end - start).count() / (1024.f * 1024), std::chrono::duration<double>(end - start).count());
 }
 
 int main() {
