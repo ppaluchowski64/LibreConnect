@@ -1,30 +1,32 @@
 #include <FileShareModule.h>
 #include <FileEntry.h>
 #include <QGuiApplication>
+#include <FileSystemManager.h>
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 
 FileShareModule::FileShareModule() { }
 
-void FileShareModule::FetchDirectoryEntries(const FileEntry& entry, std::function<void(std::vector<FileEntry>&&)> callback) const {
+static uint64_t fnv1a(const std::string& s) {
+    uint64_t hash = 14695981039346656037ull;
+    for (const unsigned char c : s) {
+        hash ^= c;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
     const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
 
     if (path.empty()) {
-        QMetaObject::invokeMethod(
-            QGuiApplication::instance(),
-            [callback = std::move(callback)]() mutable {
-                callback(std::vector<FileEntry>{});
-            },
-            Qt::QueuedConnection
-        );
-
         return;
     }
 
-    asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(std::move(path), std::move(callback)), asio::detached);
+    asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(std::move(path)), asio::detached);
 }
 
-asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path, std::function<void(std::vector<FileEntry>&&)> callback) const {
+asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) const {
     const std::shared_ptr<const BaseModule> instance = shared_from_this();
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, std::move(path));
@@ -34,13 +36,8 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
         response.value()->GetValue(entries);
     }
 
-    QMetaObject::invokeMethod(
-        QGuiApplication::instance(),
-        [callback = std::move(callback), entries = std::move(entries)]() mutable {
-            callback(std::move(entries));
-        },
-        Qt::QueuedConnection
-    );
+    // TODO
+    // Send event with entries
 }
 
 asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
@@ -61,7 +58,7 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
     asio::co_spawn(m_context, FetchEntryAwaitable(entry, destination), asio::detached);
 }
 
-asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) {
+asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
     if (entryPath.empty()) {
         // TODO
@@ -101,9 +98,15 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     }
 
     const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
+    const std::filesystem::path path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
     if (type == FileType::Directory) {
-        //if (entry.GetPath() !=
+        filePath /= path.lexically_normal().filename();
+        std::filesystem::create_directories(filePath);
+    } else {
+        filePath /= path.filename();
     }
+
+    std::filesystem::create_directories(filePath);
 
     const auto future = type == FileType::Directory ?
         asio::co_spawn(m_context, channel->ReceiveDirectory(filePath), asio::use_future) :
@@ -119,10 +122,47 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
         co_await timer.async_wait();
     }
+
+    // TODO
+    // Send transfer result event
 }
 
-void FileShareModule::CopyEntryToClipboard(const std::string& path) {
 
+void FileShareModule::CopyEntriesToClipboard(const std::vector<FileEntry>& entries) const {
+    asio::co_spawn(m_context, CopyEntriesToClipboardAwaitable(entries), asio::detached);
+}
+
+asio::awaitable<void> FileShareModule::CopyEntriesToClipboardAwaitable(std::vector<FileEntry> entries) const {
+    std::vector<asio::detail::promise_async_result<void(std::exception_ptr), std::allocator<void>>::return_type> futures;
+    std::vector<std::filesystem::path> paths;
+
+    futures.reserve(entries.size());
+    paths.reserve(entries.size());
+
+    for (const auto& entry : entries) {
+        const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+        const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+
+        // TODO
+        // Add device specific temp
+
+        const size_t hash = fnv1a(std::filesystem::path(path).parent_path().string());
+        std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / name;
+
+        paths.push_back(entryDestination);
+        futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, entryDestination.string()), asio::use_future));
+    }
+
+    for (auto& future : futures) {
+        future.get();
+    }
+
+    FileSystemManager::CopyToClipboard(paths);
+
+    // TODO
+    // Send event with copy result
+
+    co_return;
 }
 
 void FileShareModule::PostEntry(const std::string& path, const std::string& destination) {
