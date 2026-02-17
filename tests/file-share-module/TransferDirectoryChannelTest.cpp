@@ -2,6 +2,7 @@
 #include <ThreadPool.h>
 #include <fstream>
 #include <CryptographicIdentityManager.h>
+#include <random>
 
 std::shared_ptr<SSLContext> CreateSSLContext(const bool isServer) {
     constexpr std::string_view privateKeyPath{"certs/local/pkey.key"};
@@ -32,8 +33,38 @@ std::shared_ptr<SSLContext> CreateSSLContext(const bool isServer) {
     return context;
 }
 
-void CreateTestFile(const size_t size) {
-    std::ofstream file("test.txt", std::ios::binary);
+void CreateTestFile(const size_t size, const std::filesystem::path name = "test.txt");
+
+void CreateDirectoryTree(int& left, std::filesystem::path path) {
+    constexpr size_t MAX_DIRECTORY_COUNT = 16;
+    constexpr size_t FILE_SIZE = 1024 * 1024 * 2;
+    constexpr size_t FILE_COUNT = 8;
+
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+
+    std::uniform_int_distribution<> dist(0, 1);
+    size_t count = 0;
+
+    while (count < MAX_DIRECTORY_COUNT && left > 0) {
+        const int num = dist(gen);
+        if (num == 0) break;
+
+        count++;
+        left--;
+
+        std::filesystem::path next = path / std::to_string(count);
+        std::filesystem::create_directories(next);
+        CreateDirectoryTree(left, next);
+    }
+
+    for (int i = 0; i < FILE_COUNT; i++) {
+        CreateTestFile(FILE_SIZE, path / ("testFile-" + std::to_string(i)));
+    }
+}
+
+void CreateTestFile(const size_t size, const std::filesystem::path name) {
+    std::ofstream file(name, std::ios::binary);
     constexpr size_t bufferSize = 1024 * 1024;
     std::vector<char> buffer(bufferSize, '0');
     size_t written = 0;
@@ -70,9 +101,6 @@ asio::awaitable<void> Execute() {
     std::shared_ptr<SSLContext> serverSSLContext = CreateSSLContext(true);
     std::shared_ptr<SSLContext> clientSSLContext = CreateSSLContext(false);
 
-    constexpr size_t TEST_FILE_SIZE = 1024 * 1024 * 1024;
-    CreateTestFile(TEST_FILE_SIZE);
-
     std::shared_ptr<TransferChannel> serverChannel = std::make_shared<TransferChannel>(serverSSLContext, context);
     std::shared_ptr<TransferChannel> clientChannel = std::make_shared<TransferChannel>(clientSSLContext, context);
 
@@ -86,12 +114,19 @@ asio::awaitable<void> Execute() {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    const size_t size = std::filesystem::file_size("test.txt");
-    asio::co_spawn(context, serverChannel->Send(std::filesystem::path("./test.txt")), asio::detached);
-    auto fut = asio::co_spawn(context, clientChannel->Receive(std::filesystem::path("./result.txt")), asio::use_future);
+    std::filesystem::remove_all("result/");
+
+    size_t totalSize = 0;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator("test/")) {
+        if (entry.is_regular_file()) {
+            totalSize += entry.file_size();
+        }
+    }
+
+    asio::co_spawn(context, serverChannel->SendDirectory(std::filesystem::path("test/")), asio::detached);
+    auto fut = asio::co_spawn(context, clientChannel->ReceiveDirectory(std::filesystem::path("result/")), asio::use_future);
 
     auto start = std::chrono::high_resolution_clock::now();
-
     size_t currentProgress = 0;
 
     while (fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
@@ -106,10 +141,21 @@ asio::awaitable<void> Execute() {
     Debug::Log("Progress: {} MB", currentProgress / (1024.f * 1024));
     auto end = std::chrono::high_resolution_clock::now();
 
-    Debug::Log("Result: {}MBs , total time {}", TEST_FILE_SIZE / std::chrono::duration<double>(end - start).count() / (1024.f * 1024), std::chrono::duration<double>(end - start).count());
+    Debug::Log("Result: {}MBs , total time {}", totalSize / std::chrono::duration<double>(end - start).count() / (1024.f * 1024), std::chrono::duration<double>(end - start).count());
 }
 
 int main() {
+    std::filesystem::remove_all("./test");
+
+    int left = 20;
+    const std::filesystem::path testDir("test/");
+    for (; left > 0; left--) {
+        const std::filesystem::path dir(testDir / (std::to_string(left) + "/"));
+
+        std::filesystem::create_directories(dir);
+        CreateDirectoryTree(left, dir);
+    }
+
     IOContext& context = ThreadPool::GetContext();
     auto fut = asio::co_spawn(context, Execute(), asio::use_future);
     fut.get();

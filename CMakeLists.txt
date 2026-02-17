@@ -39,7 +39,8 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
     )
 
-    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
+    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES}
+            tests/file-share-module/TransferDirectoryChannelTest.cpp)
     target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 endif()
 
@@ -132,7 +133,8 @@ if (ENABLE_TESTS)
     BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
-    BuildTestProgram(TransferChannelTest file-share-module/TransferChannelTest.cpp file-share-module)
+    BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
+    BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
 
     target_sources(FileEntryTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp

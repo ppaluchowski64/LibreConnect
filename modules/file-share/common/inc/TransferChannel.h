@@ -23,10 +23,13 @@ public:
     asio::awaitable<void> Connect(TCPEndpoint endpoint);
     asio::awaitable<void> Seek(AwaitableFlag& flag, uint16_t& port);
     asio::awaitable<void> Disconnect();
-    asio::awaitable<void> Receive(std::filesystem::path destination, size_t length = 0);
-    asio::awaitable<void> ReceiveDirectory(const std::filesystem::path& path);
-    asio::awaitable<void> Send(std::filesystem::path file, bool sendHeader = true);
+
+    asio::awaitable<void> ReceiveDirectory(std::filesystem::path path);
     asio::awaitable<void> SendDirectory(std::filesystem::path path);
+
+    asio::awaitable<void> ReceiveFile(std::filesystem::path path);
+    asio::awaitable<void> SendFile(std::filesystem::path path);
+
     asio::awaitable<void> CleanupConnection();
 
 private:
@@ -39,6 +42,9 @@ private:
         void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset);
         size_t GetSerializedSize() const;
     };
+
+    asio::awaitable<bool> Send(std::filesystem::path file);
+    asio::awaitable<bool> Receive(std::filesystem::path destination, size_t length);
 
     IOContext& m_context;
     std::unique_ptr<SSLSocket> m_socket;
