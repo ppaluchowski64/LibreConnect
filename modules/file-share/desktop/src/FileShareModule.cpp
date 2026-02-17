@@ -1,9 +1,6 @@
-#include <stack>
-
 #include <FileShareModule.h>
 #include <FileEntry.h>
 #include <QGuiApplication>
-#include <TransferInfo.h>
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 
@@ -73,7 +70,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     }
 
     std::filesystem::path filePath(destination);
-    if (std::filesystem::is_directory(filePath)) {
+    if (!std::filesystem::is_directory(filePath)) {
         // TODO
         // THROW SOME EVENT
         co_return;
@@ -86,26 +83,42 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         co_return;
     }
 
-    const TransferInfo transferInfo = response.value()->GetValue<TransferInfo>();
-    if (m_transferChannels.size() >= transferInfo.channel) {
-        Debug::LogError("Transfer channel {} doesn't exists", transferInfo.channel);
+    const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
+
+    if (m_transferChannels.size() >= channelIndex) {
+        Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
         // TODO
         // SEND SOME ERROR
         co_return;
     }
 
-    TransferChannel* channel = m_transferChannels[transferInfo.channel].get();
+    TransferChannel* channel = m_transferChannels[channelIndex].get();
     if (channel->IsUsed(false)) {
-        Debug::LogError("Transfer channel {} is in use", transferInfo.channel);
+        Debug::LogError("Transfer channel {} is in use", channelIndex);
         // TODO
         // SEND SOME ERROR
         co_return;
     }
 
-    uuid tempFileName = boost::uuids::random_generator()();
-    std::filesystem::path tempFile = std::filesystem::temp_directory_path() / boost::uuids::to_string(tempFileName);
+    const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
+    if (type == FileType::Directory) {
+        //if (entry.GetPath() !=
+    }
 
-    co_return;
+    const auto future = type == FileType::Directory ?
+        asio::co_spawn(m_context, channel->ReceiveDirectory(filePath), asio::use_future) :
+        asio::co_spawn(m_context, channel->ReceiveFile(filePath), asio::use_future);
+
+    constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
+    asio::steady_timer timer(m_context);
+
+    while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+        // TODO
+        // Send progress event
+
+        timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+        co_await timer.async_wait();
+    }
 }
 
 void FileShareModule::CopyEntryToClipboard(const std::string& path) {
