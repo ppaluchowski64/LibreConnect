@@ -2,20 +2,12 @@
 #include <FileEntry.h>
 #include <QGuiApplication>
 #include <FileSystemManager.h>
+#include <HashHelpers.h>
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
 FileShareModule::FileShareModule() = default;
-
-static uint64_t fnv1a(const std::string& s) {
-    uint64_t hash = 14695981039346656037ull;
-    for (const unsigned char c : s) {
-        hash ^= c;
-        hash *= 1099511628211ull;
-    }
-    return hash;
-}
 
 void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
     const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
@@ -37,8 +29,7 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
         response.value()->GetValue(entries);
     }
 
-    // TODO
-    // Send event with entries
+    // TODO: Send event with entries
 }
 
 asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
@@ -62,22 +53,19 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
 asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
     if (entryPath.empty()) {
-        // TODO
-        // THROW SOME EVENT
+        // TODO: THROW SOME EVENT
         co_return;
     }
 
     std::filesystem::path filePath(destination);
     if (!std::filesystem::is_directory(filePath)) {
-        // TODO
-        // THROW SOME EVENT
+        // TODO: THROW SOME EVENT
         co_return;
     }
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_ENTRY_REQUEST, entry);
     if (response) {
-        // TODO
-        // THROW SOME EVENT
+        // TODO: THROW SOME EVENT
         co_return;
     }
 
@@ -85,16 +73,14 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     if (m_transferChannels.size() >= channelIndex) {
         Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
-        // TODO
-        // SEND SOME ERROR
+        // TODO: SEND SOME ERROR
         co_return;
     }
 
     TransferChannel* channel = m_transferChannels[channelIndex].get();
     if (channel->IsUsed(false)) {
         Debug::LogError("Transfer channel {} is in use", channelIndex);
-        // TODO
-        // SEND SOME ERROR
+        // TODO: SEND SOME ERROR
         co_return;
     }
 
@@ -116,15 +102,13 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     asio::steady_timer timer(m_context);
 
     while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        // TODO
-        // Send progress event
+        // TODO: Send progress event
 
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
         co_await timer.async_wait();
     }
 
-    // TODO
-    // Send transfer result event
+    // TODO: Send transfer result event
 }
 
 
@@ -143,10 +127,9 @@ asio::awaitable<void> FileShareModule::CopyEntriesToClipboardAwaitable(std::vect
         const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
         const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
 
-        // TODO
-        // Add device specific temp
+        // TODO: Add device specific temp
 
-        const size_t hash = fnv1a(std::filesystem::path(path).parent_path().string());
+        const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
         std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / name;
 
         paths.push_back(entryDestination);
@@ -159,8 +142,7 @@ asio::awaitable<void> FileShareModule::CopyEntriesToClipboardAwaitable(std::vect
 
     FileSystemManager::CopyToClipboard(paths);
 
-    // TODO
-    // Send event with copy result
+    // TODO: Send event with copy result
 
     co_return;
 }
@@ -169,7 +151,7 @@ void FileShareModule::PostEntry(const std::filesystem::path& path, const std::fi
     asio::co_spawn(m_context, PostEntryAwaitable(path, destination), asio::detached);
 }
 
-asio::awaitable<void> FileShareModule::PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const {
+asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem::path path, const std::filesystem::path destination) const {
     if (!std::filesystem::exists(path)) {
         Debug::LogError("File {} does not exist", path.string());
         co_return;
@@ -183,16 +165,14 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(std::filesystem::path 
     const bool isDirectory = std::filesystem::is_directory(path);
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), isDirectory);
     if (!response.has_value()) {
-        // TODO
-        // Send status event
+        // TODO: Send status event
 
         co_return;
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
-        // TODO
-        // Send event
+        // TODO: Send event
     }
 
     TransferChannel* channel = m_transferChannels[channelIndex].get();
@@ -205,21 +185,23 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(std::filesystem::path 
     asio::steady_timer timer(m_context);
 
     while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        // TODO
-        // Send progress event
+        // TODO: Send progress event
 
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
         co_await timer.async_wait();
     }
 
-    // TODO
-    // Send transfer result event
+    // TODO: Send transfer result event
 }
 
-void FileShareModule::PasteEntryFromClipboard(const std::string& path, const std::string& destination) {
-
+void FileShareModule::PasteEntryFromClipboard(const std::filesystem::path& destination) const {
+    const std::filesystem::path path{}; // TODO: Replace it with actual implementation
+    asio::co_spawn(m_context, PostEntryAwaitable(path, destination), asio::detached);
 }
 
+void FileShareModule::OpenEntry(const FileEntry& entry) {
+
+}
 
 void FileShareModule::EnableResponseCallbacks() {
 

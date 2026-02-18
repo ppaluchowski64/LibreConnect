@@ -54,6 +54,7 @@ find_package(SQLiteCpp        REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
 find_package(zstd             REQUIRED)
+find_package(xxHash           REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
@@ -94,6 +95,9 @@ if (ANDROID OR IOS)
 
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/mobile
             common-module
+            file-system
+            zstd::libzstd_static
+            xxHash::xxhash
             p2p-network-component-pc
     )
 
@@ -112,6 +116,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             file-system
             zstd::libzstd_static
+            xxHash::xxhash
             p2p-network-component-pc
     )
 
