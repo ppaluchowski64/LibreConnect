@@ -15,10 +15,10 @@ public:
     explicit FileShareModule();
 
     void FetchDirectoryEntries(const FileEntry& entry) const;
-    void FetchEntry(const FileEntry& entry, const std::string& destination);
+    void FetchEntry(const FileEntry& entry, const std::string& destination) const;
     void CopyEntriesToClipboard(const std::vector<FileEntry>& entries) const;
 
-    void PostEntry(const std::string& path, const std::string& destination);
+    void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
     void PasteEntryFromClipboard(const std::string& path, const std::string& destination);
 
 private:
@@ -26,6 +26,7 @@ private:
     asio::awaitable<std::vector<FileEntry>> FetchDirectoryEntriesAwaitable(std::string path);
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
     asio::awaitable<void> CopyEntriesToClipboardAwaitable(std::vector<FileEntry> entries) const;
+    asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
 
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 
