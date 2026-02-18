@@ -4,8 +4,9 @@
 #include <FileSystemManager.h>
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
+constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
-FileShareModule::FileShareModule() { }
+FileShareModule::FileShareModule() = default;
 
 static uint64_t fnv1a(const std::string& s) {
     uint64_t hash = 14695981039346656037ull;
@@ -54,7 +55,7 @@ asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAw
 }
 
 // Function fetch progress is available via qt events
-void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& destination) {
+void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& destination) const {
     asio::co_spawn(m_context, FetchEntryAwaitable(entry, destination), asio::detached);
 }
 
@@ -112,7 +113,6 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         asio::co_spawn(m_context, channel->ReceiveDirectory(filePath), asio::use_future) :
         asio::co_spawn(m_context, channel->ReceiveFile(filePath), asio::use_future);
 
-    constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
     asio::steady_timer timer(m_context);
 
     while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
@@ -165,8 +165,55 @@ asio::awaitable<void> FileShareModule::CopyEntriesToClipboardAwaitable(std::vect
     co_return;
 }
 
-void FileShareModule::PostEntry(const std::string& path, const std::string& destination) {
+void FileShareModule::PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const {
+    asio::co_spawn(m_context, PostEntryAwaitable(path, destination), asio::detached);
+}
 
+asio::awaitable<void> FileShareModule::PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const {
+    if (!std::filesystem::exists(path)) {
+        Debug::LogError("File {} does not exist", path.string());
+        co_return;
+    }
+
+    if (!std::filesystem::is_directory(destination)) {
+        Debug::LogError("Destination should be a directory ({})", destination.string());
+        co_return;
+    }
+
+    const bool isDirectory = std::filesystem::is_directory(path);
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), isDirectory);
+    if (!response.has_value()) {
+        // TODO
+        // Send status event
+
+        co_return;
+    }
+
+    const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
+    if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
+        // TODO
+        // Send event
+    }
+
+    TransferChannel* channel = m_transferChannels[channelIndex].get();
+
+    const auto future = isDirectory ?
+        asio::co_spawn(m_context, channel->SendDirectory(path), asio::use_future) :
+        asio::co_spawn(m_context, channel->SendFile(path), asio::use_future);
+
+
+    asio::steady_timer timer(m_context);
+
+    while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+        // TODO
+        // Send progress event
+
+        timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+        co_await timer.async_wait();
+    }
+
+    // TODO
+    // Send transfer result event
 }
 
 void FileShareModule::PasteEntryFromClipboard(const std::string& path, const std::string& destination) {
