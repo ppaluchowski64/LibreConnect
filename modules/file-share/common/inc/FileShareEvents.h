@@ -35,5 +35,46 @@ private:
 
 };
 
+class EntryTransferResultEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+1);
+    explicit EntryTransferResultEvent(const FileEntry& entry, const bool success) : QEvent(Type), m_fileEntry(entry), m_success(success) {}
+
+    FileEntry GetFileEntry() const { return m_fileEntry; }
+    bool Success() const { return m_success; }
+
+private:
+    FileEntry m_fileEntry;
+    bool m_success;
+};
+
+class FetchDirectoryEntriesResultEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+2);
+    explicit FetchDirectoryEntriesResultEvent(std::string path, std::vector<FileEntry> entries) : QEvent(Type), m_path(std::move(path)), m_entries(std::move(entries)) {}
+
+    std::vector<FileEntry>&& TakeEntries() { return std::move(m_entries); }
+    std::vector<FileEntry> GetEntries() const { return m_entries; }
+    std::string GetPath() const { return m_path; }
+
+private:
+    std::string m_path;
+    std::vector<FileEntry> m_entries;
+};
+
+class EntriesCopyResultEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+1);
+    explicit EntriesCopyResultEvent(std::vector<FileEntry> entry, const bool success) : QEvent(Type), m_fileEntries(std::move(entry)), m_success(success) {}
+
+    std::vector<FileEntry> GetFileEntries() const { return m_fileEntries; }
+    std::vector<FileEntry>&& TakeFileEntries() { return std::move(m_fileEntries); }
+    bool Success() const { return m_success; }
+
+private:
+    std::vector<FileEntry> m_fileEntries;
+    bool m_success;
+};
+
 
 #endif // FILE_SHARE_EVENTS_H

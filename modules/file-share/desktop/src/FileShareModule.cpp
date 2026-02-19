@@ -32,7 +32,7 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
         response.value()->GetValue(entries);
     }
 
-    // TODO: Send event with entries
+    const std::unique_ptr<QEvent> event = std::make_unique<FetchDirectoryEntriesResultEvent>(std::move(path), std::move(entries));
 }
 
 asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
@@ -56,19 +56,22 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
 asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
     if (entryPath.empty()) {
-        // TODO: THROW SOME EVENT
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
         co_return;
     }
 
     std::filesystem::path filePath(destination);
     if (!std::filesystem::is_directory(filePath)) {
-        // TODO: THROW SOME EVENT
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
         co_return;
     }
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
     if (response) {
-        // TODO: THROW SOME EVENT
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
         co_return;
     }
 
@@ -77,14 +80,14 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     if (m_transferChannels.size() >= channelIndex) {
         Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
-        // TODO: SEND SOME ERROR
+        ConnectionManager::Disconnect();
         co_return;
     }
 
     TransferChannel* channel = m_transferChannels[channelIndex].get();
     if (channel->IsUsed(false)) {
         Debug::LogError("Transfer channel {} is in use", channelIndex);
-        // TODO: SEND SOME ERROR
+        ConnectionManager::Disconnect();
         co_return;
     }
 
@@ -104,54 +107,53 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         asio::co_spawn(m_context, channel->ReceiveFile(filePath), asio::use_future);
 
     asio::steady_timer timer(m_context);
-    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Fetch);
 
-    while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        const size_t progress = channel->FetchTransferProgress();
-        reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
-        ConnectionManager::SendEvent(event);
+    {
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Fetch);
 
-        timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
-        co_await timer.async_wait();
+        while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+            const size_t progress = channel->FetchTransferProgress();
+            reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+            ConnectionManager::SendEvent(event);
+
+            timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+            co_await timer.async_wait();
+        }
     }
 
-    // TODO: Send transfer result event
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
+    ConnectionManager::SendEvent(event);
 }
 
 
-void FileShareModule::CopyEntriesToClipboard(const std::vector<FileEntry>& entries) const {
-    asio::co_spawn(m_context, CopyEntriesToClipboardAwaitable(entries), asio::detached);
-}
+void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) const {
+    asio::post(m_context, [this, entries = std::move(entries)]() {
+        std::vector<asio::detail::promise_async_result<void(std::exception_ptr), std::allocator<void>>::return_type> futures;
+        std::vector<std::filesystem::path> paths;
 
-asio::awaitable<void> FileShareModule::CopyEntriesToClipboardAwaitable(std::vector<FileEntry> entries) const {
-    std::vector<asio::detail::promise_async_result<void(std::exception_ptr), std::allocator<void>>::return_type> futures;
-    std::vector<std::filesystem::path> paths;
+        futures.reserve(entries.size());
+        paths.reserve(entries.size());
 
-    futures.reserve(entries.size());
-    paths.reserve(entries.size());
+        for (const auto& entry : entries) {
+            const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+            const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
 
-    for (const auto& entry : entries) {
-        const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
-        const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+            // TODO: Add device specific temp
 
-        // TODO: Add device specific temp
+            const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
+            std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / name;
 
-        const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
-        std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / name;
+            paths.push_back(entryDestination);
+            futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, entryDestination.string()), asio::use_future));
+        }
 
-        paths.push_back(entryDestination);
-        futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, entryDestination.string()), asio::use_future));
-    }
+        for (auto& future : futures) {
+            future.get();
+        }
 
-    for (auto& future : futures) {
-        future.get();
-    }
-
-    FileSystemManager::CopyToClipboard(paths);
-
-    // TODO: Send event with copy result
-
-    co_return;
+        bool result = FileSystemManager::CopyToClipboard(paths);
+        std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), result);
+    });
 }
 
 void FileShareModule::PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const {
@@ -164,6 +166,8 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
         co_return;
     }
 
+    FileEntry entry(path);
+
     if (!std::filesystem::is_directory(destination)) {
         Debug::LogError("Destination should be a directory ({})", destination.string());
         co_return;
@@ -172,8 +176,8 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     const bool isDirectory = std::filesystem::is_directory(path);
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), isDirectory);
     if (!response.has_value()) {
-        // TODO: Send status event
-
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
         co_return;
     }
 
@@ -181,7 +185,9 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     const size_t totalTransferSize = response.value()->GetValue<size_t>();
 
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
-        // TODO: Send event
+        Debug::LogError("Transfer channel index {} is out of range", channelIndex);
+        ConnectionManager::Disconnect();
+        co_return;
     }
 
     TransferChannel* channel = m_transferChannels[channelIndex].get();
@@ -192,23 +198,23 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
 
     asio::steady_timer timer(m_context);
-    FileEntry entry(path);
 
-    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Post);
+    {
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Post);
 
-    while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        const size_t progress = channel->FetchTransferProgress();
-        reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
-        ConnectionManager::SendEvent(event);
+        while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+            const size_t progress = channel->FetchTransferProgress();
+            reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+            ConnectionManager::SendEvent(event);
 
-        timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
-        co_await timer.async_wait();
+            timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+            co_await timer.async_wait();
+        }
     }
 
-    // TODO: Send transfer result event
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
+    ConnectionManager::SendEvent(event);
 }
-
-
 
 void FileShareModule::PasteEntryFromClipboard(const std::filesystem::path& destination) const {
     const std::filesystem::path path{}; // TODO: Replace it with actual implementation
