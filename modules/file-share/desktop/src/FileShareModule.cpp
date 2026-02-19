@@ -1,8 +1,11 @@
 #include <FileShareModule.h>
 #include <FileEntry.h>
-#include <QGuiApplication>
 #include <FileSystemManager.h>
 #include <HashHelpers.h>
+#include <FileShareEvents.h>
+
+#include <QDesktopServices>
+#include <QUrl>
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
@@ -63,13 +66,14 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         co_return;
     }
 
-    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_ENTRY_REQUEST, entry);
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
     if (response) {
         // TODO: THROW SOME EVENT
         co_return;
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
+    const size_t totalTransferSize = response.value()->GetValue<size_t>();
 
     if (m_transferChannels.size() >= channelIndex) {
         Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
@@ -100,9 +104,12 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         asio::co_spawn(m_context, channel->ReceiveFile(filePath), asio::use_future);
 
     asio::steady_timer timer(m_context);
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Fetch);
 
     while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        // TODO: Send progress event
+        const size_t progress = channel->FetchTransferProgress();
+        reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+        ConnectionManager::SendEvent(event);
 
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
         co_await timer.async_wait();
@@ -171,6 +178,8 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
+    const size_t totalTransferSize = response.value()->GetValue<size_t>();
+
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
         // TODO: Send event
     }
@@ -183,9 +192,14 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
 
     asio::steady_timer timer(m_context);
+    FileEntry entry(path);
+
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Post);
 
     while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
-        // TODO: Send progress event
+        const size_t progress = channel->FetchTransferProgress();
+        reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+        ConnectionManager::SendEvent(event);
 
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
         co_await timer.async_wait();
@@ -194,13 +208,21 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     // TODO: Send transfer result event
 }
 
+
+
 void FileShareModule::PasteEntryFromClipboard(const std::filesystem::path& destination) const {
     const std::filesystem::path path{}; // TODO: Replace it with actual implementation
     asio::co_spawn(m_context, PostEntryAwaitable(path, destination), asio::detached);
 }
 
-void FileShareModule::OpenEntry(const FileEntry& entry) {
+void FileShareModule::OpenEntry(const FileEntry& entry) const {
+    asio::co_spawn(m_context, OpenEntryAwaitable(entry), asio::detached);
+}
 
+asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry) const {
+    const std::filesystem::path destination = std::filesystem::temp_directory_path() / std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
+    co_await FetchEntryAwaitable(entry, destination.string());
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(destination.string())));
 }
 
 void FileShareModule::EnableResponseCallbacks() {

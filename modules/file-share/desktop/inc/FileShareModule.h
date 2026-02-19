@@ -19,7 +19,7 @@ public:
     void CopyEntriesToClipboard(const std::vector<FileEntry>& entries) const;
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
     void PasteEntryFromClipboard(const std::filesystem::path& destination) const;
-    void OpenEntry(const FileEntry& entry);
+    void OpenEntry(const FileEntry& entry) const;
 
 private:
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
@@ -27,6 +27,7 @@ private:
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
     asio::awaitable<void> CopyEntriesToClipboardAwaitable(std::vector<FileEntry> entries) const;
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
+    asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;
 
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 
