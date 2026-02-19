@@ -16,7 +16,8 @@ public:
 
     void FetchDirectoryEntries(const FileEntry& entry) const;
     void FetchEntry(const FileEntry& entry, const std::string& destination) const;
-    void CopyEntriesToClipboard(const std::vector<FileEntry>& entries) const;
+    // Moving entries with std::move is preferred
+    void CopyEntriesToClipboard(std::vector<FileEntry> entries) const;
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
     void PasteEntryFromClipboard(const std::filesystem::path& destination) const;
     void OpenEntry(const FileEntry& entry) const;
@@ -25,7 +26,6 @@ private:
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
     asio::awaitable<std::vector<FileEntry>> FetchDirectoryEntriesAwaitable(std::string path);
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
-    asio::awaitable<void> CopyEntriesToClipboardAwaitable(std::vector<FileEntry> entries) const;
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;
 
