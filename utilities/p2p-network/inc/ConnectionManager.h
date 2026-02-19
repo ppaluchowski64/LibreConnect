@@ -23,6 +23,7 @@ public:
     static void StartAcceptingConnections();
     static void StopAcceptingConnections();
     static void Connect(const std::string& address, uint16_t port, InitialConnectionMode mode);
+    static void SendEvent(const std::unique_ptr<QEvent>& event);
 
     static std::vector<DeviceInfoLite> GetPairedDevices();
 
@@ -80,7 +81,6 @@ private:
     static void SeekInitialConnection(TCPEndpoint endpoint);
 
     static void Initialize();
-    static void SendEvent(const std::unique_ptr<QEvent>& event);
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid());
     static bool VerifyCallbackAlwaysAccept(bool preverified, asio::ssl::verify_context& ctx);
     static void RunContext();
