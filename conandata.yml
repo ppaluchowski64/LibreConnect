@@ -13,7 +13,6 @@ requirements:
     - "sqlitecpp/3.3.3"
     - "nlohmann_json/3.12.0"
     - "libsrtp/2.6.0"
-    - "zstd/1.5.7"
     - "xxhash/0.8.3"
   desktop:
     - "gtest/1.17.0"
