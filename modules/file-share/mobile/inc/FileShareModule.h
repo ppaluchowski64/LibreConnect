@@ -1,10 +1,21 @@
 #ifndef FILE_SHARE_MODULE_H
 #define FILE_SHARE_MODULE_H
 
+#include <vector>
+#include <memory>
+
 #include <BaseModule.h>
+#include <TransferChannel.h>
+#include <ConnectionManager.h>
 
 class FileShareModule final : public BaseModule {
+public:
+    explicit FileShareModule();
+    void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
+
 private:
+    asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
+    std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 
 protected:
     void EnableResponseCallbacks() override;
