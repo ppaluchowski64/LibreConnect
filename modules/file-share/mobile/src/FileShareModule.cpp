@@ -76,13 +76,79 @@ void FileShareModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
 	ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable {
-	    const size_t requestID = package->GetValue<size_t>();
+	    const size_t requestID    = package->GetValue<size_t>();
 	    const std::string pathStr = package->GetValue<std::string>();
 
 	    const std::filesystem::path path(pathStr);
 	    auto [entries, success] = FileSystemManager::GetEntries(path);
 	    ConnectionManager::SendRequestResponse(requestID, PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_RESPONSE, std::move(entries));
 	});
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID = package->GetValue<size_t>();
+        const FileEntry entry  = package->GetValue<FileEntry>();
+
+        if (!entry.GetPath().has_value() || !entry.GetName().has_value()) {
+            Debug::LogError("Missing file path");
+            ConnectionManager::Disconnect();
+            co_return;
+        }
+
+        const std::filesystem::path path = std::filesystem::path(entry.GetPath().value()) / entry.GetName().value();
+        const bool isDirectory = std::filesystem::is_directory(path);
+        size_t totalSize = 0;
+
+        if (isDirectory) {
+            for (const auto& it : std::filesystem::recursive_directory_iterator(path)) {
+                if (it.is_regular_file()) {
+                    totalSize += it.file_size();
+                }
+            }
+
+        } else {
+            totalSize = std::filesystem::file_size(path);
+        }
+
+        uint8_t transferChannelIndex{};
+        asio::steady_timer timer(m_context);
+
+        while (true) {
+            for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
+                const TransferChannel* channel = m_transferChannels[i].get();
+                if (!channel->IsUsed(true)) {
+                    transferChannelIndex = i;
+                    goto FINISH_CHANNEL_SEARCH;
+                }
+            }
+
+            timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+            co_await timer.async_wait();
+        }
+
+        FINISH_CHANNEL_SEARCH:
+
+        TransferChannel* channel = m_transferChannels[transferChannelIndex].get();
+        const auto future = isDirectory ?
+            asio::co_spawn(m_context, channel->SendDirectory(path), asio::use_future) :
+            asio::co_spawn(m_context, channel->SendFile(path), asio::use_future);
+
+        ConnectionManager::SendRequestResponse(requestID, PC_PackageType::FILE_SHARE_TRANSFER_FETCH_RESPONSE, transferChannelIndex, totalSize);
+
+        {
+            const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalSize, 0, TransferOperation::Fetch);
+
+            while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+                const size_t progress = channel->FetchTransferProgress();
+                reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+                ConnectionManager::SendEvent(event);
+
+                timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+                co_await timer.async_wait();
+            }
+        }
+
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalSize == channel->FetchTransferProgress());
+        ConnectionManager::SendEvent(event);
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {

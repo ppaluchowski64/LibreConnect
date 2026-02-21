@@ -16,6 +16,7 @@
 enum class InitialConnectionMode : uint8_t;
 typedef std::unique_ptr<Package<PC_PackageType>> PC_Package;
 typedef std::function<void(PC_Package&&)> RequestCallbackType;
+typedef std::function<asio::awaitable<void>(PC_Package&&)> RequestAwaitableCallbackType;
 typedef std::function<void(bool)> CallbackWithResult;
 
 class ConnectionManager final {
@@ -29,6 +30,7 @@ public:
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
+    static void AddAwaitableResponseHandler(PC_PackageType type, RequestAwaitableCallbackType&& handler);
     static void RemoveResponseHandler(PC_PackageType type);
     static void AddEventListener(const QPointer<QObject>& object);
     static TCPEndpoint GetSeekEndpoint();
@@ -108,6 +110,7 @@ private:
     ConcurrentUnorderedMap<size_t, std::unique_ptr<Package<PC_PackageType>>> m_requestPackageMap;
 
     ConcurrentUnorderedMap<PC_PackageType, RequestCallbackType> m_responseHandlerMap;
+    ConcurrentUnorderedMap<PC_PackageType, RequestAwaitableCallbackType> m_responseAwaitableHandlerMap;
 
     std::shared_ptr<InitialConnection> m_initialConnectionOut;
     std::vector<std::weak_ptr<InitialConnection>> m_initialConnectionsIn;
