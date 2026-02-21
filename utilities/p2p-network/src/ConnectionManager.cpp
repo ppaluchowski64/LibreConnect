@@ -278,6 +278,11 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                         callback(std::move(package));
                     });
                 }
+
+                std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
+                if (awaitableCallbackOptional.has_value()) {
+                    asio::co_spawn(m_context, awaitableCallbackOptional.value()(std::move(value)), asio::detached);
+                }
             }
 
             packageOptional = m_primaryConnection->GetPackage();
@@ -288,6 +293,11 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
     std::call_once(s_flag, Initialize);
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
+}
+
+void ConnectionManager::AddAwaitableResponseHandler(const PC_PackageType type, RequestAwaitableCallbackType&& handler) {
+    std::call_once(s_flag, Initialize);
+    s_instance->m_responseAwaitableHandlerMap.InsertOrAssign(type, std::forward<RequestAwaitableCallbackType>(handler));
 }
 
 void ConnectionManager::RemoveResponseHandler(const PC_PackageType type) {
