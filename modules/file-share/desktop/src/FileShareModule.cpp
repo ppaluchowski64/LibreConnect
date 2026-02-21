@@ -174,7 +174,20 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const bool isDirectory = std::filesystem::is_directory(path);
-    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), isDirectory);
+    size_t totalTransferSize = 0;
+
+    if (isDirectory) {
+        for (const auto& it : std::filesystem::recursive_directory_iterator(path)) {
+            if (it.is_regular_file()) {
+                totalTransferSize += it.file_size();
+            }
+        }
+
+    } else {
+        std::filesystem::file_size(path);
+    }
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), size_t{totalTransferSize}, isDirectory);
     if (!response.has_value()) {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
@@ -182,7 +195,6 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
-    const size_t totalTransferSize = response.value()->GetValue<size_t>();
 
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
         Debug::LogError("Transfer channel index {} is out of range", channelIndex);

@@ -149,6 +149,57 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalSize == channel->FetchTransferProgress());
         ConnectionManager::SendEvent(event);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID         = package->GetValue<size_t>();
+        const std::string destination  = package->GetValue<std::string>();
+        const std::string fileName     = package->GetValue<std::string>();
+        const size_t totalTransferSize = package->GetValue<size_t>();
+        const bool isDirectory         = package->GetValue<bool>();
+
+        const std::filesystem::path destinationPath = std::filesystem::path(destination) / fileName;
+
+        uint8_t transferChannelIndex{};
+        asio::steady_timer timer(m_context);
+
+        while (true) {
+            for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
+                const TransferChannel* channel = m_transferChannels[i].get();
+                if (!channel->IsUsed(true)) {
+                    transferChannelIndex = i;
+                    goto FINISH_CHANNEL_SEARCH;
+                }
+            }
+
+            timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+            co_await timer.async_wait();
+        }
+
+        FINISH_CHANNEL_SEARCH:
+        TransferChannel* channel = m_transferChannels[transferChannelIndex].get();
+
+        const auto future = isDirectory ?
+            asio::co_spawn(m_context, channel->SendDirectory(destinationPath), asio::use_future) :
+            asio::co_spawn(m_context, channel->SendFile(destinationPath), asio::use_future);
+
+        ConnectionManager::SendRequestResponse(requestID, PC_PackageType::FILE_SHARE_TRANSFER_POST_RESPONSE, transferChannelIndex);
+        FileEntry entry(destinationPath);
+
+        {
+            const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Post);
+
+            while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+                const size_t progress = channel->FetchTransferProgress();
+                reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+                ConnectionManager::SendEvent(event);
+
+                timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+                co_await timer.async_wait();
+            }
+        }
+
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
+        ConnectionManager::SendEvent(event);
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {
