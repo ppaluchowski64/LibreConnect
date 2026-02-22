@@ -52,7 +52,6 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
-    const size_t totalTransferSize = response.value()->GetValue<size_t>();
 
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
         Debug::LogError("Transfer channel index {} is out of range", channelIndex);
