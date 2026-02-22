@@ -476,6 +476,9 @@ def refresh_path():
 
 
 if os.environ.get("BUILD_FOR") == "Desktop":
+    def run(cmd, cwd=None):
+        subprocess.run(cmd, cwd=cwd, check=True)
+
     if platform == "win32":
         ffmpeg_root = None
 
@@ -557,98 +560,13 @@ if os.environ.get("BUILD_FOR") == "Desktop":
         else:
             print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
             sys.exit(1)
-    elif sys.platform.startswith("linux"):
+    elif sys.platform.startswith("linux") or platform == "darwin":
         build_dir = os.path.abspath("build")
-        ffmpeg_src = os.path.join(build_dir, "ffmpeg-src")
-        nvcodec_src = os.path.join(build_dir, "nv-codec-headers-src")
+        run(["brew", "install", "ffmpeg@7"])
+        ffmpeg_path = subprocess.check_output(["brew", "--prefix", "ffmpeg@7"], text=True).strip()
 
-        arch = os.uname().machine
-        is_arm = (arch == "aarch64" or arch == "arm64")
-
-        os.makedirs(build_dir, exist_ok=True)
-        cuda_path = os.environ.get("CUDA_PATH", "/usr/local/cuda")
-
-        configure_cmd = [
-            "./configure",
-            "--disable-programs",
-            "--prefix=../ffmpeg",
-            "--enable-shared",
-            "--disable-static",
-            "--enable-gpl",
-            "--enable-nonfree",
-            "--enable-swresample",
-
-            "--enable-libx264",
-            "--enable-libx265",
-            "--enable-libvpx",
-            "--enable-libopus",
-            "--enable-libmp3lame",
-            "--enable-libfdk-aac",
-            "--enable-libdrm",
-
-            "--enable-opencl",
-            "--enable-libxcb",
-
-            "--extra-ldflags=-Wl,--no-as-needed",
-        ]
-
-        if not is_arm:
-            configure_cmd.extend([
-                "--enable-libvpl",
-                "--enable-vaapi",
-                "--enable-vdpau",
-                "--enable-cuda-nvcc",
-                "--enable-cuvid",
-                "--enable-nvenc",
-                "--enable-libnpp",
-                "--enable-vulkan",
-
-                f"--extra-cflags=-I{cuda_path}/include",
-                f"--extra-ldflags=-L{cuda_path}/lib64",
-            ])
-
-        data = "\n".join(configure_cmd).encode("utf-8")
-        sha256 = hashlib.sha256(data).hexdigest()
-        cache = os.path.expanduser(f"~/.LibreConnect-cache/ffmpeg-{sha256}")
-
-        def run(cmd, cwd=None):
-            subprocess.run(cmd, cwd=cwd, check=True)
-
-        if os.path.exists(cache):
-            print("ffmpeg cache hit")
-            shutil.copytree(cache, "build/ffmpeg")
-        else:
-            print("ffmpeg cache miss")
-
-            if not os.path.exists(ffmpeg_src):
-                run([
-                    "git", "clone",
-                    "https://github.com/FFmpeg/FFmpeg.git",
-                    ffmpeg_src
-                ])
-
-            if not os.path.exists(nvcodec_src):
-                run([
-                    "git", "clone",
-                    "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
-                    nvcodec_src
-                ])
-
-            run(["make"], cwd=nvcodec_src)
-            run(["sudo", "make", "install"], cwd=nvcodec_src)
-            run(["git", "checkout", "n7.1"], cwd=ffmpeg_src)
-
-            run(configure_cmd, cwd=ffmpeg_src)
-            run(["make", f"-j{multiprocessing.cpu_count()}"], cwd=ffmpeg_src)
-            run(["sudo", "make", "install"], cwd=ffmpeg_src)
-
-            shutil.copytree("build/ffmpeg", cache, dirs_exist_ok=True)
-
-# TO DO: MACOS, ANDROID, IOS VERSION
-# elif platform == "darwin":
-#     subprocess.run(["brew", "update"])
-#     subprocess.run(["brew", "install", "ffmpeg@7"])
-#     subprocess.run(["brew", "link", "--overwrite", "ffmpeg@7"])
+        shutil.copytree(f"{ffmpeg_path}/include", "./build/ffmpeg/include", dirs_exist_ok=True)
+        shutil.copytree(f"{ffmpeg_path}/lib", "./build/ffmpeg/lib", dirs_exist_ok=True)
 
 if os.environ.get("BUILD_FOR") == "Desktop":
     if not disable_debug:
