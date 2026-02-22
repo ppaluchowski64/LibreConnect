@@ -319,6 +319,11 @@ TCPEndpoint ConnectionManager::GetSeekEndpoint() {
     return s_instance->m_seekingEndpoint;
 }
 
+IPAddress ConnectionManager::GetPeerAddress() {
+    std::call_once(s_flag, Initialize);
+    return s_instance->m_primaryConnection->GetPeerAddress();
+}
+
 std::shared_ptr<SSLContext> ConnectionManager::GetSSLContext() {
     std::call_once(s_flag, Initialize);
     return s_instance->m_sslContext;

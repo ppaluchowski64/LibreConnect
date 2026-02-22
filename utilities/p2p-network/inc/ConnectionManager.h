@@ -34,6 +34,7 @@ public:
     static void RemoveResponseHandler(PC_PackageType type);
     static void AddEventListener(const QPointer<QObject>& object);
     static TCPEndpoint GetSeekEndpoint();
+    static IPAddress GetPeerAddress();
 
     template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {

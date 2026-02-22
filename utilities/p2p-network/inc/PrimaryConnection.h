@@ -47,6 +47,7 @@ public:
 
     std::optional<std::unique_ptr<Package<PC_PackageType>>> GetPackage();
     std::shared_ptr<AwaitableFlag> GetReceiveFlag() const;
+    IPAddress GetPeerAddress() const;
     bool HasPendingPackages() const;
 
 
