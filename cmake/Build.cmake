@@ -239,19 +239,19 @@ function(LinkFFMPEGLibs target)
                 $<TARGET_FILE_DIR:${target}>
         )
     elseif(UNIX AND NOT ANDROID AND NOT IOS)
-        message(${CMAKE_SOURCE_DIR}/build/ffmpeg/lib)
+        set(FFMPEG_LIB_NAMES avcodec avdevice avfilter avformat avutil postproc swresample swscale)
 
-        set(FFMPEG_LIBS
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavcodec.so.61
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavdevice.so.61
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavfilter.so.10
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavformat.so.61
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libavutil.so.59
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libpostproc.so.58
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libswresample.so.5
-                ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/libswscale.so.8
-        )
+        foreach(LIB ${FFMPEG_LIB_NAMES})
+            find_library(LIB_PATH_${LIB}
+                    NAMES ${LIB}
+                    PATHS "${CMAKE_SOURCE_DIR}/build/ffmpeg/lib"
+                    NO_DEFAULT_PATH)
 
-        target_link_libraries(${target} PUBLIC ${FFMPEG_LIBS})
+            if(LIB_PATH_${LIB})
+                target_link_libraries(${target} PUBLIC ${LIB_PATH_${LIB}})
+            else()
+                message(FATAL_ERROR "Could not find FFmpeg library: ${LIB}")
+            endif()
+        endforeach()
     endif ()
 endfunction()
