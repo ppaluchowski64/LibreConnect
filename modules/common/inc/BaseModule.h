@@ -1,10 +1,7 @@
 #ifndef BASE_MODULE_H
 #define BASE_MODULE_H
 
-#include <cstdint>
 #include <atomic>
-#include <thread>
-#include <vector>
 
 #include <DebugLog.h>
 #include <asio.hpp>
@@ -55,40 +52,97 @@ public:
         SetModuleState(ModuleState::Disabled);
     }
 
-    void Enable() {
+    void Enable(const bool disableWarnings = false) {
+        asio::co_spawn(m_moduleStrand, EnableAwaitable(disableWarnings), asio::detached);
+    }
+
+    void Disable(const bool disableWarnings = false) {
+        asio::co_spawn(m_moduleStrand, DisableAwaitable(disableWarnings), asio::detached);
+    }
+
+    void Shutdown(const bool disableWarnings = false) {
+        asio::co_spawn(m_moduleStrand, ShutdownAwaitable(disableWarnings), asio::detached);
+    }
+
+    asio::awaitable<void> EnableAwaitable(const bool disableWarnings = false) {
+        const std::shared_ptr<BaseModule> instance = shared_from_this();
         const ModuleState state = GetModuleState();
 
         if (state != ModuleState::Disabled) {
+            if (disableWarnings) {
+                co_return;
+            }
+
             if (state == ModuleState::Enabled) {
                 Debug::LogWarning("[Module::Enable] Module already enabled");
-                return;
+                co_return;
             }
 
             Debug::LogWarning("[Module::Enable] Module enable failed");
-            return;
+            co_return;
         }
 
-        asio::co_spawn(m_moduleStrand, EnableHelper(), asio::detached);
+        SetModuleState(ModuleState::Enabling);
+        try {
+            co_await OnEnable();
+            SetModuleState(ModuleState::Enabled);
+        } catch (const std::exception& exc) {
+            SetModuleState(ModuleState::Disabled);
+            Debug::LogError("[Module::EnableHelper] Exception during OnEnable: {}", exc.what());
+            throw;
+        }
     }
 
-    void Disable() {
+    asio::awaitable<void> DisableAwaitable(const bool disableWarnings = false) {
+        const std::shared_ptr<BaseModule> instance = shared_from_this();
         const ModuleState state = GetModuleState();
+
         if (state != ModuleState::Enabled) {
+            if (disableWarnings) {
+                co_return;
+            }
+
             Debug::LogWarning("[Module::Disable] Module isn't enabled");
-            return;
+            co_return;
         }
 
-        asio::co_spawn(m_moduleStrand, DisableHelper(), asio::detached);
+        SetModuleState(ModuleState::Disabling);
+        try {
+            co_await OnDisable();
+            SetModuleState(ModuleState::Disabled);
+        } catch (const std::exception& exc) {
+            SetModuleState(ModuleState::Disabled);
+            Debug::LogError("[Module::DisableHelper] Exception during OnDisable: {}", exc.what());
+            throw;
+        }
     }
 
-    void Shutdown() {
+    asio::awaitable<void> ShutdownAwaitable(const bool disableWarnings = false) {
+        const std::shared_ptr<BaseModule> instance = shared_from_this();
         const ModuleState state = GetModuleState();
+
         if (state == ModuleState::Uninitialized) {
+            if (disableWarnings) {
+                co_return;
+            }
+
             Debug::LogWarning("[Module::Shutdown] Module is not initialized");
-            return;
+            co_return;
         }
 
-        asio::co_spawn(m_moduleStrand, ShutdownHelper(), asio::detached);
+        DisableResponseCallbacks();
+
+        if (GetModuleState() == ModuleState::Enabled) {
+            co_await DisableAwaitable();
+        }
+
+        try {
+            co_await OnShutdown();
+        } catch (const std::exception& exc) {
+            Debug::LogError("[Module::Shutdown] Exception during Shutdown: {}", exc.what());
+        }
+
+        SetModuleState(ModuleState::Uninitialized);
     }
 
     ModuleState GetModuleState() const {
@@ -106,51 +160,6 @@ private:
 
     void SetModuleFailReason(const ModuleFailReason reason) {
         m_failReason.store(reason);
-    }
-
-    asio::awaitable<void> EnableHelper() {
-        const std::shared_ptr<BaseModule> instance = shared_from_this();
-
-        SetModuleState(ModuleState::Enabling);
-        try {
-            co_await OnEnable();
-            SetModuleState(ModuleState::Enabled);
-        } catch (const std::exception& exc) {
-            SetModuleState(ModuleState::Disabled);
-            Debug::LogError("[Module::EnableHelper] Exception during OnEnable: {}", exc.what());
-            throw;
-        }
-    }
-
-    asio::awaitable<void> DisableHelper() {
-        const std::shared_ptr<BaseModule> instance = shared_from_this();
-
-        SetModuleState(ModuleState::Disabling);
-        try {
-            co_await OnDisable();
-            SetModuleState(ModuleState::Disabled);
-        } catch (const std::exception& exc) {
-            SetModuleState(ModuleState::Disabled);
-            Debug::LogError("[Module::DisableHelper] Exception during OnDisable: {}", exc.what());
-            throw;
-        }
-    }
-
-    asio::awaitable<void> ShutdownHelper() {
-        const std::shared_ptr<BaseModule> instance = shared_from_this();
-        DisableResponseCallbacks();
-
-        if (GetModuleState() == ModuleState::Enabled) {
-            co_await DisableHelper();
-        }
-
-        try {
-            co_await OnShutdown();
-        } catch (const std::exception& exc) {
-            Debug::LogError("[Module::Shutdown] Exception during Shutdown: {}", exc.what());
-        }
-
-        SetModuleState(ModuleState::Uninitialized);
     }
 
 protected:

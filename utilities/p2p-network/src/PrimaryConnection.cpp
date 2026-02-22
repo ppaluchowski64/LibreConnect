@@ -44,6 +44,10 @@ std::shared_ptr<AwaitableFlag> PrimaryConnection::GetReceiveFlag() const {
     return m_receiveFlag;
 }
 
+IPAddress PrimaryConnection::GetPeerAddress() const {
+    return m_socket->lowest_layer().remote_endpoint().address();
+}
+
 bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }

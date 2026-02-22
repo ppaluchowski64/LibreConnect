@@ -31,7 +31,20 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const bool isDirectory = std::filesystem::is_directory(path);
-    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), isDirectory);
+    size_t totalTransferSize = 0;
+
+    if (isDirectory) {
+        for (const auto& it : std::filesystem::recursive_directory_iterator(path)) {
+            if (it.is_regular_file()) {
+                totalTransferSize += it.file_size();
+            }
+        }
+
+    } else {
+        totalTransferSize += std::filesystem::file_size(path);
+    }
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), size_t{totalTransferSize}, isDirectory);
     if (!response.has_value()) {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
@@ -47,8 +60,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
         co_return;
     }
 
-    TransferChannel* channel = m_transferChannels[channelIndex].get();
-
+    const std::shared_ptr<TransferChannel> channel = m_transferChannels[channelIndex];
 
     {
         const auto future = isDirectory ?
@@ -113,7 +125,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         while (true) {
             for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
-                const TransferChannel* channel = m_transferChannels[i].get();
+                const std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
                 if (!channel->IsUsed(true)) {
                     transferChannelIndex = i;
                     goto FINISH_CHANNEL_SEARCH;
@@ -125,8 +137,8 @@ void FileShareModule::EnableResponseCallbacks() {
         }
 
         FINISH_CHANNEL_SEARCH:
+        const std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
 
-        TransferChannel* channel = m_transferChannels[transferChannelIndex].get();
         const auto future = isDirectory ?
             asio::co_spawn(m_context, channel->SendDirectory(path), asio::use_future) :
             asio::co_spawn(m_context, channel->SendFile(path), asio::use_future);
@@ -163,7 +175,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         while (true) {
             for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
-                const TransferChannel* channel = m_transferChannels[i].get();
+                const std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
                 if (!channel->IsUsed(true)) {
                     transferChannelIndex = i;
                     goto FINISH_CHANNEL_SEARCH;
@@ -175,7 +187,7 @@ void FileShareModule::EnableResponseCallbacks() {
         }
 
         FINISH_CHANNEL_SEARCH:
-        TransferChannel* channel = m_transferChannels[transferChannelIndex].get();
+        std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
 
         const auto future = isDirectory ?
             asio::co_spawn(m_context, channel->SendDirectory(destinationPath), asio::use_future) :
@@ -200,18 +212,43 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
         ConnectionManager::SendEvent(event);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        co_await EnableAwaitable(true);
+
+        const IPAddress ip  = ConnectionManager::GetPeerAddress();
+        const uint16_t port = package->GetValue<uint16_t>();
+        const TCPEndpoint endpoint(ip, port);
+        const uint8_t index = m_transferChannelInitializationIndex.fetch_add(1);
+
+        const std::shared_ptr<TransferChannel> channel = m_transferChannels[index];
+        co_await channel->Connect(endpoint);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [instance, this](PC_Package&& package) mutable {
+        Disable();
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {
+    const std::shared_ptr<BaseModule> instance = shared_from_this();
 
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
 }
 
 void FileShareModule::OnInitialize() {
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
     std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContext();
+    for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
+        m_transferChannels.emplace_back(std::make_shared<TransferChannel>(sslContext, m_context));
+    }
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
+    m_transferChannelInitializationIndex.store(0);
     co_return;
 }
 
