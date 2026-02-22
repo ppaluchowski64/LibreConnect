@@ -10,7 +10,6 @@ requirements:
     - "concurrentqueue/1.0.4"
     - "fmt/12.0.0"
     - "magic_enum/0.9.7"
-    - "sqlitecpp/3.3.3"
     - "nlohmann_json/3.12.0"
     - "libsrtp/2.6.0"
     - "xxhash/0.8.3"
