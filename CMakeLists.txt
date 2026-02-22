@@ -39,8 +39,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
     )
 
-    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES}
-            tests/file-share-module/TransferDirectoryChannelTest.cpp)
+    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
     target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 endif()
 
