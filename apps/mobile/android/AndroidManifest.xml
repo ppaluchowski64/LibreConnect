@@ -1,8 +1,24 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.LibreConnect.mobile">
+
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
 
+    <application android:label="LibreConnect" android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+        <activity
+                android:name="org.qtproject.qt.android.bindings.QtActivity"
+                android:exported="true"
+                android:configChanges="orientation|screenSize|keyboardHidden|keyboard|locale|layoutDirection|fontScale|uiMode"
+                android:screenOrientation="unspecified">
 
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+        </activity>
+    </application>
 </manifest>
