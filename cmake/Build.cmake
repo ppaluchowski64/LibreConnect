@@ -114,7 +114,11 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
 
     target_include_directories(${ExecutableName} PUBLIC ${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
-    set(DEPLOY_FOLDER ${CMAKE_BINARY_DIR}/deploy/$<CONFIG>/${ExecutableName})
+    if(CMAKE_BUILD_TYPE)
+        set(DEPLOY_FOLDER ${CMAKE_BINARY_DIR}/deploy/${CMAKE_BUILD_TYPE}/${ExecutableName})
+    else()
+        set(DEPLOY_FOLDER ${CMAKE_BINARY_DIR}/deploy/${ExecutableName})
+    endif()
 
     set_target_properties(${ExecutableName} PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${DEPLOY_FOLDER}"

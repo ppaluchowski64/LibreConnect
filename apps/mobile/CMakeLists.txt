@@ -1,3 +1,5 @@
+
+
 BuildQTExecutable(appLibreConnect_mobile
         ${CMAKE_CURRENT_SOURCE_DIR}
         LibreConnect.mobile
