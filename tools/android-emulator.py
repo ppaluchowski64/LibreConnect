@@ -20,10 +20,14 @@ running_frame = tk.Frame(window)
 env_file_path = "../.env"
 
 # Check for environment variables file
-if not os.path.exists(env_file_path):
-    print("No .env file found")
-    input("Press Enter to continue...")
-    exit(-1)
+if os.path.exists(".env"):
+    env_file_path = ".env"
+else:
+    if not os.path.exists("../.env"):
+
+        print("No .env file found")
+        input("Press Enter to continue...")
+        exit(-1)
 
 # Load .env
 with open(env_file_path, "r") as f:
