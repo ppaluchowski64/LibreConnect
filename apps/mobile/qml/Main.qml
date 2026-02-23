@@ -1,35 +1,53 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Layouts
+import LibreConnect.mobile 1.0
 
 ApplicationWindow {
-    id: window
+    width: 420
+    height: 720
     visible: true
-    width: 360
-    height: 640
-    title: "Qt Quick Android Example"
+    title: "LibreConnect Mobile"
 
-    ColumnLayout {
+    AndroidAdvertiser {
+        id: advertiser
+    }
+
+    MobileConnectionController {
+        id: conn
+    }
+
+    Column {
         anchors.centerIn: parent
         spacing: 16
 
-        Label {
-            text: "Hello from Qt Quick 👋"
-            font.pixelSize: 22
-            horizontalAlignment: Text.AlignHCenter
-            Layout.alignment: Qt.AlignHCenter
+        Text {
+            text: advertiser.running ? "Advertising on LAN" : "Not advertising"
+            font.pixelSize: 18
+        }
+
+        Text {
+            text: conn.connected ? "Connected" : "Not connected"
+            font.pixelSize: 18
         }
 
         Button {
-            text: "Tap me"
-            onClicked: statusLabel.text = "Button tapped!"
+            text: advertiser.running ? "Stop advertising" : "Start advertising"
+            onClicked: {
+                if (advertiser.running) advertiser.stop()
+                else advertiser.start()
+            }
         }
 
-        Label {
-            id: statusLabel
-            text: "Waiting for input…"
-            color: "#666"
-            Layout.alignment: Qt.AlignHCenter
+        Text {
+            visible: conn.lastError.length > 0
+            text: "Error: " + conn.lastError
+            color: "red"
+            wrapMode: Text.WordWrap
+            width: 320
         }
+    }
+
+    Component.onCompleted: {
+        advertiser.start()
     }
 }
