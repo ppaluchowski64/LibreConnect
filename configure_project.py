@@ -201,26 +201,12 @@ def install_linux_dependencies():
         codename = subprocess.check_output(["lsb_release", "-cs"], text=True).strip()
         print(f"Detected architecture: {arch}, Ubuntu codename: {codename}")
 
-        if arch == "amd64":
-            print("Setting up LunarG repository for x86_64...")
-            subprocess.run(
-                "wget -qO - https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo gpg --dearmor --yes -o /usr/share/keyrings/lunarg-signing-key-pub.gpg",
-                shell=True, check=True
-            )
-            vulkan_repo = f"deb [signed-by=/usr/share/keyrings/lunarg-signing-key-pub.gpg] https://packages.lunarg.com/vulkan {codename} main"
-            subprocess.run(f'echo "{vulkan_repo}" | sudo tee /etc/apt/sources.list.d/lunarg-vulkan.list', shell=True, check=True)
-
-        subprocess.run("sudo add-apt-repository -y multiverse", shell=True, check=True)
-
         print("Updating package lists...")
         subprocess.run(["sudo", "apt-get", "update"], check=True)
 
         print("Installing packages...")
 
         packages = [
-            "libyaml-cpp-dev",
-            "libvulkan-dev",
-            "vulkan-tools",
             "build-essential",
             "libgl1-mesa-dev",
             "libxkbcommon-x11-0",
@@ -261,14 +247,6 @@ def install_linux_dependencies():
             "opencl-headers",
             "libx11-dev",
         ]
-
-        if arch == "amd64":
-            packages.extend([
-                "vulkan-sdk",
-                "libvpl-dev",
-                "intel-media-va-driver-non-free",
-                "nvidia-cuda-toolkit"
-            ])
 
         cmd = ["sudo", "apt-get", "install", "-y"] + packages
         subprocess.run(cmd, check=True)
