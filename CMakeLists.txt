@@ -81,6 +81,7 @@ BuildStaticLibrary(file-system utilities/file-system project_defaults system-com
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
 add_subdirectory("utilities/virtual-camera")
+add_subdirectory("utilities/notifications-capture")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
 
