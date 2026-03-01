@@ -2,7 +2,7 @@
 
 NotificationData::NotificationData() { }
 
-NotificationData::NotificationData(std::string key, std::string title, std::string content, size_t timestamp, std::optional<std::vector<uint8_t>> icon)
+NotificationData::NotificationData(std::string key, std::string title, std::string content, size_t timestamp, std::vector<uint8_t> icon)
 : key(std::move(key)), title(std::move(title)), content(std::move(content)), timestamp(timestamp), icon(std::move(icon)) { }
 
 void NotificationData::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {

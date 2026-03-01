@@ -1,4 +1,4 @@
-#include <KotlinNotificationListenerHandler.h>
+#include <NotificationListenerHandler.h>
 #include <NotificationData.h>
 
 static void GetString(JNIEnv* env, const jstring& str, std::string& dst) {
@@ -12,6 +12,8 @@ static void GetByteArray(JNIEnv* env, const jbyteArray byteArray, std::vector<ui
     dst.resize(len);
     env->GetByteArrayRegion(byteArray, 0, len, reinterpret_cast<jbyte*>(dst.data()));
 }
+
+std::vector<NotificationData> g_notificationDatas;
 
 void Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP(
     JNIEnv* env,
@@ -27,15 +29,16 @@ void Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP
     }
 
     NotificationData notificationData{};
-
     GetString(env, key, notificationData.key);
     GetString(env, title, notificationData.title);
     GetString(env, content, notificationData.content);
 
-    if (iconBytes == nullptr) {
-        notificationData.icon = std::nullopt;
-    } else {
-        GetByteArray(env, iconBytes, notificationData.icon.value());
+    if (iconBytes != nullptr) {
+        GetByteArray(env, iconBytes, notificationData.icon);
     }
+
+    notificationData.timestamp = timestamp;
+
+    g_notificationDatas.push_back(notificationData);
 }
 
