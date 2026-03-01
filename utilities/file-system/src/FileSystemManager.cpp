@@ -85,7 +85,7 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
     auto mimeData = std::make_unique<QMimeData>();
     mimeData->setUrls(urlList);
 
-    QClipboard* clipboard = QGuiApplication::clipboard();
+    QClipboard* const clipboard = QGuiApplication::clipboard();
     clipboard->setMimeData(mimeData.release());
 
     return true;
@@ -99,10 +99,10 @@ bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDi
     if (!QGuiApplication::instance())
         return false;
 
-    QClipboard* clipboard = QGuiApplication::clipboard();
-    const QMimeData* mime = clipboard->mimeData();
+    const QClipboard* const clipboard = QGuiApplication::clipboard();
+    const QMimeData* const mime = clipboard->mimeData();
 
-    if (!mime || !mime->hasUrls())
+    if (!mime->hasUrls())
         return false;
 
     if (!std::filesystem::is_directory(targetDir))
@@ -136,10 +136,10 @@ bool FileSystemManager::FilesInClipboard() {
     if (!QGuiApplication::instance())
         return false;
 
-    const QClipboard* clipboard = QGuiApplication::clipboard();
-    const QMimeData* mime = clipboard->mimeData();
+    const QClipboard* const clipboard = QGuiApplication::clipboard();
+    const QMimeData* const mime = clipboard->mimeData();
 
-    if (!mime || !mime->hasUrls())
+    if (!mime->hasUrls())
         return false;
 
     bool anyFound = false;
@@ -157,4 +157,34 @@ bool FileSystemManager::FilesInClipboard() {
     }
 
     return anyFound;
+}
+
+bool TextClipboard::Set(const std::string& text) {
+    if (!QGuiApplication::instance() || text.empty())
+        return false;
+
+    QClipboard* const clipboard = QGuiApplication::clipboard();
+    clipboard->setText(QString::fromUtf8(text.c_str()));
+
+    return true;
+}
+
+std::string TextClipboard::Get() {
+    if (!QGuiApplication::instance())
+        return {};
+
+    const QClipboard* const clipboard = QGuiApplication::clipboard();
+    const QString text = clipboard->text();
+
+    return text.toStdString();
+}
+
+bool TextClipboard::Has() {
+    if (!QGuiApplication::instance())
+        return false;
+
+    const QClipboard* const clipboard = QGuiApplication::clipboard();
+    const QMimeData* const mime = clipboard->mimeData();
+
+    return mime->hasText();
 }

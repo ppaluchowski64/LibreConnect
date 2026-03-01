@@ -23,4 +23,11 @@ class FileSystemManager {
         static bool FilesInClipboard();
 };
 
+class TextClipboard {
+    public:
+        static bool Set(const std::string& text);
+        static std::string Get();
+        static bool Has();
+};
+
 #endif // FILE_SYSTEM_MANAGER_H
