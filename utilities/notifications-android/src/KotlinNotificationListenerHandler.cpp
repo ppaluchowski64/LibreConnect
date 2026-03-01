@@ -22,7 +22,8 @@ void Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP
     const jstring title,
     const jstring content,
     const jlong timestamp,
-    const jbyteArray iconBytes) {
+    const jbyteArray iconBytes,
+    const jbyteArray imageBytes) {
 
     if (key == nullptr || title == nullptr || content == nullptr) {
         return;
@@ -34,11 +35,14 @@ void Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP
     GetString(env, content, notificationData.content);
 
     if (iconBytes != nullptr) {
-        GetByteArray(env, iconBytes, notificationData.icon);
+        GetByteArray(env, iconBytes, notificationData.largeIcon);
+    }
+
+    if (imageBytes != nullptr) {
+        GetByteArray(env, imageBytes, notificationData.mainImage);
     }
 
     notificationData.timestamp = timestamp;
-
     g_notificationDatas.push_back(notificationData);
 }
 

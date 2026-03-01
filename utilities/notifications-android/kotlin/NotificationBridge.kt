@@ -6,6 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.Icon
 import android.os.Build
 import androidx.annotation.Keep
+import androidx.annotation.NonNull
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.NotificationCompat
 
 @Keep
@@ -35,25 +37,29 @@ class NotificationBridge(private val context: Context) {
         title: String?,
         content: String?,
         timestamp: Long,
-        iconBytes: ByteArray?
+        smallIcon: ByteArray?,
+        largeIcon: ByteArray?
     ) {
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(title)
             .setContentText(content)
             .setWhen(timestamp)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
 
-        if (iconBytes != null && iconBytes.isNotEmpty()) {
-            val bitmap = BitmapFactory.decodeByteArray(iconBytes, 0, iconBytes.size)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                val icon = Icon.createWithBitmap(bitmap)
-                builder.setSmallIcon(icon)
-            } else {
-                builder.setLargeIcon(bitmap)
-                // builder.setSmallIcon(R.drawable.your_default_small_icon) // Fallback for API < 23
+        if (smallIcon != null && smallIcon.isNotEmpty()) {
+            val bitmap = BitmapFactory.decodeByteArray(smallIcon, 0, smallIcon.size)
+            if (bitmap != null) {
+                val iconCompat = IconCompat.createWithBitmap(bitmap)
+                builder.setSmallIcon(iconCompat)
             }
-        } else {
-            // Default icon
+        }
+
+        if (largeIcon != null && largeIcon.isNotEmpty()) {
+            val bitmap = BitmapFactory.decodeByteArray(largeIcon, 0, largeIcon.size)
+            if (bitmap != null) {
+                builder.setLargeIcon(bitmap)
+            }
         }
 
         notificationManager.notify(key, key.hashCode(), builder.build())
