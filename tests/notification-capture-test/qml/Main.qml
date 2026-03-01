@@ -13,6 +13,10 @@ ApplicationWindow {
         spacing: 16
 
         Button {
+            text: "Send Notification"
+            onClicked: {
+                myBackend.notification("Hello from QML!")
+            }
 
         }
     }

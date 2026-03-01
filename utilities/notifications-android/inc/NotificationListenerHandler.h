@@ -13,7 +13,8 @@ Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP(
     jstring title,
     jstring content,
     jlong timestamp,
-    jbyteArray iconBytes
+    jbyteArray iconBytes,
+    jbyteArray imageBytes
 );
 
 #endif // NT_KOTLIN_NOTIFICATION_LISTENER_HANDLER_H

@@ -14,7 +14,7 @@
 #include <functional>
 #include <InitialConnection.h>
 
-constexpr size_t MAX_PACKAGE_SIZE = 8192;
+static constexpr size_t MAX_PACKAGE_SIZE = 1024 * 256;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:

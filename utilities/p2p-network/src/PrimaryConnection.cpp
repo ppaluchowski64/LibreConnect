@@ -216,7 +216,10 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             if (m_connectionState.load() != ConnectionState::CONNECTED) break;
 
             if (header.size > MAX_PACKAGE_SIZE) {
-                throw std::runtime_error("PrimaryConnection receive package size too large");
+                // TODO: find correct package size limit
+
+                Debug::LogWarning("Package over the limit warning {}", header.size);
+                //throw std::runtime_error("PrimaryConnection receive package size too large");
             }
 
             std::unique_ptr<Package<PC_PackageType>> package = std::make_unique<Package<PC_PackageType>>(header);

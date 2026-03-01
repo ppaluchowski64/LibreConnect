@@ -10,7 +10,7 @@ class Backend : public QObject
 public:
     explicit Backend(QObject *parent = nullptr) : QObject(parent) {}
 
-    signals:
+    public slots:
         void notification(QString message);
 };
 

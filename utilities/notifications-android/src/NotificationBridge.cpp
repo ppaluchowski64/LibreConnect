@@ -21,22 +21,32 @@ void NotificationBridge::PostNotification(const NotificationData& notificationDa
     const QJniObject jTitle = QJniObject::fromString(notificationData.title.data());
     const QJniObject jContent = QJniObject::fromString(notificationData.content.data());
 
-    jbyteArray jIcon = nullptr;
-    if (!notificationData.icon.empty()) {
-        const QJniEnvironment env;
-        jIcon = env->NewByteArray(notificationData.icon.size());
-        env->SetByteArrayRegion(jIcon, 0, notificationData.icon.size(), reinterpret_cast<const jbyte*>(notificationData.icon.data()));
+    const QJniEnvironment env;
+    jbyteArray jSmallIcon = nullptr;
+    if (!notificationData.smallIcon.empty()) {
+        jSmallIcon = env->NewByteArray(notificationData.smallIcon.size());
+        env->SetByteArrayRegion(jSmallIcon, 0, notificationData.smallIcon.size(), reinterpret_cast<const jbyte*>(notificationData.smallIcon.data()));
+    }
+
+    jbyteArray jLargeIcon = nullptr;
+    if (!notificationData.largeIcon.empty()) {
+        jLargeIcon = env->NewByteArray(notificationData.largeIcon.size());
+        env->SetByteArrayRegion(jLargeIcon, 0, notificationData.largeIcon.size(), reinterpret_cast<const jbyte*>(notificationData.largeIcon.data()));
     }
 
     bridge.callMethod<void>(
         "postNotification",
-        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[B)V",
+        "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J[B[B)V",
         jKey.object<jstring>(),
         jTitle.object<jstring>(),
         jContent.object<jstring>(),
         static_cast<jlong>(notificationData.timestamp),
-        jIcon
+        jSmallIcon,
+        jLargeIcon
     );
+
+    if (jSmallIcon) env->DeleteLocalRef(jSmallIcon);
+    if (jLargeIcon) env->DeleteLocalRef(jLargeIcon);
 }
 
 void NotificationBridge::RemoveNotification(const std::string& key) {
