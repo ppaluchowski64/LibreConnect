@@ -81,7 +81,7 @@ BuildStaticLibrary(file-system utilities/file-system project_defaults system-com
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
 add_subdirectory("utilities/virtual-camera")
-add_subdirectory("utilities/notifications-capture")
+add_subdirectory("utilities/notifications-android")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
 
@@ -154,6 +154,7 @@ endif()
 
 if (ENABLE_MOBILE_TEST_PROGRAMS)
     add_subdirectory("tests/network-camera-module/utilities-test-mobile")
+    add_subdirectory("tests/notification-capture-test")
 endif ()
 
 if (ANDROID)
