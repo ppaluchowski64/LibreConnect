@@ -1,8 +1,7 @@
 if (ANDROID)
 #    file(GLOB_RECURSE KOTLIN_SOURCES kotlin/*)
 #    list(APPEND KOTLIN_SOURCE_FILES ${KOTLIN_SOURCES})
-
-    list(APPEND ANDROID_EXTRA_SOURCE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/kotlin)
+#    list(APPEND ANDROID_EXTRA_SOURCE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/kotlin)
 
     file(GLOB_RECURSE SOURCE_FILES
             src/*.cpp
@@ -18,7 +17,6 @@ if (ANDROID)
     add_library(notifications-android STATIC
             ${SOURCE_FILES}
             ${HEADER_FILES}
-            inc/NotificationBridge.h
     )
 
     target_link_libraries(notifications-android PUBLIC

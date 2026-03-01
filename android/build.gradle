@@ -1,0 +1,48 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:7.4.1'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.application'
+
+android {
+    compileSdk 34
+    namespace "com.LibreConnect.mobile"
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+            jniLibs.srcDirs = ['libs']
+        }
+    }
+
+    defaultConfig {
+        applicationId "com.LibreConnect.mobile"
+        minSdkVersion 28
+        targetSdkVersion 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    namespace "com.LibreConnect.mobile"
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+}

@@ -98,7 +98,7 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
             ${RootPath}/inc/*.hpp
     )
 
-    FILE(GLOB_RECURSE QML_FILES
+    file(GLOB_RECURSE QML_FILES
             RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
             ${RootPath}/qml/*.qml
     )
@@ -149,6 +149,12 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
     if(APPLE)
         set_target_properties(${ExecutableName} PROPERTIES
                 BUNDLE_OUTPUT_DIRECTORY "${DEPLOY_FOLDER}"
+        )
+    endif()
+
+    if (ANDROID)
+        set_property(TARGET ${ExecutableName} PROPERTY
+                QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android"
         )
     endif()
 
