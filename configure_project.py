@@ -298,7 +298,7 @@ def run_conan_install(build_type: str):
     print(f"Running: {cmd}")
     print("Python sees cmake:", shutil.which("cmake"))
 
-    result = subprocess.run(cmd, env=os.environ)
+    result = subprocess.run(cmd, shell=True, env=os.environ)
     if result.returncode != 0:
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
