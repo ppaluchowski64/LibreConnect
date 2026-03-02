@@ -60,13 +60,17 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
     try {
         TCPEndpoint endpoint(asio::ip::make_address_v4(data.deviceInfo.deviceAddress), data.deviceInfo.deviceAddressPort);
 
+        Debug::Log("PrimaryConnection: Attempting to connect to {}:{}", endpoint.address().to_string(), endpoint.port());
+
         co_await CoCleanupConnection();
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
+
+        Debug::Log("PrimaryConnection: TCP Connection established. Starting SSL handshake...");
         co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
-        Debug::Log("Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
+        Debug::Log("PrimaryConnection: Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
         m_connectionState.store(ConnectionState::CONNECTED);
 
@@ -85,6 +89,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
         }
 
     } catch (std::system_error& error) {
+        Debug::Log("PrimaryConnection: Connection failed: {} (code: {})", error.what(), error.code().value());
         HandleAsioError(error.code());
         Disconnect(error.code());
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
@@ -102,7 +107,14 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         TCPAcceptor acceptor(m_context);
-        TCPEndpoint listenEndpoint = acceptor.local_endpoint();
+        TCPEndpoint listenEndpoint(asio::ip::tcp::v4(), 0);
+        acceptor.open(listenEndpoint.protocol());
+        acceptor.set_option(asio::socket_base::reuse_address(true));
+        acceptor.bind(listenEndpoint);
+        acceptor.listen();
+
+        listenEndpoint = acceptor.local_endpoint();
+        Debug::Log("PrimaryConnection: Seeking connection: Listening on port {}", listenEndpoint.port());
 
         asio::post(
             m_context,
@@ -112,9 +124,11 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         );
 
         co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
+        Debug::Log("PrimaryConnection: Incoming connection accepted. Starting SSL handshake as server...");
+
         co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
-        Debug::Log("Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
+        Debug::Log("PrimaryConnection: Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
         m_connectionState.store(ConnectionState::CONNECTED);
 
@@ -133,10 +147,31 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         }
 
     } catch (std::system_error& error) {
+        Debug::Log("PrimaryConnection: Seek failed: {} (code: {})", error.what(), error.code().value());
         HandleAsioError(error.code());
         Disconnect(error.code());
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::FAILURE);
         ConnectionManager::SendEvent(event);
+    }
+}
+
+asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
+    const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+
+    if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
+        co_return;
+    }
+
+    Debug::Log("PrimaryConnection: Disconnecting primary connection. Reason: {} (code: {})", errorCode.message(), errorCode.value());
+
+    m_connectionState.store(ConnectionState::DISCONNECTING);
+    co_await CoCleanupConnection();
+    m_connectionState.store(ConnectionState::DISCONNECTED);
+
+    Debug::Log("PrimaryConnection: Disconnected TLS primary connection successfully.");
+
+    if (callConnectionManagerDisconnect) {
+        ConnectionManager::Disconnect(errorCode);
     }
 }
 
@@ -146,54 +181,42 @@ asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
     m_socket.reset();
 }
 
-asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code errorCode, const bool callConnectionManagerDisconnect) {
-    const std::shared_ptr<PrimaryConnection> self = shared_from_this();
-
-    if (m_connectionState.load() == ConnectionState::DISCONNECTED || m_connectionState.load() == ConnectionState::DISCONNECTING) {
-        co_return;
-    }
-
-    m_connectionState.store(ConnectionState::DISCONNECTING);
-    co_await CoCleanupConnection();
-    m_connectionState.store(ConnectionState::DISCONNECTED);
-
-    Debug::Log("Disconnected TLS primary connection");
-
-    if (callConnectionManagerDisconnect) {
-        ConnectionManager::Disconnect(errorCode);
-    }
-}
-
 asio::awaitable<void> PrimaryConnection::CoSend() {
     try {
         const std::shared_ptr<PrimaryConnection> self = shared_from_this();
         moodycamel::ConsumerToken token(m_packageOut);
 
-        co_await m_sendFlag.Wait();
-        m_sendFlag.Reset();
-
-        std::vector<uint8_t> buffer;
-        buffer.resize(PackageHeader::GetSerializedSize());
+        Debug::Log("PrimaryConnection: Starting CoSend loop.");
 
         while (m_connectionState.load() == ConnectionState::CONNECTED) {
-            if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {
-                PackageHeader& header = package->GetHeader();
+            co_await m_sendFlag.Wait();
+            m_sendFlag.Reset();
 
-                std::size_t offset = 0;
-                header.Serialize(buffer, offset);
+            std::vector<uint8_t> buffer;
+            buffer.resize(PackageHeader::GetSerializedSize());
 
-                std::vector<asio::const_buffer> constBuffers {
-                    asio::const_buffer(buffer.data(), buffer.size()),
-                    asio::const_buffer(package->GetRawBody(), header.size)
-                };
+            while (m_connectionState.load() == ConnectionState::CONNECTED) {
+                if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {
+                    PackageHeader& header = package->GetHeader();
 
-                co_await asio::async_write(*m_socket, constBuffers, asio::use_awaitable);
-            } else {
-                co_await m_sendFlag.Wait();
-                m_sendFlag.Reset();
+                    std::size_t offset = 0;
+                    header.Serialize(buffer, offset);
+
+                    std::vector<asio::const_buffer> constBuffers {
+                        asio::const_buffer(buffer.data(), buffer.size()),
+                        asio::const_buffer(package->GetRawBody(), header.size)
+                    };
+
+                    co_await asio::async_write(*m_socket, constBuffers, asio::use_awaitable);
+                } else {
+                    break;
+                }
             }
         }
     } catch (std::system_error& error) {
+        if (error.code() != asio::error::operation_aborted) {
+            Debug::Log("PrimaryConnection: CoSend error: {}", error.what());
+        }
         HandleAsioError(error.code());
         Disconnect(error.code());
     }
@@ -205,6 +228,8 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
         moodycamel::ProducerToken token(m_packageIn);
         std::vector<uint8_t> headerBuffer(PackageHeader::GetSerializedSize());
         PackageHeader header{};
+
+        Debug::Log("PrimaryConnection: Starting CoReceive loop.");
 
         while (m_connectionState.load() == ConnectionState::CONNECTED) {
             asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
@@ -233,6 +258,9 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
+        if (error.code() != asio::error::operation_aborted && error.code() != asio::error::eof) {
+            Debug::Log("PrimaryConnection: CoReceive error: {}", error.what());
+        }
         HandleAsioError(error.code());
         Disconnect(error.code());
     }

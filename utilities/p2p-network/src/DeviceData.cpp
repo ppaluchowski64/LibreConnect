@@ -1,13 +1,26 @@
 #include <DeviceData.h>
 #include <DebugLog.h>
+
 #include <boost/uuid/random_generator.hpp>
 #include <boost/uuid/string_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+
 #include <filesystem>
 #include <fstream>
 
+#include <QStandardPaths>
+#include <QDir>
+
 boost::uuids::uuid DeviceData::GetDeviceUUID() {
+
+#if defined(DESKTOP_DEVICE)
     const std::string uuidFile = "uuid.bin";
+
+#elif defined(MOBILE_DEVICE)
+    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(base);
+    const std::string uuidFile = (base + "/uuid.bin").toStdString();
+#endif
 
     try {
         if (!std::filesystem::exists(uuidFile)) {
@@ -30,19 +43,14 @@ boost::uuids::uuid DeviceData::GetDeviceUUID() {
             throw std::runtime_error("Failed to open " + uuidFile + " for reading");
         }
 
-        try {
-            std::string uuidString;
-            std::getline(input, uuidString);
-            input.close();
+        std::string uuidString;
+        std::getline(input, uuidString);
+        input.close();
 
-            static boost::uuids::string_generator generator;
-            return generator(uuidString);
-        } catch (const std::exception& e) {
-            std::filesystem::remove(uuidFile);
-            return GetDeviceUUID();
-        }
-    }
-    catch (const std::exception& e) {
+        static boost::uuids::string_generator generator;
+        return generator(uuidString);
+
+    } catch (const std::exception& e) {
         Debug::LogError(std::string("Error in GetDeviceUUID: ") + e.what());
         throw;
     }

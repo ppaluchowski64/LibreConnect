@@ -274,6 +274,7 @@ def run_conan_install(build_type: str):
 
     cmd = " ".join(cmd_parts)
     print(f"Running: {cmd}")
+    print("Python sees cmake:", shutil.which("cmake"))
 
     result = subprocess.run(cmd, shell=True, env=os.environ)
     if result.returncode != 0:
@@ -437,20 +438,6 @@ if platform.startswith("linux"):
 
 shutil.rmtree("./build", ignore_errors=True)
 
-def refresh_path():
-    if sys.platform != "win32":
-        return
-
-    import winreg
-
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"System\CurrentControlSet\Control\Session Manager\Environment") as key:
-        system_path, _ = winreg.QueryValueEx(key, "Path")
-
-    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
-        user_path, _ = winreg.QueryValueEx(key, "Path")
-
-    os.environ["PATH"] = system_path + ";" + user_path
-    os.environ["PATH"] = os.path.expandvars(os.environ["PATH"])
 
 
 if os.environ.get("BUILD_FOR") == "Desktop":
@@ -493,7 +480,6 @@ if os.environ.get("BUILD_FOR") == "Desktop":
             except (subprocess.CalledProcessError, FileNotFoundError):
                 print("Winget installation failed or winget not found. skipping...")
 
-            refresh_path()
 
             result = subprocess.run(["where", "ffmpeg"], capture_output=True, text=True)
             for path in result.stdout.splitlines():
