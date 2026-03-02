@@ -15,12 +15,9 @@ ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
 std::atomic<bool>  ConnectionManager::s_isInitialized{false};
 
-class PrimaryConnection;
-class InitialConnection;
-class LanDeviceScanner;
-
 void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
     Initialize();
+    Debug::Log("ConnectionManager: Attempting ConnectPrimary for device {}", boost::uuids::to_string(data.deviceInfo.deviceID));
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
         s_instance->m_sslContext = CreateSSLContext(false, data.deviceInfo.deviceID);
@@ -33,6 +30,7 @@ void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
 
 void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
     Initialize();
+    Debug::Log("ConnectionManager: Starting SeekPrimary for device {}", boost::uuids::to_string(data.deviceInfo.deviceID));
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
         s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
@@ -45,6 +43,7 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
 
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
     Initialize();
+    Debug::Log("ConnectionManager: Seeking initial connection on {}:{}", endpoint.address().to_string(), endpoint.port());
 
     const std::shared_ptr<InitialConnection> connection = InitialConnection::Create(s_instance->m_context);
 
@@ -67,17 +66,20 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
 
     connection->TemporaryOwnership(connection);
     connection->Seek(std::move(endpoint), [](TCPEndpoint ep) {
+        Debug::Log("ConnectionManager: Initial connection seek triggered recursing seek");
         SeekInitialConnection(std::move(ep));
     });
 }
 
 void ConnectionManager::StartAcceptingConnections() {
     Initialize();
+    Debug::Log("ConnectionManager: Starting to accept connections");
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
 
         if (s_instance->m_initialConnectionOut != nullptr) {
+            Debug::Log("ConnectionManager: Disconnecting existing outgoing initial connection");
             s_instance->m_initialConnectionOut->Disconnect();
         }
 
@@ -85,12 +87,12 @@ void ConnectionManager::StartAcceptingConnections() {
     }
 
     const TCPEndpoint endpoint(asio::ip::tcp::v4(), 0);
-
     SeekInitialConnection(endpoint);
 }
 
 void ConnectionManager::StopAcceptingConnections() {
     Initialize();
+    Debug::Log("ConnectionManager: Stopping all connection acceptance");
 
     std::lock_guard<std::mutex> lock(s_mutex);
 
@@ -99,19 +101,24 @@ void ConnectionManager::StopAcceptingConnections() {
         s_instance->m_initialConnectionOut.reset();
     }
 
+    size_t activeInbound = 0;
     for (const auto& elem : s_instance->m_initialConnectionsIn) {
         if (const auto ref = elem.lock()) {
             ref->Disconnect();
+            activeInbound++;
         }
     }
 
+    Debug::Log("ConnectionManager: Disconnected {} inbound connections", activeInbound);
     s_instance->m_initialConnectionsIn.clear();
 }
 
 void ConnectionManager::Connect(const std::string& address, const uint16_t port, const InitialConnectionMode mode) {
     Initialize();
+    Debug::Log("ConnectionManager: Connecting to {}:{} with mode {}", address, port, static_cast<int>(mode));
 
     if (s_instance->m_initialConnectionOut == nullptr) {
+        Debug::LogWarning("ConnectionManager: Cannot connect, initialConnectionOut is null");
         return;
     }
 
@@ -120,19 +127,20 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
 }
 
 std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
+    Debug::Log("ConnectionManager: Scanning for paired devices in 'certs/'");
     std::vector<DeviceInfoLite> devices;
     std::error_code errorCode;
 
     static boost::uuids::string_generator generator;
 
     if (!std::filesystem::exists("certs", errorCode)) {
-        Debug::LogWarning("Certs directory does not exist");
+        Debug::LogWarning("ConnectionManager: Certs directory does not exist");
         return devices;
     }
 
     for (const auto& entry : std::filesystem::directory_iterator("certs", errorCode)) {
         if (errorCode) {
-            Debug::LogError("GetPairedDevices error: {}", errorCode.message());
+            Debug::LogError("ConnectionManager: GetPairedDevices iterator error: {}", errorCode.message());
             break;
         }
 
@@ -143,7 +151,7 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
             try {
                 device.deviceID = generator(name);
             } catch (const std::system_error& e) {
-                Debug::LogWarning("Invalid UUID directory: {}", name);
+                Debug::LogWarning("ConnectionManager: Invalid UUID directory found: {}", name);
                 continue;
             }
 
@@ -151,15 +159,15 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
             std::ifstream file(path.string(), std::ios::binary);
 
             if (!file) {
-                Debug::LogWarning("Missing data.JSON for device {}", name);
+                Debug::LogWarning("ConnectionManager: Missing data.JSON for device {}", name);
                 continue;
             }
 
             try {
                 std::string rawJson{ std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
-
                 nlohmann::json json = nlohmann::json::parse(rawJson);
-                device.deviceName = json.value("name", "");
+
+                device.deviceName = json.value("name", "Unknown Device");
                 if (json.contains("type") && json["type"].is_number_integer()) {
                     device.deviceType = static_cast<DeviceType>(json["type"].get<int>());
                 } else {
@@ -167,9 +175,10 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
                 }
 
                 devices.push_back(device);
+                Debug::Log("ConnectionManager: Found paired device: {} ({})", device.deviceName, name);
 
             } catch (const nlohmann::json::exception& exception) {
-                Debug::LogWarning("Invalid JSON in {}: {}", path.string(), exception.what());
+                Debug::LogWarning("ConnectionManager: Invalid JSON in {}: {}", path.string(), exception.what());
             }
         }
     }
@@ -179,6 +188,7 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
     Initialize();
+    Debug::Log("ConnectionManager: Disconnecting primary connection. Reason: {}", errorCode.message());
 
     s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
 
@@ -187,20 +197,26 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID) {
+    Debug::Log("ConnectionManager: Creating SSL Context (Role: {}, Target: {})",
+               isServer ? "Server" : "Client", boost::uuids::to_string(targetUUID));
+
     const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(targetUUID) + "/cert.key"};
     constexpr std::string_view privateKeyPath{"certs/local/pkey.key"};
     constexpr std::string_view certificatePath{"certs/local/cert.key"};
 
     if (!CryptographicIdentityManager::IsCertificateValid(certificatePath)) {
+        Debug::Log("ConnectionManager: Local certificate invalid or missing. Generating new identity...");
         CryptographicIdentityManager::GenerateCertificate(privateKeyPath, certificatePath);
     }
 
     std::shared_ptr<SSLContext> context = std::make_shared<SSLContext>(isServer ? SSLContext::tlsv13_server : SSLContext::tlsv13_client);
 
     if (targetUUID != boost::uuids::nil_uuid() && std::filesystem::exists(targetCertificatePath)) {
+        Debug::Log("ConnectionManager: Loading verification file for target device");
         context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
         context->load_verify_file(targetCertificatePath);
     } else {
+        Debug::Log("ConnectionManager: No target certificate found, using 'Always Accept' callback");
         context->set_verify_mode(asio::ssl::verify_none);
         context->set_verify_callback(std::bind(&ConnectionManager::VerifyCallbackAlwaysAccept, std::placeholders::_1, std::placeholders::_2));
     }
@@ -217,7 +233,7 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         context->use_certificate_chain_file(certificatePath.data());
         context->use_private_key_file(privateKeyPath.data(), SSLContext::pem);
     } catch (const std::system_error& e) {
-        Debug::LogError("Failed to load SSL certs: {}", e.what());
+        Debug::LogError("ConnectionManager: Failed to load SSL local certs: {}", e.what());
     }
 
     return context;
@@ -229,27 +245,32 @@ bool ConnectionManager::VerifyCallbackAlwaysAccept(const bool preverified, asio:
         const int error_code = X509_STORE_CTX_get_error(cert_ctx);
         const char* error_string = X509_verify_cert_error_string(error_code);
 
-        Debug::Log("Certificate presented but failed standard verification checks: {}", error_string);
+        Debug::Log("ConnectionManager: Certificate presented but failed standard verification: {}", error_string);
+    } else {
+        Debug::Log("ConnectionManager: Certificate pre-verified successfully");
     }
 
     return true;
 }
 
 void ConnectionManager::RunContext() {
+    Debug::Log("ConnectionManager: IO Context thread started");
     s_instance->m_context.run();
+    Debug::Log("ConnectionManager: IO Context thread stopped");
 }
 
 void ConnectionManager::SetSeekingEndpoint(TCPEndpoint endpoint) {
     Initialize();
+    Debug::Log("ConnectionManager: Setting seeking endpoint to {}:{}", endpoint.address().to_string(), endpoint.port());
 
     std::lock_guard<std::mutex> lock(s_mutex);
     s_instance->m_seekingEndpoint = std::move(endpoint);
 }
 
 asio::awaitable<void> ConnectionManager::CoProcessPackages() {
+    Debug::Log("ConnectionManager: Package processing coroutine started");
     const std::shared_ptr<AwaitableFlag> receiveFlag = m_primaryConnection->GetReceiveFlag();
 
-    // ReSharper disable once CppDFAEndlessLoop
     while (true) {
         co_await receiveFlag->Wait();
         receiveFlag->Reset();
@@ -261,6 +282,7 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 
             if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
                 size_t requestID = value->GetValue<size_t>();
+                Debug::Log("ConnectionManager: Received awaitable response for Request ID: {}", requestID);
                 auto flag = m_requestAwaitableMap.Pop(requestID);
 
                 if (flag.has_value()) {
@@ -270,12 +292,15 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 
             } else {
                 PC_PackageType type = static_cast<PC_PackageType>(header.type);
+                Debug::Log("ConnectionManager: Received package type: {}", static_cast<int>(type));
                 std::optional<RequestCallbackType> callbackOptional = m_responseHandlerMap.Get(type);
 
                 if (callbackOptional.has_value()) {
                     asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
                         callback(std::move(package));
                     });
+                } else {
+                    Debug::LogWarning("ConnectionManager: No handler registered for package type {}", static_cast<int>(type));
                 }
             }
 
@@ -286,16 +311,19 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 
 void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCallbackType&& handler) {
     Initialize();
+    Debug::Log("ConnectionManager: Adding response handler for type {}", static_cast<int>(type));
     s_instance->m_responseHandlerMap.InsertOrAssign(type, std::forward<RequestCallbackType>(handler));
 }
 
 void ConnectionManager::RemoveResponseHandler(const PC_PackageType type) {
     Initialize();
+    Debug::Log("ConnectionManager: Removing response handler for type {}", static_cast<int>(type));
     s_instance->m_responseHandlerMap.Erase(type);
 }
 
 void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
     Initialize();
+    Debug::Log("ConnectionManager: New QObject event listener added");
 
     std::lock_guard<std::mutex> lock(s_mutex);
     s_instance->m_eventObjects.push_back(object);
@@ -303,12 +331,12 @@ void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {
 
 TCPEndpoint ConnectionManager::GetSeekEndpoint() {
     Initialize();
-
     std::lock_guard<std::mutex> lock(s_mutex);
     return s_instance->m_seekingEndpoint;
 }
 
 ConnectionManager::ConnectionManager() : m_workGuard(asio::make_work_guard(m_context)) {
+    Debug::Log("ConnectionManager: Constructing instance and starting worker threads");
     s_instance = this;
 
     for (int i = 0; i < 2; i++) {
@@ -325,15 +353,17 @@ void ConnectionManager::Initialize() {
     }
 
     std::lock_guard<std::mutex> lock(s_mutex);
+    if (s_isInitialized.load()) return; // Double-check pattern
 
+    Debug::Log("ConnectionManager: Initializing Singleton instance");
     s_instance = new ConnectionManager();
     s_isInitialized.store(true);
 }
 
 void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
-    std::vector<QPointer<QObject>> targets;
     Initialize();
 
+    std::vector<QPointer<QObject>> targets;
     {
         std::lock_guard<std::mutex> lock(s_mutex);
 
@@ -343,12 +373,14 @@ void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
         });
 
         if (objects.empty()) {
+            Debug::Log("ConnectionManager: SendEvent called but no active listeners registered");
             return;
         }
 
         targets = objects;
     }
 
+    Debug::Log("ConnectionManager: Dispatching event to {} listeners", targets.size());
     for (const auto& obj : targets) {
         QMetaObject::invokeMethod(obj, [event = event->clone(), obj]() {
             if (obj.isNull()) return;
