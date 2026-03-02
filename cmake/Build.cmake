@@ -160,6 +160,10 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
         set_property(TARGET ${ExecutableName} PROPERTY
                 QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_SOURCE_DIR}/android"
         )
+
+        set_target_properties(${ExecutableName} PROPERTIES
+                OUTPUT_NAME "LibreConnectNative"
+        )
     endif()
 
     DeployQT(${ExecutableName})

@@ -1,27 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.LibreConnect.mobile">
+<manifest
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        package="com.LibreConnect.mobile"
+>
 
-    <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
+    <uses-sdk
+            android:minSdkVersion="28"
+            android:targetSdkVersion="34"
+    />
 
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
-    <application android:label="LibreConnect" android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+    <application android:label="LibreConnect"
+                 android:name="org.qtproject.qt.android.QtApplication"
+                 android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+                 android:requestLegacyExternalStorage="true">
 
         <activity
-                android:name="org.qtproject.qt.android.bindings.QtActivity"
+                android:name="org.qtproject.qt.android.QtActivity"
                 android:exported="true"
-                android:configChanges="orientation|screenSize|keyboardHidden|keyboard|locale|layoutDirection|fontScale|uiMode"
+                android:launchMode="singleTask"
+                android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|locale|layoutDirection|fontScale|uiMode|density"
                 android:screenOrientation="unspecified">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <meta-data android:name="android.app.lib_name" android:value="LibreConnectNative" />
         </activity>
 
-        <service android:name=".MyNotificationService"
+        <service android:name=".NotificationService"
                  android:label="LibreConnect Notification Listener"
                  android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
                  android:exported="true">

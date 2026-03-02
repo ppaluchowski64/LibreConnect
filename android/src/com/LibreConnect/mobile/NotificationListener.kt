@@ -16,6 +16,12 @@ class NotificationListener : NotificationListenerService() {
     external fun onNotificationReceivedCPP(key: String, title: String?, content: String?, timestamp: Long, largeIconBytes: ByteArray?, mainImage: ByteArray?)
     external fun onNotificationRemovedCPP(key: String)
 
+    companion object {
+        init {
+            System.loadLibrary("LibreConnectNative")
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val key: String = sbn.key
         activeNotifications.add(key);
