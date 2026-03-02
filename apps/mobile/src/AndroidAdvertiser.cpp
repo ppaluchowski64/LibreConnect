@@ -12,7 +12,33 @@ AndroidAdvertiser::AndroidAdvertiser(QObject* parent)
 
 AndroidAdvertiser::~AndroidAdvertiser()
 {
+    stop();
+}
+
+void AndroidAdvertiser::start()
+{
+    if (m_running)
+        return;
+
+    m_running = true;
+    emit runningChanged();
+
+    acquireMulticastLock();
+    ConnectionManager::StartAcceptingConnections();
+    LanDeviceScanner::BeginScan();
+}
+
+void AndroidAdvertiser::stop()
+{
+    if (!m_running)
+        return;
+
+    LanDeviceScanner::EndScan();
+    ConnectionManager::StopAcceptingConnections();
     releaseMulticastLock();
+
+    m_running = false;
+    emit runningChanged();
 }
 
 void AndroidAdvertiser::acquireMulticastLock()
@@ -53,6 +79,7 @@ void AndroidAdvertiser::acquireMulticastLock()
     lock.callMethod<void>("setReferenceCounted", "(Z)V", false);
     lock.callMethod<void>("acquire");
 
+    m_multicastLock = lock;
     m_hasLock = true;
 #endif
 }
@@ -64,6 +91,10 @@ void AndroidAdvertiser::releaseMulticastLock()
 #else
     if (!m_hasLock)
         return;
+    if (m_multicastLock.isValid()) {
+        m_multicastLock.callMethod<void>("release");
+    }
+    m_multicastLock = QJniObject();
     m_hasLock = false;
 #endif
 }
