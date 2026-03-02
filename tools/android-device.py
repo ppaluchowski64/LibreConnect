@@ -12,7 +12,7 @@ KEY_PASSWORD = "MyKeyPassword123"
 
 window = tk.Tk()
 window.geometry("400x500")
-window.title("Emulator")
+window.title("ADB Device Installer")
 
 main_frame = tk.Frame(window)
 running_frame = tk.Frame(window)
@@ -24,7 +24,6 @@ if os.path.exists(".env"):
     env_file_path = ".env"
 else:
     if not os.path.exists("../.env"):
-
         print("No .env file found")
         input("Press Enter to continue...")
         exit(-1)
@@ -63,9 +62,11 @@ if os.path.exists(build_tools_base):
 
 build_tools_dir = os.path.join(build_tools_base, build_tools_max_version_dir)
 
-emulator_path = os.path.join(sdk_dir, "emulator", f"emulator{exe_suffix}")
 adb_path = os.path.join(sdk_dir, "platform-tools", f"adb{exe_suffix}")
 apk_signer_path = os.path.join(build_tools_dir, f"apksigner{bat_suffix}")
+
+selected_device_id = None
+
 def load_last_apk():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -122,38 +123,68 @@ def refresh_devices_list(_devices: tk.Listbox):
     try:
         _devices.delete(0, tk.END)
         result = subprocess.run(
-            [emulator_path, "-list-avds"],
+            [adb_path, "devices"],
             capture_output=True,
             text=True,
             check=True
         )
 
-        if result.returncode != 0:
-            _devices.insert(tk.END, "Error finding emulator")
-            return
+        lines = result.stdout.splitlines()
+        for line in lines[1:]:
+            line = line.strip()
+            if line:
+                parts = line.split('\t')
+                if len(parts) >= 2 and parts[1] != "offline":
+                    _devices.insert(tk.END, parts[0])
 
-        for device in result.stdout.splitlines():
-            _devices.insert(tk.END, device)
+        if _devices.size() == 0:
+            _devices.insert(tk.END, "No devices found")
 
     except FileNotFoundError:
-        _devices.insert(tk.END, "Emulator not found")
+        _devices.insert(tk.END, "ADB not found")
 
-def start_emulator(_device: str):
-    def run():
-        main_frame.pack_forget()
-        running_frame.pack(fill="both", expand=True)
-        subprocess.run([emulator_path, "-avd", _device, "-no-snapshot", "-wipe-data"])
-        running_frame.pack_forget()
-        main_frame.pack(fill="both", expand=True)
+def select_device(_devices_listbox: tk.Listbox):
+    global selected_device_id
+    selection = _devices_listbox.curselection()
 
-    threading.Thread(target=run, daemon=True).start()
+    if not selection:
+        messagebox.showwarning("Warning", "Please select a device first.")
+        return
+
+    selected = _devices_listbox.get(selection[0])
+    if selected == "No devices found" or selected == "ADB not found":
+        return
+
+    selected_device_id = selected
+
+    main_frame.pack_forget()
+    running_frame.pack(fill="both", expand=True)
+
+def go_back():
+    global selected_device_id
+    selected_device_id = None
+    running_frame.pack_forget()
+    main_frame.pack(fill="both", expand=True)
+    refresh_devices_list(devices)
 
 def install_apk(_apk_path: str):
+    if not selected_device_id:
+        messagebox.showerror("Error", "No device selected.")
+        return
+
+    if not _apk_path or not os.path.exists(_apk_path):
+        messagebox.showerror("Error", "Valid APK path is required.")
+        return
+
     signed_apk_dir = sign_apk(_apk_path)
 
-    if os.path.exists(signed_apk_dir):
-        subprocess.run([adb_path, "install", "-r", signed_apk_dir])
-        save_last_apk(_apk_path)
+    if signed_apk_dir and os.path.exists(signed_apk_dir):
+        try:
+            subprocess.run([adb_path, "-s", selected_device_id, "install", "-r", signed_apk_dir], check=True)
+            save_last_apk(_apk_path)
+            messagebox.showinfo("Success", f"APK successfully installed on {selected_device_id}")
+        except subprocess.CalledProcessError as e:
+            messagebox.showerror("Install Error", f"Failed to install APK.\n{e}")
 
 def browse_apk(_entry: tk.Entry):
     apk_path = filedialog.askopenfilename(
@@ -168,9 +199,9 @@ def browse_apk(_entry: tk.Entry):
 
 main_frame.pack(fill="both", expand=True)
 
-# Main Frame
+# Main Frame (Device Selection)
 
-tk.Label(main_frame, text="Select and start android emulator").pack(padx=5, pady=5)
+tk.Label(main_frame, text="Select connected Android device").pack(padx=5, pady=5)
 
 devices = tk.Listbox(main_frame, width=50, height=20)
 devices.pack(padx=20, pady=20)
@@ -178,9 +209,9 @@ devices.pack(padx=20, pady=20)
 refresh_devices_list(devices)
 
 tk.Button(main_frame, text="Refresh Devices", command=lambda: refresh_devices_list(devices)).pack(padx=20, pady=5)
-tk.Button(main_frame, text="Start Emulator", command=lambda: start_emulator(devices.get(devices.curselection()[0]))).pack(padx=20, pady=5)
+tk.Button(main_frame, text="Select Device & Continue", command=lambda: select_device(devices)).pack(padx=20, pady=5)
 
-# Running Frame
+# Running Frame (APK Installation)
 
 tk.Label(running_frame, text="APK path").pack(padx=5, pady=5)
 
@@ -197,6 +228,7 @@ tk.Button(
     command=lambda: browse_apk(apk_entry)
 ).pack(padx=20, pady=5)
 
-tk.Button(running_frame, text="Install APK", command=lambda: install_apk(apk_entry.get())).pack(padx=20, pady=5)
+tk.Button(running_frame, text="Install APK", command=lambda: install_apk(apk_entry.get())).pack(padx=20, pady=20)
+tk.Button(running_frame, text="Back to Devices", command=go_back).pack(padx=20, pady=5)
 
 window.mainloop()

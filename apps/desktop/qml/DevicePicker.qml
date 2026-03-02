@@ -17,7 +17,7 @@ Page {
 
         const dev = discovery.deviceAt(deviceListView.currentIndex)
 
-        conn.connectTo(dev.ipAddress, 5000, 0)
+        conn.connectTo(dev.ipAddress, dev.port, 0)
 
         isConnecting = true
     }
@@ -210,16 +210,13 @@ Page {
     }
     Connections {
         target: conn
-
-        // When connected successfully -> navigate to connected page
         function onConnectedChanged() {
             if (conn.connected) {
                 isConnecting = false
+                discovery.cancelScan()
                 devicePicker.StackView.view.push("qrc:/LibreConnect/desktop/Connected.qml")
             }
         }
-
-        // If connection fails or disconnects -> show error popup later
         function onLastErrorChanged() {
             if (conn.lastError.length > 0) {
                 isConnecting = false
