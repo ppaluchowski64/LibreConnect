@@ -3,11 +3,13 @@
 #include <QVector>
 #include <QString>
 #include <QVariantMap>
+#include <QSet>
 
 struct Device {
     QString icon;
     QString deviceName;
     QString ipAddress;
+    int port = 0;
     QString osName;
     QString osVersion;
     QString appVersion;
@@ -21,6 +23,7 @@ public:
         IconRole = Qt::UserRole + 1,
         DeviceNameRole,
         IpAddressRole,
+        PortRole,
         OsNameRole,
         OsVersionRole,
         AppVersionRole
@@ -42,6 +45,7 @@ public:
         case IconRole:       return d.icon;
         case DeviceNameRole: return d.deviceName;
         case IpAddressRole:  return d.ipAddress;
+        case PortRole:       return d.port;
         case OsNameRole:     return d.osName;
         case OsVersionRole:  return d.osVersion;
         case AppVersionRole: return d.appVersion;
@@ -54,6 +58,7 @@ public:
             { IconRole,       "icon" },
             { DeviceNameRole, "deviceName" },
             { IpAddressRole,  "ipAddress" },
+            { PortRole,       "port" },
             { OsNameRole,     "osName" },
             { OsVersionRole,  "osVersion" },
             { AppVersionRole, "appVersion" }
@@ -67,6 +72,7 @@ public:
         m["icon"]        = d.icon;
         m["deviceName"]  = d.deviceName;
         m["ipAddress"]   = d.ipAddress;
+        m["port"]        = d.port;
         m["osName"]      = d.osName;
         m["osVersion"]   = d.osVersion;
         m["appVersion"]  = d.appVersion;
@@ -84,6 +90,36 @@ public:
         beginInsertRows(QModelIndex(), pos, pos);
         m_items.push_back(d);
         endInsertRows();
+    }
+
+    void upsertByAddress(const Device& d) {
+        for (int i = 0; i < m_items.size(); ++i) {
+            if (m_items[i].ipAddress == d.ipAddress) {
+                m_items[i] = d;
+                const QModelIndex idx = index(i);
+                emit dataChanged(idx, idx, {
+                    IconRole,
+                    DeviceNameRole,
+                    IpAddressRole,
+                    PortRole,
+                    OsNameRole,
+                    OsVersionRole,
+                    AppVersionRole
+                });
+                return;
+            }
+        }
+        append(d);
+    }
+
+    void removeMissingByAddress(const QSet<QString>& addresses) {
+        for (int i = m_items.size() - 1; i >= 0; --i) {
+            if (!addresses.contains(m_items[i].ipAddress)) {
+                beginRemoveRows(QModelIndex(), i, i);
+                m_items.removeAt(i);
+                endRemoveRows();
+            }
+        }
     }
 
 private:
