@@ -2,6 +2,7 @@
 #include <QObject>
 #include <QTimer>
 #include <QVariantMap>
+#include <QSet>
 
 #include "DeviceModel.h"
 #include <Scanner.h>
@@ -19,7 +20,7 @@ public:
         ConnectionManager::StartAcceptingConnections();
 
         m_timer.setInterval(1200);
-        m_timer.setSingleShot(true);
+        m_timer.setSingleShot(false);
         connect(&m_timer, &QTimer::timeout,
                 this, &DeviceDiscovery::onDiscoveryTimeout);
     }
@@ -29,15 +30,16 @@ public:
     bool searching() const { return m_searching; }
 
     Q_INVOKABLE void discover() {
-        if (m_searching)
+        if (!m_searching) {
+            m_model.clear();
+            setSearching(true);
+
+            LanDeviceScanner::BeginScan();
+            m_timer.start();
             return;
-        m_model.clear();
-        setSearching(true);
+        }
 
-
-        LanDeviceScanner::BeginScan();
-
-        m_timer.start();
+        onDiscoveryTimeout();
     }
 
     Q_INVOKABLE void cancelScan() {
@@ -58,8 +60,12 @@ signals:
 
 private slots:
     void onDiscoveryTimeout() {
+        if (!m_searching)
+            return;
+
         const std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
 
+        QSet<QString> addresses;
         for (const auto& dev : devices) {
             Device d;
 
@@ -67,17 +73,17 @@ private slots:
             d.deviceName = QString::fromStdString(dev.deviceName);
 
             d.ipAddress  = QString::fromStdString(dev.deviceAddress);
+            d.port       = static_cast<int>(dev.deviceAddressPort);
 
             d.osName     = QStringLiteral("Unknown");
             d.osVersion  = QStringLiteral("");
             d.appVersion = QStringLiteral("");
 
-            m_model.append(d);
+            addresses.insert(d.ipAddress);
+            m_model.upsertByAddress(d);
         }
 
-        LanDeviceScanner::EndScan();
-
-        setSearching(false);
+        m_model.removeMissingByAddress(addresses);
     }
 
 private:
