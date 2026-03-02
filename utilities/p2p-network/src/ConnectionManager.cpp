@@ -23,9 +23,9 @@ void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
     Initialize();
 
     if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
-        s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
+        s_instance->m_sslContext = CreateSSLContext(false, data.deviceInfo.deviceID);
     } else {
-        s_instance->m_sslContext = CreateSSLContext(true);
+        s_instance->m_sslContext = CreateSSLContext(false);
     }
 
     s_instance->m_primaryConnection->Connect(s_instance->m_sslContext, data);
