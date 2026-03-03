@@ -14,16 +14,25 @@ class MobileConnectionController : public QObject
 
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(QString challengeCode READ challengeCode NOTIFY challengeCodeChanged)
+    Q_PROPERTY(bool challengeVisible READ challengeVisible NOTIFY challengeVisibleChanged)
+    Q_PROPERTY(QString pendingDeviceName READ pendingDeviceName NOTIFY pendingDeviceNameChanged)
 
 public:
     explicit MobileConnectionController(QObject* parent = nullptr);
 
     bool connected() const { return m_connected; }
     QString lastError() const { return m_lastError; }
+    QString challengeCode() const { return m_challengeCode; }
+    bool challengeVisible() const { return m_challengeVisible; }
+    QString pendingDeviceName() const { return m_pendingDeviceName; }
 
     signals:
         void connectedChanged();
     void lastErrorChanged();
+    void challengeCodeChanged();
+    void challengeVisibleChanged();
+    void pendingDeviceNameChanged();
 
     void incomingConnection(QString deviceName);
 
@@ -32,8 +41,12 @@ protected:
 
 private:
     void setError(const QString& e);
+    void clearChallenge();
 
 private:
     bool m_connected = false;
     QString m_lastError;
+    QString m_challengeCode;
+    bool m_challengeVisible = false;
+    QString m_pendingDeviceName;
 };

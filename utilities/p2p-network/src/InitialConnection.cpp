@@ -210,8 +210,12 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
                 Debug::Log("InitialConnection: Handshake step 1 - Received DEVICE_DATA_FC from {}", data.deviceInfo.deviceName);
 
-                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data, this](const bool actionResult, std::string challenge) {
-                    asio::co_spawn(m_strand, CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
+                    try {
+                        asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
+                    } catch (const std::exception& ex) {
+                        Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
+                    }
                 });
 
                 ConnectionManager::SendEvent(event);
@@ -239,10 +243,10 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 }
 
                 Debug::Log("InitialConnection: Challenge Verified. Seeking Primary...");
-                ConnectionManager::SeekPrimary(data, [this, initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
+                ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
                     initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
                     initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
-                    asio::co_spawn(m_strand, CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
+                    asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
                 });
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER)) {
@@ -254,8 +258,12 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST)) {
                 Debug::Log("InitialConnection: Received Challenge Request. Spawning Verification UI Event.");
-                std::unique_ptr<ConnectionVerificationEvent> event = std::make_unique<ConnectionVerificationEvent>([this](std::string response) {
-                    asio::co_spawn(m_strand, CoProcessConnectionVerificationEvent(std::move(response)), asio::detached);
+                std::unique_ptr<ConnectionVerificationEvent> event = std::make_unique<ConnectionVerificationEvent>([ref = shared_from_this()](std::string response) {
+                    try {
+                        asio::co_spawn(ref->m_strand, ref->CoProcessConnectionVerificationEvent(std::move(response)), asio::detached);
+                    } catch (const std::exception& ex) {
+                        Debug::LogError("InitialConnection: Failed to spawn verification callback coroutine - {}", ex.what());
+                    }
                 });
 
                 ConnectionManager::SendEvent(std::move(event));
@@ -269,7 +277,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
     }
 }
 
-asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(std::string&& response) {
+asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(std::string response) {
     Debug::Log("InitialConnection: User provided challenge response. Sending back to server.");
     InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_RESPONSE, std::move(response));
 
@@ -279,7 +287,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(st
     co_return;
 }
 
-asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(const bool actionResult, InitialConnectionData data, std::string&& challenge){
+asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(const bool actionResult, InitialConnectionData data, std::string challenge){
     if (!actionResult) {
         Debug::Log("InitialConnection: Connection rejected by user/manager callback.");
         Disconnect();
@@ -299,11 +307,11 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     }
 
     Debug::Log("InitialConnection: No challenge required. Moving to Primary Seek.");
-    ConnectionManager::SeekPrimary(data, [this, initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
+    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
         initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
         initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
 
-        asio::co_spawn(m_strand, CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
+        asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
     });
 }
 

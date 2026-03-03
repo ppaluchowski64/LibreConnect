@@ -30,6 +30,31 @@ void DeviceConnectionController::disconnect()
     ConnectionManager::Disconnect();
 }
 
+void DeviceConnectionController::submitVerificationCode(const QString& code)
+{
+    if (!m_verificationEvent) {
+        return;
+    }
+
+    if (!m_verificationError.isEmpty()) {
+        m_verificationError.clear();
+        emit verificationErrorChanged();
+    }
+
+    const std::string response = code.trimmed().toStdString();
+    m_verificationEvent->SendAnswer(response);
+}
+
+void DeviceConnectionController::cancelVerification()
+{
+    if (m_verificationEvent) {
+        m_verificationEvent->SendAnswer(std::string{});
+    }
+
+    m_verificationEvent.reset();
+    // Let the backend handle the rejection response and disconnect.
+}
+
 bool DeviceConnectionController::event(QEvent* e)
 {
     const QEvent::Type type = e->type();
@@ -76,6 +101,13 @@ void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
     emit connectedChanged();
     emit pendingChanged();
 
+    if (m_verificationPending) {
+        m_verificationPending = false;
+        emit verificationPendingChanged();
+    }
+
+    m_verificationEvent.reset();
+
     if (!success) {
         handleError("Connection failed", ev->type());
     }
@@ -88,6 +120,23 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
 
     emit connectedChanged();
     emit pendingChanged();
+
+    if (m_verificationPending) {
+        m_verificationPending = false;
+        emit verificationPendingChanged();
+    }
+
+    if (m_verificationTriesLeft != 0) {
+        m_verificationTriesLeft = 0;
+        emit verificationTriesLeftChanged();
+    }
+
+    if (!m_verificationError.isEmpty()) {
+        m_verificationError.clear();
+        emit verificationErrorChanged();
+    }
+
+    m_verificationEvent.reset();
 
     handleError(ev->GetErrorCode().message(), ev->type());
 }
@@ -128,11 +177,31 @@ void DeviceConnectionController::handleConnectionPendingEvent(ConnectionPendingE
 
 void DeviceConnectionController::handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev)
 {
-    emit verificationFailed(ev->GetLeftTries());
+    m_verificationTriesLeft = ev->GetLeftTries();
+    emit verificationTriesLeftChanged();
+
+    m_verificationError = QString("Verification failed (%1 tries left)").arg(m_verificationTriesLeft);
+    emit verificationErrorChanged();
+
+    emit verificationFailed(m_verificationTriesLeft);
 }
 
 void DeviceConnectionController::handleConnectionVerificationEvent(ConnectionVerificationEvent* ev)
 {
-    // nie mamy jeszcze wgl pinu
-    ev->SendAnswer(std::string{});
+    if (m_verificationError.length() > 0) {
+        m_verificationError.clear();
+        emit verificationErrorChanged();
+    }
+
+    if (m_verificationTriesLeft != 0) {
+        m_verificationTriesLeft = 0;
+        emit verificationTriesLeftChanged();
+    }
+
+    m_verificationEvent.reset(ev->clone());
+
+    if (!m_verificationPending) {
+        m_verificationPending = true;
+        emit verificationPendingChanged();
+    }
 }
