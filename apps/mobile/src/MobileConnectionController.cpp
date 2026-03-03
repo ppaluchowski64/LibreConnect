@@ -1,4 +1,5 @@
 #include "MobileConnectionController.h"
+#include <QRandomGenerator>
 
 MobileConnectionController::MobileConnectionController(QObject* parent)
     : QObject(parent)
@@ -15,6 +16,24 @@ void MobileConnectionController::setError(const QString& e)
     emit lastErrorChanged();
 }
 
+void MobileConnectionController::clearChallenge()
+{
+    if (!m_challengeCode.isEmpty()) {
+        m_challengeCode.clear();
+        emit challengeCodeChanged();
+    }
+
+    if (m_challengeVisible) {
+        m_challengeVisible = false;
+        emit challengeVisibleChanged();
+    }
+
+    if (!m_pendingDeviceName.isEmpty()) {
+        m_pendingDeviceName.clear();
+        emit pendingDeviceNameChanged();
+    }
+}
+
 bool MobileConnectionController::event(QEvent* e)
 {
     const auto type = e->type();
@@ -25,6 +44,10 @@ bool MobileConnectionController::event(QEvent* e)
         bool ok = (ev->GetResult() == EventResult::SUCCESS);
         m_connected = ok;
         emit connectedChanged();
+
+        if (ok) {
+            clearChallenge();
+        }
 
         if (!ok)
             setError("Connection failed");
@@ -37,6 +60,8 @@ bool MobileConnectionController::event(QEvent* e)
 
         m_connected = false;
         emit connectedChanged();
+
+        clearChallenge();
 
         setError(QString::fromStdString(ev->GetErrorCode().message()));
         return true;
@@ -54,7 +79,19 @@ bool MobileConnectionController::event(QEvent* e)
         DeviceInfo info = ev->GetDeviceInfo();
         emit incomingConnection(QString::fromStdString(info.deviceName));
 
-        ev->AcceptConnection();
+        m_pendingDeviceName = QString::fromStdString(info.deviceName);
+        emit pendingDeviceNameChanged();
+
+        const int codeValue = QRandomGenerator::global()->bounded(1000000);
+        m_challengeCode = QString("%1").arg(codeValue, 6, 10, QLatin1Char('0'));
+        emit challengeCodeChanged();
+
+        if (!m_challengeVisible) {
+            m_challengeVisible = true;
+            emit challengeVisibleChanged();
+        }
+
+        ev->AcceptConnectionIfVerified(m_challengeCode.toStdString());
 
         return true;
     }
@@ -68,7 +105,6 @@ bool MobileConnectionController::event(QEvent* e)
     if (type == ConnectionVerificationEvent::Type) {
         auto* ev = static_cast<ConnectionVerificationEvent*>(e);
 
-        // Later: show PIN UI
         ev->SendAnswer(std::string{});
         return true;
     }
