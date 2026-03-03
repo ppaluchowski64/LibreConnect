@@ -21,12 +21,14 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
 
     <application android:label="LibreConnect"
-                 android:name="org.qtproject.qt.android.QtApplication"
+                 android:name="org.qtproject.qt.android.bindings.QtApplication"
                  android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+                 android:hardwareAccelerated="true"
+                 android:extractNativeLibs="true"
                  android:requestLegacyExternalStorage="true">
 
         <activity
-                android:name="org.qtproject.qt.android.QtActivity"
+                android:name="org.qtproject.qt.android.bindings.QtActivity"
                 android:exported="true"
                 android:launchMode="singleTask"
                 android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|locale|layoutDirection|fontScale|uiMode|density"
@@ -40,7 +42,7 @@
             <meta-data android:name="android.app.lib_name" android:value="LibreConnectNative" />
         </activity>
 
-        <service android:name=".NotificationService"
+        <service android:name=".NotificationListener"
                  android:label="LibreConnect Notification Listener"
                  android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
                  android:exported="true">

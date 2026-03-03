@@ -8,6 +8,10 @@ ApplicationWindow {
     visible: true
     title: "LibreConnect Mobile"
 
+    Backend {
+        id: myBackend
+    }
+
     Column {
         anchors.centerIn: parent
         spacing: 16
