@@ -51,6 +51,7 @@ find_package(fmt              REQUIRED)
 find_package(concurrentqueue  REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
+find_package(xxHash           REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 
 FetchContent_Declare(
@@ -96,6 +97,7 @@ if (ANDROID OR IOS)
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/mobile
             common-module
             file-system
+            xxHash::xxhash
             p2p-network-component-pc
     )
 
@@ -113,6 +115,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/desktop
             common-module
             file-system
+            xxHash::xxhash
             p2p-network-component-pc
     )
 
