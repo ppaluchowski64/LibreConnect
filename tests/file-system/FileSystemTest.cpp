@@ -40,34 +40,30 @@ int main(int argc, char *argv[]) {
     if (fileCreated)
         std::cout << '\n';
 
+    std::cout << "[ENTRIES IN " << testDir << "]\n\n";
     const auto result = FileSystemManager::GetEntries(testDir);
 
     if (!result.success) {
         std::cout << "Failed to access directory: " << testDir << '\n';
-        return 1;
     }
-
-    if (result.entries.empty()) {
+    else if (result.entries.empty()) {
         std::cout << "Directory is empty: " << testDir << '\n';
-        return 0;
+    }
+    else {
+        for (const auto& entry : result.entries) {
+            std::cout << entry << '\n';
+        }
     }
 
-    std::cout << "[ENTRIES IN " << testDir << "]\n\n";
-    for (const auto& entry : result.entries) {
-        std::cout << entry << '\n';
-    }
+    std::cout << "[APP DATA PATH]\n";
 
     const std::string appName = "LibreConnect";
     const auto appDataPath = FileSystemManager::GetAppDataPath(appName);
 
-    std::cout << "[APP DATA PATH]\n";
-
-    if (appDataPath.empty()) {
+    if (appDataPath.empty())
         std::cout << "Failed to get application data path\n";
-        return 1;
-    }
-
-    std::cout << "App data path: " << appDataPath << "\n\n";
+    else
+        std::cout << "App data path: " << appDataPath << "\n\n";
 
     std::cout << "[FILE CLIPBOARD]\n";
 
@@ -77,17 +73,38 @@ int main(int argc, char *argv[]) {
         if (FileSystemManager::FilesInClipboard()) {
             if (FileSystemManager::PasteFromClipboard(copyDir)) {
                 std::cout << "Files have been pasted\n";
-                return 0;
             } else {
                 std::cout << "Something went wrong with pasting files\n";
-                return 1;
             }
         } else {
             std::cout << "Clipboard does not contain valid file references\n";
-            return 1;
         }
     } else {
         std::cout << "Something went wrong with copying files\n";
-        return 1;
     }
+
+    std::cout << "\n[TEXT CLIPBOARD]\n";
+    const std::string sampleText = "Hello from Clipboard!";
+
+    if (TextClipboard::Set(sampleText)) {
+        std::cout << "Text has been set to clipboard\n";
+
+        if (TextClipboard::Has()) {
+            std::cout << "Clipboard contains text\n";
+
+            const std::string clipboardText = TextClipboard::Get();
+            std::cout << "Clipboard text: " << clipboardText << '\n';
+
+            if (clipboardText == sampleText)
+                std::cout << "TextClipboard test passed\n";
+            else
+                std::cout << "TextClipboard test failed\n";
+        } else {
+            std::cout << "Clipboard unexpectedly empty\n";
+        }
+    } else {
+        std::cout << "Failed to set text to clipboard\n";
+    }
+
+    return 0;
 }
