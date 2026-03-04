@@ -14,6 +14,8 @@ public:
     ThreadPool& operator=(const ThreadPool&) = delete;
 
     static IOContext& GetContext();
+    static void Stop();
+    static void Start();
 
     template<typename T>
     static void Post(T&& function) {
