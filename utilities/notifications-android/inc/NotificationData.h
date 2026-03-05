@@ -8,12 +8,22 @@
 struct NotificationData {
 public:
     NotificationData();
-    NotificationData(std::string key, std::string title, std::string content, size_t timestamp, std::vector<uint8_t> smallIcon, std::vector<uint8_t> largeIcon);
+    NotificationData(
+        std::string key,
+        std::string title,
+        std::string content,
+        size_t timestamp,
+        std::vector<std::string> buttons,
+        std::vector<uint8_t> smallIcon,
+        std::vector<uint8_t> largeIcon,
+        std::vector<uint8_t> mainImage
+    );
 
     std::string key;
     std::string title;
     std::string content;
     size_t timestamp{0};
+    std::vector<std::string> buttons;
     std::vector<uint8_t> smallIcon; // PNG compression
     std::vector<uint8_t> largeIcon; // PNG compression
     std::vector<uint8_t> mainImage; // PNG compression

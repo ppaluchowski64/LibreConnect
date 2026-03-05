@@ -21,7 +21,13 @@ ApplicationWindow {
             onClicked: {
                 myBackend.notification("Hello from QML!")
             }
+        }
 
+        Button {
+            text: "Display Notifications"
+            onClicked: {
+                myBackend.displayNotifications()
+            }
         }
     }
 }

@@ -7,24 +7,132 @@ import android.graphics.drawable.Drawable
 import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Log
 import java.io.ByteArrayOutputStream
+import java.io.File
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.provider.Settings
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import org.qtproject.qt.android.bindings.QtActivity
 
 class NotificationListener : NotificationListenerService() {
-    private val activeNotifications = mutableListOf<String>()
+    private val tag = "NotificationListener"
+    private val trackedNotificationKeys = mutableSetOf<String>()
+    private var initialSyncCompleted = false
     external fun onNotificationReceivedCPP(key: String, title: String?, content: String?, timestamp: Long, largeIconBytes: ByteArray?, mainImage: ByteArray?)
     external fun onNotificationRemovedCPP(key: String)
 
     companion object {
-        init {
-            System.loadLibrary("LibreConnectNative")
+        @Volatile
+        private var nativeLoaded = false
+
+        private fun ensureNativeLoaded(service: NotificationListenerService): Boolean {
+            if (nativeLoaded) return true
+
+            synchronized(this) {
+                if (nativeLoaded) return true
+
+                val candidates = mutableListOf("LibreConnectNative")
+                Build.SUPPORTED_ABIS.forEach { abi ->
+                    candidates.add("LibreConnectNative_$abi")
+                }
+
+                for (candidate in candidates) {
+                    try {
+                        System.loadLibrary(candidate)
+                        nativeLoaded = true
+                        Log.i("NotificationListener", "Loaded native library via System.loadLibrary: $candidate")
+                        return true
+                    } catch (_: UnsatisfiedLinkError) {
+                        // Try next candidate.
+                    }
+                }
+
+                val nativeDir = service.applicationInfo.nativeLibraryDir
+                val fallback = File(nativeDir).listFiles()
+                    ?.firstOrNull { it.isFile && it.name.startsWith("libLibreConnectNative") && it.name.endsWith(".so") }
+                if (fallback != null) {
+                    try {
+                        System.load(fallback.absolutePath)
+                        nativeLoaded = true
+                        Log.i("NotificationListener", "Loaded native library via absolute path: ${fallback.name}")
+                        return true
+                    } catch (e: UnsatisfiedLinkError) {
+                        Log.e("NotificationListener", "Failed to load native library from ${fallback.absolutePath}", e)
+                    }
+                }
+
+                Log.e("NotificationListener", "Unable to load LibreConnect native library. nativeLibraryDir=$nativeDir")
+                return false
+            }
         }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        if (!ensureNativeLoaded(this)) {
+            Log.e(tag, "Skipping notification posted callback because native library is not loaded.")
+            return
+        }
+
+        if (!initialSyncCompleted) {
+            syncActiveNotificationsToCpp(force = true)
+            if (initialSyncCompleted) {
+                return
+            }
+        }
+
+        dispatchNotificationPosted(sbn)
+    }
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        Log.i(tag, "Notification listener connected.")
+
+        if (!ensureNativeLoaded(this)) {
+            Log.e(tag, "Skipping listener sync because native library is not loaded.")
+            return
+        }
+
+        syncActiveNotificationsToCpp(force = true)
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        Log.w(tag, "Notification listener disconnected.")
+        trackedNotificationKeys.clear()
+        initialSyncCompleted = false
+    }
+
+    private fun syncActiveNotificationsToCpp(force: Boolean = false) {
+        if (force) {
+            trackedNotificationKeys.clear()
+        }
+
+        try {
+            val currentNotifications = activeNotifications ?: emptyArray()
+            val currentKeys = mutableSetOf<String>()
+
+            currentNotifications.forEach { sbn ->
+                currentKeys.add(sbn.key)
+                dispatchNotificationPosted(sbn)
+            }
+
+            trackedNotificationKeys.retainAll(currentKeys)
+            initialSyncCompleted = true
+            Log.i(tag, "Initial notification sync complete. count=${currentNotifications.size}")
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to synchronize existing notifications.", e)
+        }
+    }
+
+    private fun dispatchNotificationPosted(sbn: StatusBarNotification) {
         val key: String = sbn.key
-        activeNotifications.add(key);
+        trackedNotificationKeys.add(key)
 
         val notification = sbn.notification
         val extras = notification.extras
@@ -42,19 +150,22 @@ class NotificationListener : NotificationListenerService() {
         }
 
         if (bigPicture != null) {
-            val bitmap = if (bigPicture is android.graphics.drawable.Icon) {
-                drawableToBitmap(bigPicture.loadDrawable(applicationContext)!!)
+            val bitmap: Bitmap? = if (bigPicture is android.graphics.drawable.Icon) {
+                val drawable = bigPicture.loadDrawable(applicationContext)
+                drawable?.let { drawableToBitmap(it) }
             } else {
                 bigPicture as Bitmap
             }
 
-            if (bitmap.width > 1024) {
-                val aspectRatio = bitmap.height.toDouble() / bitmap.width.toDouble()
-                val scaledBitmap = bitmap.scale(1024, (1024 * aspectRatio).toInt())
-                mainImageBytes = bitmapToByteArray(scaledBitmap)
+            if (bitmap != null) {
+                mainImageBytes = if (bitmap.width > 1024) {
+                    val aspectRatio = bitmap.height.toDouble() / bitmap.width.toDouble()
+                    val scaledBitmap = bitmap.scale(1024, (1024 * aspectRatio).toInt())
+                    bitmapToByteArray(scaledBitmap)
+                } else {
+                    bitmapToByteArray(bitmap)
+                }
             }
-
-            mainImageBytes = bitmapToByteArray(bitmap)
         }
 
         val iconBytes: ByteArray? = if (largeIcon != null) {
@@ -72,23 +183,36 @@ class NotificationListener : NotificationListenerService() {
             }
         }
 
-        onNotificationReceivedCPP(
-            key,
-            title,
-            content,
-            timestamp,
-            iconBytes,
-            mainImageBytes
-        )
+        try {
+            onNotificationReceivedCPP(
+                key,
+                title,
+                content,
+                timestamp,
+                iconBytes,
+                mainImageBytes
+            )
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(tag, "JNI method onNotificationReceivedCPP is missing or failed.", e)
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        val key = sbn.key
-        activeNotifications.remove(key);
+        if (!ensureNativeLoaded(this)) {
+            Log.e(tag, "Skipping notification removed callback because native library is not loaded.")
+            return
+        }
 
-        onNotificationRemovedCPP(
-            key
-        )
+        val key = sbn.key
+        trackedNotificationKeys.remove(key)
+
+        try {
+            onNotificationRemovedCPP(
+                key
+            )
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(tag, "JNI method onNotificationRemovedCPP is missing or failed.", e)
+        }
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {
