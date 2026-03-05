@@ -51,5 +51,11 @@
             </intent-filter>
         </service>
 
+        <receiver
+                android:name=".NotificationActionReceiver"
+                android:label="LibreConnect Notification Action Receiver"
+                android:exported="false"
+        />
+
     </application>
 </manifest>

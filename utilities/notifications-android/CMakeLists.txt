@@ -23,6 +23,7 @@ if (ANDROID)
             Debug-Log
             system-component-pc
             Qt6::Core
+            Qt6::CorePrivate
     )
 
     target_include_directories(notifications-android PUBLIC
