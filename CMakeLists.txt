@@ -61,6 +61,17 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(debug-log)
+
+if (WIN32)
+    FetchContent_Declare(
+            wintoast
+            GIT_REPOSITORY https://github.com/mohabouje/WinToast.git
+            GIT_TAG master
+    )
+
+    FetchContent_MakeAvailable(wintoast)
+endif ()
+
 qt_standard_project_setup()
 
 add_library(project_defaults)
@@ -82,6 +93,7 @@ BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log 
 
 add_subdirectory("utilities/virtual-camera")
 add_subdirectory("utilities/notifications-android")
+add_subdirectory("utilities/notifications-emitter")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
 
@@ -103,8 +115,6 @@ if (ANDROID OR IOS)
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
-
-
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
             common-module
             srtp-stream
