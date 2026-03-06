@@ -148,6 +148,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
     BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
+    BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-emitter Debug-Log)
 
     target_sources(FileEntryTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp
