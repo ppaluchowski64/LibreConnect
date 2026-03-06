@@ -7,12 +7,11 @@
 class NotificationEmitter {
 public:
     static uint64_t Emit(
-        const std::wstring& appName,
         const std::wstring& notificationName,
         const std::wstring& notificationContent,
         const std::optional<std::filesystem::path>& appIconPath,
         const std::optional<std::filesystem::path>& mainImagePath,
-        const std::vector<std::string>& buttons
+        const std::vector<std::wstring>& buttons
     );
 
     static void Remove(uint64_t id);

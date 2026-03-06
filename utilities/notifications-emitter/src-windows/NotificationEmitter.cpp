@@ -11,37 +11,51 @@ public:
 };
 
 uint64_t NotificationEmitter::Emit(
-    const std::wstring& appName,
     const std::wstring& notificationName,
     const std::wstring& notificationContent,
     const std::optional<std::filesystem::path>& appIconPath,
     const std::optional<std::filesystem::path>& mainImagePath,
-    const std::vector<std::string>& buttons) {
+    const std::vector<std::wstring>& buttons) {
+
+    const std::wstring APPNAME = L"LibreConnect";
 
     WinToastLib::WinToast* instance = WinToastLib::WinToast::instance();
-    instance->setAppName(appName);
+    instance->setAppName(APPNAME);
+
+    // TEMP
+    const auto aumi = WinToastLib::WinToast::configureAUMI(
+        L"Default",
+        APPNAME,
+        L"main",
+        L"1.0"
+    );
+
+    instance->setAppUserModelId(aumi);
 
     if (!instance->initialize()) {
         return 0;
     }
 
-    WinToastLib::WinToastTemplate templ(WinToastLib::WinToastTemplate::ImageAndText02);
-    templ.setTextField(std::wstring(notificationName.begin(), notificationName.end()), WinToastLib::WinToastTemplate::FirstLine);
-    templ.setTextField(std::wstring(notificationContent.begin(), notificationContent.end()), WinToastLib::WinToastTemplate::SecondLine);
+    const WinToastLib::WinToastTemplate::WinToastTemplateType templateType = appIconPath
+        ? WinToastLib::WinToastTemplate::ImageAndText02
+        : WinToastLib::WinToastTemplate::Text02;
 
-    // App icon
+    WinToastLib::WinToastTemplate templ(templateType);
+
+    templ.setTextField(notificationName, WinToastLib::WinToastTemplate::FirstLine);
+    templ.setTextField(notificationContent, WinToastLib::WinToastTemplate::SecondLine);
+
     if (appIconPath) {
-        templ.setImagePath(std::wstring(appIconPath->wstring()));
+        templ.setImagePath(appIconPath->wstring());
     }
 
-    // Hero image
     if (mainImagePath) {
-        templ.setHeroImagePath(std::wstring(mainImagePath->wstring()));
+        templ.setHeroImagePath(mainImagePath->wstring());
     }
 
     // Buttons
     for (const auto& btn : buttons) {
-        templ.addAction(std::wstring(btn.begin(), btn.end()));
+        templ.addAction(btn);
     }
 
     const auto handler = new NotificationHandler();
@@ -49,4 +63,12 @@ uint64_t NotificationEmitter::Emit(
 
     return static_cast<uint64_t>(id);
 
+}
+
+void NotificationEmitter::Remove(const uint64_t id) {
+    WinToastLib::WinToast* instance = WinToastLib::WinToast::instance();
+
+    if (instance && id > 0) {
+        instance->hideToast(static_cast<INT64>(id));
+    }
 }
