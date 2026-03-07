@@ -23,8 +23,6 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
         )
     endif ()
 
-    message("Sources: ${SOURCE_FILES}")
-
     file(GLOB_RECURSE HEADER_FILES
             inc/*.h
             inc/*.hpp
