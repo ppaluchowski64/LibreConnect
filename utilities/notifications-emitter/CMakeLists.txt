@@ -29,11 +29,13 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
 
     target_link_libraries(notifications-emitter PUBLIC
             Debug-Log
+            network-component-pc
     )
 
     if (WIN32)
         target_link_libraries(notifications-emitter PUBLIC
-            WinToast
+                WinToast
+                magic_enum::magic_enum
         )
     elseif (UNIX AND NOT APPLE)
         target_link_libraries(notifications-emitter PUBLIC
