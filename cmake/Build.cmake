@@ -205,6 +205,8 @@ function(DeployQT Target)
         set(CUSTOM_LD_LIB_PATHS
                 "${CMAKE_SOURCE_DIR}/build/ffmpeg/lib"
         )
+        set(DESKTOP_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/LibreConnect.desktop")
+        set(ICON_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.png")
 
         set_target_properties(${Target} PROPERTIES
                 RUNTIME_OUTPUT_DIRECTORY ${DEPLOY_DIR}/usr/bin
@@ -219,6 +221,8 @@ function(DeployQT Target)
                 ${LINUXDEPLOY_EXECUTABLE}
                 --appdir ${DEPLOY_DIR}
                 --executable "$<TARGET_FILE:${Target}>"
+                --desktop-file ${DESKTOP_FILE_PATH}
+                --icon-file ${ICON_FILE_PATH}
                 --plugin qt
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=LibreConnect
+Comment=LibreConnect Desktop
+Exec=appLibreConnect_desktop
+Icon=libreconnect_logo
+Terminal=false
+Categories=Network;Utility;

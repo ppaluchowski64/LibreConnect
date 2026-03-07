@@ -1,5 +1,4 @@
 #include <NotificationEmitter.h>
-#include <ThreadPool.h>
 
 #import <Foundation/Foundation.h>
 #import <UserNotifications/UserNotifications.h>
@@ -9,6 +8,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -83,6 +83,16 @@ bool ParseActionIndex(NSString* actionIdentifier, size_t& index) {
     return true;
 }
 
+void PostAsync(std::function<void()> action) {
+    if (!action) {
+        return;
+    }
+
+    std::thread([action = std::move(action)]() mutable { action(); }).detach();
+}
+
+} // namespace
+
 @interface LibreConnectNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
@@ -111,17 +121,15 @@ didReceiveNotificationResponse:(UNNotificationResponse*)response
         }
     }
 
-    if (action) {
-        ThreadPool::Post([action = std::move(action)]() mutable {
-            action();
-        });
-    }
+    PostAsync(std::move(action));
 
     if (completionHandler) {
         completionHandler();
     }
 }
 @end
+
+namespace {
 
 void EnsureMacNotificationSetup() {
     std::call_once(g_delegateOnce, []() {
