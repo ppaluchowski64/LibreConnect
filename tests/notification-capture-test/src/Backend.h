@@ -12,6 +12,7 @@ public:
 
     public slots:
         void notification(QString message);
+        void displayNotifications();
 };
 
 #endif //NOTIFICATIONLISTENER_KT_BACKEND_H
