@@ -5,6 +5,7 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:7.4.1'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
     }
 }
 
@@ -16,6 +17,7 @@ allprojects {
 }
 
 apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
     compileSdk 34
@@ -40,9 +42,14 @@ android {
     }
 
     namespace "com.LibreConnect.mobile"
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
 }
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
     implementation fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
 }

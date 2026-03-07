@@ -22,7 +22,7 @@
 
     <application android:label="LibreConnect"
                  android:name="org.qtproject.qt.android.bindings.QtApplication"
-                 android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+                 android:theme="@style/Theme.LibreConnect.Launch"
                  android:hardwareAccelerated="true"
                  android:extractNativeLibs="true"
                  android:requestLegacyExternalStorage="true">
@@ -50,6 +50,12 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <receiver
+                android:name=".NotificationActionReceiver"
+                android:label="LibreConnect Notification Action Receiver"
+                android:exported="false"
+        />
 
     </application>
 </manifest>
