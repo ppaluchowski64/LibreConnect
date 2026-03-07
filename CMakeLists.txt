@@ -166,7 +166,17 @@ if (ENABLE_TESTS)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
     BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
+
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-emitter Debug-Log)
+    if (APPLE AND NOT IOS)
+        target_link_libraries(NotificationEmitterTest-emitter PRIVATE Qt6::Core)
+        set_target_properties(NotificationEmitterTest-emitter PROPERTIES
+                MACOSX_BUNDLE TRUE
+                MACOSX_BUNDLE_GUI_IDENTIFIER "com.libreconnect.notificationemittertest"
+                MACOSX_BUNDLE_BUNDLE_NAME "NotificationEmitterTest"
+        )
+        DeployQT(NotificationEmitterTest-emitter)
+    endif ()
 
     target_sources(FileEntryTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp

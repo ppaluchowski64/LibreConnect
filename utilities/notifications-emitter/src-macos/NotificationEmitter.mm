@@ -24,6 +24,25 @@ id<UNUserNotificationCenterDelegate> g_delegate = nil;
 constexpr const char* kRequestPrefix = "LibreConnect_";
 constexpr const char* kActionPrefix = "BTN_";
 
+bool IsBundledMacAppProcess() {
+    NSBundle* bundle = [NSBundle mainBundle];
+    if (bundle == nil) {
+        return false;
+    }
+
+    NSString* bundleIdentifier = [bundle bundleIdentifier];
+    if (bundleIdentifier == nil || [bundleIdentifier length] == 0) {
+        return false;
+    }
+
+    NSString* bundlePath = [[bundle bundleURL] path];
+    if (bundlePath == nil || ![[bundlePath pathExtension] isEqualToString:@"app"]) {
+        return false;
+    }
+
+    return true;
+}
+
 NSString* ToNSString(const std::wstring& value) {
     if (value.empty()) {
         return @"";
@@ -157,6 +176,10 @@ int64_t NotificationEmitter::Emit(
     (void)appIconPath;
     (void)mainImagePath;
 
+    if (!IsBundledMacAppProcess()) {
+        return -1;
+    }
+
     EnsureMacNotificationSetup();
 
     const int64_t notificationId = g_nextNotificationId.fetch_add(1);
@@ -214,7 +237,7 @@ int64_t NotificationEmitter::Emit(
 }
 
 void NotificationEmitter::Remove(const int64_t id) {
-    if (id < 0) {
+    if (id < 0 || !IsBundledMacAppProcess()) {
         return;
     }
 
