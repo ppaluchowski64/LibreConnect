@@ -48,6 +48,23 @@ BUILD_FOR=
 #
 DISABLE_DEBUG=
 
+# ------------------------------------------------
+# BUILD_TESTS
+# ------------------------------------------------
+# Controls whether test targets are built.
+#
+# true / 1 / yes / on  -> Build tests
+# false / 0 / no / off -> Skip tests
+#
+# Notes:
+# - On Desktop: controls C++ test targets.
+# - On Android: controls mobile test APK targets.
+#
+# Example:
+#   BUILD_TESTS=true
+#
+BUILD_TESTS=true
+
 # ===================
 # Desktop only
 # ===================
@@ -157,6 +174,7 @@ def check_env_var(name: str):
 
 check_env_var("DISABLE_DEBUG")
 check_env_var("BUILD_FOR")
+check_env_var("BUILD_TESTS")
 
 if os.environ.get("BUILD_FOR") == "Desktop":
     check_env_var("QT_DIR_DESKTOP")

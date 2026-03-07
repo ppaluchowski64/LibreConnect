@@ -5,11 +5,10 @@ std::once_flag ThreadPool::s_flag{};
 
 void ThreadPool::Initialize() {
     s_instance = new ThreadPool();
+    s_instance->Start();
 }
 
-ThreadPool::ThreadPool() : m_workGuard(asio::make_work_guard(m_context)){
-    Start();
-}
+ThreadPool::ThreadPool() : m_workGuard(asio::make_work_guard(m_context)) {}
 
 IOContext& ThreadPool::GetContext() {
     std::call_once(s_flag, Initialize);
@@ -32,7 +31,18 @@ void ThreadPool::Stop() {
 }
 
 void ThreadPool::Start() {
-    std::call_once(s_flag, Initialize);
+    if (s_instance == nullptr) {
+        return;
+    }
+
+    if (!s_instance->m_threads.empty()) {
+        return;
+    }
+
+    if (s_instance->m_context.stopped()) {
+        s_instance->m_context.restart();
+    }
+
     unsigned int threadCount = std::thread::hardware_concurrency();
     if (threadCount == 0) threadCount = 1;
 

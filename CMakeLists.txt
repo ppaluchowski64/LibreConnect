@@ -1,9 +1,14 @@
 cmake_minimum_required(VERSION 3.20)
 project(p_connect LANGUAGES C CXX ASM)
 
+if (APPLE AND NOT IOS)
+    enable_language(OBJCXX)
+endif ()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(ENABLE_TESTS ON)
+set(ENABLE_MOBILE_TEST_PROGRAMS OFF)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
@@ -17,11 +22,23 @@ include(cmake/ENV_Loader.cmake)
 
 load_env_file(.env)
 
+set(BUILD_TESTS_ENABLED ON)
+if(DEFINED ENV{BUILD_TESTS})
+    string(TOLOWER "$ENV{BUILD_TESTS}" BUILD_TESTS_ENV)
+    if(BUILD_TESTS_ENV STREQUAL "1" OR BUILD_TESTS_ENV STREQUAL "true" OR BUILD_TESTS_ENV STREQUAL "yes" OR BUILD_TESTS_ENV STREQUAL "on")
+        set(BUILD_TESTS_ENABLED ON)
+    else()
+        set(BUILD_TESTS_ENABLED OFF)
+    endif()
+endif()
+
+set(ENABLE_TESTS ${BUILD_TESTS_ENABLED})
+
 if (ANDROID)
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_ANDROID}/lib/cmake)
     set(ANDROID_SDK_ROOT $ENV{ANDROID_SDK_DIR})
     set(ENABLE_TESTS OFF)
-    set(ENABLE_MOBILE_TEST_PROGRAMS ON)
+    set(ENABLE_MOBILE_TEST_PROGRAMS ${BUILD_TESTS_ENABLED})
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     list(APPEND CMAKE_PREFIX_PATH $ENV{QT_DIR_DESKTOP}/lib/cmake)
     set(ENABLE_MOBILE_TEST_PROGRAMS OFF)
@@ -35,12 +52,8 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     find_package(GTest     REQUIRED)
     find_package(benchmark REQUIRED)
 
-    file(GLOB_RECURSE FFMPEG_HEADER_FILES
-            ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
-    )
-
-    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
-    target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
+    add_library(ffmpeg_headers INTERFACE)
+    target_include_directories(ffmpeg_headers INTERFACE ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 endif()
 
 find_package(OpenSSL          REQUIRED)
@@ -52,7 +65,12 @@ find_package(concurrentqueue  REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
 find_package(xxHash           REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
+
+if (UNIX AND NOT APPLE AND NOT ANDROID)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia DBus)
+else ()
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
+endif ()
 
 FetchContent_Declare(
         debug-log
@@ -61,6 +79,17 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(debug-log)
+
+if (WIN32)
+    FetchContent_Declare(
+            wintoast
+            GIT_REPOSITORY https://github.com/mohabouje/WinToast.git
+            GIT_TAG master
+    )
+
+    FetchContent_MakeAvailable(wintoast)
+endif ()
+
 qt_standard_project_setup()
 
 add_library(project_defaults)
@@ -82,6 +111,7 @@ BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log 
 
 add_subdirectory("utilities/virtual-camera")
 add_subdirectory("utilities/notifications-android")
+add_subdirectory("utilities/notifications-emitter")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
 
@@ -103,8 +133,6 @@ if (ANDROID OR IOS)
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
-
-
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
             common-module
             srtp-stream
@@ -138,6 +166,17 @@ if (ENABLE_TESTS)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
     BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
+
+    BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-emitter Debug-Log)
+    if (APPLE AND NOT IOS)
+        target_link_libraries(NotificationEmitterTest-emitter PRIVATE Qt6::Core)
+        set_target_properties(NotificationEmitterTest-emitter PROPERTIES
+                MACOSX_BUNDLE TRUE
+                MACOSX_BUNDLE_GUI_IDENTIFIER "com.libreconnect.notificationemittertest"
+                MACOSX_BUNDLE_BUNDLE_NAME "NotificationEmitterTest"
+        )
+        DeployQT(NotificationEmitterTest-emitter)
+    endif ()
 
     target_sources(FileEntryTest PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/file-system/OverloadedStreams.cpp

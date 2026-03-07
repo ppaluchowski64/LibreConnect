@@ -70,6 +70,7 @@ jobs:
           "QT_DIR_DESKTOP=$env:QT_ROOT_DIR" >> .env
           "DISABLE_DEBUG=true" >> .env
           "BUILD_FOR=Desktop" >> .env
+          "BUILD_TESTS=true" >> .env
 
       - name: Install Conan deps
         shell: powershell
@@ -142,7 +143,7 @@ jobs:
         run: conan profile detect --force
 
       - name: Write Qt path to .env for CMake
-        run: echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env && echo BUILD_FOR=Desktop >> .env
+        run: echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env && echo BUILD_FOR=Desktop >> .env && echo BUILD_TESTS=true >> .env
 
       - name: Install Conan deps
         run: python configure_project.py
@@ -217,6 +218,7 @@ jobs:
           echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env
           echo DISABLE_DEBUG=true >> .env
           echo BUILD_FOR=Desktop >> .env
+          echo BUILD_TESTS=true >> .env
 
       - name: Install deps
         run: python configure_project.py
@@ -274,7 +276,7 @@ jobs:
           modules: qtmultimedia
 
       - name: Write Qt path to .env for CMake
-        run: echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env && echo "BUILD_FOR=Desktop" >> .env
+        run: echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env && echo "BUILD_FOR=Desktop" >> .env && echo "BUILD_TESTS=true" >> .env
 
       - name: Create Conan profile
         run: conan profile detect --force
@@ -342,9 +344,12 @@ jobs:
 
       - name: Install NDK and SDK components
         run: |
+          yes | sdkmanager --licenses > /dev/null
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-24" \
+            "platforms;android-34" \
+            "build-tools;30.0.3" \
             "ndk;27.3.13750724"
 
       - name: Write Qt path to .env for CMake
@@ -357,6 +362,7 @@ jobs:
           echo "ANDROID_ARCH=armv8" >> .env
           echo "ANDROID_CLANG_VERSION=18" >> .env
           echo "ANDROID_OS_API_LEVEL=24" >> .env
+          echo "BUILD_TESTS=true" >> .env
 
       - name: Create Conan profile
         run: conan profile detect --force
