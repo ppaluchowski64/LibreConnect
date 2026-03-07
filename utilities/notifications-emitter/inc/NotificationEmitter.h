@@ -2,7 +2,9 @@
 #define NOTIFICATIONLISTENER_KT_NOTIFICATIONEMITTER_H
 
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <vector>
 
 class NotificationEmitter {
 public:

@@ -39,7 +39,8 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             ${CMAKE_SOURCE_DIR}/build/ffmpeg/include
     )
 
-    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES})
+    add_library(ffmpeg_headers ${FFMPEG_HEADER_FILES}
+            utilities/notifications-emitter/src-linux/NotificationEmitter.cpp)
     target_include_directories(ffmpeg_headers PUBLIC ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 endif()
 
@@ -52,7 +53,12 @@ find_package(concurrentqueue  REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
 find_package(xxHash           REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
+
+if (UNIX AND NOT APPLE AND NOT ANDROID)
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia DBus)
+else ()
+    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
+endif ()
 
 FetchContent_Declare(
         debug-log
