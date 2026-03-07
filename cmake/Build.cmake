@@ -177,7 +177,7 @@ function(DeployQT Target)
                 VERBATIM
         )
     elseif(APPLE AND NOT IOS)
-        set_target_properties(${ExecutableName} PROPERTIES
+        set_target_properties(${Target} PROPERTIES
                 MACOSX_BUNDLE TRUE
         )
 
@@ -213,17 +213,11 @@ function(DeployQT Target)
         )
 
         add_custom_command(TARGET ${Target} POST_BUILD
-                COMMAND env
+                COMMAND ${CMAKE_COMMAND} -E env
                 QMAKE=$ENV{QT_DIR_DESKTOP}/bin/qmake6
                 LD_LIBRARY_PATH=${CUSTOM_LD_LIB_PATHS}
                 QML_SOURCES_PATHS=${CMAKE_CURRENT_SOURCE_DIR}
-
-                ${LINUXDEPLOY_EXECUTABLE}
-                --appdir ${DEPLOY_DIR}
-                --executable "$<TARGET_FILE:${Target}>"
-                --desktop-file ${DESKTOP_FILE_PATH}
-                --icon-file ${ICON_FILE_PATH}
-                --plugin qt
+                sh -c "\"${LINUXDEPLOY_EXECUTABLE}\" --appdir \"${DEPLOY_DIR}\" --executable \"$<TARGET_FILE:${Target}>\" --desktop-file \"${DESKTOP_FILE_PATH}\" --icon-file \"${ICON_FILE_PATH}\" --plugin qt || true"
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
