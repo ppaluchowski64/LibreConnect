@@ -5,12 +5,12 @@
 #include <QStringList>
 #include <string>
 
-uint64_t NotificationEmitter::Emit(
+int64_t NotificationEmitter::Emit(
     const std::wstring& notificationName,
     const std::wstring& notificationContent,
     const std::optional<std::filesystem::path>& appIconPath,
     const std::optional<std::filesystem::path>& mainImagePath,
-    const std::vector<std::wstring>& buttons) {
+    std::vector<ButtonAction> buttons) {
 
     QDBusInterface interface(
         "org.freedesktop.Notifications",
@@ -29,7 +29,7 @@ uint64_t NotificationEmitter::Emit(
 
     QStringList actions;
     for (const auto& btn : buttons) {
-        actions << QString::fromStdWString(btn) << QString::fromStdWString(btn);
+        actions << QString::fromStdWString(btn.text) << QString::fromStdWString(btn.text);
     }
 
     QVariantMap hints;
@@ -51,13 +51,13 @@ uint64_t NotificationEmitter::Emit(
     );
 
     if (reply.isValid()) {
-        return static_cast<uint64_t>(reply.value());
+        return static_cast<int64_t>(reply.value());
     }
 
     return 0;
 }
 
-void NotificationEmitter::Remove(const uint64_t id) {
+void NotificationEmitter::Remove(const int64_t id) {
     QDBusInterface interface(
         "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications",
@@ -65,7 +65,7 @@ void NotificationEmitter::Remove(const uint64_t id) {
         QDBusConnection::sessionBus()
     );
 
-    if (interface.isValid() && id > 0) {
+    if (interface.isValid() && id >= 0) {
         interface.call("CloseNotification", static_cast<uint>(id));
     }
 }

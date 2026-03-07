@@ -5,18 +5,25 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <functional>
 
 class NotificationEmitter {
 public:
-    static uint64_t Emit(
+    struct ButtonAction {
+        std::wstring text;
+        std::function<void()> action;
+    };
+
+    static int64_t Emit(
         const std::wstring& notificationName,
         const std::wstring& notificationContent,
         const std::optional<std::filesystem::path>& appIconPath,
         const std::optional<std::filesystem::path>& mainImagePath,
-        const std::vector<std::wstring>& buttons
+        std::vector<ButtonAction> buttons
     );
 
-    static void Remove(uint64_t id);
+    static void Remove(int64_t id);
+
 };
 
 #endif // NOTIFICATIONLISTENER_KT_NOTIFICATIONEMITTER_H
