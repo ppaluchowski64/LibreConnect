@@ -82,7 +82,7 @@ asio::awaitable<void> NotificationTransferChannel::CleanupConnection() {
     m_socket.reset();
 }
 
-asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationData& data) {
+asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationPacket& data) {
     const std::shared_ptr<NotificationTransferChannel> self = shared_from_this();
     try {
 
@@ -119,9 +119,9 @@ asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationData& 
     co_return true;
 }
 
-asio::awaitable<std::optional<NotificationData>> NotificationTransferChannel::Receive() {
+asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::Receive() {
     const std::shared_ptr<NotificationTransferChannel> self = shared_from_this();
-    NotificationData data;
+    NotificationPacket data;
 
     try {
         size_t payloadSize = 0;

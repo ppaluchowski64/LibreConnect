@@ -27,8 +27,8 @@ public:
     asio::awaitable<void> CleanupConnection();
 
     // To call this function use co_await, NEVER CALL IT WITH CO_SPAWN
-    asio::awaitable<bool> Send(const NotificationData& data);
-    asio::awaitable<std::optional<NotificationData>> Receive();
+    asio::awaitable<bool> Send(const NotificationPacket& data);
+    asio::awaitable<std::optional<NotificationPacket>> Receive();
 
 private:
     IOContext& m_context;

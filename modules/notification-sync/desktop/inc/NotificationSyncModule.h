@@ -3,12 +3,16 @@
 
 #include <BaseModule.h>
 #include <NotificationData.h>
+#include <NotificationTransferChannel.h>
 
 class NotificationSyncModule final : public BaseModule {
 private:
     asio::awaitable<void> FetchNotificationList();
+    void ProcessNotificationPacket(NotificationPacket&& packet);
 
-    std::vector<NotificationData> data;
+    std::mutex m_notificationsVectorMutex;
+    std::vector<NotificationRecord> m_notifications;
+    std::shared_ptr<NotificationTransferChannel> m_channel;
 
 protected:
     void EnableResponseCallbacks() override;
