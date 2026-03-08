@@ -110,17 +110,15 @@ BuildStaticLibrary(file-system utilities/file-system project_defaults system-com
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
 add_subdirectory("utilities/virtual-camera")
-add_subdirectory("utilities/notifications-android")
-add_subdirectory("utilities/notifications-emitter")
+add_subdirectory("utilities/notifications-handler")
 
-BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
+BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc)
 
 if (ANDROID OR IOS)
 
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/mobile
             common-module
             srtp-stream
-            p2p-network-component-pc
             ffmpeg_headers
             virtual-camera
     )
@@ -129,14 +127,16 @@ if (ANDROID OR IOS)
             common-module
             file-system
             xxHash::xxhash
-            p2p-network-component-pc
+    )
+
+    BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/mobile
+            common-module
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
             common-module
             srtp-stream
-            p2p-network-component-pc
             ffmpeg_headers
             virtual-camera
     )
@@ -145,7 +145,11 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             file-system
             xxHash::xxhash
-            p2p-network-component-pc
+    )
+
+    BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/desktop
+            common-module
+
     )
 
 endif ()
@@ -167,7 +171,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
     BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
 
-    BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-emitter Debug-Log)
+    BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)
         target_link_libraries(NotificationEmitterTest-emitter PRIVATE Qt6::Core)
         set_target_properties(NotificationEmitterTest-emitter PROPERTIES

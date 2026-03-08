@@ -97,6 +97,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
             if (fileHeaderSize > buffer.size()) {
                 Debug::LogError("The header size ({}) is exceeding the buffer size ({})", fileHeaderSize, headerBuffer.size());
+                m_receive.store(false);
                 co_return;
             }
 
@@ -105,6 +106,10 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
             offset = 0;
             fileHeader.Deserialize(buffer, offset);
+
+            if (fileHeader.last && fileHeader.fileSize == 0 && fileHeader.relativePath.empty()) {
+                break;
+            }
 
             const std::filesystem::path filePath = path / fileHeader.relativePath;
             co_await Receive(filePath, fileHeader.fileSize);
@@ -132,6 +137,20 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
             if (entry.is_regular_file()) {
                 fileList.push_back(entry.path());
             }
+        }
+
+        if (fileList.empty()) {
+            FileHeader fileHeader{};
+            fileHeader.relativePath = "";
+            fileHeader.fileSize = 0;
+            fileHeader.last = true;
+
+            std::vector<uint8_t> buffer(fileHeader.GetSerializedSize() + sizeof(size_t));
+            size_t offset = 0;
+            SerializeObject(fileHeader.GetSerializedSize(), buffer, offset);
+            fileHeader.Serialize(buffer, offset);
+
+            co_await asio::async_write(*m_socket, asio::buffer(buffer), asio::use_awaitable);
         }
 
         for (size_t i = 0; i < fileList.size(); ++i) {
