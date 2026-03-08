@@ -1,4 +1,5 @@
 #include <NotificationData.h>
+#include <Packable.h>
 
 NotificationData::NotificationData() { }
 

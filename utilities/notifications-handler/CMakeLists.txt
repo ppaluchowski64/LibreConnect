@@ -47,7 +47,6 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
     endif ()
 
     target_link_libraries(notifications-handler PUBLIC
-            Debug-Log
             network-component-pc
     )
 
@@ -96,8 +95,6 @@ if (ANDROID)
     )
 
     target_link_libraries(notifications-handler PUBLIC
-            Debug-Log
-            system-component-pc
             Qt6::Core
             Qt6::CorePrivate
     )
@@ -109,6 +106,11 @@ if (ANDROID)
 endif ()
 
 if (NOT IOS)
+    target_link_libraries(notifications-handler PUBLIC
+            Debug-Log
+            system-component-pc
+    )
+
     target_include_directories(notifications-handler PUBLIC
             ${CMAKE_CURRENT_SOURCE_DIR}/inc-global/
     )
