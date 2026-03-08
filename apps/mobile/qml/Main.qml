@@ -30,6 +30,44 @@ ApplicationWindow {
             font.pixelSize: 18
         }
 
+        Rectangle {
+            visible: conn.challengeVisible
+            width: 320
+            height: challengeColumn.implicitHeight + 32
+            radius: 8
+            color: "#f6f7fb"
+            border.color: "#c7c9d6"
+            border.width: 1
+
+            Column {
+                id: challengeColumn
+                anchors.margins: 16
+                anchors.fill: parent
+                spacing: 8
+
+                Text {
+                    text: conn.pendingDeviceName.length > 0
+                          ? ("Connection request from " + conn.pendingDeviceName)
+                          : "Connection request"
+                    font.pixelSize: 16
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+
+                Text {
+                    text: "Enter this code on the desktop app:"
+                    font.pixelSize: 14
+                    color: "#333333"
+                }
+
+                Text {
+                    text: conn.challengeCode
+                    font.pixelSize: 28
+                    font.bold: true
+                }
+            }
+        }
+
         Button {
             text: advertiser.running ? "Stop advertising" : "Start advertising"
             onClicked: {

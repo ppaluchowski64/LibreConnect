@@ -226,6 +226,72 @@ Page {
         function onPendingChanged() {
             isConnecting = conn.pending
         }
+        function onVerificationPendingChanged() {
+            if (conn.verificationPending) {
+                verificationCodeField.text = ""
+                verificationDialog.open()
+            } else if (verificationDialog.visible) {
+                verificationDialog.close()
+            }
+        }
+    }
+
+    Dialog {
+        id: verificationDialog
+        modal: true
+        title: "Verify connection"
+        closePolicy: Popup.NoAutoClose
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+
+        Column {
+            spacing: 12
+            width: 360
+
+            Text {
+                text: "Enter the code shown on your phone to approve this connection."
+                wrapMode: Text.WordWrap
+                width: parent.width
+            }
+
+            TextField {
+                id: verificationCodeField
+                placeholderText: "6-digit code"
+                inputMethodHints: Qt.ImhDigitsOnly
+                maximumLength: 6
+                width: parent.width
+                onAccepted: conn.submitVerificationCode(verificationCodeField.text)
+            }
+
+            Text {
+                visible: conn.verificationTriesLeft > 0
+                text: "Tries left: " + conn.verificationTriesLeft
+                color: "#666666"
+            }
+
+            Text {
+                visible: conn.verificationError.length > 0
+                text: conn.verificationError
+                color: "#b00020"
+                wrapMode: Text.WordWrap
+                width: parent.width
+            }
+
+            Row {
+                spacing: 10
+
+                Button {
+                    text: "Submit"
+                    enabled: verificationCodeField.text.length > 0
+                    onClicked: conn.submitVerificationCode(verificationCodeField.text)
+                }
+
+                Button {
+                    text: "Cancel"
+                    onClicked: conn.cancelVerification()
+                }
+            }
+        }
     }
 
     Component.onCompleted: {
