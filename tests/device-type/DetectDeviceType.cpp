@@ -1,5 +1,6 @@
-#include <iostream>
 #include "DeviceTypeDetector.h"
+
+#include <iostream>
 
 int main() {
     switch (DeviceTypeDetector::GetDeviceType()) {
