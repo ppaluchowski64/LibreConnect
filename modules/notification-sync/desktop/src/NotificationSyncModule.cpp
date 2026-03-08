@@ -1,9 +1,14 @@
 #include <NotificationSyncModule.h>
 #include <ConnectionManager.h>
+#include <NotificationEmitter.h>
+#include <boost/nowide/convert.hpp>
+#include <exception>
+#include <future>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
 asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
+    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST);
     if (!response.has_value()) {
         Debug::LogError("Notification sync failed");
@@ -18,7 +23,6 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
 
     std::vector<std::future<void>> futures;
     futures.reserve(notificationsCount);
-    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
 
     while (notificationsCount > 0) {
         notificationsCount--;
@@ -60,6 +64,8 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
 }
 
 void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& packet) {
+    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
+
     Debug::Log("Processing notification packet");
     NotificationRecord notificationRecord;
 
@@ -99,9 +105,53 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
         notificationRecord.mainImagePath = std::nullopt;
     }
 
-    std::lock_guard lock(m_notificationsVectorMutex);
-    m_notifications.emplace_back(notificationRecord);
-    Debug::Log("Notification packet appended to cache");
+    std::promise<void> completionPromise;
+    std::future<void> completionFuture = completionPromise.get_future();
+    std::weak_ptr<NotificationSyncModule> weakInstance = instance;
+
+    asio::post(m_moduleStrand, [weakInstance, notificationRecord = std::move(notificationRecord), completionPromise = std::move(completionPromise)]() mutable {
+        try {
+            const std::shared_ptr<NotificationSyncModule> lockedInstance = weakInstance.lock();
+            if (!lockedInstance) {
+                completionPromise.set_value();
+                return;
+            }
+
+            std::vector<NotificationEmitter::ButtonAction> notificationEmitterButtonActions;
+            notificationEmitterButtonActions.reserve(notificationRecord.buttons.size());
+
+            std::shared_ptr<int64_t> notificationID = std::make_shared<int64_t>();
+            for (const auto& button : notificationRecord.buttons) {
+                std::wstring buttonWString = boost::nowide::widen(button);
+
+                notificationEmitterButtonActions.emplace_back(
+                    buttonWString,
+                    [weakInstance, notificationID, buttonWString]() mutable {
+                        if (const std::shared_ptr<NotificationSyncModule> module = weakInstance.lock()) {
+                            module->ProcessNotificationButtonAction(*notificationID, std::move(buttonWString));
+                        }
+                    }
+                );
+            }
+
+            *notificationID = NotificationEmitter::Emit(
+                boost::nowide::widen(notificationRecord.title),
+                boost::nowide::widen(notificationRecord.content),
+                notificationRecord.iconPath,
+                notificationRecord.mainImagePath,
+                notificationEmitterButtonActions
+            );
+
+            std::lock_guard lock(lockedInstance->m_notificationsVectorMutex);
+            lockedInstance->m_notifications[*notificationID] = std::move(notificationRecord);
+            Debug::Log("Notification packet appended to cache");
+            completionPromise.set_value();
+        } catch (...) {
+            completionPromise.set_exception(std::current_exception());
+        }
+    });
+
+    completionFuture.get();
 }
 
 void NotificationSyncModule::EnableResponseCallbacks() {
@@ -118,13 +168,14 @@ void NotificationSyncModule::OnInitialize() {
 
 asio::awaitable<void> NotificationSyncModule::OnEnable() {
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
-
+    co_return;
 }
 
 asio::awaitable<void> NotificationSyncModule::OnDisable() {
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
+    co_return;
 }
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
-
+    co_return;
 }

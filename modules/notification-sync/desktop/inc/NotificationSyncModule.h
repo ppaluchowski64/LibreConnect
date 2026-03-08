@@ -9,9 +9,10 @@ class NotificationSyncModule final : public BaseModule {
 private:
     asio::awaitable<void> FetchNotificationList();
     void ProcessNotificationPacket(NotificationPacket&& packet);
+    void ProcessNotificationButtonAction(int64_t id, std::wstring&& option);
 
     std::mutex m_notificationsVectorMutex;
-    std::vector<NotificationRecord> m_notifications;
+    std::unordered_map<int64_t, NotificationRecord> m_notifications;
     std::shared_ptr<NotificationTransferChannel> m_channel;
 
 protected:
