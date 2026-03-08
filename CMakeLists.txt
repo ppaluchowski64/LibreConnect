@@ -149,7 +149,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
 
     BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/desktop
             common-module
-
+            notifications-handler
     )
 
 endif ()
