@@ -308,11 +308,11 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v3
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 17
 
       - name: "Setup Conan"
         uses: conan-io/setup-conan@v1
