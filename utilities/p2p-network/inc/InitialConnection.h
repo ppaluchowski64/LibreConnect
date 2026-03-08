@@ -66,8 +66,8 @@ private:
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
 
-    asio::awaitable<void> CoProcessConnectionVerificationEvent(std::string&& response);
-    asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string&& challenge);
+    asio::awaitable<void> CoProcessConnectionVerificationEvent(std::string response);
+    asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string challenge);
     asio::awaitable<void> CoPrimaryConnectionCallback(InitialConnectionData data);
 
     IOContext& m_context;

@@ -63,7 +63,7 @@ public:
     InitialConnectionMode GetInitialConnectionMode() const { return m_mode; }
 
     void AcceptConnection() const { m_callback(true, ""); }
-    void AcceptConnectionIfVerified(const std::string& challenge) const { m_callback(false, challenge); }
+    void AcceptConnectionIfVerified(const std::string& challenge) const { m_callback(true, challenge); }
     void DenyConnection() const { m_callback(false, ""); }
 
     ConnectionPendingEvent* clone() const override {
