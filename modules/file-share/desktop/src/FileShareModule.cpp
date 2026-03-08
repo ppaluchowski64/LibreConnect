@@ -33,6 +33,7 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
     }
 
     const std::unique_ptr<QEvent> event = std::make_unique<FetchDirectoryEntriesResultEvent>(std::move(path), std::move(entries));
+    ConnectionManager::SendEvent(event);
 }
 
 asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
@@ -68,7 +69,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     }
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
-    if (response) {
+    if (!response.has_value()) {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -77,7 +78,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
     const size_t totalTransferSize = response.value()->GetValue<size_t>();
 
-    if (m_transferChannels.size() >= channelIndex) {
+    if (channelIndex >= m_transferChannels.size()) {
         Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
         ConnectionManager::Disconnect();
         co_return;
@@ -97,9 +98,8 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         std::filesystem::create_directories(filePath);
     } else {
         filePath /= path.filename();
+        std::filesystem::create_directories(filePath.parent_path());
     }
-
-    std::filesystem::create_directories(filePath);
 
     const auto future = type == FileType::Directory ?
         asio::co_spawn(m_context, channel->ReceiveDirectory(filePath), asio::use_future) :
@@ -265,7 +265,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         while (true) {
             for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
-                const std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
+                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
                 if (!channel->IsUsed(true)) {
                     transferChannelIndex = i;
                     goto FINISH_CHANNEL_SEARCH;
