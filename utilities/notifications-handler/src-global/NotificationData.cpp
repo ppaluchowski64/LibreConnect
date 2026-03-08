@@ -1,6 +1,32 @@
 #include <NotificationData.h>
 #include <Packable.h>
 
+void NotificationPacket::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
+    SerializeObject(key, buffer, offset);
+    SerializeObject(title, buffer, offset);
+    SerializeObject(content, buffer, offset);
+    SerializeObject(timestamp, buffer, offset);
+    SerializeObject(buttons, buffer, offset);
+    SerializeObject(mainImage, buffer, offset);
+    SerializeObject(iconImage, buffer, offset);
+}
+
+void NotificationPacket::Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
+    DeserializeObject(key, buffer, offset);
+    DeserializeObject(title, buffer, offset);
+    DeserializeObject(content, buffer, offset);
+    DeserializeObject(timestamp, buffer, offset);
+    DeserializeObject(buttons, buffer, offset);
+    DeserializeObject(mainImage, buffer, offset);
+    DeserializeObject(iconImage, buffer, offset);
+}
+
+size_t NotificationPacket::GetSerializedSize() const {
+      return GetObjectSerializedSize(key) + GetObjectSerializedSize(title) + GetObjectSerializedSize(content) +
+          GetObjectSerializedSize(timestamp) + GetObjectSerializedSize(buttons)+ GetObjectSerializedSize(mainImage) +
+          GetObjectSerializedSize(iconImage);
+}
+
 NotificationData::NotificationData() { }
 
 NotificationData::NotificationData(
@@ -22,31 +48,3 @@ NotificationData::NotificationData(
     largeIcon(std::move(largeIcon)),
     mainImage(std::move(mainImage))
 { }
-
-void NotificationData::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
-    SerializeObject(key, buffer, offset);
-    SerializeObject(title, buffer, offset);
-    SerializeObject(content, buffer, offset);
-    SerializeObject(timestamp, buffer, offset);
-    SerializeObject(buttons, buffer, offset);
-    SerializeObject(smallIcon, buffer, offset);
-    SerializeObject(largeIcon, buffer, offset);
-    SerializeObject(mainImage, buffer, offset);
-}
-
-void NotificationData::Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
-    DeserializeObject(key, buffer, offset);
-    DeserializeObject(title, buffer, offset);
-    DeserializeObject(content, buffer, offset);
-    DeserializeObject(timestamp, buffer, offset);
-    DeserializeObject(buttons, buffer, offset);
-    DeserializeObject(smallIcon, buffer, offset);
-    DeserializeObject(largeIcon, buffer, offset);
-    DeserializeObject(mainImage, buffer, offset);
-}
-
-size_t NotificationData::GetSerializedSize() const {
-    return GetObjectSerializedSize(key) + GetObjectSerializedSize(title) + GetObjectSerializedSize(content) +
-        GetObjectSerializedSize(timestamp) + GetObjectSerializedSize(buttons) + GetObjectSerializedSize(smallIcon) +
-        GetObjectSerializedSize(largeIcon) + GetObjectSerializedSize(mainImage);
-}

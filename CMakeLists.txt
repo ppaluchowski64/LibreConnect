@@ -131,6 +131,7 @@ if (ANDROID OR IOS)
 
     BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/mobile
             common-module
+            notifications-handler
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
