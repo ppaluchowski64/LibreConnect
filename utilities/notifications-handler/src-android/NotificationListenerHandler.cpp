@@ -2,6 +2,7 @@
 #include <NotificationListenerHandler.h>
 #include <NotificationData.h>
 #include <algorithm>
+#include <mutex>
 
 static void GetString(JNIEnv* env, const jstring& str, std::string& dst) {
     if (str == nullptr) {
@@ -25,7 +26,11 @@ static void GetByteArray(JNIEnv* env, const jbyteArray byteArray, std::vector<ui
     env->GetByteArrayRegion(byteArray, 0, len, reinterpret_cast<jbyte*>(dst.data()));
 }
 
+std::mutex g_notificationDatasMutex;
 std::vector<NotificationData> g_notificationDatas;
+
+std::mutex g_notificationCallbackMutex;
+std::function<void(const std::string& key)> g_notificationCallback;
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP(
     JNIEnv* env,
@@ -57,7 +62,18 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
     Debug::Log("captured notification {}", notificationData.key);
 
     notificationData.timestamp = timestamp;
-    g_notificationDatas.push_back(notificationData);
+
+    const std::string keyC = notificationData.key;
+
+    {
+        std::lock_guard lock(g_notificationDatasMutex);
+        g_notificationDatas.push_back(notificationData);
+    }
+
+    {
+        std::lock_guard lock(g_notificationCallbackMutex);
+        g_notificationCallback(keyC);
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListener_onNotificationRemovedCPP(
@@ -72,9 +88,12 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
     std::string keyStr;
     GetString(env, key, keyStr);
 
-    std::erase_if(g_notificationDatas, [&keyStr](const NotificationData& notification) {
-        return notification.key == keyStr;
-    });
+    {
+        std::lock_guard lock(g_notificationDatasMutex);
+        std::erase_if(g_notificationDatas, [&keyStr](const NotificationData& notification) {
+            return notification.key == keyStr;
+        });
+    }
 
     Debug::Log("removed notification {}", keyStr);
 }

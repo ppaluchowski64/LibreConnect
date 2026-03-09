@@ -1,0 +1,25 @@
+#ifndef NOTIFICATIONLISTENER_KT_NOTIFICATIONSYNCMODULE_H
+#define NOTIFICATIONLISTENER_KT_NOTIFICATIONSYNCMODULE_H
+
+#include <BaseModule.h>
+#include <NotificationData.h>
+#include <NotificationTransferChannel.h>
+
+class NotificationSyncModule final : public BaseModule {
+private:
+    asio::awaitable<void> SendNewNotification(std::string key) const;
+
+    AwaitableFlag m_connectedFlag;
+    std::shared_ptr<NotificationTransferChannel> m_channel;
+
+protected:
+    void EnableResponseCallbacks() override;
+    void DisableResponseCallbacks() override;
+
+    void OnInitialize() override;
+    asio::awaitable<void> OnEnable() override;
+    asio::awaitable<void> OnDisable() override;
+    asio::awaitable<void> OnShutdown() override;
+};
+
+#endif //NOTIFICATIONLISTENER_KT_NOTIFICATIONSYNCMODULE_H
