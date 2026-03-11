@@ -6,6 +6,9 @@
 #include <NotificationTransferChannel.h>
 
 class NotificationSyncModule final : public BaseModule {
+public:
+    explicit NotificationSyncModule() : m_connectedFlag(m_context.get_executor()) {}
+
 private:
     asio::awaitable<void> SendNewNotification(std::string key) const;
 

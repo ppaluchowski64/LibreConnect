@@ -1,3 +1,4 @@
+#include <CryptographicIdentityManager.h>
 #include <ThreadPool.h>
 
 ThreadPool* ThreadPool::s_instance{nullptr};
@@ -17,6 +18,7 @@ IOContext& ThreadPool::GetContext() {
 
 void ThreadPool::Stop() {
     std::call_once(s_flag, Initialize);
+    std::lock_guard<std::mutex> lock(s_instance->m_mutex);
 
     s_instance->m_workGuard.reset();
     s_instance->m_context.stop();
@@ -31,9 +33,8 @@ void ThreadPool::Stop() {
 }
 
 void ThreadPool::Start() {
-    if (s_instance == nullptr) {
-        return;
-    }
+    std::call_once(s_flag, Initialize);
+    std::lock_guard<std::mutex> lock(s_instance->m_mutex);
 
     if (!s_instance->m_threads.empty()) {
         return;
