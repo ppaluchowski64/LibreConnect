@@ -22,7 +22,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <application android:label="LibreConnect"
                  android:name="org.qtproject.qt.android.bindings.QtApplication"
@@ -58,7 +60,7 @@
         <service android:name=".MainService"
                  android:label="LibreConnect Main Service"
                  android:exported="true"
-                 android:foregroundServiceType="dataSync"
+                 android:foregroundServiceType="connectedDevice"
                  tools:ignore="ForegroundServicePermission">
         </service>
 

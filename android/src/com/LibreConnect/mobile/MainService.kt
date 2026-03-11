@@ -8,9 +8,10 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import java.util.concurrent.atomic.AtomicBoolean
+import android.content.pm.ServiceInfo
 
 class MainService : Service() {
-    private external fun startBackend();
+    //private external fun startBackend();
     private val backendStarted = AtomicBoolean(false)
 
     override fun onCreate() {
@@ -20,7 +21,7 @@ class MainService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (backendStarted.compareAndSet(false, true)) {
-            startBackend()
+            //startBackend()
         }
 
         return START_STICKY
@@ -59,7 +60,15 @@ class MainService : Service() {
             .setOngoing(true)
             .build()
 
-        startForeground(NOTIFICATION_ID, notification)
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     private companion object {
