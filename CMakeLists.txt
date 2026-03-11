@@ -93,6 +93,15 @@ endif ()
 qt_standard_project_setup()
 
 add_library(project_defaults)
+
+if (IOS)
+    target_compile_definitions(project_defaults PUBLIC IOS_DEVICE)
+endif ()
+
+if (ANDROID)
+    target_compile_definitions(project_defaults PUBLIC ANDROID_DEVICE)
+endif ()
+
 if(ANDROID OR IOS)
     target_compile_definitions(project_defaults PUBLIC MOBILE_DEVICE)
 else()
@@ -134,6 +143,19 @@ if (ANDROID OR IOS)
             notifications-handler
     )
 
+    BuildStaticLibrary(modules-manager modules/modules-manager
+            network-component-pc
+            system-component-pc
+            p2p-network-component-pc
+            common-module
+            Debug-Log
+            Qt6::Core
+
+            network-camera-module
+            file-share-module
+            notification-sync-module
+    )
+
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
             common-module
@@ -154,6 +176,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     )
 
 endif ()
+
 
 
 if (ANDROID)

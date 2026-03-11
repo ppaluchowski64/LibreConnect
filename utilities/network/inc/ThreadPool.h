@@ -6,6 +6,7 @@
 #include <future>
 #include <functional>
 #include <type_traits>
+#include <mutex>
 
 #include <asio.hpp>
 #include <AsioCommon.h>
@@ -56,6 +57,7 @@ private:
 
     IOContext m_context;
     IOWorkGuard m_workGuard;
+    std::mutex m_mutex;
     std::vector<std::thread> m_threads;
 
 };

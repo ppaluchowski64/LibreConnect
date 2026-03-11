@@ -158,3 +158,8 @@ vcpkg_out/
 
 # === Environment Files ===
 *.env
+
+# === Android Directory ===
+/android/.gradle
+/android/.idea
+/android/local.properties
