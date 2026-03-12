@@ -1,12 +1,42 @@
-#include <CryptographicIdentityManager.h>
 #include <ThreadPool.h>
+#include <DebugLog.h>
 
 ThreadPool* ThreadPool::s_instance{nullptr};
 std::once_flag ThreadPool::s_flag{};
 
 void ThreadPool::Initialize() {
+    Debug::Log("ThreadPool: initialize");
     s_instance = new ThreadPool();
-    s_instance->Start();
+    s_instance->StartImpl();
+}
+
+void ThreadPool::StartImpl() {
+    std::lock_guard<std::mutex> lock(s_instance->m_mutex);
+
+    if (!s_instance->m_threads.empty()) {
+        Debug::Log("ThreadPool: start skipped (threads already running)");
+        return;
+    }
+
+    if (s_instance->m_context.stopped()) {
+        Debug::Log("ThreadPool: restarting IO context");
+        s_instance->m_context.restart();
+    }
+
+    unsigned int threadCount = std::thread::hardware_concurrency();
+    if (threadCount == 0) {
+        Debug::LogWarning("ThreadPool: hardware_concurrency returned 0, using 1 thread");
+        threadCount = 1;
+    }
+
+    s_instance->m_threads.reserve(threadCount);
+    Debug::Log("ThreadPool: starting {} worker threads", threadCount);
+
+    for (int i = 0; i < threadCount; i++) {
+        s_instance->m_threads.emplace_back([]() {
+            s_instance->m_context.run();
+        });
+    }
 }
 
 ThreadPool::ThreadPool() : m_workGuard(asio::make_work_guard(m_context)) {}
@@ -20,6 +50,7 @@ void ThreadPool::Stop() {
     std::call_once(s_flag, Initialize);
     std::lock_guard<std::mutex> lock(s_instance->m_mutex);
 
+    Debug::Log("ThreadPool: stopping ({} threads)", s_instance->m_threads.size());
     s_instance->m_workGuard.reset();
     s_instance->m_context.stop();
 
@@ -30,28 +61,11 @@ void ThreadPool::Stop() {
     }
 
     s_instance->m_threads.clear();
+    Debug::Log("ThreadPool: stopped");
 }
 
 void ThreadPool::Start() {
     std::call_once(s_flag, Initialize);
-    std::lock_guard<std::mutex> lock(s_instance->m_mutex);
-
-    if (!s_instance->m_threads.empty()) {
-        return;
-    }
-
-    if (s_instance->m_context.stopped()) {
-        s_instance->m_context.restart();
-    }
-
-    unsigned int threadCount = std::thread::hardware_concurrency();
-    if (threadCount == 0) threadCount = 1;
-
-    s_instance->m_threads.reserve(threadCount);
-
-    for (int i = 0; i < threadCount; i++) {
-        s_instance->m_threads.emplace_back([]() {
-            s_instance->m_context.run();
-        });
-    }
+    Debug::Log("ThreadPool: start requested");
+    StartImpl();
 }

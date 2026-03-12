@@ -51,6 +51,7 @@ public:
 
 private:
     static void Initialize();
+    static void StartImpl();
 
     static ThreadPool* s_instance;
     static std::once_flag s_flag;

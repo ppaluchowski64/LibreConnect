@@ -67,7 +67,7 @@
         <receiver
                 android:name=".NotificationActionReceiver"
                 android:label="LibreConnect Notification Action Receiver"
-                android:exported="false"
+                android:exported="true"
         />
 
         <receiver

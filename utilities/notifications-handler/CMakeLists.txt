@@ -109,6 +109,7 @@ if (NOT IOS)
     target_link_libraries(notifications-handler PUBLIC
             Debug-Log
             system-component-pc
+            network-component-pc
     )
 
     target_include_directories(notifications-handler PUBLIC
