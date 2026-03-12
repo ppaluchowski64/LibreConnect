@@ -12,6 +12,7 @@
 
 #include <NotificationBridge.h>
 #include <DebugLog.h>
+#include <ThreadPool.h>
 
 ConcurrentUnorderedMap<std::string, std::function<void()>> NotificationBridge::m_notificationHandlers{};
 
@@ -196,22 +197,7 @@ void NotificationBridge::CallNotificationActionHandler(const std::string& key, c
         return;
     }
 
-    QCoreApplication* app = QCoreApplication::instance();
-    if (app == nullptr) {
-        Debug::LogWarning("QCoreApplication is null while handling notification action '{}'", mkey);
-        return;
-    }
-
-    const std::function<void()> callbackCopy = callback.value();
-    QMetaObject::invokeMethod(app, [callbackCopy, mkey]() {
-        try {
-            callbackCopy();
-        } catch (const std::exception& e) {
-            Debug::LogError("Notification action handler '{}' threw std::exception: {}", mkey, e.what());
-        } catch (...) {
-            Debug::LogError("Notification action handler '{}' threw an unknown exception", mkey);
-        }
-    }, Qt::QueuedConnection);
+    ThreadPool::Post(std::move(*callback));
 }
 
 void NotificationBridge::InitializePermissions() {
