@@ -29,7 +29,7 @@ public:
             return s_instance->m_networkCameraModule;
         }
         else if constexpr (std::is_same_v<type, NotificationSyncModule>) {
-# ifndef IOS_DEVICE
+#ifndef IOS_DEVICE
             return s_instance->m_notificationSyncModule;
 #else
             static_assert(always_false<std::shared_ptr<type>>, "NotificationSyncModule have no support for IOS");
@@ -40,12 +40,23 @@ public:
         }
     }
 
+#ifdef ANDROID_DEVICE
+    static asio::awaitable<bool> RequestDisablingBatteryOptimizations();
+    static asio::awaitable<bool> RequestNotificationAccessPermission();
+    static asio::awaitable<bool> RequestNotificationEmitPermission();
+    static asio::awaitable<bool> RequestCameraAccessPermission();
+    static asio::awaitable<bool> RequestManagingExternalStoragePermission();
+#endif
+
+
 private:
     static ModulesManager* s_instance;
     static std::once_flag s_flag;
 
 #ifdef ANDROID_DEVICE
     static void StartMainService();
+    static bool IsNotificationListenerEnabled();
+    static bool IsIgnoringBatteryOptimizations();
 #endif
 
     std::shared_ptr<FileShareModule> m_fileShareModule;
