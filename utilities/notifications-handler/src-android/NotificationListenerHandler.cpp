@@ -72,6 +72,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
 
     {
         std::lock_guard lock(g_notificationCallbackMutex);
+        if (!g_notificationCallback) {
+            Debug::LogWarning("notification callback not set (key={})", keyC);
+            return;
+        }
+
         g_notificationCallback(keyC);
     }
 }
