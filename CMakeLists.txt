@@ -65,12 +65,21 @@ find_package(concurrentqueue  REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
 find_package(xxHash           REQUIRED)
+find_package(Boost            REQUIRED)
 
 if (UNIX AND NOT APPLE AND NOT ANDROID)
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia DBus)
 else ()
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 endif ()
+
+if ((WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE)) AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
+endif ()
+
+if(ANDROID OR IOS)
+    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
+endif()
 
 FetchContent_Declare(
         debug-log
@@ -112,9 +121,9 @@ if(WIN32)
     target_compile_definitions(project_defaults PUBLIC _WIN32_WINNT=0x0601)
 endif()
 
-BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
-BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
-BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core)
+BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
+BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
+BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core boost::boost)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
