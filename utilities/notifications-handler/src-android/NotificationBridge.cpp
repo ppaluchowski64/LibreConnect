@@ -88,6 +88,99 @@ static void OpenNotificationListenerSettings()
         "android/content/Intent",
         "FLAG_ACTIVITY_NEW_TASK"
     );
+
+    intent.callMethod<jobject>(
+        "addFlags",
+        "(I)Landroid/content/Intent;",
+        newTaskFlag
+    );
+
+    QtAndroidPrivate::startActivity(intent, 0);
+}
+
+static bool IsBatteryOptimizationIgnored()
+{
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 23) {
+        return true;
+    }
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        Debug::LogWarning("Failed to obtain Android context while checking battery optimization status.");
+        return false;
+    }
+
+    const QJniObject powerService = QJniObject::getStaticObjectField(
+        "android/content/Context",
+        "POWER_SERVICE",
+        "Ljava/lang/String;"
+    );
+
+    if (!powerService.isValid()) {
+        Debug::LogWarning("Failed to resolve POWER_SERVICE while checking battery optimization status.");
+        return false;
+    }
+
+    const QJniObject powerManager = context.callObjectMethod(
+        "getSystemService",
+        "(Ljava/lang/String;)Ljava/lang/Object;",
+        powerService.object<jstring>()
+    );
+
+    if (!powerManager.isValid()) {
+        Debug::LogWarning("Failed to obtain PowerManager while checking battery optimization status.");
+        return false;
+    }
+
+    const QString packageName = context.callObjectMethod(
+        "getPackageName",
+        "()Ljava/lang/String;"
+    ).toString();
+
+    if (packageName.isEmpty()) {
+        return false;
+    }
+
+    return powerManager.callMethod<jboolean>(
+        "isIgnoringBatteryOptimizations",
+        "(Ljava/lang/String;)Z",
+        QJniObject::fromString(packageName).object<jstring>()
+    );
+}
+
+static void OpenBatteryOptimizationSettings()
+{
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 23) {
+        return;
+    }
+
+    const QJniObject action = QJniObject::getStaticObjectField(
+        "android/provider/Settings",
+        "ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS",
+        "Ljava/lang/String;"
+    );
+
+    if (!action.isValid()) {
+        Debug::LogWarning("Failed to resolve ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS.");
+        return;
+    }
+
+    QJniObject intent(
+        "android/content/Intent",
+        "(Ljava/lang/String;)V",
+        action.object<jstring>()
+    );
+
+    if (!intent.isValid()) {
+        Debug::LogWarning("Failed to create Intent for battery optimization settings.");
+        return;
+    }
+
+    const jint newTaskFlag = QJniObject::getStaticField<jint>(
+        "android/content/Intent",
+        "FLAG_ACTIVITY_NEW_TASK"
+    );
+
     intent.callMethod<jobject>(
         "addFlags",
         "(I)Landroid/content/Intent;",
@@ -219,5 +312,10 @@ void NotificationBridge::InitializePermissions() {
     if (!IsNotificationListenerEnabled()) {
         Debug::LogWarning("Notification listener access is disabled. Opening system settings.");
         OpenNotificationListenerSettings();
+    }
+
+    if (!IsBatteryOptimizationIgnored()) {
+        Debug::LogWarning("Battery optimization is enabled for this app. Opening system settings.");
+        OpenBatteryOptimizationSettings();
     }
 }

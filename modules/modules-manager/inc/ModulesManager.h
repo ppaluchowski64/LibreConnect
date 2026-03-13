@@ -44,6 +44,10 @@ private:
     static ModulesManager* s_instance;
     static std::once_flag s_flag;
 
+#ifdef ANDROID_DEVICE
+    static void StartMainService();
+#endif
+
     std::shared_ptr<FileShareModule> m_fileShareModule;
     std::shared_ptr<NetworkCameraModule> m_networkCameraModule;
     std::shared_ptr<NotificationSyncModule> m_notificationSyncModule;
