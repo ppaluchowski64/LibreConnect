@@ -67,23 +67,7 @@ asio::awaitable<bool> ModulesManager::RequestDisablingBatteryOptimizations() {
 
     QtAndroidPrivate::startActivity(intent, 0);
 
-    const auto executor = co_await asio::this_coro::executor;
-    asio::steady_timer timer(executor);
-    timer.expires_at(std::chrono::steady_clock::time_point::max());
-
-    const QMetaObject::Connection connection = QObject::connect(
-        qApp, &QGuiApplication::applicationStateChanged,
-        [&timer](const Qt::ApplicationState state) {
-            if (state == Qt::ApplicationActive) {
-                timer.cancel();
-            }
-        }
-    );
-
-    asio::error_code ec;
-    co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
-    QObject::disconnect(connection);
-
+    co_await WaitForReturnToApp();
     co_return IsIgnoringBatteryOptimizations();
 }
 
@@ -127,6 +111,49 @@ asio::awaitable<bool> ModulesManager::RequestNotificationAccessPermission() {
 
     QtAndroidPrivate::startActivity(intent, 0);
 
+    co_await WaitForReturnToApp();
+    co_return IsNotificationListenerEnabled();
+}
+
+asio::awaitable<bool> ModulesManager::RequestNotificationEmitPermission() {
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 33) {
+        co_return true;
+    }
+
+    co_return co_await RequestPermission(QString("android.permission.POST_NOTIFICATIONS"));
+}
+
+asio::awaitable<bool> ModulesManager::RequestCameraAccessPermission() {
+    co_return co_await RequestPermission(QString("android.permission.CAMERA"));
+}
+
+asio::awaitable<bool> ModulesManager::RequestManagingExternalStoragePermission() {
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 30) {
+        co_return co_await RequestPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE"));
+    }
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        Debug::LogWarning("Failed to obtain Android context while requesting managing external storage.");
+    }
+
+    const bool isExternalStorageManager = QJniObject::callStaticMethod<jboolean>(
+        "android/os/Environment", "isExternalStorageManager");
+
+    if (isExternalStorageManager) co_return true;
+
+    const QJniObject action = QJniObject::fromString("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION");
+    const QJniObject packageName = QJniObject::fromString("package:" + context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString());
+    const QJniObject uri = QJniObject::callStaticObjectMethod("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", packageName.object());
+
+    const QJniObject intent("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V", action.object(), uri.object());
+    QtAndroidPrivate::startActivity(intent, 0);
+
+    co_await WaitForReturnToApp();
+    co_return QJniObject::callStaticMethod<jboolean>("android/os/Environment", "isExternalStorageManager");
+}
+
+asio::awaitable<void> ModulesManager::WaitForReturnToApp() {
     const auto executor = co_await asio::this_coro::executor;
     asio::steady_timer timer(executor);
     timer.expires_at(std::chrono::steady_clock::time_point::max());
@@ -143,16 +170,9 @@ asio::awaitable<bool> ModulesManager::RequestNotificationAccessPermission() {
     asio::error_code ec;
     co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
     QObject::disconnect(connection);
-
-    co_return IsNotificationListenerEnabled();
 }
 
-asio::awaitable<bool> ModulesManager::RequestNotificationEmitPermission() {
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 33) {
-        co_return true;
-    }
-
-    const QString permission = "android.permission.POST_NOTIFICATIONS";
+asio::awaitable<bool> ModulesManager::RequestPermission(QString&& permission) {
     const auto status = QtAndroidPrivate::checkPermission(permission).result();
 
     if (status == QtAndroidPrivate::PermissionResult::Authorized) {
@@ -163,7 +183,11 @@ asio::awaitable<bool> ModulesManager::RequestNotificationEmitPermission() {
 
     const auto executor = co_await asio::this_coro::executor;
     asio::steady_timer timer(executor);
-    timer.expires_at(std::chrono::steady_clock::time_point::max());
+
+    /*
+     * 2 minutes timeout is enough, right????
+     */
+    timer.expires_at(std::chrono::steady_clock::now() + std::chrono::seconds(120));
 
     QFutureWatcher<QtAndroidPrivate::PermissionResult> watcher;
     QObject::connect(&watcher, &QFutureWatcher<QtAndroidPrivate::PermissionResult>::finished, [&timer]() {
@@ -174,15 +198,7 @@ asio::awaitable<bool> ModulesManager::RequestNotificationEmitPermission() {
 
     asio::error_code ec;
     co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
-    co_return (future.result() == QtAndroidPrivate::PermissionResult::Authorized);
-}
-
-asio::awaitable<bool> ModulesManager::RequestCameraAccessPermission() {
-
-}
-
-asio::awaitable<bool> ModulesManager::RequestManagingExternalStoragePermission() {
-
+    co_return future.result() == QtAndroidPrivate::PermissionResult::Authorized;
 }
 
 void ModulesManager::StartMainService() {
@@ -233,35 +249,43 @@ void ModulesManager::StartMainService() {
 
 bool ModulesManager::IsNotificationListenerEnabled() {
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    if (!context.isValid()) {
-        Debug::LogWarning("Failed to obtain Android context while checking notification listener access.");
-        return false;
+    if (!context.isValid()) return false;
+
+    const QString packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
+    const QString className = packageName + ".NotificationListener";
+
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 27) {
+        const QJniObject notificationService = QJniObject::getStaticObjectField(
+            "android/content/Context", "NOTIFICATION_SERVICE", "Ljava/lang/String;");
+
+        const QJniObject notificationManager = context.callObjectMethod(
+            "getSystemService", "(Ljava/lang/String;)Ljava/lang/Object;", notificationService.object());
+
+        if (notificationManager.isValid()) {
+            const QJniObject componentName("android/content/ComponentName",
+                                           "(Ljava/lang/String;Ljava/lang/String;)V",
+                                           QJniObject::fromString(packageName).object(),
+                                           QJniObject::fromString(className).object());
+
+            return notificationManager.callMethod<jboolean>(
+                "isNotificationListenerAccessGranted",
+                "(Landroid/content/ComponentName;)Z",
+                componentName.object());
+        }
     }
 
-    const QJniObject contentResolver = context.callObjectMethod(
-        "getContentResolver",
-        "()Landroid/content/ContentResolver;"
-    );
-
-    if (!contentResolver.isValid()) {
-        Debug::LogWarning("Failed to obtain ContentResolver while checking notification listener access.");
-        return false;
-    }
-
-    const QJniObject key = QJniObject::fromString("enabled_notification_listeners");
+    const QJniObject contentResolver = context.callObjectMethod("getContentResolver", "()Landroid/content/ContentResolver;");
     const QJniObject enabledListeners = QJniObject::callStaticObjectMethod(
         "android/provider/Settings$Secure",
         "getString",
         "(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;",
         contentResolver.object(),
-        key.object<jstring>()
-    );
+        QJniObject::fromString("enabled_notification_listeners").object());
 
-    if (!enabledListeners.isValid()) {
-        return false;
-    }
+    if (!enabledListeners.isValid()) return false;
 
-    return enabledListeners.toString().contains("com.LibreConnect.mobile/com.LibreConnect.mobile.NotificationListener");
+    const QString target = packageName + "/" + className;
+    return enabledListeners.toString().contains(target);
 }
 
 bool ModulesManager::IsIgnoringBatteryOptimizations() {
