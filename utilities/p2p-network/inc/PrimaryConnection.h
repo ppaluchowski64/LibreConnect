@@ -59,6 +59,8 @@ private:
     asio::awaitable<void> CoDisconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
     asio::awaitable<void> CoSend();
     asio::awaitable<void> CoReceive();
+    asio::awaitable<void> CoSendHeartbeat();
+    asio::awaitable<void> CoHeartbeatMonitor();
 
     static void SavePairData(const InitialConnectionData& data);
     void SaveCertificate(const InitialConnectionData& data) const;
@@ -75,6 +77,7 @@ private:
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;
 
+    std::atomic<bool> m_heartbeatReceived{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
 
 };
