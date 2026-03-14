@@ -8,6 +8,8 @@ asio::awaitable<void> RequestPermissions() {
     while (!co_await ModulesManager::RequestNotificationEmitPermission()) {}
     while (!co_await ModulesManager::RequestNotificationAccessPermission()) {}
     while (!co_await ModulesManager::RequestDisablingBatteryOptimizations()) {}
+    while (!co_await ModulesManager::RequestManagingExternalStoragePermission()) {}
+    while (!co_await ModulesManager::RequestCameraAccessPermission()) {}
 }
 
 int main(int argc, char *argv[])
