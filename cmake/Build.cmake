@@ -170,15 +170,26 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
 endfunction()
 
 function(DeployQT Target)
+    set(WIN_ICON "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.ico")
+    set(MAC_ICON "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.icns")
+
     if(WIN32)
+        set(RC_FILE "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc")
+        file(WRITE "${RC_FILE}" "IDI_ICON1 ICON DISCARDABLE \"${WIN_ICON}\"")
+        target_sources(${Target} PRIVATE "${RC_FILE}")
+
         add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
                 COMMENT "Deploying Qt dependencies for ${Target}..."
                 VERBATIM
         )
     elseif(APPLE AND NOT IOS)
+        set_source_files_properties(${MAC_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+        target_sources(${Target} PRIVATE ${MAC_ICON})
+
         set_target_properties(${Target} PROPERTIES
                 MACOSX_BUNDLE TRUE
+                MACOSX_BUNDLE_ICON_FILE "libreconnect_logo.icns"
         )
 
         add_custom_command(TARGET ${Target} POST_BUILD
