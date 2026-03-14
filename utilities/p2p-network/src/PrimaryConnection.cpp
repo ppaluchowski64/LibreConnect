@@ -7,6 +7,9 @@
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
 
+static constexpr size_t HEARTBEAT_INTERVAL = 2000;
+static constexpr size_t HEARTBEAT_MONITOR_INTERVAL = 3000;
+
 class ConnectionManager;
 
 PrimaryConnection::PrimaryConnection()
@@ -76,6 +79,8 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
+        asio::co_spawn(m_strand, CoSendHeartbeat(), asio::detached);
+        asio::co_spawn(m_strand, CoHeartbeatMonitor(), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
@@ -134,6 +139,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
+        asio::co_spawn(m_strand, CoSendHeartbeat(), asio::detached);
+        asio::co_spawn(m_strand, CoHeartbeatMonitor(), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
@@ -254,12 +261,61 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
 
             if (m_connectionState.load() != ConnectionState::CONNECTED) break;
 
+            if (header.type == static_cast<uint16_t>(PC_PackageType::HEARTBEAT)) {
+                m_heartbeatReceived.store(true);
+                continue;
+            }
+
             m_packageIn.enqueue(std::move(package));
             m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
         if (error.code() != asio::error::operation_aborted && error.code() != asio::error::eof) {
             Debug::Log("PrimaryConnection: CoReceive error: {}", error.what());
+        }
+        HandleAsioError(error.code());
+        Disconnect(error.code());
+    }
+}
+
+asio::awaitable<void> PrimaryConnection::CoSendHeartbeat() {
+    try {
+        asio::steady_timer timer(m_context.get_executor());
+
+        while (m_connectionState.load() == ConnectionState::CONNECTED) {
+            Send(PC_PackageType::HEARTBEAT);
+            timer.expires_after(std::chrono::milliseconds(HEARTBEAT_INTERVAL));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
+
+    } catch (std::system_error& error) {
+        if (error.code() != asio::error::operation_aborted && error.code() != asio::error::eof) {
+            Debug::Log("PrimaryConnection: CoSendHeartbeat error: {}", error.what());
+        }
+        HandleAsioError(error.code());
+        Disconnect(error.code());
+    }
+}
+
+asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor() {
+    try {
+        asio::steady_timer timer(m_context.get_executor());
+
+        while (m_connectionState.load() == ConnectionState::CONNECTED) {
+            timer.expires_after(std::chrono::milliseconds(HEARTBEAT_MONITOR_INTERVAL));
+            co_await timer.async_wait(asio::use_awaitable);
+
+            if (!m_heartbeatReceived.load()) {
+                Disconnect({});
+                co_return;
+            }
+
+            m_heartbeatReceived.store(false);
+        }
+
+    } catch (std::system_error& error) {
+        if (error.code() != asio::error::operation_aborted && error.code() != asio::error::eof) {
+            Debug::Log("PrimaryConnection: CoSendHeartbeat error: {}", error.what());
         }
         HandleAsioError(error.code());
         Disconnect(error.code());

@@ -8,6 +8,7 @@ typedef uint16_t PackageTypeInt;
 enum class PC_PackageType : PackageTypeInt {
     // RESERVED (0 - 9)
     NONE = 0,
+    HEARTBEAT = 1,
 
     // DEVICE PAIRING (10 - 99)
     PAIR_REQUEST = 10,
