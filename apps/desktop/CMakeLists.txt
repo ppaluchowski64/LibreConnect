@@ -4,10 +4,10 @@ BuildQTExecutable(appLibreConnect_desktop
         network-component-pc
         system-component-pc
         p2p-network-component-pc
-        virtual-camera
         Qt6::Quick
         Qt6::Qml
         Qt6::Multimedia
+        modules-manager
 )
 
 LinkVirtualCameraLibs(appLibreConnect_desktop)

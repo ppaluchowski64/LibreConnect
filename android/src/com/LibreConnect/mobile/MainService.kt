@@ -12,7 +12,9 @@ import android.content.pm.ServiceInfo
 
 class MainService : Service() {
     //private external fun startBackend();
+
     private val backendStarted = AtomicBoolean(false)
+    private var notificationManager: NotificationManager? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -38,6 +40,7 @@ class MainService : Service() {
 
     private fun startAsForeground() {
         val manager = getSystemService(NotificationManager::class.java)
+        notificationManager = manager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -47,18 +50,10 @@ class MainService : Service() {
             manager.createNotificationChannel(channel)
         }
 
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            Notification.Builder(this)
-        }
-
-        val notification = builder
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
-            .setContentTitle("LibreConnect running")
-            .setContentText("Background service active")
-            .setOngoing(true)
-            .build()
+        val notification = buildNotification(
+            title = "LibreConnect running",
+            text = "Background service active"
+        )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val serviceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -71,6 +66,29 @@ class MainService : Service() {
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
+    }
+
+    fun updateNotification(title: String, text: String) {
+        val manager = notificationManager ?: getSystemService(NotificationManager::class.java).also {
+            notificationManager = it
+        }
+        val notification = buildNotification(title = title, text = text)
+        manager.notify(NOTIFICATION_ID, notification)
+    }
+
+    private fun buildNotification(title: String, text: String): Notification {
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, CHANNEL_ID)
+        } else {
+            Notification.Builder(this)
+        }
+
+        return builder
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setOngoing(true)
+            .build()
     }
 
     private companion object {
