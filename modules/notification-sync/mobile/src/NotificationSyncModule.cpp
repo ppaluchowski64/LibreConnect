@@ -1,6 +1,7 @@
 #include <NotificationSyncModule.h>
 #include <NotificationListenerHandler.h>
 #include <ConnectionManager.h>
+#include <PermissionManager.h>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
@@ -48,28 +49,34 @@ void NotificationSyncModule::EnableResponseCallbacks() {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE, [instance](PC_Package&& package) {
+        Debug::Log("Received notification sync enable request");
         instance->Enable();
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE, [instance](PC_Package&& package) {
+        Debug::Log("Received notification sync disable request");
         instance->Disable();
     });
 
-    ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         const uint16_t port = package->GetValue<uint16_t>();
         const IPAddress address = ConnectionManager::GetPeerAddress();
 
-        m_channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContext(), m_context);
+        Debug::Log("Received notification sync port info. Address: {}, Port: {}", address.to_string(), port);
+        m_channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextClient(), m_context);
+        Debug::Log("Connecting notification transfer channel");
         co_await m_channel->Connect(TCPEndpoint(address, port));
+        Debug::Log("Notification transfer channel connected");
         m_connectedFlag.Signal();
     });
 
-    ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID = package->GetValue<size_t>();
         uint16_t notificationCount = 0;
 
         std::vector<NotificationData> notifications;
 
+        Debug::Log("Received all notifications request. RequestID: {}", requestID);
         {
             std::lock_guard lock(g_notificationDatasMutex);
             notificationCount = g_notificationDatas.size();
@@ -83,6 +90,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
             notifications = g_notificationDatas;
         }
 
+        Debug::Log("Sending {} notifications", notificationCount);
         for (auto& notification : notifications) {
             NotificationPacket packet;
 
@@ -95,6 +103,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 
             co_await m_channel->Send(packet);
         }
+        Debug::Log("Finished sending notifications");
     });
 }
 
@@ -118,6 +127,16 @@ void NotificationSyncModule::OnInitialize() {
 }
 
 asio::awaitable<void> NotificationSyncModule::OnEnable() {
+    if (!co_await PermissionManager::RequestNotificationEmitPermission()) {
+        Disable();
+        co_return;
+    }
+
+    if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
+        Disable();
+        co_return;
+    }
+
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
     co_await m_connectedFlag.Wait();
 }
