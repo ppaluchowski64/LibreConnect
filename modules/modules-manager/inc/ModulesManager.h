@@ -40,25 +40,12 @@ public:
         }
     }
 
-#ifdef ANDROID_DEVICE
-    static asio::awaitable<bool> RequestDisablingBatteryOptimizations();
-    static asio::awaitable<bool> RequestNotificationAccessPermission();
-    static asio::awaitable<bool> RequestNotificationEmitPermission();
-    static asio::awaitable<bool> RequestCameraAccessPermission();
-    static asio::awaitable<bool> RequestManagingExternalStoragePermission();
-    static asio::awaitable<void> WaitForReturnToApp();
-#endif
-
-
 private:
     static ModulesManager* s_instance;
     static std::once_flag s_flag;
 
 #ifdef ANDROID_DEVICE
     static void StartMainService();
-    static bool IsNotificationListenerEnabled();
-    static bool IsIgnoringBatteryOptimizations();
-    static asio::awaitable<bool> RequestPermission(QString&& permission);
 #endif
 
     std::shared_ptr<FileShareModule> m_fileShareModule;

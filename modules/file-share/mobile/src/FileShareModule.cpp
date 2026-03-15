@@ -101,7 +101,7 @@ void FileShareModule::EnableResponseCallbacks() {
 	    auto [entries, success] = FileSystemManager::GetEntries(path);
 	    ConnectionManager::SendRequestResponse(requestID, PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_RESPONSE, std::move(entries));
 	});
-    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID = package->GetValue<size_t>();
         const FileEntry entry  = package->GetValue<FileEntry>();
         Debug::Log("Received transfer fetch request. RequestID: {}", requestID);
@@ -173,7 +173,7 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
         ConnectionManager::SendEvent(event);
     });
-    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID         = package->GetValue<size_t>();
         const std::string destination  = package->GetValue<std::string>();
         const std::string fileName     = package->GetValue<std::string>();
@@ -230,7 +230,7 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
         ConnectionManager::SendEvent(event);
     });
-    ConnectionManager::AddResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         co_await EnableAwaitable(true);
 
         const IPAddress ip  = ConnectionManager::GetPeerAddress();
@@ -258,7 +258,7 @@ void FileShareModule::DisableResponseCallbacks() {
 
 void FileShareModule::OnInitialize() {
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
-    std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContext();
+    std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextClient();
     for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
         m_transferChannels.emplace_back(std::make_shared<TransferChannel>(sslContext, m_context));
     }

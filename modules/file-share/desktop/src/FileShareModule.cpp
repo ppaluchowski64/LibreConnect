@@ -270,7 +270,7 @@ void FileShareModule::EnableResponseCallbacks() {
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [this, instance](PC_Package&& package) mutable {
        Disable();
     });
-    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [this, instance](PC_Package&& package) mutable -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [this, instance](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID         = package->GetValue<size_t>();
         const std::string destination  = package->GetValue<std::string>();
         const std::string fileName     = package->GetValue<std::string>();
@@ -336,7 +336,7 @@ void FileShareModule::DisableResponseCallbacks() {
 void FileShareModule::OnInitialize() {
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
 
-    std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContext();
+    std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextServer();
 
     for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
         m_transferChannels.emplace_back(

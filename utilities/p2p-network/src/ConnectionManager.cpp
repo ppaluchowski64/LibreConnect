@@ -20,26 +20,28 @@ void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Attempting ConnectPrimary for device {}", boost::uuids::to_string(data.deviceInfo.deviceID));
 
-    if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
-        s_instance->m_sslContext = CreateSSLContext(false, data.deviceInfo.deviceID);
-    } else {
-        s_instance->m_sslContext = CreateSSLContext(false);
-    }
+    const uuid targetUUID = data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR
+        ? data.deviceInfo.deviceID
+        : boost::uuids::nil_uuid();
 
-    s_instance->m_primaryConnection->Connect(s_instance->m_sslContext, data);
+    s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID);
+    s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID);
+
+    s_instance->m_primaryConnection->Connect(s_instance->m_sslContextClient, data);
 }
 
 void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Starting SeekPrimary for device {}", boost::uuids::to_string(data.deviceInfo.deviceID));
 
-    if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
-        s_instance->m_sslContext = CreateSSLContext(true, data.deviceInfo.deviceID);
-    } else {
-        s_instance->m_sslContext = CreateSSLContext(true);
-    }
+    const uuid targetUUID = data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR
+        ? data.deviceInfo.deviceID
+        : boost::uuids::nil_uuid();
 
-    s_instance->m_primaryConnection->Seek(s_instance->m_sslContext, data, std::forward<std::function<void(TCPEndpoint)>>(callback));
+    s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID);
+    s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID);
+
+    s_instance->m_primaryConnection->Seek(s_instance->m_sslContextServer, data, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
 
 void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
@@ -323,6 +325,7 @@ void ConnectionManager::AddResponseHandler(const PC_PackageType type, RequestCal
 
 void ConnectionManager::AddAwaitableResponseHandler(const PC_PackageType type, RequestAwaitableCallbackType&& handler) {
     std::call_once(s_flag, Initialize);
+    Debug::Log("ConnectionManager: Adding awaitable response handler for type {}", static_cast<int>(type));
     s_instance->m_responseAwaitableHandlerMap.InsertOrAssign(type, std::forward<RequestAwaitableCallbackType>(handler));
 }
 
@@ -351,9 +354,14 @@ IPAddress ConnectionManager::GetPeerAddress() {
     return s_instance->m_primaryConnection->GetPeerAddress();
 }
 
-std::shared_ptr<SSLContext> ConnectionManager::GetSSLContext() {
+std::shared_ptr<SSLContext> ConnectionManager::GetSSLContextClient() {
     std::call_once(s_flag, Initialize);
-    return s_instance->m_sslContext;
+    return s_instance->m_sslContextClient;
+}
+
+std::shared_ptr<SSLContext> ConnectionManager::GetSSLContextServer() {
+    std::call_once(s_flag, Initialize);
+    return s_instance->m_sslContextServer;
 }
 
 ConnectionManager::ConnectionManager() : m_context(ThreadPool::GetContext()) { }
