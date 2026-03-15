@@ -184,6 +184,19 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             notifications-handler
     )
 
+    BuildStaticLibrary(modules-manager modules/modules-manager
+            network-component-pc
+            system-component-pc
+            p2p-network-component-pc
+            common-module
+            Debug-Log
+            Qt6::Core
+
+            network-camera-module
+            file-share-module
+            notification-sync-module
+    )
+
 endif ()
 
 
