@@ -23,7 +23,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT ANDROID))
 
     add_library(virtual-camera STATIC ${SOURCE_FILES} ${HEADER_FILES})
     target_include_directories(virtual-camera PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/main/inc)
-    target_link_libraries(virtual-camera PUBLIC Debug-Log magic_enum::magic_enum virtual-camera-platform-implementation)
+    target_link_libraries(virtual-camera PUBLIC Debug-Log magic_enum::magic_enum virtual-camera-platform-implementation boost::boost)
 else ()
 
     add_library(virtual-camera STATIC ${CMAKE_CURRENT_SOURCE_DIR}/global-inc/VCamTypes.h)

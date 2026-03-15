@@ -6,5 +6,6 @@ BuildQTExecutable(notification-capture-test
         p2p-network-component-pc
         Qt6::Quick
         Qt6::Core
-        notifications-android
+        notifications-handler
+        modules-manager
 )

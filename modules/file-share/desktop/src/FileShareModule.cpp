@@ -16,9 +16,11 @@ void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
     const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
 
     if (path.empty()) {
+        Debug::LogWarning("Fetch directory entries skipped: empty path");
         return;
     }
 
+    Debug::Log("Fetching directory entries for {}", path);
     asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(std::move(path)), asio::detached);
 }
 
@@ -30,9 +32,12 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
 
     if (response) {
         response.value()->GetValue(entries);
+    } else {
+        Debug::LogError("Directory entries request failed");
     }
 
     const std::unique_ptr<QEvent> event = std::make_unique<FetchDirectoryEntriesResultEvent>(std::move(path), std::move(entries));
+    ConnectionManager::SendEvent(event);
 }
 
 asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
@@ -54,7 +59,9 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
 
 asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    Debug::Log("Fetch entry requested. Source: {}, Destination: {}", entryPath, destination);
     if (entryPath.empty()) {
+        Debug::LogError("Fetch entry failed: empty source path");
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -62,13 +69,15 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     std::filesystem::path filePath(destination);
     if (!std::filesystem::is_directory(filePath)) {
+        Debug::LogError("Fetch entry failed: destination is not a directory ({})", destination);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
     }
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
-    if (response) {
+    if (!response.has_value()) {
+        Debug::LogError("Fetch entry failed: fetch request rejected for {}", entryPath);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -76,8 +85,9 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
     const size_t totalTransferSize = response.value()->GetValue<size_t>();
+    Debug::Log("Fetch entry accepted. Channel: {}, Size: {}", channelIndex, totalTransferSize);
 
-    if (m_transferChannels.size() >= channelIndex) {
+    if (channelIndex >= m_transferChannels.size()) {
         Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
         ConnectionManager::Disconnect();
         co_return;
@@ -97,9 +107,9 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         std::filesystem::create_directories(filePath);
     } else {
         filePath /= path.filename();
+        std::filesystem::create_directories(filePath.parent_path());
     }
-
-    std::filesystem::create_directories(filePath);
+    Debug::Log("Fetch entry transfer started to {}", filePath.string());
 
     const auto future = type == FileType::Directory ?
         asio::co_spawn(m_context, channel->ReceiveDirectory(filePath), asio::use_future) :
@@ -120,7 +130,10 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         }
     }
 
-    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
+    const size_t transferred = channel->FetchTransferProgress();
+    const bool success = totalTransferSize == transferred;
+    Debug::Log("Fetch entry transfer finished. Success: {}, Bytes: {}/{}", success, transferred, totalTransferSize);
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
     ConnectionManager::SendEvent(event);
 }
 
@@ -160,6 +173,7 @@ void FileShareModule::PostEntry(const std::filesystem::path& path, const std::fi
 }
 
 asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem::path path, const std::filesystem::path destination) const {
+    Debug::Log("Post entry requested. Source: {}, Destination: {}", path.string(), destination.string());
     if (!std::filesystem::exists(path)) {
         Debug::LogError("File {} does not exist", path.string());
         co_return;
@@ -185,6 +199,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     } else {
         totalTransferSize += std::filesystem::file_size(path);
     }
+    Debug::Log("Post entry prepared. IsDirectory: {}, Size: {}", isDirectory, totalTransferSize);
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), size_t{totalTransferSize}, isDirectory);
     if (!response.has_value()) {
@@ -194,6 +209,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
+    Debug::Log("Post entry accepted. Channel: {}", channelIndex);
 
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
         Debug::LogError("Transfer channel index {} is out of range", channelIndex);
@@ -223,7 +239,10 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
         }
     }
 
-    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
+    const size_t transferred = channel->FetchTransferProgress();
+    const bool success = totalTransferSize == transferred;
+    Debug::Log("Post entry transfer finished. Success: {}, Bytes: {}/{}", success, transferred, totalTransferSize);
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
     ConnectionManager::SendEvent(event);
 }
 
@@ -257,6 +276,8 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::string fileName     = package->GetValue<std::string>();
         const size_t totalTransferSize = package->GetValue<size_t>();
         const bool isDirectory         = package->GetValue<bool>();
+        Debug::Log("Received transfer post request. RequestID: {}, Destination: {}, Name: {}, IsDirectory: {}, Size: {}",
+            requestID, destination, fileName, isDirectory, totalTransferSize);
 
         const std::filesystem::path destinationPath = std::filesystem::path(destination) / fileName;
 
@@ -265,7 +286,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         while (true) {
             for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
-                const std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
+                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
                 if (!channel->IsUsed(true)) {
                     transferChannelIndex = i;
                     goto FINISH_CHANNEL_SEARCH;
@@ -278,6 +299,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         FINISH_CHANNEL_SEARCH:
         std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
+        Debug::Log("Selected transfer channel {} for incoming post request {}", transferChannelIndex, requestID);
 
         const auto future = isDirectory ?
             asio::co_spawn(m_context, channel->SendDirectory(destinationPath), asio::use_future) :
@@ -299,7 +321,10 @@ void FileShareModule::EnableResponseCallbacks() {
             }
         }
 
-        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, totalTransferSize == channel->FetchTransferProgress());
+        const size_t transferred = channel->FetchTransferProgress();
+        const bool success = totalTransferSize == transferred;
+        Debug::Log("Incoming post transfer finished. RequestID: {}, Success: {}, Bytes: {}/{}", requestID, success, transferred, totalTransferSize);
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
         ConnectionManager::SendEvent(event);
     });
 }

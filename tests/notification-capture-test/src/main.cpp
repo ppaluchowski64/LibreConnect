@@ -1,12 +1,16 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
-
-#include <NotificationData.h>
 #include "Backend.h"
 
-#include <NotificationBridge.h>
+#include <ModulesManager.h>
 
-extern std::vector<NotificationData> g_notificationDatas;
+asio::awaitable<void> RequestPermissions() {
+    while (!co_await ModulesManager::RequestNotificationEmitPermission()) {}
+    while (!co_await ModulesManager::RequestNotificationAccessPermission()) {}
+    while (!co_await ModulesManager::RequestDisablingBatteryOptimizations()) {}
+    while (!co_await ModulesManager::RequestManagingExternalStoragePermission()) {}
+    while (!co_await ModulesManager::RequestCameraAccessPermission()) {}
+}
 
 int main(int argc, char *argv[])
 {
@@ -15,7 +19,9 @@ int main(int argc, char *argv[])
 
     qmlRegisterType<Backend>("LibreConnect.mobile", 1, 0, "Backend");
 
-    NotificationBridge::InitializePermissions();
+    ModulesManager::Initialize();
+    asio::co_spawn(ThreadPool::GetContext(), RequestPermissions(), asio::detached);
+
     engine.load(QUrl(QStringLiteral("qrc:/LibreConnect/mobile/Main.qml")));
 
     return app.exec();

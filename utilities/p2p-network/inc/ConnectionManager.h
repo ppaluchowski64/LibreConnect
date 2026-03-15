@@ -38,14 +38,14 @@ public:
 
     template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {
-        Initialize();
+        std::call_once(s_flag, Initialize);
 
         s_instance->m_primaryConnection->Send(type, std::forward<Args>(args)...);
     }
 
     template <Serializable... Args>
     static void SendRequestResponse(const size_t requestID, PC_PackageType type, Args&&... args) {
-        Initialize();
+        std::call_once(s_flag, Initialize);
 
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE_RESPONSE);
         s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
@@ -54,13 +54,19 @@ public:
     template <Serializable... Args>
     // ReSharper disable once CppParameterMayBeConst
     static asio::awaitable<std::optional<std::unique_ptr<Package<PC_PackageType>>>> SendRequest(PC_PackageType type, Args&&... args) {
-        Initialize();
+        std::call_once(s_flag, Initialize);
 
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE);
         const size_t requestID = s_instance->m_currentRequestID.fetch_add(1);
         s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
 
-        const std::shared_ptr<AwaitableFlag> flag = std::make_shared<AwaitableFlag>(s_instance->m_context.get_executor(), std::chrono::time_point<std::chrono::steady_clock>(std::chrono::milliseconds(500)));
+        const std::shared_ptr<AwaitableFlag> flag = std::make_shared<AwaitableFlag>(
+            s_instance->m_context.get_executor(),
+            std::chrono::time_point<std::chrono::steady_clock>(
+                std::chrono::milliseconds(500)
+                )
+        );
+
         s_instance->m_requestAwaitableMap.InsertOrAssign(requestID, flag);
         co_await flag->Wait();
         s_instance->m_requestAwaitableMap.Erase(requestID);

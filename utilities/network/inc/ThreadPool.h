@@ -3,6 +3,10 @@
 
 #include <thread>
 #include <utility>
+#include <future>
+#include <functional>
+#include <type_traits>
+#include <mutex>
 
 #include <asio.hpp>
 #include <AsioCommon.h>
@@ -29,14 +33,32 @@ public:
         asio::post(s_instance->m_context, function);
     }
 
+    template<typename T>
+    static std::future<std::invoke_result_t<std::decay_t<T>&>> PostFuture(T&& function) {
+        std::call_once(s_flag, Initialize);
+
+        using ReturnType = std::invoke_result_t<std::decay_t<T>&>;
+        auto task = std::make_shared<std::packaged_task<ReturnType()>>(std::forward<T>(function));
+        std::future<ReturnType> future = task->get_future();
+
+        asio::post(s_instance->m_context, [task]() mutable {
+            (*task)();
+        });
+
+        return future;
+    }
+
+
 private:
     static void Initialize();
+    static void StartImpl();
 
     static ThreadPool* s_instance;
     static std::once_flag s_flag;
 
     IOContext m_context;
     IOWorkGuard m_workGuard;
+    std::mutex m_mutex;
     std::vector<std::thread> m_threads;
 
 };

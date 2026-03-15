@@ -65,12 +65,21 @@ find_package(concurrentqueue  REQUIRED)
 find_package(nlohmann_json    REQUIRED)
 find_package(libsrtp          REQUIRED)
 find_package(xxHash           REQUIRED)
+find_package(Boost            REQUIRED)
 
 if (UNIX AND NOT APPLE AND NOT ANDROID)
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia DBus)
 else ()
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 endif ()
+
+if ((WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE)) AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
+endif ()
+
+if(ANDROID OR IOS)
+    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
+endif()
 
 FetchContent_Declare(
         debug-log
@@ -93,6 +102,15 @@ endif ()
 qt_standard_project_setup()
 
 add_library(project_defaults)
+
+if (IOS)
+    target_compile_definitions(project_defaults PUBLIC IOS_DEVICE)
+endif ()
+
+if (ANDROID)
+    target_compile_definitions(project_defaults PUBLIC ANDROID_DEVICE)
+endif ()
+
 if(ANDROID OR IOS)
     target_compile_definitions(project_defaults PUBLIC MOBILE_DEVICE)
 else()
@@ -103,24 +121,22 @@ if(WIN32)
     target_compile_definitions(project_defaults PUBLIC _WIN32_WINNT=0x0601)
 endif()
 
-BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
-BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum)
-BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core)
+BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
+BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
+BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core boost::boost)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 
 add_subdirectory("utilities/virtual-camera")
-add_subdirectory("utilities/notifications-android")
-add_subdirectory("utilities/notifications-emitter")
+add_subdirectory("utilities/notifications-handler")
 
-BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio)
+BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc)
 
 if (ANDROID OR IOS)
 
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/mobile
             common-module
             srtp-stream
-            p2p-network-component-pc
             ffmpeg_headers
             virtual-camera
     )
@@ -129,14 +145,30 @@ if (ANDROID OR IOS)
             common-module
             file-system
             xxHash::xxhash
+    )
+
+    BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/mobile
+            common-module
+            notifications-handler
+    )
+
+    BuildStaticLibrary(modules-manager modules/modules-manager
+            network-component-pc
+            system-component-pc
             p2p-network-component-pc
+            common-module
+            Debug-Log
+            Qt6::Core
+
+            network-camera-module
+            file-share-module
+            notification-sync-module
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
             common-module
             srtp-stream
-            p2p-network-component-pc
             ffmpeg_headers
             virtual-camera
     )
@@ -145,10 +177,15 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             file-system
             xxHash::xxhash
-            p2p-network-component-pc
+    )
+
+    BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/desktop
+            common-module
+            notifications-handler
     )
 
 endif ()
+
 
 
 if (ANDROID)
@@ -167,7 +204,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
     BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
 
-    BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-emitter Debug-Log)
+    BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)
         target_link_libraries(NotificationEmitterTest-emitter PRIVATE Qt6::Core)
         set_target_properties(NotificationEmitterTest-emitter PROPERTIES
