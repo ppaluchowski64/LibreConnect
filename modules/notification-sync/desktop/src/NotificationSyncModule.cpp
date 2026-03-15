@@ -134,7 +134,7 @@ void NotificationSyncModule::ProcessNotificationButtonAction(const int64_t id, s
 void NotificationSyncModule::EnableResponseCallbacks() {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
 
-    ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NEW_NOTIFICATION, [instance](PC_Package&& package) -> asio::awaitable<void> {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NEW_NOTIFICATION, [instance](PC_Package&& package) -> asio::awaitable<void> {
         Debug::Log("Received new-notification signal");
         std::optional<NotificationPacket> notification = co_await instance->m_channel->Receive();
         if (!notification.has_value()) {
@@ -142,14 +142,17 @@ void NotificationSyncModule::EnableResponseCallbacks() {
             co_return;
         }
 
+        Debug::Log("Received notification packet. Key: {}, Title: {}", notification->key, notification->title);
         instance->ProcessNotificationPacket(std::move(notification.value()));
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE, [instance](PC_Package&& package) {
+        Debug::Log("Received notification sync enable request");
         instance->Enable(true);
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE, [instance](PC_Package&& package) {
+        Debug::Log("Received notification sync disable request");
         instance->Disable(true);
     });
 }
@@ -167,7 +170,7 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
 
     m_channel.reset();
-    m_channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContext(), m_context);
+    m_channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextServer(), m_context);
 
     AwaitableFlag flag(m_context.get_executor());
     uint16_t port{};

@@ -8,4 +8,5 @@ BuildQTExecutable(notification-capture-test
         Qt6::Core
         notifications-handler
         modules-manager
+        permission-manager
 )

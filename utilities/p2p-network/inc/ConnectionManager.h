@@ -74,7 +74,8 @@ public:
         co_return s_instance->m_requestPackageMap.Pop(requestID);
     }
 
-    static std::shared_ptr<SSLContext> GetSSLContext();
+    static std::shared_ptr<SSLContext> GetSSLContextClient();
+    static std::shared_ptr<SSLContext> GetSSLContextServer();
 
 
 private:
@@ -97,18 +98,13 @@ private:
 
     asio::awaitable<void> CoProcessPackages();
 
-    enum class SSLContextCurrentMode : uint8_t {
-        NONE   = 0,
-        SERVER = 1,
-        CLIENT = 2
-    };
-
     static ConnectionManager* s_instance;
     static std::mutex         s_mutex;
     static std::once_flag     s_flag;
 
     IOContext& m_context;
-    std::shared_ptr<SSLContext> m_sslContext;
+    std::shared_ptr<SSLContext> m_sslContextClient;
+    std::shared_ptr<SSLContext> m_sslContextServer;
 
     std::atomic<size_t> m_currentRequestID{0};
 
@@ -124,8 +120,6 @@ private:
 
     std::vector<QPointer<QObject>> m_eventObjects;
     TCPEndpoint m_seekingEndpoint;
-    std::atomic<SSLContextCurrentMode> m_currentSSLContextCurrentMode{SSLContextCurrentMode::NONE};
-
 };
 
 #endif //CONNECTION_MANAGER_H

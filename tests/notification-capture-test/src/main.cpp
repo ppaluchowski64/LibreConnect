@@ -2,14 +2,15 @@
 #include <QQmlApplicationEngine>
 #include "Backend.h"
 
+#include <PermissionManager.h>
 #include <ModulesManager.h>
 
 asio::awaitable<void> RequestPermissions() {
-    while (!co_await ModulesManager::RequestNotificationEmitPermission()) {}
-    while (!co_await ModulesManager::RequestNotificationAccessPermission()) {}
-    while (!co_await ModulesManager::RequestDisablingBatteryOptimizations()) {}
-    while (!co_await ModulesManager::RequestManagingExternalStoragePermission()) {}
-    while (!co_await ModulesManager::RequestCameraAccessPermission()) {}
+    while (!co_await PermissionManager::RequestNotificationEmitPermission()) {}
+    while (!co_await PermissionManager::RequestNotificationAccessPermission()) {}
+    while (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {}
+    while (!co_await PermissionManager::RequestManagingExternalStoragePermission()) {}
+    while (!co_await PermissionManager::RequestCameraAccessPermission()) {}
 }
 
 int main(int argc, char *argv[])
