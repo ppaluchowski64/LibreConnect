@@ -2,8 +2,23 @@
 #include <Package.h>
 
 static constexpr size_t MAX_NOTIFICATION_PACKET_SIZE = 32 * 1024 * 1024;
+static constexpr size_t IO_WAIT_DELAY_MS = 5;
 
 NotificationTransferChannel::NotificationTransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_buffer(1024 * 128) {}
+
+asio::awaitable<void> NotificationTransferChannel::WaitForIoSlot(std::atomic<bool>& flag) const {
+    asio::steady_timer timer(m_context.get_executor());
+
+    while (m_connectionState.load() == ConnectionState::CONNECTED) {
+        bool expected = false;
+        if (flag.compare_exchange_weak(expected, true, std::memory_order_acq_rel)) {
+            co_return;
+        }
+
+        timer.expires_after(std::chrono::milliseconds(IO_WAIT_DELAY_MS));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+}
 
 bool NotificationTransferChannel::IsUsed() const {
     return m_used.load();
@@ -97,6 +112,17 @@ asio::awaitable<void> NotificationTransferChannel::CleanupConnection() {
 asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationPacket& data) {
     const std::shared_ptr<NotificationTransferChannel> self = shared_from_this();
     try {
+        if (!m_socket || m_connectionState.load() != ConnectionState::CONNECTED) {
+            Debug::LogWarning("Notification transfer channel send requested while disconnected");
+            co_return false;
+        }
+
+        co_await WaitForIoSlot(m_writeInProgress);
+        if (m_connectionState.load() != ConnectionState::CONNECTED) {
+            m_writeInProgress.store(false, std::memory_order_release);
+            co_return false;
+        }
+
         const size_t size = data.GetSerializedSize();
 
         if (m_buffer.size() < size) {
@@ -111,10 +137,11 @@ asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationPacket
         Debug::Log("Notification transfer channel sending packet (payload bytes: {}, buffer size: {})", size, m_buffer.size());
 
         {
+            std::vector<uint8_t> headerBuffer(sizeof(size_t));
             size_t offset = 0;
-            SerializeObject(size, m_buffer, offset);
+            SerializeObject(size, headerBuffer, offset);
 
-            const asio::const_buffer buffer(m_buffer.data(), GetObjectSerializedSize(size));
+            const asio::const_buffer buffer(headerBuffer.data(), headerBuffer.size());
             co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
         }
 
@@ -123,9 +150,11 @@ asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationPacket
             co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
         }
         Debug::Log("Notification transfer channel sent packet (payload bytes: {})", size);
+        m_writeInProgress.store(false, std::memory_order_release);
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
+        m_writeInProgress.store(false, std::memory_order_release);
         asio::co_spawn(m_context, Disconnect(), asio::detached);
         co_return false;
     }
@@ -138,6 +167,17 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
     NotificationPacket data;
 
     try {
+        if (!m_socket || m_connectionState.load() != ConnectionState::CONNECTED) {
+            Debug::LogWarning("Notification transfer channel receive requested while disconnected");
+            co_return std::nullopt;
+        }
+
+        co_await WaitForIoSlot(m_readInProgress);
+        if (m_connectionState.load() != ConnectionState::CONNECTED) {
+            m_readInProgress.store(false, std::memory_order_release);
+            co_return std::nullopt;
+        }
+
         size_t payloadSize = 0;
         std::vector<uint8_t> headerBuffer(sizeof(size_t));
 
@@ -169,9 +209,11 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
         offset = 0;
         data.Deserialize(m_buffer, offset);
         Debug::Log("Notification transfer channel received packet");
+        m_readInProgress.store(false, std::memory_order_release);
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
+        m_readInProgress.store(false, std::memory_order_release);
         asio::co_spawn(m_context, Disconnect(), asio::detached);
         co_return std::nullopt;
     }

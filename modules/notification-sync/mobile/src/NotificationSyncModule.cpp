@@ -15,6 +15,12 @@ asio::awaitable<void> NotificationSyncModule::SendNewNotification(const std::str
         co_return;
     }
 
+    const std::shared_ptr<NotificationTransferChannel> channel = m_channel;
+    if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        Debug::LogWarning("Notification transfer channel not connected, skipping new notification send");
+        co_return;
+    }
+
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_NEW_NOTIFICATION);
     NotificationData notification;
     bool found{false};
@@ -42,7 +48,7 @@ asio::awaitable<void> NotificationSyncModule::SendNewNotification(const std::str
     packet.mainImage = std::move(notification.mainImage);
     packet.iconImage = std::move(notification.largeIcon);
 
-    co_await m_channel->Send(packet);
+    co_await channel->Send(packet);
 }
 
 void NotificationSyncModule::EnableResponseCallbacks() {
@@ -67,6 +73,10 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         Debug::Log("Connecting notification transfer channel");
         co_await m_channel->Connect(TCPEndpoint(address, port));
         Debug::Log("Notification transfer channel connected");
+        if (m_channel->GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogError("Notification transfer channel failed to connect");
+            co_return;
+        }
         m_connectedFlag.Signal();
     });
 
@@ -75,6 +85,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         uint16_t notificationCount = 0;
 
         std::vector<NotificationData> notifications;
+        const std::shared_ptr<NotificationTransferChannel> channel = m_channel;
 
         Debug::Log("Received all notifications request. RequestID: {}", requestID);
         {
@@ -90,6 +101,11 @@ void NotificationSyncModule::EnableResponseCallbacks() {
             notifications = g_notificationDatas;
         }
 
+        if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogWarning("Notification transfer channel not connected, cannot send notifications");
+            co_return;
+        }
+
         Debug::Log("Sending {} notifications", notificationCount);
         for (auto& notification : notifications) {
             NotificationPacket packet;
@@ -101,7 +117,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
             packet.mainImage = std::move(notification.mainImage);
             packet.iconImage = std::move(notification.largeIcon);
 
-            co_await m_channel->Send(packet);
+            co_await channel->Send(packet);
         }
         Debug::Log("Finished sending notifications");
     });

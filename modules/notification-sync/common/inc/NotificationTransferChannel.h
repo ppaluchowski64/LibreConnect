@@ -31,12 +31,16 @@ public:
     asio::awaitable<std::optional<NotificationPacket>> Receive();
 
 private:
+    asio::awaitable<void> WaitForIoSlot(std::atomic<bool>& flag) const;
+
     IOContext& m_context;
     std::unique_ptr<SSLSocket> m_socket;
     std::shared_ptr<SSLContext> m_sslContext;
     std::vector<uint8_t> m_buffer;
     std::atomic<bool> m_used{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
+    std::atomic<bool> m_readInProgress{false};
+    std::atomic<bool> m_writeInProgress{false};
 };
 
 #endif //NOTIFICATIONLISTENER_KT_NOTIFICATIONTRANSFERCHANNEL_H

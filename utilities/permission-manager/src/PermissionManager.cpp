@@ -22,7 +22,7 @@ bool StartSettingsActivity(const QJniObject& intent) {
     );
 
     if (activity.isValid()) {
-        activity.callObjectMethod(
+        activity.callMethod<void>(
             "startActivity",
             "(Landroid/content/Intent;)V",
             intent.object<jobject>()

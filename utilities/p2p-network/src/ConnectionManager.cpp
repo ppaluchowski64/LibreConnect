@@ -329,12 +329,14 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                         callback(std::move(package));
                     });
 
+                    packageOptional = m_primaryConnection->GetPackage();
                     continue;
                 }
 
                 if (awaitableCallbackOptional.has_value()) {
                     Debug::Log("ConnectionManager: Dispatching awaitable response handler");
                     asio::co_spawn(m_context, awaitableCallbackOptional.value()(std::move(value)), asio::detached);
+                    packageOptional = m_primaryConnection->GetPackage();
                     continue;
                 }
 
