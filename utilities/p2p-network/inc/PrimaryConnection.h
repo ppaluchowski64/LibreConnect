@@ -49,6 +49,7 @@ public:
     std::shared_ptr<AwaitableFlag> GetReceiveFlag() const;
     IPAddress GetPeerAddress() const;
     bool HasPendingPackages() const;
+    void MarkHeartbeatReceived();
 
 
 private:

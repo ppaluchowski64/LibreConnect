@@ -83,7 +83,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 
             ConnectionManager::SendRequestResponse(
                 requestID,
-                PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST_RESPONSE,
+                PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_RESPONSE,
                 std::move(notificationCount)
             );
 
@@ -108,11 +108,10 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 }
 
 void NotificationSyncModule::DisableResponseCallbacks() {
-    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
-
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
-    ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST);
 }
 
 void NotificationSyncModule::OnInitialize() {

@@ -7,6 +7,7 @@ BuildQTExecutable(appLibreConnect_mobile
         system-component-pc
         p2p-network-component-pc
         Qt6::Quick
+        modules-manager
         network-camera-module
 )
 

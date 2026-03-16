@@ -35,7 +35,7 @@ private:
     std::unique_ptr<SSLSocket> m_socket;
     std::shared_ptr<SSLContext> m_sslContext;
     std::vector<uint8_t> m_buffer;
-    std::atomic<bool> m_used;
+    std::atomic<bool> m_used{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
 };
 

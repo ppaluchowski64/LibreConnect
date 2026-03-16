@@ -219,8 +219,8 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
         context->load_verify_file(targetCertificatePath);
     } else {
-        Debug::Log("ConnectionManager: No target certificate found, using 'Always Accept' callback");
-        context->set_verify_mode(asio::ssl::verify_none);
+        Debug::Log("ConnectionManager: No target certificate found, requesting peer certificate and using 'Always Accept' callback");
+        context->set_verify_mode(asio::ssl::verify_peer);
         context->set_verify_callback(std::bind(&ConnectionManager::VerifyCallbackAlwaysAccept, std::placeholders::_1, std::placeholders::_2));
     }
 
@@ -313,8 +313,15 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 
             } else {
                 PC_PackageType type = static_cast<PC_PackageType>(header.type);
+                if (type == PC_PackageType::HEARTBEAT) {
+                    m_primaryConnection->MarkHeartbeatReceived();
+                    packageOptional = m_primaryConnection->GetPackage();
+                    continue;
+                }
+
                 Debug::Log("ConnectionManager: Received package type: {}", static_cast<int>(type));
                 std::optional<RequestCallbackType> callbackOptional = m_responseHandlerMap.Get(type);
+                std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
 
                 if (callbackOptional.has_value()) {
                     asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
@@ -325,7 +332,6 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                     continue;
                 }
 
-                std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
                 if (awaitableCallbackOptional.has_value()) {
                     Debug::Log("ConnectionManager: Dispatching awaitable response handler");
                     asio::co_spawn(m_context, awaitableCallbackOptional.value()(std::move(value)), asio::detached);
@@ -356,6 +362,12 @@ void ConnectionManager::RemoveResponseHandler(const PC_PackageType type) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Removing response handler for type {}", static_cast<int>(type));
     s_instance->m_responseHandlerMap.Erase(type);
+}
+
+void ConnectionManager::RemoveAwaitableResponseHandler(const PC_PackageType type) {
+    std::call_once(s_flag, Initialize);
+    Debug::Log("ConnectionManager: Removing awaitable response handler for type {}", static_cast<int>(type));
+    s_instance->m_responseAwaitableHandlerMap.Erase(type);
 }
 
 void ConnectionManager::AddEventListener(const QPointer<QObject>& object) {

@@ -12,6 +12,16 @@ constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
 FileShareModule::FileShareModule() = default;
 
+void FileShareModule::FetchDirectoryEntries(const std::string& path) const {
+    if (path.empty()) {
+        Debug::LogWarning("Fetch directory entries skipped: empty path");
+        return;
+    }
+
+    Debug::Log("Fetching directory entries for {}", path);
+    asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(path), asio::detached);
+}
+
 void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
     const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
 
@@ -26,8 +36,12 @@ void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
 
 asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) const {
     const std::shared_ptr<const BaseModule> instance = shared_from_this();
+    std::string requestPath = path;
 
-    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, std::move(path));
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
+        PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST,
+        std::move(requestPath)
+    );
     std::vector<FileEntry> entries;
 
     if (response) {
@@ -42,8 +56,12 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
 
 asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
     const std::shared_ptr<const BaseModule> instance = shared_from_this();
+    std::string requestPath = path;
 
-    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, std::move(path));
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
+        PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST,
+        std::move(requestPath)
+    );
     std::vector<FileEntry> entries;
 
     if (response) {
@@ -265,10 +283,10 @@ void FileShareModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [this, instance](PC_Package&& package) mutable {
-        Enable();
+        Enable(true);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [this, instance](PC_Package&& package) mutable {
-       Disable();
+       Disable(true);
     });
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [this, instance](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID         = package->GetValue<size_t>();
@@ -330,7 +348,9 @@ void FileShareModule::EnableResponseCallbacks() {
 }
 
 void FileShareModule::DisableResponseCallbacks() {
-
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
 }
 
 void FileShareModule::OnInitialize() {

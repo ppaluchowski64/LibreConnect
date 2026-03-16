@@ -46,9 +46,10 @@ ApplicationWindow {
                 spacing: 8
 
                 Text {
+                    width: parent.width
                     text: conn.pendingDeviceName.length > 0
-                          ? ("Connection request from " + conn.pendingDeviceName)
-                          : "Connection request"
+                        ? ("Connection request from " + conn.pendingDeviceName)
+                        : "Connection request"
                     font.pixelSize: 16
                     font.bold: true
                     wrapMode: Text.WordWrap

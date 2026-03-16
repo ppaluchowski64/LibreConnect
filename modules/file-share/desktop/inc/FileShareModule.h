@@ -14,6 +14,7 @@ class FileShareModule final : public BaseModule {
 public:
     explicit FileShareModule();
 
+    void FetchDirectoryEntries(const std::string& path) const;
     void FetchDirectoryEntries(const FileEntry& entry) const;
     void FetchEntry(const FileEntry& entry, const std::string& destination) const;
     // Moving entries with std::move is preferred

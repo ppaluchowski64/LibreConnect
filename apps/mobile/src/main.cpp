@@ -2,12 +2,16 @@
 #include <QQmlApplicationEngine>
 #include <QtQml>
 
+#include <ModulesManager.h>
+
 #include "MobileConnectionController.h"
 #include "AndroidAdvertiser.h"
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+
+    ModulesManager::Initialize();
 
     qmlRegisterType<MobileConnectionController>(
         "LibreConnect.mobile", 1, 0, "MobileConnectionController"
