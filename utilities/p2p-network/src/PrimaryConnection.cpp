@@ -266,8 +266,19 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
                 continue;
             }
 
-            m_packageIn.enqueue(std::move(package));
-            m_receiveFlag->Signal();
+            if (!package) {
+                Debug::LogError("PrimaryConnection: CoReceive produced null package (type={}, size={})",
+                                static_cast<int>(header.type), header.size);
+            } else {
+                Debug::Log("PrimaryConnection: Enqueuing package ptr={}, type={}, size={}",
+                           static_cast<const void*>(package.get()),
+                           static_cast<int>(header.type),
+                           header.size);
+
+
+                m_packageIn.enqueue(std::move(package));
+                m_receiveFlag->Signal();
+            }
         }
     } catch (std::system_error& error) {
         if (error.code() != asio::error::operation_aborted && error.code() != asio::error::eof) {

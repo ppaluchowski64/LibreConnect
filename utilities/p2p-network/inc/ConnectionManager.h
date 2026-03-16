@@ -61,10 +61,7 @@ public:
         s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
 
         const std::shared_ptr<AwaitableFlag> flag = std::make_shared<AwaitableFlag>(
-            s_instance->m_context.get_executor(),
-            std::chrono::time_point<std::chrono::steady_clock>(
-                std::chrono::milliseconds(500)
-                )
+            s_instance->m_context.get_executor()
         );
 
         s_instance->m_requestAwaitableMap.InsertOrAssign(requestID, flag);

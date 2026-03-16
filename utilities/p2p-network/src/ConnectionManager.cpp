@@ -272,7 +272,16 @@ void ConnectionManager::SetSeekingEndpoint(TCPEndpoint endpoint) {
 
 asio::awaitable<void> ConnectionManager::CoProcessPackages() {
     Debug::Log("ConnectionManager: Package processing coroutine started");
+    if (!m_primaryConnection) {
+        Debug::LogError("ConnectionManager: CoProcessPackages started with null primaryConnection");
+        co_return;
+    }
+
     const std::shared_ptr<AwaitableFlag> receiveFlag = m_primaryConnection->GetReceiveFlag();
+    if (!receiveFlag) {
+        Debug::LogError("ConnectionManager: CoProcessPackages receive flag is null");
+        co_return;
+    }
 
     while (true) {
         co_await receiveFlag->Wait();
@@ -281,7 +290,14 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
         std::optional<std::unique_ptr<Package<PC_PackageType>>> packageOptional = m_primaryConnection->GetPackage();
         while (packageOptional.has_value()) {
             std::unique_ptr<Package<PC_PackageType>> value = std::move(packageOptional.value());
+            if (!value) {
+                Debug::LogWarning("ConnectionManager: Received null package pointer");
+                packageOptional = m_primaryConnection->GetPackage();
+                continue;
+            }
             const PackageHeader header = value->GetHeader();
+            Debug::Log("ConnectionManager: Processing package type={}, flags=0x{:02x}, size={}",
+                       static_cast<int>(header.type), header.flags, header.size);
 
             if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
                 size_t requestID = value->GetValue<size_t>();
@@ -291,6 +307,8 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                 if (flag.has_value()) {
                     m_requestPackageMap.InsertOrAssign(requestID, std::move(value));
                     flag.value()->Signal();
+                } else {
+                    Debug::LogWarning("ConnectionManager: No awaitable flag for Request ID: {}", requestID);
                 }
 
             } else {
@@ -300,16 +318,21 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
 
                 if (callbackOptional.has_value()) {
                     asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
+                        Debug::Log("ConnectionManager: Dispatching response handler");
                         callback(std::move(package));
                     });
-                } else {
-                    Debug::LogWarning("ConnectionManager: No handler registered for package type {}", static_cast<int>(type));
+
+                    continue;
                 }
 
                 std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
                 if (awaitableCallbackOptional.has_value()) {
+                    Debug::Log("ConnectionManager: Dispatching awaitable response handler");
                     asio::co_spawn(m_context, awaitableCallbackOptional.value()(std::move(value)), asio::detached);
+                    continue;
                 }
+
+                Debug::LogWarning("ConnectionManager: No handler registered for package type {}", static_cast<int>(type));
             }
 
             packageOptional = m_primaryConnection->GetPackage();

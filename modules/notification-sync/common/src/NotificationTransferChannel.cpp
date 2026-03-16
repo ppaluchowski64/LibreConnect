@@ -145,6 +145,11 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
             co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
         }
 
+        {
+            std::size_t offset = 0;
+            DeserializeObject(payloadSize, m_buffer, offset);
+        }
+
         if (m_buffer.size() < payloadSize) {
             m_buffer.resize(payloadSize);
         }

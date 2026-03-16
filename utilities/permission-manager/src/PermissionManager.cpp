@@ -8,6 +8,45 @@
 
 #include "DebugLog.h"
 
+namespace {
+#ifdef ANDROID_DEVICE
+bool StartSettingsActivity(const QJniObject& intent) {
+    if (!intent.isValid()) {
+        return false;
+    }
+
+    const QJniObject activity = QJniObject::callStaticObjectMethod(
+        "org/qtproject/qt/android/QtNative",
+        "activity",
+        "()Landroid/app/Activity;"
+    );
+
+    if (activity.isValid()) {
+        activity.callObjectMethod(
+            "startActivity",
+            "(Landroid/content/Intent;)V",
+            intent.object<jobject>()
+        );
+        return true;
+    }
+
+    const jint newTaskFlag = QJniObject::getStaticField<jint>(
+        "android/content/Intent",
+        "FLAG_ACTIVITY_NEW_TASK"
+    );
+
+    intent.callMethod<jobject>(
+        "addFlags",
+        "(I)Landroid/content/Intent;",
+        newTaskFlag
+    );
+
+    QtAndroidPrivate::startActivity(intent, 0);
+    return true;
+}
+#endif
+}
+
 
 asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() {
     if (QNativeInterface::QAndroidApplication::sdkVersion() < 23) {
@@ -57,18 +96,10 @@ asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() 
         uri.object<jobject>()
     );
 
-    const jint newTaskFlag = QJniObject::getStaticField<jint>(
-        "android/content/Intent",
-        "FLAG_ACTIVITY_NEW_TASK"
-    );
-
-    intent.callMethod<jobject>(
-        "addFlags",
-        "(I)Landroid/content/Intent;",
-        newTaskFlag
-    );
-
-    QtAndroidPrivate::startActivity(intent, 0);
+    if (!StartSettingsActivity(intent)) {
+        Debug::LogWarning("Failed to start battery optimization settings activity.");
+        co_return false;
+    }
 
     co_await WaitForReturnToApp();
     co_return IsIgnoringBatteryOptimizations();
@@ -101,18 +132,10 @@ asio::awaitable<bool> PermissionManager::RequestNotificationAccessPermission() {
         co_return false;
     }
 
-    const jint newTaskFlag = QJniObject::getStaticField<jint>(
-        "android/content/Intent",
-        "FLAG_ACTIVITY_NEW_TASK"
-    );
-
-    intent.callMethod<jobject>(
-        "addFlags",
-        "(I)Landroid/content/Intent;",
-        newTaskFlag
-    );
-
-    QtAndroidPrivate::startActivity(intent, 0);
+    if (!StartSettingsActivity(intent)) {
+        Debug::LogWarning("Failed to start notification listener settings activity.");
+        co_return false;
+    }
 
     co_await WaitForReturnToApp();
     co_return IsNotificationListenerEnabled();
@@ -150,7 +173,10 @@ asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermissio
     const QJniObject uri = QJniObject::callStaticObjectMethod("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", packageName.object());
 
     const QJniObject intent("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V", action.object(), uri.object());
-    QtAndroidPrivate::startActivity(intent, 0);
+    if (!StartSettingsActivity(intent)) {
+        Debug::LogWarning("Failed to start manage external storage settings activity.");
+        co_return false;
+    }
 
     co_await WaitForReturnToApp();
     co_return QJniObject::callStaticMethod<jboolean>("android/os/Environment", "isExternalStorageManager");
