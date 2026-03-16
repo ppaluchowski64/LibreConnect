@@ -1,6 +1,8 @@
 #include <NotificationTransferChannel.h>
 #include <Package.h>
 
+static constexpr size_t MAX_NOTIFICATION_PACKET_SIZE = 32 * 1024 * 1024;
+
 NotificationTransferChannel::NotificationTransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_buffer(1024 * 128) {}
 
 bool NotificationTransferChannel::IsUsed() const {
@@ -95,16 +97,15 @@ asio::awaitable<void> NotificationTransferChannel::CleanupConnection() {
 asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationPacket& data) {
     const std::shared_ptr<NotificationTransferChannel> self = shared_from_this();
     try {
-
-        {
-            size_t offset = 0;
-            data.Serialize(m_buffer, offset);
-        }
-
         const size_t size = data.GetSerializedSize();
 
         if (m_buffer.size() < size) {
             m_buffer.resize(size);
+        }
+
+        {
+            size_t offset = 0;
+            data.Serialize(m_buffer, offset);
         }
 
         Debug::Log("Notification transfer channel sending packet (payload bytes: {}, buffer size: {})", size, m_buffer.size());
@@ -138,11 +139,21 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
 
     try {
         size_t payloadSize = 0;
+        std::vector<uint8_t> headerBuffer(sizeof(size_t));
 
         {
-            const asio::mutable_buffer buffer(m_buffer.data(), GetObjectSerializedSize(payloadSize));
+            const asio::mutable_buffer buffer(headerBuffer.data(), headerBuffer.size());
             Debug::Log("Notification transfer channel awaiting packet header");
             co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
+        }
+
+        size_t offset = 0;
+        DeserializeObject(payloadSize, headerBuffer, offset);
+
+        if (payloadSize > MAX_NOTIFICATION_PACKET_SIZE) {
+            Debug::LogError("Notification packet too large: {} bytes", payloadSize);
+            asio::co_spawn(m_context, Disconnect(), asio::detached);
+            co_return std::nullopt;
         }
 
         if (m_buffer.size() < payloadSize) {
@@ -155,7 +166,7 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
             co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
         }
 
-        size_t offset = 0;
+        offset = 0;
         data.Deserialize(m_buffer, offset);
         Debug::Log("Notification transfer channel received packet");
 

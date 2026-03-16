@@ -8,7 +8,7 @@
 #include <asio/buffer.hpp>
 
 static constexpr size_t HEARTBEAT_INTERVAL = 2000;
-static constexpr size_t HEARTBEAT_MONITOR_INTERVAL = 3000;
+static constexpr size_t HEARTBEAT_MONITOR_INTERVAL = 30000;
 
 class ConnectionManager;
 
@@ -55,6 +55,10 @@ bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
+void PrimaryConnection::MarkHeartbeatReceived() {
+    m_heartbeatReceived.store(true);
+}
+
 asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
@@ -76,6 +80,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
         Debug::Log("PrimaryConnection: Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
         m_connectionState.store(ConnectionState::CONNECTED);
+        m_heartbeatReceived.store(false);
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -136,6 +141,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         Debug::Log("PrimaryConnection: Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
         m_connectionState.store(ConnectionState::CONNECTED);
+        m_heartbeatReceived.store(false);
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);

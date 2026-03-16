@@ -43,6 +43,10 @@ public:
     FileEntry GetFileEntry() const { return m_fileEntry; }
     bool Success() const { return m_success; }
 
+    EntryTransferResultEvent* clone() const override {
+        return new EntryTransferResultEvent(*this);
+    }
+
 private:
     FileEntry m_fileEntry;
     bool m_success;
@@ -57,6 +61,10 @@ public:
     std::vector<FileEntry> GetEntries() const { return m_entries; }
     std::string GetPath() const { return m_path; }
 
+    FetchDirectoryEntriesResultEvent* clone() const override {
+        return new FetchDirectoryEntriesResultEvent(*this);
+    }
+
 private:
     std::string m_path;
     std::vector<FileEntry> m_entries;
@@ -64,12 +72,16 @@ private:
 
 class EntriesCopyResultEvent final : public QEvent {
 public:
-    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+1);
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+3);
     explicit EntriesCopyResultEvent(std::vector<FileEntry> entry, const bool success) : QEvent(Type), m_fileEntries(std::move(entry)), m_success(success) {}
 
     std::vector<FileEntry> GetFileEntries() const { return m_fileEntries; }
     std::vector<FileEntry>&& TakeFileEntries() { return std::move(m_fileEntries); }
     bool Success() const { return m_success; }
+
+    EntriesCopyResultEvent* clone() const override {
+        return new EntriesCopyResultEvent(*this);
+    }
 
 private:
     std::vector<FileEntry> m_fileEntries;

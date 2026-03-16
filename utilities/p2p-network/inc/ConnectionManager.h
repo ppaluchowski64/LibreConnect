@@ -32,6 +32,7 @@ public:
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
     static void AddAwaitableResponseHandler(PC_PackageType type, RequestAwaitableCallbackType&& handler);
     static void RemoveResponseHandler(PC_PackageType type);
+    static void RemoveAwaitableResponseHandler(PC_PackageType type);
     static void AddEventListener(const QPointer<QObject>& object);
     static TCPEndpoint GetSeekEndpoint();
     static IPAddress GetPeerAddress();

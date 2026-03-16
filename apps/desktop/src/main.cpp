@@ -8,6 +8,9 @@
 #include "DeviceDiscovery.h"
 #include "DeviceModel.h"
 #include "DeviceConnectionController.h"
+#include "NotificationSyncController.h"
+#include "FileManagerController.h"
+#include "VirtualCameraController.h"
 
 
 int main(int argc, char *argv[])
@@ -37,6 +40,9 @@ int main(int argc, char *argv[])
     qmlRegisterType<DeviceDiscovery>("LibreConnect.desktop", 1, 0, "DeviceDiscovery");
     qmlRegisterType<DeviceModel>("LibreConnect.desktop", 1, 0, "DeviceModel");
     qmlRegisterType<DeviceConnectionController>("LibreConnect.desktop", 1, 0, "DeviceConnectionController");
+    qmlRegisterType<NotificationSyncController>("LibreConnect.desktop", 1, 0, "NotificationSyncController");
+    qmlRegisterType<FileManagerController>("LibreConnect.desktop", 1, 0, "FileManagerController");
+    qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
 
     QObject::connect(
         &engine,

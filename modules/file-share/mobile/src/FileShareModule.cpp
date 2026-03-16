@@ -3,6 +3,7 @@
 #include <FileSystemManager.h>
 #include <HashHelpers.h>
 #include <FileShareEvents.h>
+#include <PermissionManager.h>
 
 #include <QDesktopServices>
 #include <QUrl>
@@ -247,12 +248,10 @@ void FileShareModule::EnableResponseCallbacks() {
 }
 
 void FileShareModule::DisableResponseCallbacks() {
-    const std::shared_ptr<BaseModule> instance = shared_from_this();
-
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST);
-    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST);
-    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
-    ConnectionManager::RemoveResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
 }
 
@@ -265,6 +264,11 @@ void FileShareModule::OnInitialize() {
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
+    if (!co_await PermissionManager::RequestManagingExternalStoragePermission()) {
+        Disable();
+        co_return;
+    }
+
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
     m_transferChannelInitializationIndex.store(0);
     co_return;

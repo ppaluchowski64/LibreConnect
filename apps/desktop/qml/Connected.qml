@@ -1,7 +1,15 @@
 import QtQuick
 import QtQuick.Controls
 
-Item {
+Page {
+    id: root
+
+    readonly property string windowTitleSuffix: ""
+
+    background: Rectangle {
+        color: "white"
+    }
+
     Image {
         id: logo
         source: "libreconnect_logo.png"

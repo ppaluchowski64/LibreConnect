@@ -4,21 +4,27 @@ import LibreConnect.desktop 1.0
 
 Page {
     id: devicePicker
+
+    required property var windowRef
+    required property var connectionController
+    readonly property string windowTitleSuffix: "Setup"
+
     DeviceDiscovery {
         id: discovery
     }
-    DeviceConnectionController {
-        id: conn
-    }
+
     property bool isConnecting: false
+
+    background: Rectangle {
+        color: "white"
+    }
+
     function connectToCurrent() {
         if (deviceListView.currentIndex < 0 || isConnecting)
             return
 
         const dev = discovery.deviceAt(deviceListView.currentIndex)
-
-        conn.connectTo(dev.ipAddress, dev.port, 0)
-
+        connectionController.connectTo(dev.ipAddress, dev.port, 0)
         isConnecting = true
     }
 
@@ -147,12 +153,13 @@ Page {
 
         Button {
             id: connectButton
-            text: isConnecting ? "Connecting…" : "Connect"
+            text: isConnecting ? "Connecting..." : "Connect"
             width: 120
             height: 48
             font.pixelSize: 16
-            enabled: deviceListView.currentIndex >= 0 && !conn.pending && !conn.connected
-
+            enabled: deviceListView.currentIndex >= 0
+                     && !connectionController.pending
+                     && !connectionController.connected
             onClicked: devicePicker.connectToCurrent()
         }
 
@@ -166,6 +173,7 @@ Page {
             onClicked: discovery.discover()
         }
     }
+
     Column {
         id: helpText
         anchors.right: parent.right
@@ -182,52 +190,50 @@ Page {
             color: "#111111"
             width: parent.width
         }
+
         Column {
             width: parent.width
-            Row {
-                spacing: 6
-                width: parent.width
-                Text {
-                    text: "• Make sure both of your devices are on the same network"
-                    font.pixelSize: 14
-                    color: "#333333"
-                    wrapMode: Text.WordWrap
-                    width: parent.width - 20
-                }
+
+            Text {
+                text: "\u2022 Make sure both of your devices are on the same network"
+                font.pixelSize: 14
+                color: "#333333"
+                wrapMode: Text.WordWrap
+                width: parent.width - 20
             }
-            Row {
-                spacing: 6
-                width: parent.width
-                Text {
-                    text: "• Make sure the app is in the foreground"
-                    font.pixelSize: 14
-                    color: "#333333"
-                    wrapMode: Text.WordWrap
-                    width: parent.width - 20
-                }
+
+            Text {
+                text: "\u2022 Make sure the app is in the foreground"
+                font.pixelSize: 14
+                color: "#333333"
+                wrapMode: Text.WordWrap
+                width: parent.width - 20
             }
         }
     }
+
     Connections {
-        target: conn
+        target: connectionController
+
         function onConnectedChanged() {
-            if (conn.connected) {
+            if (connectionController.connected) {
                 isConnecting = false
                 discovery.cancelScan()
-                devicePicker.StackView.view.push("qrc:/LibreConnect/desktop/Connected.qml")
-            }
-        }
-        function onLastErrorChanged() {
-            if (conn.lastError.length > 0) {
-                isConnecting = false
+                windowRef.showHome()
             }
         }
 
-        function onPendingChanged() {
-            isConnecting = conn.pending
+        function onLastErrorChanged() {
+            if (connectionController.lastError.length > 0)
+                isConnecting = false
         }
+
+        function onPendingChanged() {
+            isConnecting = connectionController.pending
+        }
+
         function onVerificationPendingChanged() {
-            if (conn.verificationPending) {
+            if (connectionController.verificationPending) {
                 verificationCodeField.text = ""
                 verificationDialog.open()
             } else if (verificationDialog.visible) {
@@ -260,18 +266,18 @@ Page {
                 inputMethodHints: Qt.ImhDigitsOnly
                 maximumLength: 6
                 width: parent.width
-                onAccepted: conn.submitVerificationCode(verificationCodeField.text)
+                onAccepted: connectionController.submitVerificationCode(verificationCodeField.text)
             }
 
             Text {
-                visible: conn.verificationTriesLeft > 0
-                text: "Tries left: " + conn.verificationTriesLeft
+                visible: connectionController.verificationTriesLeft > 0
+                text: "Tries left: " + connectionController.verificationTriesLeft
                 color: "#666666"
             }
 
             Text {
-                visible: conn.verificationError.length > 0
-                text: conn.verificationError
+                visible: connectionController.verificationError.length > 0
+                text: connectionController.verificationError
                 color: "#b00020"
                 wrapMode: Text.WordWrap
                 width: parent.width
@@ -283,19 +289,19 @@ Page {
                 Button {
                     text: "Submit"
                     enabled: verificationCodeField.text.length > 0
-                    onClicked: conn.submitVerificationCode(verificationCodeField.text)
+                    onClicked: connectionController.submitVerificationCode(verificationCodeField.text)
                 }
 
                 Button {
                     text: "Cancel"
-                    onClicked: conn.cancelVerification()
+                    onClicked: connectionController.cancelVerification()
                 }
             }
         }
     }
 
     Component.onCompleted: {
-        discovery.discover();
-        console.log("DevicePicker loaded OK");
+        discovery.discover()
+        console.log("DevicePicker loaded OK")
     }
 }

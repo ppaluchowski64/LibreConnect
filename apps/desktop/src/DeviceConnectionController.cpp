@@ -1,5 +1,18 @@
 #include "DeviceConnectionController.h"
 
+namespace
+{
+bool IsBenignScannerShutdownError(const std::error_code& errorCode)
+{
+    return errorCode.message() == "The I/O operation has been aborted because of either a thread exit or an application request.";
+}
+
+bool IsBenignDisconnectError(const std::error_code& errorCode)
+{
+    return !errorCode || errorCode.message() == "The operation completed successfully.";
+}
+}
+
 DeviceConnectionController::DeviceConnectionController(QObject* parent)
     : QObject(parent)
 {
@@ -138,7 +151,9 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
 
     m_verificationEvent.reset();
 
-    handleError(ev->GetErrorCode().message(), ev->type());
+    if (!IsBenignDisconnectError(ev->GetErrorCode())) {
+        handleError(ev->GetErrorCode().message(), ev->type());
+    }
 }
 
 void DeviceConnectionController::handleError(const std::string& message)
@@ -159,6 +174,10 @@ void DeviceConnectionController::handleError(const std::string& message, QEvent:
 
 void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
 {
+    if (IsBenignScannerShutdownError(ev->GetErrorCode())) {
+        return;
+    }
+
     handleError(ev->GetErrorCode().message(), ev->type());
 }
 
