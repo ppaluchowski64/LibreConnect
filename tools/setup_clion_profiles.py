@@ -42,6 +42,7 @@ def upsert_profile(configs: ET.Element, name: str, generation_dir: str, toolchai
     target.set("GENERATION_DIR", generation_dir)
     target.set("CONFIG_NAME", config_name)
     target.set("GENERATION_OPTIONS", f"-DCMAKE_TOOLCHAIN_FILE={toolchain_path}")
+
     if generator_name:
         target.set("GENERATOR_NAME", generator_name)
     elif "GENERATOR_NAME" in target.attrib:
@@ -77,24 +78,24 @@ def main() -> int:
 
     upsert_profile(
         configs,
-        name="Desktop",
-        generation_dir="build/desktop/build",
+        name="Desktop-Debug",
+        generation_dir="build/desktop/build/Debug",
         toolchain_path=toolchain_desktop,
-        generator_name=desktop_generator,
+        generator_name=None,
     )
 
     upsert_profile(
         configs,
         name="Desktop-Release",
-        generation_dir="build/desktop/build",
+        generation_dir="build/desktop/build/Release",
         toolchain_path=toolchain_desktop,
         config_name="Release",
-        generator_name=desktop_generator,
+        generator_name=None,
     )
 
     upsert_profile(
         configs,
-        name="Android",
+        name="Android-Debug",
         generation_dir="build/android/build/Debug",
         toolchain_path=toolchain_android_debug,
         generator_name=android_generator,
