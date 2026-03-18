@@ -1,0 +1,94 @@
+{
+    "version": 4,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 20,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "desktop-base",
+            "displayName": "Desktop (Base)",
+            "binaryDir": "${sourceDir}/build/desktop",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/desktop/generators/conan_toolchain.cmake"
+            }
+        },
+        {
+            "name": "desktop-debug",
+            "displayName": "Desktop Debug",
+            "inherits": "desktop-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "desktop-release",
+            "displayName": "Desktop Release",
+            "inherits": "desktop-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "android-base",
+            "displayName": "Android (Base)",
+            "binaryDir": "${sourceDir}/build/android",
+            "cacheVariables": {
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/android/generators/conan_toolchain.cmake"
+            }
+        },
+        {
+            "name": "android-debug",
+            "displayName": "Android Debug",
+            "inherits": "android-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "android-release",
+            "displayName": "Android Release",
+            "inherits": "android-base",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "desktop-debug",
+            "configurePreset": "desktop-debug"
+        },
+        {
+            "name": "desktop-release",
+            "configurePreset": "desktop-release"
+        },
+        {
+            "name": "android-debug",
+            "configurePreset": "android-debug"
+        },
+        {
+            "name": "android-release",
+            "configurePreset": "android-release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "desktop-debug",
+            "configurePreset": "desktop-debug"
+        },
+        {
+            "name": "desktop-release",
+            "configurePreset": "desktop-release"
+        },
+        {
+            "name": "android-debug",
+            "configurePreset": "android-debug"
+        },
+        {
+            "name": "android-release",
+            "configurePreset": "android-release"
+        }
+    ]
+}
