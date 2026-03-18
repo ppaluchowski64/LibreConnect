@@ -27,8 +27,8 @@ public:
 
 private:
     void StartStream();
-    void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) const;
-    asio::awaitable<void> ReceiveFrames() const;
+    void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer);
+    asio::awaitable<void> ReceiveFrames();
 
     std::unique_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
@@ -43,7 +43,12 @@ private:
     const AVCodec* m_codec{nullptr};
 
     AVFrame* m_frame{nullptr};
+    AVFrame* m_frameNv12{nullptr};
     AVPacket* m_packet{nullptr};
+    SwsContext* m_swsContext{nullptr};
+    AVPixelFormat m_swsSrcFormat{AV_PIX_FMT_NONE};
+    int m_swsWidth{0};
+    int m_swsHeight{0};
 
 protected:
     void EnableResponseCallbacks() override;

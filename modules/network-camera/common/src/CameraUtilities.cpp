@@ -98,8 +98,8 @@ std::vector<CameraSpecification> FetchCamerasSpecification() {
 
         for (const auto& format : formats) {
             specification.formats.emplace_back(
-                format.resolution().height(),
                 format.resolution().width(),
+                format.resolution().height(),
                 std::floor(format.maxFrameRate())
             );
         }

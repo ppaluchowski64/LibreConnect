@@ -49,8 +49,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                 }
 
                 constexpr float diff = 0.01f;
-                if (fm.minFrameRate() - requestedFormat.framerate < diff ||
-                    fm.maxFrameRate() - requestedFormat.framerate > -diff) {
+                if (requestedFormat.framerate < (fm.minFrameRate() - diff) ||
+                    requestedFormat.framerate > (fm.maxFrameRate() + diff)) {
                     continue;
                 }
 
@@ -129,6 +129,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             m_ptsCounter = 0;
 
+            ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::None);
             QGuiApplication::instance()->connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, [&](const QVideoFrame &frame) {
                 if (!frame.isValid())
                     return;

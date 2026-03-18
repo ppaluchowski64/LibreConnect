@@ -52,8 +52,7 @@ void NetworkCameraModule::StartStream() {
     });
 }
 
-void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) const {
-
+void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) {
     av_new_packet(m_packet, frameBuffer.size());
     memcpy(m_packet->data, frameBuffer.data(), frameBuffer.size());
 
@@ -70,11 +69,80 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             return;
         }
 
-        const size_t y_size = m_frame->width * m_frame->height;
-        const size_t uv_size = m_frame->width * (m_frame->height / 2);
+        const AVFrame* srcFrame = m_frame;
+
+        if (m_frame->format != AV_PIX_FMT_NV12) {
+            if (!m_swsContext ||
+                m_frameNv12 == nullptr ||
+                m_swsWidth != m_frame->width ||
+                m_swsHeight != m_frame->height ||
+                m_swsSrcFormat != static_cast<AVPixelFormat>(m_frame->format)) {
+                if (m_swsContext) {
+                    sws_freeContext(m_swsContext);
+                }
+                if (m_frameNv12) {
+                    av_frame_free(&m_frameNv12);
+                }
+
+                m_swsContext = sws_getContext(
+                    m_frame->width,
+                    m_frame->height,
+                    static_cast<AVPixelFormat>(m_frame->format),
+                    m_frame->width,
+                    m_frame->height,
+                    AV_PIX_FMT_NV12,
+                    SWS_BILINEAR,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                );
+
+                if (!m_swsContext) {
+                    Debug::LogError("Failed to create sws context for format {}", m_frame->format);
+                    av_frame_unref(m_frame);
+                    return;
+                }
+
+                m_frameNv12 = av_frame_alloc();
+                if (!m_frameNv12) {
+                    Debug::LogError("Failed to allocate NV12 frame");
+                    av_frame_unref(m_frame);
+                    return;
+                }
+
+                m_frameNv12->format = AV_PIX_FMT_NV12;
+                m_frameNv12->width = m_frame->width;
+                m_frameNv12->height = m_frame->height;
+
+                m_swsSrcFormat = static_cast<AVPixelFormat>(m_frame->format);
+                m_swsWidth = m_frame->width;
+                m_swsHeight = m_frame->height;
+
+                if (av_frame_get_buffer(m_frameNv12, 32) < 0) {
+                    Debug::LogError("Failed to allocate NV12 frame buffer");
+                    av_frame_unref(m_frame);
+                    return;
+                }
+            }
+
+            sws_scale(
+                m_swsContext,
+                m_frame->data,
+                m_frame->linesize,
+                0,
+                m_frame->height,
+                m_frameNv12->data,
+                m_frameNv12->linesize
+            );
+
+            srcFrame = m_frameNv12;
+        }
+
+        const size_t y_size = srcFrame->width * srcFrame->height;
+        const size_t uv_size = srcFrame->width * (srcFrame->height / 2);
         std::vector<uint8_t> buffer(y_size + uv_size);
 
-        av_image_copy_to_buffer(buffer.data(), buffer.size(), m_frame->data, m_frame->linesize, static_cast<AVPixelFormat>(m_frame->format), m_frame->width, m_frame->height, 1);
+        av_image_copy_to_buffer(buffer.data(), buffer.size(), srcFrame->data, srcFrame->linesize, static_cast<AVPixelFormat>(srcFrame->format), srcFrame->width, srcFrame->height, 1);
         av_frame_unref(m_frame);
 
         m_camera.PushFrame(buffer.data());
@@ -83,18 +151,19 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
     av_packet_unref(m_packet);
 }
 
-asio::awaitable<void> NetworkCameraModule::ReceiveFrames() const {
+asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
     std::vector<uint8_t> frameBuffer;
     frameBuffer.reserve(1024 * 1024 * 2); // 2 MiB
 
     while (GetModuleState() == ModuleState::Enabled) {
         co_await m_videoStream->AsyncReceive(frameBuffer);
+        Debug::Log("Received frame");
         ProcessEncodedFrame(frameBuffer);
     }
 }
 
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
-    constexpr size_t UPDATE_DELAY = 5;
+    constexpr size_t UPDATE_DELAY = 20;
 
     while (GetModuleState() != ModuleState::Uninitialized) {
         const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
@@ -166,6 +235,31 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_videoStream.reset();
 
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
+
+    if (m_packet) {
+        av_packet_free(&m_packet);
+    }
+
+    if (m_frame) {
+        av_frame_free(&m_frame);
+    }
+
+    if (m_frameNv12) {
+        av_frame_free(&m_frameNv12);
+    }
+
+    if (m_swsContext) {
+        sws_freeContext(m_swsContext);
+        m_swsContext = nullptr;
+        m_swsSrcFormat = AV_PIX_FMT_NONE;
+        m_swsWidth = 0;
+        m_swsHeight = 0;
+    }
+
+    if (m_codecContext) {
+        avcodec_free_context(&m_codecContext);
+        m_codecContext = nullptr;
+    }
 
     co_return;
 }

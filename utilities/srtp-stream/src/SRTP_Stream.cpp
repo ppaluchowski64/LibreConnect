@@ -1,17 +1,23 @@
 #include <SRTP_Stream.h>
+#include <DebugLog.h>
 #include <boost/endian.hpp>
+#include <asio/awaitable.hpp>
 #include <openssl/rand.h>
 
 namespace SRTP {
 
     static std::atomic<bool> g_isStrpInited{false};
     static constexpr size_t MAX_PAYLOAD_SIZE = 1024;
+    static std::atomic<uint32_t> g_unprotectFailCount{0};
+    static std::atomic<uint32_t> g_protectFailCount{0};
 
     Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context), m_context(context),
         m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate) {
 
         if (!g_isStrpInited.exchange(true)) {
-            srtp_init();
+            if (srtp_init() != srtp_err_status_ok) {
+                Debug::LogError("SRTP init failed");
+            }
         }
 
         m_sendSession = CreateSrtpSession(localKey, 3345, ssrc_any_outbound);
@@ -21,10 +27,12 @@ namespace SRTP {
 
     void Stream::Bind(const UDPEndpoint& endpoint) {
         m_socket.connect(endpoint);
+        Debug::Log("SRTP bind: {}:{}", endpoint.address().to_string(), endpoint.port());
     }
 
     void Stream::Bind(UDPEndpoint&& endpoint) {
         m_socket.connect(endpoint);
+        Debug::Log("SRTP bind: {}:{}", endpoint.address().to_string(), endpoint.port());
     }
 
     UDPEndpoint Stream::Bind() {
@@ -41,6 +49,9 @@ namespace SRTP {
             int length = m_socket.receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
 
             if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                if ((++g_unprotectFailCount % 100) == 1) {
+                    Debug::LogWarning("SRTP unprotect failed (count={})", g_unprotectFailCount.load());
+                }
                 continue;
             }
 
@@ -88,7 +99,12 @@ namespace SRTP {
             std::memcpy(m_buffer.data() + sizeof(Header), payload, size);
 
             int length = sizeof(Header) + size;
-            srtp_protect(m_sendSession, m_buffer.data(), &length);
+            if (srtp_protect(m_sendSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                if ((++g_protectFailCount % 100) == 1) {
+                    Debug::LogWarning("SRTP protect failed (count={})", g_protectFailCount.load());
+                }
+                return;
+            }
             m_socket.send(asio::const_buffer(m_buffer.data(), length));
         } else {
             const uint8_t nalHeader = payload[0];
@@ -117,7 +133,12 @@ namespace SRTP {
                 std::memcpy(m_buffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
                 int length = sizeof(Header) + 2 + fragmentSize;
-                srtp_protect(m_sendSession, m_buffer.data(), &length);
+                if (srtp_protect(m_sendSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                    if ((++g_protectFailCount % 100) == 1) {
+                        Debug::LogWarning("SRTP protect failed (count={})", g_protectFailCount.load());
+                    }
+                    return;
+                }
 
                 m_socket.send(asio::const_buffer(m_buffer.data(), length));
 
@@ -192,7 +213,12 @@ namespace SRTP {
             std::memcpy(m_buffer.data() + sizeof(Header), payload, size);
 
             int length = sizeof(Header) + size;
-            srtp_protect(m_sendSession, m_buffer.data(), &length);
+            if (srtp_protect(m_sendSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                if ((++g_protectFailCount % 100) == 1) {
+                    Debug::LogWarning("SRTP protect failed (count={})", g_protectFailCount.load());
+                }
+                co_return;
+            }
             co_await m_socket.async_send(asio::const_buffer(m_buffer.data(), length));
         } else {
             const uint8_t nalHeader = payload[0];
@@ -221,7 +247,12 @@ namespace SRTP {
                 std::memcpy(m_buffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
                 int length = sizeof(Header) + 2 + fragmentSize;
-                srtp_protect(m_sendSession, m_buffer.data(), &length);
+                if (srtp_protect(m_sendSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                    if ((++g_protectFailCount % 100) == 1) {
+                        Debug::LogWarning("SRTP protect failed (count={})", g_protectFailCount.load());
+                    }
+                    co_return;
+                }
 
                 co_await m_socket.async_send(asio::const_buffer(m_buffer.data(), length));
 
@@ -240,6 +271,9 @@ namespace SRTP {
             int length = co_await m_socket.async_receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
 
             if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                if ((++g_unprotectFailCount % 100) == 1) {
+                    Debug::LogWarning("SRTP unprotect failed (count={})", g_unprotectFailCount.load());
+                }
                 continue;
             }
 
