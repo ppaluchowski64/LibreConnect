@@ -41,12 +41,10 @@ def upsert_profile(configs: ET.Element, name: str, generation_dir: str, toolchai
     target.set("ENABLED", "true")
     target.set("GENERATION_DIR", generation_dir)
     target.set("CONFIG_NAME", config_name)
-    target.set("GENERATION_OPTIONS", f"-DCMAKE_TOOLCHAIN_FILE={toolchain_path}")
+    target.attrib["GENERATION_OPTIONS"] = f"-DCMAKE_TOOLCHAIN_FILE={toolchain_path}"
 
-    if generator_name:
-        target.set("GENERATOR_NAME", generator_name)
-    elif "GENERATOR_NAME" in target.attrib:
-        del target.attrib["GENERATOR_NAME"]
+    if generator_name is None:
+        target.set("NO_GENERATOR", "true")
 
 
 def main() -> int:
@@ -71,9 +69,6 @@ def main() -> int:
     toolchain_desktop = norm(repo_root / "build/desktop/build/generators/conan_toolchain.cmake")
     toolchain_android_debug = norm(repo_root / "build/android/build/Debug/generators/conan_toolchain.cmake")
     toolchain_android_release = norm(repo_root / "build/android/build/Release/generators/conan_toolchain.cmake")
-
-    is_windows = os.name == "nt"
-    desktop_generator = "Visual Studio 17 2022" if is_windows else "Ninja"
     android_generator = "Ninja"
 
     upsert_profile(

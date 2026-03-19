@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
-project(p_connect LANGUAGES C CXX ASM)
+project(p_connect LANGUAGES CXX C)
+enable_language(ASM)
 
 if (APPLE AND NOT IOS)
     enable_language(OBJCXX)
