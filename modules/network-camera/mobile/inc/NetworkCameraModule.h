@@ -37,6 +37,8 @@ private:
     std::unique_ptr<QVideoSink> m_videoSink;
 
     int64_t m_ptsCounter{0};
+    std::atomic<uint16_t> m_portNumber{0};
+
     const AVCodec* m_codec{nullptr};
     AVCodecContext* m_codecContext{nullptr};
     SwsContext* m_swsContext{nullptr};

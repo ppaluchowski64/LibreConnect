@@ -26,7 +26,7 @@ public:
     void SetCameraSettings(CameraSettings settings);
 
 private:
-    void StartStream();
+    asio::awaitable<void> StartStream();
     void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer);
     asio::awaitable<void> ReceiveFrames();
 
@@ -49,6 +49,8 @@ private:
     AVPixelFormat m_swsSrcFormat{AV_PIX_FMT_NONE};
     int m_swsWidth{0};
     int m_swsHeight{0};
+    int m_swsDstWidth{0};
+    int m_swsDstHeight{0};
 
 protected:
     void EnableResponseCallbacks() override;

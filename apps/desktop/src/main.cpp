@@ -24,9 +24,9 @@ int main(int argc, char *argv[])
         QDir().mkpath(appDataPath);
         QDir::setCurrent(appDataPath);
 
-        Debug::Settings settings{
+        const Debug::Settings settings{
             .rootPath = appDataPath.toStdString(),
-            .maxFileSize = 2 * 1024 * 1024,
+            .maxFileSize = 2 * 1024 * 1024 * 1024ULL,
             .maxLogFilesAmount = 10,
             .deleteLogsAfter = 60 * 60 * 24 * 7
         };

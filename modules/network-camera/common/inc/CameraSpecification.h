@@ -57,6 +57,7 @@ inline AVPixelFormat GetFormat(QVideoFrameFormat::PixelFormat format) {
         case QVideoFrameFormat::Format_BGRA8888: return AV_PIX_FMT_BGRA;
         case QVideoFrameFormat::Format_YUYV: return AV_PIX_FMT_YUYV422;
         case QVideoFrameFormat::Format_NV12: return AV_PIX_FMT_NV12;
+        case QVideoFrameFormat::Format_NV21: return AV_PIX_FMT_NV21;
         case QVideoFrameFormat::Format_YUV420P: return AV_PIX_FMT_YUV420P;
         default: Debug::LogError("Unsupported pixel format"); return AV_PIX_FMT_NONE;
     }

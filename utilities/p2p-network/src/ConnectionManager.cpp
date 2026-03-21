@@ -296,12 +296,8 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                 continue;
             }
             const PackageHeader header = value->GetHeader();
-            Debug::Log("ConnectionManager: Processing package type={}, flags=0x{:02x}, size={}",
-                       static_cast<int>(header.type), header.flags, header.size);
-
             if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
                 size_t requestID = value->GetValue<size_t>();
-                Debug::Log("ConnectionManager: Received awaitable response for Request ID: {}", requestID);
                 auto flag = m_requestAwaitableMap.Pop(requestID);
 
                 if (flag.has_value()) {
@@ -319,13 +315,11 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                     continue;
                 }
 
-                Debug::Log("ConnectionManager: Received package type: {}", static_cast<int>(type));
                 std::optional<RequestCallbackType> callbackOptional = m_responseHandlerMap.Get(type);
                 std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
 
                 if (callbackOptional.has_value()) {
                     asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
-                        Debug::Log("ConnectionManager: Dispatching response handler");
                         callback(std::move(package));
                     });
 
@@ -334,7 +328,6 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                 }
 
                 if (awaitableCallbackOptional.has_value()) {
-                    Debug::Log("ConnectionManager: Dispatching awaitable response handler");
                     asio::co_spawn(m_context, awaitableCallbackOptional.value()(std::move(value)), asio::detached);
                     packageOptional = m_primaryConnection->GetPackage();
                     continue;

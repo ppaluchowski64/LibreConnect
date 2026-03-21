@@ -14,42 +14,51 @@ void NetworkCameraModule::SetCameraSettings(CameraSettings settings) {
     });
 }
 
-void NetworkCameraModule::StartStream() {
-    asio::post(m_context, [this]() {
-        CameraSpecification cameraSpecification;
-        for (const auto& spec : m_camerasSpecification) {
-            if (spec.id == m_cameraSettings.id) {
-                cameraSpecification = spec;
-            }
+asio::awaitable<void> NetworkCameraModule::StartStream() {
+    Debug::Log("NetworkCameraModule: StartStream");
+    CameraSpecification cameraSpecification;
+    for (const auto& spec : m_camerasSpecification) {
+        if (spec.id == m_cameraSettings.id) {
+            cameraSpecification = spec;
         }
+    }
 
-        const std::string& cameraName = m_cameraSettings.customCameraNameEnabled ? m_cameraSettings.cameraName : cameraSpecification.description;
-        if (!m_camera.Start(cameraName, m_cameraSettings.pixelFormat, m_cameraSettings.width, m_cameraSettings.height, m_cameraSettings.framerate)) {
-            Debug::LogError("NetworkCameraModule::StartStream Failed to start camera");
-            return;
+    const std::string& cameraName = m_cameraSettings.customCameraNameEnabled ? m_cameraSettings.cameraName : cameraSpecification.description;
+    if (!m_camera.Start(cameraName, m_cameraSettings.pixelFormat, m_cameraSettings.width, m_cameraSettings.height, m_cameraSettings.framerate)) {
+        Debug::LogError("NetworkCameraModule::StartStream Failed to start camera");
+        co_return;
+    }
+
+    m_codec = GetDecoderCodec(CodecID::H264);
+
+    if (m_codecContext) {
+        avcodec_free_context(&m_codecContext);
+    }
+
+    m_codecContext = avcodec_alloc_context3(m_codec);
+    m_codecContext->bit_rate = 400000;
+    m_codecContext->width = m_cameraSettings.width;
+    m_codecContext->height = m_cameraSettings.height;
+    m_codecContext->time_base = {1, m_cameraSettings.framerate};
+    m_codecContext->framerate = {m_cameraSettings.framerate, 1};
+    m_codecContext->gop_size = 10;
+    m_codecContext->max_b_frames = 1;
+    m_codecContext->pix_fmt = AV_PIX_FMT_NV12;
+
+    {
+        const int openRet = avcodec_open2(m_codecContext, m_codec, nullptr);
+        if (openRet < 0) {
+            char err[AV_ERROR_MAX_STRING_SIZE]{};
+            av_strerror(openRet, err, sizeof(err));
+            Debug::LogError("Failed to open decoder: {}", err);
+            co_return;
         }
+    }
 
-        m_codec = GetDecoderCodec(CodecID::H264);
+    m_packet = av_packet_alloc();
+    m_frame = av_frame_alloc();
 
-        if (m_codecContext) {
-            avcodec_free_context(&m_codecContext);
-        }
-
-        m_codecContext = avcodec_alloc_context3(m_codec);
-        m_codecContext->bit_rate = 400000;
-        m_codecContext->width = m_cameraSettings.width;
-        m_codecContext->height = m_cameraSettings.height;
-        m_codecContext->time_base = {1, m_cameraSettings.framerate};
-        m_codecContext->framerate = {m_cameraSettings.framerate, 1};
-        m_codecContext->gop_size = 10;
-        m_codecContext->max_b_frames = 1;
-        m_codecContext->pix_fmt = AV_PIX_FMT_NV12;
-
-        m_packet = av_packet_alloc();
-        m_frame = av_frame_alloc();
-
-        asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
-    });
+    asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
 }
 
 void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) {
@@ -69,13 +78,24 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             return;
         }
 
-        const AVFrame* srcFrame = m_frame;
+        const int targetW = m_cameraSettings.width;
+        const int targetH = m_cameraSettings.height;
+        const AVPixelFormat targetFmt = AV_PIX_FMT_NV12;
 
-        if (m_frame->format != AV_PIX_FMT_NV12) {
+        const AVFrame* srcFrame = m_frame;
+        const bool needsConvert = (m_frame->format != targetFmt) ||
+            (m_frame->width != targetW) ||
+            (m_frame->height != targetH) ||
+            (m_frame->linesize[0] != targetW) ||
+            (m_frame->linesize[1] != targetW);
+
+        if (needsConvert) {
             if (!m_swsContext ||
                 m_frameNv12 == nullptr ||
                 m_swsWidth != m_frame->width ||
                 m_swsHeight != m_frame->height ||
+                m_swsDstWidth != targetW ||
+                m_swsDstHeight != targetH ||
                 m_swsSrcFormat != static_cast<AVPixelFormat>(m_frame->format)) {
                 if (m_swsContext) {
                     sws_freeContext(m_swsContext);
@@ -88,9 +108,9 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                     m_frame->width,
                     m_frame->height,
                     static_cast<AVPixelFormat>(m_frame->format),
-                    m_frame->width,
-                    m_frame->height,
-                    AV_PIX_FMT_NV12,
+                    targetW,
+                    targetH,
+                    targetFmt,
                     SWS_BILINEAR,
                     nullptr,
                     nullptr,
@@ -110,13 +130,15 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                     return;
                 }
 
-                m_frameNv12->format = AV_PIX_FMT_NV12;
-                m_frameNv12->width = m_frame->width;
-                m_frameNv12->height = m_frame->height;
+                m_frameNv12->format = targetFmt;
+                m_frameNv12->width = targetW;
+                m_frameNv12->height = targetH;
 
                 m_swsSrcFormat = static_cast<AVPixelFormat>(m_frame->format);
                 m_swsWidth = m_frame->width;
                 m_swsHeight = m_frame->height;
+                m_swsDstWidth = targetW;
+                m_swsDstHeight = targetH;
 
                 if (av_frame_get_buffer(m_frameNv12, 32) < 0) {
                     Debug::LogError("Failed to allocate NV12 frame buffer");
@@ -138,11 +160,30 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             srcFrame = m_frameNv12;
         }
 
-        const size_t y_size = srcFrame->width * srcFrame->height;
-        const size_t uv_size = srcFrame->width * (srcFrame->height / 2);
-        std::vector<uint8_t> buffer(y_size + uv_size);
+        const int bufferSize = av_image_get_buffer_size(targetFmt, targetW, targetH, 1);
+        if (bufferSize <= 0) {
+            Debug::LogError("Invalid buffer size for {}x{} fmt {}", targetW, targetH, magic_enum::enum_name(targetFmt));
+            av_frame_unref(m_frame);
+            return;
+        }
 
-        av_image_copy_to_buffer(buffer.data(), buffer.size(), srcFrame->data, srcFrame->linesize, static_cast<AVPixelFormat>(srcFrame->format), srcFrame->width, srcFrame->height, 1);
+        std::vector<uint8_t> buffer(static_cast<size_t>(bufferSize));
+
+        const int copyRet = av_image_copy_to_buffer(
+            buffer.data(),
+            buffer.size(),
+            srcFrame->data,
+            srcFrame->linesize,
+            targetFmt,
+            targetW,
+            targetH,
+            1
+        );
+        if (copyRet < 0) {
+            Debug::LogError("Failed to copy image to buffer");
+            av_frame_unref(m_frame);
+            return;
+        }
         av_frame_unref(m_frame);
 
         m_camera.PushFrame(buffer.data());
@@ -155,9 +196,18 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
     std::vector<uint8_t> frameBuffer;
     frameBuffer.reserve(1024 * 1024 * 2); // 2 MiB
 
+    Debug::Log("NetworkCameraModule: ReceiveFrames started");
+    Debug::Log("State {}", magic_enum::enum_name(GetModuleState()));
+
+    asio::steady_timer timer(m_context);
+
+    while (GetModuleState() == ModuleState::Enabling) {
+        timer.expires_after(std::chrono::milliseconds(10));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+
     while (GetModuleState() == ModuleState::Enabled) {
         co_await m_videoStream->AsyncReceive(frameBuffer);
-        Debug::Log("Received frame");
         ProcessEncodedFrame(frameBuffer);
     }
 }
@@ -182,19 +232,34 @@ asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
 
 void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE, [instance, this](PC_Package&&) mutable {
+        Enable(true);
+    });
 
 }
 
 void NetworkCameraModule::DisableResponseCallbacks() {
-
+    Debug::Log("NetworkCameraModule: DisableResponseCallbacks");
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
 }
 
 void NetworkCameraModule::OnInitialize() {
+    Debug::Log("NetworkCameraModule: OnInitialize");
     asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
 }
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
+
+    Debug::Log(
+        "NetworkCameraModule: Enabled, cameraId={}, {}x{}@{}",
+        m_cameraSettings.id,
+        m_cameraSettings.width,
+        m_cameraSettings.height,
+        m_cameraSettings.framerate
+    );
+
     m_localKey = SRTP::Stream::GenerateKey();
 
     {
@@ -208,6 +273,9 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
     }
 
     m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey, m_cameraSettings.framerate);
+    const UDPEndpoint endpoint = m_videoStream->Bind();
+    Debug::Log("SRTP local bind port: {}", endpoint.port());
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_PORT_INFO, endpoint.port());
 
     {
         CameraFormat cameraFormat(m_cameraSettings.width, m_cameraSettings.height, m_cameraSettings.framerate);
@@ -226,12 +294,12 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         }
     }
 
-    StartStream();
-    co_return;
+    co_await StartStream();
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    Debug::Log("NetworkCameraModule: OnDisable");
     m_videoStream.reset();
 
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
@@ -266,5 +334,6 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    Debug::Log("NetworkCameraModule: OnShutdown");
     co_return;
 }

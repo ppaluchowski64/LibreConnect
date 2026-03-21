@@ -1,7 +1,13 @@
 #include <NetworkCameraModule.h>
 #include <CameraUtilities.h>
+#include <PermissionManager.h>
 
 #include <magic_enum/magic_enum.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
@@ -14,10 +20,38 @@
 #include <QMediaRecorder>
 #include <QVideoFrameInput>
 
+extern "C" {
+    #include <libavutil/error.h>
+    #include <libavutil/imgutils.h>
+}
+
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
     if (!QGuiApplication::instance()) {
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
         co_return;
+    }
+
+    Debug::Log(
+        "NetworkCameraModule: StartStream requestId={}, cameraId={}, {}x{}@{}",
+        requestID,
+        cameraID,
+        requestedFormat.width,
+        requestedFormat.height,
+        requestedFormat.framerate
+    );
+
+    {
+        asio::steady_timer timer(m_context);
+        int attempts = 0;
+        while (m_portNumber.load() == 0) {
+            if (++attempts > 500) { // ~5 seconds at 10ms
+                Debug::LogError("SRTP port info not received in time");
+                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                co_return;
+            }
+            timer.expires_after(asio::chrono::milliseconds(10));
+            co_await timer.async_wait();
+        }
     }
 
     QMetaObject::invokeMethod(
@@ -92,26 +126,97 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             }
 
             m_codecContext = avcodec_alloc_context3(m_codec);
-            m_codecContext->bit_rate = 400000;
             m_codecContext->width = format.resolution().width();
             m_codecContext->height = format.resolution().height();
-            m_codecContext->time_base = {1, static_cast<int>(format.maxFrameRate())};
-            m_codecContext->framerate = {static_cast<int>(format.maxFrameRate()), 1};
-            m_codecContext->gop_size = 10;
-            m_codecContext->max_b_frames = 1;
-            m_codecContext->pix_fmt = AV_PIX_FMT_NV12;
+
+            const int fps = std::max(1, static_cast<int>(std::round(format.maxFrameRate())));
+            const int64_t pixelRate = static_cast<int64_t>(m_codecContext->width) * m_codecContext->height * fps;
+            const int64_t targetBitrate = std::clamp<int64_t>(pixelRate / 8, 1200000, 12000000);
+
+            m_codecContext->bit_rate = static_cast<int>(targetBitrate);
+            m_codecContext->rc_min_rate = static_cast<int>(targetBitrate * 3 / 4);
+            m_codecContext->rc_max_rate = static_cast<int>(targetBitrate * 5 / 4);
+            m_codecContext->bit_rate_tolerance = static_cast<int>(targetBitrate / 2);
+            m_codecContext->time_base = {1, fps};
+            m_codecContext->framerate = {fps, 1};
+            m_codecContext->gop_size = std::max(30, fps * 2);
+            m_codecContext->max_b_frames = 0;
+
+            const AVPixelFormat inputPixFmt = GetFormat(format.pixelFormat());
+            const auto pickPixFmt = [](const AVCodec* codec, AVPixelFormat preferred) {
+                if (!codec || !codec->pix_fmts) return preferred;
+                for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+                    if (*p == preferred) return *p;
+                }
+                for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+                    if (*p == AV_PIX_FMT_YUV420P) return *p;
+                }
+                return codec->pix_fmts[0];
+            };
+
+            m_codecContext->pix_fmt = pickPixFmt(m_codec, inputPixFmt == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : inputPixFmt);
+
+            if (m_codec && m_codec->name && std::strstr(m_codec->name, "mediacodec")) {
+                m_codecContext->max_b_frames = 0;
+            }
+
+            Debug::Log(
+                "Encoder open params: codec={}, pix_fmt={}, size={}x{}, fps={}, bitrate={}",
+                (m_codec && m_codec->name) ? m_codec->name : "unknown",
+                av_get_pix_fmt_name(m_codecContext->pix_fmt),
+                m_codecContext->width,
+                m_codecContext->height,
+                fps,
+                m_codecContext->bit_rate
+            );
+
+            {
+                int openRet = avcodec_open2(m_codecContext, m_codec, nullptr);
+                if (openRet < 0 && m_codec->name && std::strstr(m_codec->name, "mediacodec") && m_codec->pix_fmts) {
+                    constexpr AVPixelFormat candidates[] = { AV_PIX_FMT_NV12, AV_PIX_FMT_YUV420P };
+                    for (const AVPixelFormat cand : candidates) {
+                        if (cand == m_codecContext->pix_fmt) continue;
+                        bool supported = false;
+                        for (const AVPixelFormat* p = m_codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+                            if (*p == cand) { supported = true; break; }
+                        }
+                        if (!supported) continue;
+
+                        m_codecContext->pix_fmt = cand;
+                        Debug::Log("Retrying encoder open with pix_fmt={}", av_get_pix_fmt_name(cand));
+                        openRet = avcodec_open2(m_codecContext, m_codec, nullptr);
+                        if (openRet >= 0) break;
+                    }
+                }
+
+                if (openRet < 0) {
+                    char err[AV_ERROR_MAX_STRING_SIZE]{};
+                    av_strerror(openRet, err, sizeof(err));
+                    Debug::LogError("Failed to open encoder: {}", err);
+                    return;
+                }
+            }
 
             m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, requestedFormat.framerate);
+            const auto peerAddr = ConnectionManager::GetPeerAddress();
+            const auto peerPort = m_portNumber.load();
+            Debug::Log("Binding SRTP to {}:{}", peerAddr.to_string(), peerPort);
+            m_videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
 
             if (m_swsContext) {
                 sws_freeContext(m_swsContext);
             }
 
-            if (format.pixelFormat() != QVideoFrameFormat::Format_NV12) {
+            if (inputPixFmt == AV_PIX_FMT_NONE) {
+                Debug::LogError("Unsupported input pixel format ({})", magic_enum::enum_name(format.pixelFormat()));
+                return;
+            }
+
+            if (inputPixFmt != m_codecContext->pix_fmt) {
                 m_swsContext = sws_getContext(
                     m_codecContext->width,
                     m_codecContext->height,
-                    GetFormat(format.pixelFormat()),
+                    inputPixFmt,
                     m_codecContext->width,
                     m_codecContext->height,
                     m_codecContext->pix_fmt,
@@ -128,13 +233,12 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             }
 
             m_ptsCounter = 0;
-
             ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::None);
             QGuiApplication::instance()->connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, [&](const QVideoFrame &frame) {
                 if (!frame.isValid())
                     return;
 
-                asio::co_spawn(m_context, SendFrame(frame), asio::detached);
+                asio::co_spawn(m_moduleStrand, SendFrame(frame), asio::detached);
             });
         },
         Qt::QueuedConnection
@@ -142,18 +246,27 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 }
 
 asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
+    if (!m_codecContext) {
+        co_return;
+    }
+
     if (!frame.map(QVideoFrame::ReadOnly))
         co_return;
 
     const AVPixelFormat inputFmt = GetFormat(frame.pixelFormat());
 
     if (inputFmt == AV_PIX_FMT_NONE) {
-        Debug::LogError("Unsupported input pixel format");
+        Debug::LogError("Unsupported input pixel format ({})", magic_enum::enum_name(frame.pixelFormat()));
         frame.unmap();
         co_return;
     }
 
     const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    if (!stream) {
+        Debug::LogError("SRTP stream is null");
+        frame.unmap();
+        co_return;
+    }
 
     AVFrame* avFrame = av_frame_alloc();
     if (!avFrame) { frame.unmap(); co_return; }
@@ -170,7 +283,27 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
         co_return;
     }
 
-    if (frame.pixelFormat() != QVideoFrameFormat::Format_NV12) {
+    if (inputFmt != m_codecContext->pix_fmt) {
+        m_swsContext = sws_getCachedContext(
+            m_swsContext,
+            frame.width(),
+            frame.height(),
+            inputFmt,
+            m_codecContext->width,
+            m_codecContext->height,
+            m_codecContext->pix_fmt,
+            SWS_BILINEAR,
+            nullptr,
+            nullptr,
+            nullptr
+        );
+
+        if (!m_swsContext) {
+            Debug::LogError("Could not initialize SwsContext");
+            frame.unmap();
+            co_return;
+        }
+
         const uint8_t* srcSlice[4] = {};
         int srcStride[4] = {};
 
@@ -181,8 +314,23 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
 
         sws_scale(m_swsContext, srcSlice, srcStride, 0, frame.height(), avFrame->data, avFrame->linesize);
     } else {
-        std::memcpy(avFrame->data[0], frame.bits(0), frame.bytesPerLine(0) * frame.height());
-        std::memcpy(avFrame->data[1], frame.bits(1), frame.bytesPerLine(1) * frame.height() / 2);
+        const uint8_t* srcSlice[4] = {};
+        int srcStride[4] = {};
+
+        for (int i = 0; i < frame.planeCount(); ++i) {
+            srcSlice[i]  = frame.bits(i);
+            srcStride[i] = frame.bytesPerLine(i);
+        }
+
+        av_image_copy(
+            avFrame->data,
+            avFrame->linesize,
+            srcSlice,
+            srcStride,
+            m_codecContext->pix_fmt,
+            frame.width(),
+            frame.height()
+        );
     }
 
     frame.unmap();
@@ -193,7 +341,9 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     av_frame_free(&avFrame);
 
     if (ret < 0) {
-        Debug::LogError("Error sending frame to encoder");
+        char err[AV_ERROR_MAX_STRING_SIZE]{};
+        av_strerror(ret, err, sizeof(err));
+        Debug::LogError("Error sending frame to encoder: {}", err);
         av_packet_free(&pkt);
         co_return;
     }
@@ -206,7 +356,79 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
             break;
         }
 
-        co_await stream->AsyncSend(pkt->data, pkt->size);
+        struct NalSpan {
+            const uint8_t* data;
+            size_t size;
+        };
+
+        auto isAnnexB = [](const uint8_t* data, size_t size) -> bool {
+            if (size < 4) return false;
+            return (data[0] == 0x00 && data[1] == 0x00 &&
+                    ((data[2] == 0x01) || (data[2] == 0x00 && data[3] == 0x01)));
+        };
+
+        auto splitAnnexB = [](const uint8_t* data, size_t size, std::vector<NalSpan>& out) {
+            size_t i = 0;
+            auto findStart = [&](size_t from) -> size_t {
+                for (size_t j = from; j + 3 < size; ++j) {
+                    if (data[j] == 0x00 && data[j + 1] == 0x00 &&
+                        (data[j + 2] == 0x01 || (data[j + 2] == 0x00 && data[j + 3] == 0x01))) {
+                        return j;
+                    }
+                }
+                return size;
+            };
+
+            while (i < size) {
+                const size_t start = findStart(i);
+                if (start >= size) break;
+
+                const size_t scSize = (data[start + 2] == 0x01) ? 3 : 4;
+                const size_t nalStart = start + scSize;
+                const size_t next = findStart(nalStart);
+                const size_t nalEnd = (next < size) ? next : size;
+
+                if (nalEnd > nalStart) {
+                    out.push_back({data + nalStart, nalEnd - nalStart});
+                }
+
+                i = nalEnd;
+            }
+        };
+
+        auto splitAvcc = [](const uint8_t* data, size_t size, std::vector<NalSpan>& out) -> bool {
+            size_t offset = 0;
+            while (offset + 4 <= size) {
+                uint32_t n = (static_cast<uint32_t>(data[offset]) << 24) |
+                             (static_cast<uint32_t>(data[offset + 1]) << 16) |
+                             (static_cast<uint32_t>(data[offset + 2]) << 8) |
+                             (static_cast<uint32_t>(data[offset + 3]));
+                offset += 4;
+                if (n == 0 || offset + n > size) {
+                    return false;
+                }
+                out.push_back({data + offset, n});
+                offset += n;
+            }
+            return !out.empty();
+        };
+
+        std::vector<NalSpan> nals;
+        if (isAnnexB(pkt->data, pkt->size)) {
+            splitAnnexB(pkt->data, pkt->size, nals);
+        } else {
+            splitAvcc(pkt->data, pkt->size, nals);
+        }
+
+        if (nals.empty()) {
+            nals.push_back({pkt->data, static_cast<size_t>(pkt->size)});
+        }
+
+        const uint32_t ts = stream->NextTimestamp();
+        for (size_t i = 0; i < nals.size(); ++i) {
+            const bool marker = (i + 1 == nals.size());
+            co_await stream->AsyncSendNal(nals[i].data, nals[i].size, ts, marker);
+        }
 
         av_packet_unref(pkt);
     }
@@ -217,10 +439,7 @@ void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, [instance, this](PC_Package&& package) mutable {
-        if (GetModuleState() != ModuleState::Disabled) {
-            return;
-        }
-
+        Debug::Log("NetworkCameraModule: REQUEST_REMOTE_KEY");
         m_localKey = SRTP::Stream::GenerateKey();
 
         const size_t requestID = package->GetValue<size_t>();
@@ -236,6 +455,7 @@ void NetworkCameraModule::EnableResponseCallbacks() {
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST , [instance, this](PC_Package&& package) mutable {
+        Debug::Log("NetworkCameraModule: REQUEST_CAMERAS_SPECIFICATION_LIST");
         const size_t requestID = package->GetValue<size_t>();
         ConnectionManager::SendRequestResponse(
             requestID,
@@ -244,7 +464,17 @@ void NetworkCameraModule::EnableResponseCallbacks() {
         );
     });
 
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_PORT_INFO, [instance, this](PC_Package&& package) mutable {
+        const uint16_t port = package->GetValue<uint16_t>();
+        Debug::Log("Received SRTP port info: {}", port);
+        m_portNumber.store(port);
+        if (m_portNumber.load() == 0) {
+            Disable();
+        }
+    });
+
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM, [instance, this](PC_Package&& package) mutable {
+        Debug::Log("NetworkCameraModule: REQUEST_START_STREAM");
         const size_t requestID = package->GetValue<size_t>();
         const std::string deviceID = package->GetValue<std::string>();
         const CameraFormat format = package->GetValue<CameraFormat>();
@@ -253,26 +483,51 @@ void NetworkCameraModule::EnableResponseCallbacks() {
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM, [instance, this](PC_Package&& package) mutable {
-        Disable();
+        Debug::Log("NetworkCameraModule: REQUEST_STOP_STREAM");
+        Disable(true);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE, [instance, this](PC_Package&& package) mutable {
+        Debug::Log("NetworkCameraModule: ENABLE");
+        Enable(true);
     });
 }
 
 void NetworkCameraModule::DisableResponseCallbacks() {
+    Debug::Log("NetworkCameraModule: DisableResponseCallbacks");
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_PORT_INFO);
 }
 
-void NetworkCameraModule::OnInitialize() {}
+void NetworkCameraModule::OnInitialize() {
+    Debug::Log("NetworkCameraModule: OnInitialize");
+}
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
+
+    m_portNumber.store(0);
+
+    if (!co_await PermissionManager::RequestCameraAccessPermission()) {
+        Disable();
+        co_return;
+    }
+
+    Debug::Log(
+        "NetworkCameraModule: Enabled, waiting for SRTP port, camera permission granted"
+    );
+
     co_return;
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    Debug::Log("NetworkCameraModule: OnDisable");
     m_videoStream.reset();
 
     co_return;
@@ -280,6 +535,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    Debug::Log("NetworkCameraModule: OnShutdown");
 
     if (m_codecContext) {
         avcodec_free_context(&m_codecContext);

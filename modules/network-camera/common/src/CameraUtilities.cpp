@@ -189,11 +189,18 @@ const AVCodec* GetEncoderCodec(const CodecID codecID) {
 const AVCodec* GetDecoderCodec(const CodecID codecID) {
     if (!g_decoderPriority.contains(codecID)) return nullptr;
 
-    for (const auto& codecName : g_decoderPriority.at(codecID)) {
-        const AVCodec* codec = avcodec_find_decoder_by_name(codecName.c_str());
-        if (!codec) continue;
-        if (CanUseDecoder(codec)) return codec;
-    }
+    // Prefer software decoding for now to keep frames in system memory.
+    // Hardware decoders (e.g., cuvid/d3d11va) often output GPU frames that
+    // require explicit hwframe transfer before sws_scale / CPU access.
+    //
+    // If you want to re-enable HW decoding, restore this block and add
+    // proper hwframe transfer in the desktop decode path:
+    //
+    // for (const auto& codecName : g_decoderPriority.at(codecID)) {
+    //     const AVCodec* codec = avcodec_find_decoder_by_name(codecName.c_str());
+    //     if (!codec) continue;
+    //     if (CanUseDecoder(codec)) return codec;
+    // }
 
     return avcodec_find_decoder(static_cast<AVCodecID>(codecID));
 }
