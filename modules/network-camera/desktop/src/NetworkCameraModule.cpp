@@ -4,6 +4,43 @@
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
 
+namespace {
+    size_t FindStart(const uint8_t* data, const size_t size, const size_t from) {
+        for (size_t j = from; j + 3 < size; ++j) {
+            if (data[j] == 0x00 && data[j + 1] == 0x00 &&
+                (data[j + 2] == 0x01 || (data[j + 2] == 0x00 && data[j + 3] == 0x01))) {
+                return j;
+                }
+        }
+        return size;
+    }
+
+    bool ContainsH264NalType(const std::vector<uint8_t>& frame, const uint8_t nalType) {
+        const size_t size = frame.size();
+        if (size < 5) {
+            return false;
+        }
+
+        size_t pos = 0;
+        while (pos < size) {
+            const size_t start = FindStart(frame.data(), frame.size(), pos);
+            if (start >= size) {
+                break;
+            }
+
+            const size_t scSize = (frame[start + 2] == 0x01) ? 3 : 4;
+            const size_t nalStart = start + scSize;
+            if (nalStart < size && (frame[nalStart] & 0x1F) == nalType) {
+                return true;
+            }
+
+            pos = nalStart;
+        }
+
+        return false;
+    }
+}
+
 std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() const {
     return m_camerasSpecification;
 }
@@ -57,30 +94,43 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
 
     m_packet = av_packet_alloc();
     m_frame = av_frame_alloc();
+    m_seenSps = false;
+    m_seenPps = false;
 
     asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
 }
 
 void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) {
-    av_new_packet(m_packet, frameBuffer.size());
+    m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
+    m_seenPps = m_seenPps || ContainsH264NalType(frameBuffer, 8);
+    if (!m_seenSps || !m_seenPps) {
+        return;
+    }
+
+    av_packet_unref(m_packet);
+    if (av_new_packet(m_packet, static_cast<int>(frameBuffer.size())) < 0) {
+        return;
+    }
     memcpy(m_packet->data, frameBuffer.data(), frameBuffer.size());
 
     int ret = avcodec_send_packet(m_codecContext, m_packet);
-    if (ret < 0) return;
+    if (ret < 0) goto cleanup;
 
-    while (ret >= 0) {
+    while (true) {
         ret = avcodec_receive_frame(m_codecContext, m_frame);
 
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            return;
-        } else if (ret < 0) {
+            break;
+        }
+
+        if (ret < 0) {
             fprintf(stderr, "Error during decoding\n");
-            return;
+            break;
         }
 
         const int targetW = m_cameraSettings.width;
         const int targetH = m_cameraSettings.height;
-        const AVPixelFormat targetFmt = AV_PIX_FMT_NV12;
+        constexpr AVPixelFormat targetFmt = AV_PIX_FMT_NV12;
 
         const AVFrame* srcFrame = m_frame;
         const bool needsConvert = (m_frame->format != targetFmt) ||
@@ -120,14 +170,14 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                 if (!m_swsContext) {
                     Debug::LogError("Failed to create sws context for format {}", m_frame->format);
                     av_frame_unref(m_frame);
-                    return;
+                    goto cleanup;
                 }
 
                 m_frameNv12 = av_frame_alloc();
                 if (!m_frameNv12) {
                     Debug::LogError("Failed to allocate NV12 frame");
                     av_frame_unref(m_frame);
-                    return;
+                    goto cleanup;
                 }
 
                 m_frameNv12->format = targetFmt;
@@ -143,7 +193,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                 if (av_frame_get_buffer(m_frameNv12, 32) < 0) {
                     Debug::LogError("Failed to allocate NV12 frame buffer");
                     av_frame_unref(m_frame);
-                    return;
+                    goto cleanup;
                 }
             }
 
@@ -164,7 +214,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         if (bufferSize <= 0) {
             Debug::LogError("Invalid buffer size for {}x{} fmt {}", targetW, targetH, magic_enum::enum_name(targetFmt));
             av_frame_unref(m_frame);
-            return;
+            goto cleanup;
         }
 
         std::vector<uint8_t> buffer(static_cast<size_t>(bufferSize));
@@ -182,13 +232,14 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         if (copyRet < 0) {
             Debug::LogError("Failed to copy image to buffer");
             av_frame_unref(m_frame);
-            return;
+            goto cleanup;
         }
         av_frame_unref(m_frame);
 
         m_camera.PushFrame(buffer.data());
     }
 
+cleanup:
     av_packet_unref(m_packet);
 }
 
@@ -328,6 +379,9 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
         avcodec_free_context(&m_codecContext);
         m_codecContext = nullptr;
     }
+
+    m_seenSps = false;
+    m_seenPps = false;
 
     co_return;
 }

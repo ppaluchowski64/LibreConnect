@@ -42,6 +42,8 @@ private:
     const AVCodec* m_codec{nullptr};
     AVCodecContext* m_codecContext{nullptr};
     SwsContext* m_swsContext{nullptr};
+    std::vector<std::vector<uint8_t>> m_h264ParameterSets;
+    bool m_codecConfigSent{false};
 
 protected:
     void EnableResponseCallbacks() override;

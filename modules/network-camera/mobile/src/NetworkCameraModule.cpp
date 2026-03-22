@@ -25,6 +25,162 @@ extern "C" {
     #include <libavutil/imgutils.h>
 }
 
+namespace {
+    struct NalSpan {
+        const uint8_t* data;
+        size_t size;
+    };
+
+    size_t FindStart(const uint8_t* data, const size_t size, const size_t from) {
+        for (size_t j = from; j + 3 < size; ++j) {
+            if (data[j] == 0x00 && data[j + 1] == 0x00 &&
+                (data[j + 2] == 0x01 || (data[j + 2] == 0x00 && data[j + 3] == 0x01))) {
+                return j;
+                }
+        }
+        return size;
+    }
+
+    void SplitAnnexB(const uint8_t* data, const size_t size, std::vector<NalSpan>& out) {
+        size_t i = 0;
+        while (i < size) {
+            const size_t start = FindStart(data, size, i);
+            if (start >= size) break;
+
+            const size_t scSize = (data[start + 2] == 0x01) ? 3 : 4;
+            const size_t nalStart = start + scSize;
+            const size_t next = FindStart(data, size, nalStart);
+            const size_t nalEnd = (next < size) ? next : size;
+
+            if (nalEnd > nalStart) {
+                out.push_back({data + nalStart, nalEnd - nalStart});
+            }
+
+            i = nalEnd;
+        }
+    }
+
+
+    bool SplitAvcc(const uint8_t* data, const size_t size, std::vector<NalSpan>& out) {
+        size_t offset = 0;
+        while (offset + 4 <= size) {
+            uint32_t n = (static_cast<uint32_t>(data[offset]) << 24) |
+                         (static_cast<uint32_t>(data[offset + 1]) << 16) |
+                         (static_cast<uint32_t>(data[offset + 2]) << 8) |
+                         (static_cast<uint32_t>(data[offset + 3]));
+            offset += 4;
+            if (n == 0 || offset + n > size) {
+                return false;
+            }
+            out.push_back({data + offset, n});
+            offset += n;
+        }
+        return !out.empty();
+    }
+
+    bool IsAnnexB(const uint8_t* data, const size_t size) {
+        if (size < 4) return false;
+        return (data[0] == 0x00 && data[1] == 0x00 && ((data[2] == 0x01) || (data[2] == 0x00 && data[3] == 0x01)));
+    }
+
+    std::vector<std::vector<uint8_t>> ParseAnnexBH264ParameterSets(const uint8_t* data, const size_t size) {
+        std::vector<std::vector<uint8_t>> out;
+        if (!data || size < 4) {
+            return out;
+        }
+
+        size_t i = 0;
+        while (i < size) {
+            const size_t start = FindStart(data, size, i);
+            if (start >= size) {
+                break;
+            }
+
+            const size_t scSize = (data[start + 2] == 0x01) ? 3 : 4;
+            const size_t nalStart = start + scSize;
+            const size_t next = FindStart(data, size, nalStart);
+            const size_t nalEnd = (next < size) ? next : size;
+
+            if (nalEnd > nalStart) {
+                const uint8_t nalType = data[nalStart] & 0x1F;
+                if (nalType == 7 || nalType == 8) {
+                    out.emplace_back(data + nalStart, data + nalEnd);
+                }
+            }
+
+            i = nalEnd;
+        }
+
+        return out;
+    }
+
+    std::vector<std::vector<uint8_t>> ParseAvccH264ParameterSets(const uint8_t* data, const size_t size) {
+        std::vector<std::vector<uint8_t>> out;
+        if (!data || size < 7 || data[0] != 1) {
+            return out;
+        }
+
+        size_t offset = 6;
+        const uint8_t numSps = data[5] & 0x1F;
+        for (uint8_t i = 0; i < numSps; ++i) {
+            if (offset + 2 > size) {
+                return out;
+            }
+
+            const uint16_t n = (static_cast<uint16_t>(data[offset]) << 8) |
+                               static_cast<uint16_t>(data[offset + 1]);
+            offset += 2;
+
+            if (n == 0 || offset + n > size) {
+                return out;
+            }
+
+            out.emplace_back(data + offset, data + offset + n);
+            offset += n;
+        }
+
+        if (offset >= size) {
+            return out;
+        }
+
+        const uint8_t numPps = data[offset++];
+        for (uint8_t i = 0; i < numPps; ++i) {
+            if (offset + 2 > size) {
+                return out;
+            }
+
+            const uint16_t n = (static_cast<uint16_t>(data[offset]) << 8) |
+                               static_cast<uint16_t>(data[offset + 1]);
+            offset += 2;
+
+            if (n == 0 || offset + n > size) {
+                return out;
+            }
+
+            out.emplace_back(data + offset, data + offset + n);
+            offset += n;
+        }
+
+        return out;
+    }
+
+    std::vector<std::vector<uint8_t>> ExtractH264ParameterSets(const AVCodecContext* codecContext) {
+        if (!codecContext || !codecContext->extradata || codecContext->extradata_size <= 0) {
+            return {};
+        }
+
+        const uint8_t* data = codecContext->extradata;
+        const size_t size = static_cast<size_t>(codecContext->extradata_size);
+
+        std::vector<std::vector<uint8_t>> out = ParseAvccH264ParameterSets(data, size);
+        if (out.empty()) {
+            out = ParseAnnexBH264ParameterSets(data, size);
+        }
+
+        return out;
+    }
+}
+
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
     if (!QGuiApplication::instance()) {
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
@@ -137,6 +293,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             m_codecContext->rc_min_rate = static_cast<int>(targetBitrate * 3 / 4);
             m_codecContext->rc_max_rate = static_cast<int>(targetBitrate * 5 / 4);
             m_codecContext->bit_rate_tolerance = static_cast<int>(targetBitrate / 2);
+
             m_codecContext->time_base = {1, fps};
             m_codecContext->framerate = {fps, 1};
             m_codecContext->gop_size = std::max(30, fps * 2);
@@ -156,13 +313,13 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             m_codecContext->pix_fmt = pickPixFmt(m_codec, inputPixFmt == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : inputPixFmt);
 
-            if (m_codec && m_codec->name && std::strstr(m_codec->name, "mediacodec")) {
+            if (m_codec->name && std::strstr(m_codec->name, "mediacodec")) {
                 m_codecContext->max_b_frames = 0;
             }
 
             Debug::Log(
                 "Encoder open params: codec={}, pix_fmt={}, size={}x{}, fps={}, bitrate={}",
-                (m_codec && m_codec->name) ? m_codec->name : "unknown",
+                 m_codec->name ? m_codec->name : "unknown",
                 av_get_pix_fmt_name(m_codecContext->pix_fmt),
                 m_codecContext->width,
                 m_codecContext->height,
@@ -195,6 +352,14 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                     Debug::LogError("Failed to open encoder: {}", err);
                     return;
                 }
+            }
+
+            m_h264ParameterSets = ExtractH264ParameterSets(m_codecContext);
+            m_codecConfigSent = m_h264ParameterSets.empty();
+            if (!m_h264ParameterSets.empty()) {
+                Debug::Log("Extracted {} H264 parameter sets from encoder extradata", m_h264ParameterSets.size());
+            } else {
+                Debug::LogWarning("No H264 parameter sets in encoder extradata; relying on in-band SPS/PPS");
             }
 
             m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, requestedFormat.framerate);
@@ -348,7 +513,7 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
         co_return;
     }
 
-    while (ret >= 0) {
+    while (true) {
         ret = avcodec_receive_packet(m_codecContext, pkt);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         if (ret < 0) {
@@ -356,78 +521,29 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
             break;
         }
 
-        struct NalSpan {
-            const uint8_t* data;
-            size_t size;
-        };
-
-        auto isAnnexB = [](const uint8_t* data, size_t size) -> bool {
-            if (size < 4) return false;
-            return (data[0] == 0x00 && data[1] == 0x00 &&
-                    ((data[2] == 0x01) || (data[2] == 0x00 && data[3] == 0x01)));
-        };
-
-        auto splitAnnexB = [](const uint8_t* data, size_t size, std::vector<NalSpan>& out) {
-            size_t i = 0;
-            auto findStart = [&](size_t from) -> size_t {
-                for (size_t j = from; j + 3 < size; ++j) {
-                    if (data[j] == 0x00 && data[j + 1] == 0x00 &&
-                        (data[j + 2] == 0x01 || (data[j + 2] == 0x00 && data[j + 3] == 0x01))) {
-                        return j;
-                    }
-                }
-                return size;
-            };
-
-            while (i < size) {
-                const size_t start = findStart(i);
-                if (start >= size) break;
-
-                const size_t scSize = (data[start + 2] == 0x01) ? 3 : 4;
-                const size_t nalStart = start + scSize;
-                const size_t next = findStart(nalStart);
-                const size_t nalEnd = (next < size) ? next : size;
-
-                if (nalEnd > nalStart) {
-                    out.push_back({data + nalStart, nalEnd - nalStart});
-                }
-
-                i = nalEnd;
-            }
-        };
-
-        auto splitAvcc = [](const uint8_t* data, size_t size, std::vector<NalSpan>& out) -> bool {
-            size_t offset = 0;
-            while (offset + 4 <= size) {
-                uint32_t n = (static_cast<uint32_t>(data[offset]) << 24) |
-                             (static_cast<uint32_t>(data[offset + 1]) << 16) |
-                             (static_cast<uint32_t>(data[offset + 2]) << 8) |
-                             (static_cast<uint32_t>(data[offset + 3]));
-                offset += 4;
-                if (n == 0 || offset + n > size) {
-                    return false;
-                }
-                out.push_back({data + offset, n});
-                offset += n;
-            }
-            return !out.empty();
-        };
-
-        std::vector<NalSpan> nals;
-        if (isAnnexB(pkt->data, pkt->size)) {
-            splitAnnexB(pkt->data, pkt->size, nals);
+        std::vector<NalSpan> nal_spans;
+        if (IsAnnexB(pkt->data, pkt->size)) {
+            SplitAnnexB(pkt->data, pkt->size, nal_spans);
         } else {
-            splitAvcc(pkt->data, pkt->size, nals);
+            SplitAvcc(pkt->data, pkt->size, nal_spans);
         }
 
-        if (nals.empty()) {
-            nals.push_back({pkt->data, static_cast<size_t>(pkt->size)});
+        if (nal_spans.empty()) {
+            nal_spans.push_back({pkt->data, static_cast<size_t>(pkt->size)});
         }
 
         const uint32_t ts = stream->NextTimestamp();
-        for (size_t i = 0; i < nals.size(); ++i) {
-            const bool marker = (i + 1 == nals.size());
-            co_await stream->AsyncSendNal(nals[i].data, nals[i].size, ts, marker);
+        const bool isKeyPacket = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+        if ((!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty()) {
+            for (const auto& nal : m_h264ParameterSets) {
+                co_await stream->AsyncSendNal(nal.data(), nal.size(), ts, false);
+            }
+            m_codecConfigSent = true;
+        }
+
+        for (size_t i = 0; i < nal_spans.size(); ++i) {
+            const bool marker = (i + 1 == nal_spans.size());
+            co_await stream->AsyncSendNal(nal_spans[i].data, nal_spans[i].size, ts, marker);
         }
 
         av_packet_unref(pkt);
@@ -529,6 +645,8 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     Debug::Log("NetworkCameraModule: OnDisable");
     m_videoStream.reset();
+    m_h264ParameterSets.clear();
+    m_codecConfigSent = false;
 
     co_return;
 }

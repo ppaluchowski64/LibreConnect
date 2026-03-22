@@ -51,6 +51,8 @@ private:
     int m_swsHeight{0};
     int m_swsDstWidth{0};
     int m_swsDstHeight{0};
+    bool m_seenSps{false};
+    bool m_seenPps{false};
 
 protected:
     void EnableResponseCallbacks() override;
