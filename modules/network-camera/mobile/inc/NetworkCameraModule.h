@@ -43,6 +43,7 @@ private:
     AVCodecContext* m_codecContext{nullptr};
     SwsContext* m_swsContext{nullptr};
     std::vector<std::vector<uint8_t>> m_h264ParameterSets;
+    uint8_t m_h264LengthSize{4};
     bool m_codecConfigSent{false};
 
 protected:

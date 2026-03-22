@@ -10,6 +10,30 @@ namespace SRTP {
     static constexpr size_t MAX_PAYLOAD_SIZE = 1024;
     static std::atomic<uint32_t> g_unprotectFailCount{0};
     static std::atomic<uint32_t> g_protectFailCount{0};
+    static std::atomic<uint64_t> g_rtpReceivedCount{0};
+    static std::atomic<uint64_t> g_rtpLostCount{0};
+
+    static uint16_t TrackRtpSequenceGap(const uint16_t expectedSeq, const uint16_t seq) {
+        if (seq == expectedSeq) return 0;
+
+        const uint16_t delta = static_cast<uint16_t>(seq - expectedSeq);
+        if (delta == 0 || delta >= 0x8000) return 0;
+
+        const uint64_t totalLost = g_rtpLostCount.fetch_add(delta) + delta;
+        const uint64_t received = g_rtpReceivedCount.load();
+        if ((totalLost % 250) < delta) {
+            const uint64_t expectedTotal = received + totalLost;
+            const double lossPercent = expectedTotal == 0 ? 0.0 : static_cast<double>(totalLost) * 100.0 / static_cast<double>(expectedTotal);
+            Debug::LogWarning(
+                "RTP packet loss: +{} packets (total_lost={}, total_received={}, loss={:.2f}%)",
+                delta,
+                totalLost,
+                received,
+                lossPercent
+            );
+        }
+        return delta;
+    }
 
     Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context), m_context(context),
         m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate) {
@@ -61,6 +85,7 @@ namespace SRTP {
             int length = m_socket.receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
 
             if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                m_receiveLossSignal.fetch_add(1);
                 if ((++g_unprotectFailCount % 100) == 1) {
                     Debug::LogWarning("SRTP unprotect failed (count={})", g_unprotectFailCount.load());
                 }
@@ -73,6 +98,7 @@ namespace SRTP {
             const bool frameComplete = (header->m_pt & 0x80) != 0;
             const uint16_t seq = boost::endian::big_to_native(header->seq);
             const uint32_t timestamp = boost::endian::big_to_native(header->timestamp);
+            g_rtpReceivedCount.fetch_add(1);
 
             const uint8_t* rtpPayload = m_buffer.data() + sizeof(Header);
             const size_t rtpPayloadLen = length - sizeof(Header);
@@ -86,6 +112,10 @@ namespace SRTP {
                 expectedSeq = static_cast<uint16_t>(seq + 1);
             } else {
                 if (seq != expectedSeq || timestamp != currentFrameTimestamp) {
+                    const uint16_t lost = TrackRtpSequenceGap(expectedSeq, seq);
+                    if (lost > 0 || timestamp != currentFrameTimestamp) {
+                        m_receiveLossSignal.fetch_add(1);
+                    }
                     dropCurrentFrame = true;
                 }
                 expectedSeq = static_cast<uint16_t>(seq + 1);
@@ -385,6 +415,10 @@ namespace SRTP {
         return m_timestamp.fetch_add(m_timestampInc);
     }
 
+    bool Stream::ConsumeReceiveLossSignal() {
+        return m_receiveLossSignal.exchange(0) != 0;
+    }
+
     asio::awaitable<void> Stream::AsyncReceive(std::vector<uint8_t>& payload) {
         payload.clear();
         bool assemblingFrame = false;
@@ -397,6 +431,7 @@ namespace SRTP {
             int length = co_await m_socket.async_receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
 
             if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+                m_receiveLossSignal.fetch_add(1);
                 if ((++g_unprotectFailCount % 100) == 1) {
                     Debug::LogWarning("SRTP unprotect failed (count={})", g_unprotectFailCount.load());
                 }
@@ -409,6 +444,7 @@ namespace SRTP {
             const bool frameComplete = (header->m_pt & 0x80) != 0;
             const uint16_t seq = boost::endian::big_to_native(header->seq);
             const uint32_t timestamp = boost::endian::big_to_native(header->timestamp);
+            g_rtpReceivedCount.fetch_add(1);
 
             const uint8_t* rtpPayload = m_buffer.data() + sizeof(Header);
             const size_t rtpPayloadLen = length - sizeof(Header);
@@ -422,6 +458,10 @@ namespace SRTP {
                 expectedSeq = static_cast<uint16_t>(seq + 1);
             } else {
                 if (seq != expectedSeq || timestamp != currentFrameTimestamp) {
+                    const uint16_t lost = TrackRtpSequenceGap(expectedSeq, seq);
+                    if (lost > 0 || timestamp != currentFrameTimestamp) {
+                        m_receiveLossSignal.fetch_add(1);
+                    }
                     dropCurrentFrame = true;
                 }
                 expectedSeq = static_cast<uint16_t>(seq + 1);

@@ -96,11 +96,21 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     m_frame = av_frame_alloc();
     m_seenSps = false;
     m_seenPps = false;
+    m_waitForIdrAfterLoss = false;
 
     asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
 }
 
 void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) {
+    const bool hasIdr = ContainsH264NalType(frameBuffer, 5);
+    if (m_waitForIdrAfterLoss) {
+        if (!hasIdr) {
+            return;
+        }
+        Debug::Log("Recovered stream sync on IDR after packet loss");
+        m_waitForIdrAfterLoss = false;
+    }
+
     m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
     m_seenPps = m_seenPps || ContainsH264NalType(frameBuffer, 8);
     if (!m_seenSps || !m_seenPps) {
@@ -259,6 +269,12 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
 
     while (GetModuleState() == ModuleState::Enabled) {
         co_await m_videoStream->AsyncReceive(frameBuffer);
+        if (m_videoStream->ConsumeReceiveLossSignal()) {
+            if (!m_waitForIdrAfterLoss) {
+                Debug::LogWarning("RTP loss detected, waiting for next IDR frame");
+            }
+            m_waitForIdrAfterLoss = true;
+        }
         ProcessEncodedFrame(frameBuffer);
     }
 }

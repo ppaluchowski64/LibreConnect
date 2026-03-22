@@ -53,6 +53,7 @@ private:
     int m_swsDstHeight{0};
     bool m_seenSps{false};
     bool m_seenPps{false};
+    bool m_waitForIdrAfterLoss{false};
 
 protected:
     void EnableResponseCallbacks() override;

@@ -31,6 +31,16 @@ namespace {
         size_t size;
     };
 
+    bool IsH264ParameterSetNal(const uint8_t nalHeader) {
+        const uint8_t nalType = nalHeader & 0x1F;
+        return nalType == 7 || nalType == 8;
+    }
+
+    bool IsSupportedH264NalType(const uint8_t nalHeader) {
+        const uint8_t nalType = nalHeader & 0x1F;
+        return nalType > 0 && nalType <= 31;
+    }
+
     size_t FindStart(const uint8_t* data, const size_t size, const size_t from) {
         for (size_t j = from; j + 3 < size; ++j) {
             if (data[j] == 0x00 && data[j + 1] == 0x00 &&
@@ -61,21 +71,55 @@ namespace {
     }
 
 
-    bool SplitAvcc(const uint8_t* data, const size_t size, std::vector<NalSpan>& out) {
+    bool SplitAvcc(const uint8_t* data, const size_t size, const uint8_t nalLengthSize, std::vector<NalSpan>& out) {
+        if (!data || nalLengthSize < 1 || nalLengthSize > 4) {
+            return false;
+        }
+
         size_t offset = 0;
-        while (offset + 4 <= size) {
-            uint32_t n = (static_cast<uint32_t>(data[offset]) << 24) |
-                         (static_cast<uint32_t>(data[offset + 1]) << 16) |
-                         (static_cast<uint32_t>(data[offset + 2]) << 8) |
-                         (static_cast<uint32_t>(data[offset + 3]));
-            offset += 4;
+        while (offset + nalLengthSize <= size) {
+            uint32_t n = 0;
+            for (uint8_t i = 0; i < nalLengthSize; ++i) {
+                n = (n << 8) | data[offset + i];
+            }
+            offset += nalLengthSize;
+
             if (n == 0 || offset + n > size) {
                 return false;
             }
+
+            if (!IsSupportedH264NalType(data[offset])) {
+                return false;
+            }
+
             out.push_back({data + offset, n});
             offset += n;
         }
-        return !out.empty();
+
+        return !out.empty() && offset == size;
+    }
+
+    bool SplitAvccAuto(const uint8_t* data, const size_t size, const uint8_t preferredNalLengthSize, std::vector<NalSpan>& out) {
+        std::vector<NalSpan> parsed;
+        if (SplitAvcc(data, size, preferredNalLengthSize, parsed)) {
+            out = std::move(parsed);
+            return true;
+        }
+
+        constexpr uint8_t candidates[] = {4, 2, 1};
+        for (const uint8_t candidate : candidates) {
+            if (candidate == preferredNalLengthSize) {
+                continue;
+            }
+
+            parsed.clear();
+            if (SplitAvcc(data, size, candidate, parsed)) {
+                out = std::move(parsed);
+                return true;
+            }
+        }
+
+        return false;
     }
 
     bool IsAnnexB(const uint8_t* data, const size_t size) {
@@ -178,6 +222,68 @@ namespace {
         }
 
         return out;
+    }
+
+    uint8_t ExtractAvccNalLengthSize(const AVCodecContext* codecContext) {
+        if (!codecContext || !codecContext->extradata || codecContext->extradata_size < 5) {
+            return 4;
+        }
+
+        const uint8_t* data = codecContext->extradata;
+        if (data[0] != 1) {
+            return 4;
+        }
+
+        return static_cast<uint8_t>((data[4] & 0x03) + 1);
+    }
+
+    bool UpsertH264ParameterSet(std::vector<std::vector<uint8_t>>& parameterSets, const uint8_t* data, const size_t size) {
+        if (!data || size == 0 || !IsH264ParameterSetNal(data[0])) {
+            return false;
+        }
+
+        const uint8_t nalType = data[0] & 0x1F;
+        for (auto& existing : parameterSets) {
+            if (!existing.empty() && (existing[0] & 0x1F) == nalType) {
+                if (existing.size() == size && std::memcmp(existing.data(), data, size) == 0) {
+                    return false;
+                }
+
+                existing.assign(data, data + size);
+                return true;
+            }
+        }
+
+        parameterSets.emplace_back(data, data + size);
+        return true;
+    }
+
+    bool UpdateH264ParameterSetsFromNalSpans(std::vector<std::vector<uint8_t>>& parameterSets, const std::vector<NalSpan>& nals) {
+        bool updated = false;
+        for (const auto& nal : nals) {
+            updated = UpsertH264ParameterSet(parameterSets, nal.data, nal.size) || updated;
+        }
+        return updated;
+    }
+
+    bool UpdateH264ParameterSetsFromExtradata(std::vector<std::vector<uint8_t>>& parameterSets, uint8_t& nalLengthSize, const uint8_t* data, const size_t size) {
+        if (!data || size == 0) {
+            return false;
+        }
+
+        std::vector<std::vector<uint8_t>> extracted = ParseAvccH264ParameterSets(data, size);
+        if (extracted.empty()) {
+            extracted = ParseAnnexBH264ParameterSets(data, size);
+        } else if (size >= 5 && data[0] == 1) {
+            nalLengthSize = static_cast<uint8_t>((data[4] & 0x03) + 1);
+        }
+
+        bool updated = false;
+        for (const auto& nal : extracted) {
+            updated = UpsertH264ParameterSet(parameterSets, nal.data(), nal.size()) || updated;
+        }
+
+        return updated;
     }
 }
 
@@ -296,7 +402,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             m_codecContext->time_base = {1, fps};
             m_codecContext->framerate = {fps, 1};
-            m_codecContext->gop_size = std::max(30, fps * 2);
+            m_codecContext->gop_size = std::max(15, fps);
             m_codecContext->max_b_frames = 0;
 
             const AVPixelFormat inputPixFmt = GetFormat(format.pixelFormat());
@@ -355,9 +461,14 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             }
 
             m_h264ParameterSets = ExtractH264ParameterSets(m_codecContext);
+            m_h264LengthSize = ExtractAvccNalLengthSize(m_codecContext);
             m_codecConfigSent = m_h264ParameterSets.empty();
             if (!m_h264ParameterSets.empty()) {
-                Debug::Log("Extracted {} H264 parameter sets from encoder extradata", m_h264ParameterSets.size());
+                Debug::Log(
+                    "Extracted {} H264 parameter sets from encoder extradata (avcc_length_size={})",
+                    m_h264ParameterSets.size(),
+                    m_h264LengthSize
+                );
             } else {
                 Debug::LogWarning("No H264 parameter sets in encoder extradata; relying on in-band SPS/PPS");
             }
@@ -521,15 +632,42 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
             break;
         }
 
+        size_t newExtradataSize = 0;
+        const uint8_t* newExtradata = av_packet_get_side_data(pkt, AV_PKT_DATA_NEW_EXTRADATA, &newExtradataSize);
+        if (newExtradata && newExtradataSize > 0) {
+            const bool updated = UpdateH264ParameterSetsFromExtradata(
+                m_h264ParameterSets,
+                m_h264LengthSize,
+                newExtradata,
+                newExtradataSize
+            );
+            if (updated) {
+                Debug::Log("Updated H264 parameter sets from packet side-data (count={})", m_h264ParameterSets.size());
+            }
+        }
+
         std::vector<NalSpan> nal_spans;
         if (IsAnnexB(pkt->data, pkt->size)) {
             SplitAnnexB(pkt->data, pkt->size, nal_spans);
         } else {
-            SplitAvcc(pkt->data, pkt->size, nal_spans);
+            SplitAvccAuto(pkt->data, pkt->size, m_h264LengthSize, nal_spans);
         }
 
         if (nal_spans.empty()) {
+            static bool loggedH264SplitWarning = false;
+            if (!loggedH264SplitWarning) {
+                Debug::LogWarning(
+                    "Could not split encoded H264 packet (size={}) as Annex-B or AVCC; sending raw payload",
+                    pkt->size
+                );
+                loggedH264SplitWarning = true;
+            }
             nal_spans.push_back({pkt->data, static_cast<size_t>(pkt->size)});
+        }
+
+        const bool inBandUpdated = UpdateH264ParameterSetsFromNalSpans(m_h264ParameterSets, nal_spans);
+        if (inBandUpdated) {
+            Debug::Log("Captured H264 parameter sets from in-band NALs (count={})", m_h264ParameterSets.size());
         }
 
         const uint32_t ts = stream->NextTimestamp();
@@ -646,6 +784,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     Debug::Log("NetworkCameraModule: OnDisable");
     m_videoStream.reset();
     m_h264ParameterSets.clear();
+    m_h264LengthSize = 4;
     m_codecConfigSent = false;
 
     co_return;
