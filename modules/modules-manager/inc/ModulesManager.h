@@ -7,16 +7,22 @@
 #include <FileShareModule.h>
 #include <NotificationSyncModule.h>
 
+#include <QObject>
+#include <QEvent>
+
 template<class>
 inline constexpr bool always_false = false;
 
 template<typename T>
 concept ModuleType = std::is_base_of_v<BaseModule, T>;
 
-class ModulesManager {
+class ModulesManager : public QObject {
+    Q_OBJECT
+
 public:
     explicit ModulesManager();
     static void Initialize();
+    static void Shutdown();
 
     template <ModuleType type>
     static auto& GetModuleReference() {
@@ -40,9 +46,13 @@ public:
         }
     }
 
+protected:
+    bool event(QEvent* event) override;
+
 private:
     static ModulesManager* s_instance;
     static std::once_flag s_flag;
+    static std::mutex s_mutex;
 
 #ifdef ANDROID_DEVICE
     static void StartMainService();
