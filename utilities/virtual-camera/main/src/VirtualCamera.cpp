@@ -20,7 +20,7 @@ VirtualCamera::~VirtualCamera() {
 }
 
 bool VirtualCamera::Start(const std::string& name, const VCamFormat format, const int width, const int height, const int fps) {
-    if (m_active) {
+    if (m_active.load()) {
         Debug::LogWarning("Stream already started");
         return false;
     }
@@ -29,7 +29,7 @@ bool VirtualCamera::Start(const std::string& name, const VCamFormat format, cons
 
     try {
         const bool result = SetupCamera(name, width, height, fps);
-        m_active = result;
+        m_active.store(result);
         return result;
     } catch (std::exception& e) {
         Debug::LogError("Failed to start stream: {}", e.what());
@@ -38,14 +38,13 @@ bool VirtualCamera::Start(const std::string& name, const VCamFormat format, cons
 }
 
 bool VirtualCamera::Stop() {
-    if (!m_active) {
-        Debug::LogWarning("Stream already stopped");
-        return false;
+    if (!m_active.load()) {
+        return true;
     }
 
     try {
         const bool result = DestroyCamera();
-        m_active = false;
+        m_active.store(false);
         return result;
     } catch (std::exception& e) {
         Debug::LogError("Failed to stop stream: {}", e.what());
@@ -54,6 +53,10 @@ bool VirtualCamera::Stop() {
 }
 
 bool VirtualCamera::PushFrame(const void* data) const {
+    if (!m_active.load() || m_handle == nullptr) {
+        return false;
+    }
+
     const VCamResult result = PushCamFrame(m_handle, data);
 
     if (result != VCAM_SUCCESS) {

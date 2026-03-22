@@ -96,19 +96,24 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     m_frame = av_frame_alloc();
     m_seenSps = false;
     m_seenPps = false;
-    m_waitForIdrAfterLoss = false;
+    m_waitForIdrAfterLoss.store(false);
+    m_acceptFrames.store(true);
 
     asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
 }
 
 void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) {
+    if (!m_acceptFrames.load() || !m_codecContext || !m_packet || !m_frame) {
+        return;
+    }
+
     const bool hasIdr = ContainsH264NalType(frameBuffer, 5);
-    if (m_waitForIdrAfterLoss) {
+    if (m_waitForIdrAfterLoss.load()) {
         if (!hasIdr) {
             return;
         }
         Debug::Log("Recovered stream sync on IDR after packet loss");
-        m_waitForIdrAfterLoss = false;
+        m_waitForIdrAfterLoss.store(false);
     }
 
     m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
@@ -256,6 +261,7 @@ cleanup:
 asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
     std::vector<uint8_t> frameBuffer;
     frameBuffer.reserve(1024 * 1024 * 2); // 2 MiB
+    m_receiveFramesRunning.store(true);
 
     Debug::Log("NetworkCameraModule: ReceiveFrames started");
     Debug::Log("State {}", magic_enum::enum_name(GetModuleState()));
@@ -267,16 +273,32 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
         co_await timer.async_wait(asio::use_awaitable);
     }
 
-    while (GetModuleState() == ModuleState::Enabled) {
-        co_await m_videoStream->AsyncReceive(frameBuffer);
-        if (m_videoStream->ConsumeReceiveLossSignal()) {
-            if (!m_waitForIdrAfterLoss) {
+    while (GetModuleState() == ModuleState::Enabled && m_acceptFrames.load()) {
+        const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+        if (!stream) {
+            break;
+        }
+
+        co_await stream->AsyncReceive(frameBuffer);
+        if (GetModuleState() != ModuleState::Enabled || !m_acceptFrames.load()) {
+            break;
+        }
+
+        if (stream->ConsumeReceiveLossSignal()) {
+            if (!m_waitForIdrAfterLoss.load()) {
                 Debug::LogWarning("RTP loss detected, waiting for next IDR frame");
             }
-            m_waitForIdrAfterLoss = true;
+            m_waitForIdrAfterLoss.store(true);
         }
+
+        if (frameBuffer.empty()) {
+            continue;
+        }
+
         ProcessEncodedFrame(frameBuffer);
     }
+
+    m_receiveFramesRunning.store(false);
 }
 
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
@@ -339,7 +361,7 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         response.value()->GetValue(m_remoteKey);
     }
 
-    m_videoStream = std::make_unique<SRTP::Stream>(m_context, m_localKey, m_remoteKey, m_cameraSettings.framerate);
+    m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, m_cameraSettings.framerate);
     const UDPEndpoint endpoint = m_videoStream->Bind();
     Debug::Log("SRTP local bind port: {}", endpoint.port());
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_PORT_INFO, endpoint.port());
@@ -367,7 +389,22 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     Debug::Log("NetworkCameraModule: OnDisable");
+    m_acceptFrames.store(false);
+    m_waitForIdrAfterLoss.store(false);
+
+    std::shared_ptr<SRTP::Stream> stream = m_videoStream;
     m_videoStream.reset();
+    if (stream) {
+        stream->Close();
+    }
+
+    asio::steady_timer stopWait(m_context);
+    for (int i = 0; i < 100 && m_receiveFramesRunning.load(); ++i) {
+        stopWait.expires_after(std::chrono::milliseconds(10));
+        co_await stopWait.async_wait(asio::use_awaitable);
+    }
+
+    m_camera.Stop();
 
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
 
@@ -405,5 +442,11 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     Debug::Log("NetworkCameraModule: OnShutdown");
+    m_acceptFrames.store(false);
+    if (m_videoStream) {
+        m_videoStream->Close();
+        m_videoStream.reset();
+    }
+    m_camera.Stop();
     co_return;
 }

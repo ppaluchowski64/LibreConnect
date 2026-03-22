@@ -6,11 +6,14 @@
 #include <SRTP_Stream.h>
 #include <CameraSpecification.h>
 #include <CameraUtilities.h>
+#include <atomic>
+#include <cstdint>
 
 #include <QVideoFrame>
 #include <QCamera>
 #include <QMediaCaptureSession>
 #include <QVideoSink>
+#include <QMetaObject>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -38,6 +41,9 @@ private:
 
     int64_t m_ptsCounter{0};
     std::atomic<uint16_t> m_portNumber{0};
+    std::atomic<bool> m_streamActive{false};
+    std::atomic<uint64_t> m_streamGeneration{0};
+    QMetaObject::Connection m_videoFrameConnection;
 
     const AVCodec* m_codec{nullptr};
     AVCodecContext* m_codecContext{nullptr};

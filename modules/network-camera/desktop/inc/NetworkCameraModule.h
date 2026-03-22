@@ -6,6 +6,7 @@
 #include <SRTP_Stream.h>
 #include <CameraSpecification.h>
 #include <VirtualCamera.h>
+#include <atomic>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -30,7 +31,7 @@ private:
     void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer);
     asio::awaitable<void> ReceiveFrames();
 
-    std::unique_ptr<SRTP::Stream> m_videoStream;
+    std::shared_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
     std::vector<CameraSpecification> m_camerasSpecification;
@@ -53,7 +54,9 @@ private:
     int m_swsDstHeight{0};
     bool m_seenSps{false};
     bool m_seenPps{false};
-    bool m_waitForIdrAfterLoss{false};
+    std::atomic<bool> m_waitForIdrAfterLoss{false};
+    std::atomic<bool> m_acceptFrames{false};
+    std::atomic<bool> m_receiveFramesRunning{false};
 
 protected:
     void EnableResponseCallbacks() override;

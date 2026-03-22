@@ -16,6 +16,8 @@
 #include <QMediaDevices>
 #include <QCameraDevice>
 #include <QGuiApplication>
+#include <QObject>
+#include <QThread>
 #include <QMediaCaptureSession>
 #include <QMediaRecorder>
 #include <QVideoFrameInput>
@@ -293,6 +295,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
         co_return;
     }
 
+    const uint64_t generation = m_streamGeneration.fetch_add(1) + 1;
+
     Debug::Log(
         "NetworkCameraModule: StartStream requestId={}, cameraId={}, {}x{}@{}",
         requestID,
@@ -319,6 +323,11 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
     QMetaObject::invokeMethod(
         QGuiApplication::instance(),
         [=, this]() {
+            if (generation != m_streamGeneration.load()) {
+                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+                return;
+            }
+
             QList<QCameraDevice> devices = QMediaDevices::videoInputs();
             const QCameraDevice* cameraDevice = nullptr;
 
@@ -509,10 +518,19 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             }
 
             m_ptsCounter = 0;
+            m_streamActive.store(true);
             ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::None);
-            QGuiApplication::instance()->connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, [&](const QVideoFrame &frame) {
+            if (m_videoFrameConnection) {
+                QObject::disconnect(m_videoFrameConnection);
+            }
+
+            m_videoFrameConnection = QObject::connect(m_videoSink.get(), &QVideoSink::videoFrameChanged, QGuiApplication::instance(), [this, generation](const QVideoFrame &frame) {
                 if (!frame.isValid())
                     return;
+
+                if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                    return;
+                }
 
                 asio::co_spawn(m_moduleStrand, SendFrame(frame), asio::detached);
             });
@@ -522,6 +540,11 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 }
 
 asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
+    if (!m_streamActive.load()) {
+        co_return;
+    }
+    const uint64_t generation = m_streamGeneration.load();
+
     if (!m_codecContext) {
         co_return;
     }
@@ -539,7 +562,6 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
 
     const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
     if (!stream) {
-        Debug::LogError("SRTP stream is null");
         frame.unmap();
         co_return;
     }
@@ -617,6 +639,11 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
     av_frame_free(&avFrame);
 
     if (ret < 0) {
+        if (ret == AVERROR(EAGAIN)) {
+            av_packet_free(&pkt);
+            co_return;
+        }
+
         char err[AV_ERROR_MAX_STRING_SIZE]{};
         av_strerror(ret, err, sizeof(err));
         Debug::LogError("Error sending frame to encoder: {}", err);
@@ -672,16 +699,36 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
 
         const uint32_t ts = stream->NextTimestamp();
         const bool isKeyPacket = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
-        if ((!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty()) {
-            for (const auto& nal : m_h264ParameterSets) {
+        const bool shouldSendCodecConfig = (!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty();
+        const std::vector<std::vector<uint8_t>> codecConfigSnapshot = shouldSendCodecConfig ? m_h264ParameterSets : std::vector<std::vector<uint8_t>>{};
+        if (shouldSendCodecConfig) {
+            bool sentAllConfig = true;
+            for (const auto& nal : codecConfigSnapshot) {
+                if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                    sentAllConfig = false;
+                    break;
+                }
                 co_await stream->AsyncSendNal(nal.data(), nal.size(), ts, false);
+                if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                    sentAllConfig = false;
+                    break;
+                }
             }
-            m_codecConfigSent = true;
+
+            if (sentAllConfig && generation == m_streamGeneration.load()) {
+                m_codecConfigSent = true;
+            }
         }
 
         for (size_t i = 0; i < nal_spans.size(); ++i) {
+            if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                break;
+            }
             const bool marker = (i + 1 == nal_spans.size());
             co_await stream->AsyncSendNal(nal_spans[i].data, nal_spans[i].size, ts, marker);
+            if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                break;
+            }
         }
 
         av_packet_unref(pkt);
@@ -782,17 +829,41 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     Debug::Log("NetworkCameraModule: OnDisable");
+    m_streamActive.store(false);
+    m_streamGeneration.fetch_add(1);
+
+    if (QGuiApplication::instance()) {
+        auto stopQtPipeline = [this]() {
+            if (m_videoFrameConnection) {
+                QObject::disconnect(m_videoFrameConnection);
+                m_videoFrameConnection = {};
+            }
+
+            if (m_camera) {
+                m_camera->stop();
+            }
+
+            if (m_captureSession) {
+                m_captureSession->setVideoSink(nullptr);
+                m_captureSession->setCamera(nullptr);
+            }
+
+            m_videoSink.reset();
+            m_captureSession.reset();
+            m_camera.reset();
+        };
+
+        if (QThread::currentThread() == QGuiApplication::instance()->thread()) {
+            stopQtPipeline();
+        } else {
+            QMetaObject::invokeMethod(QGuiApplication::instance(), stopQtPipeline, Qt::BlockingQueuedConnection);
+        }
+    }
+
+    if (m_videoStream) {
+        m_videoStream->Close();
+    }
     m_videoStream.reset();
-    m_h264ParameterSets.clear();
-    m_h264LengthSize = 4;
-    m_codecConfigSent = false;
-
-    co_return;
-}
-
-asio::awaitable<void> NetworkCameraModule::OnShutdown() {
-    const std::shared_ptr<BaseModule> instance = shared_from_this();
-    Debug::Log("NetworkCameraModule: OnShutdown");
 
     if (m_codecContext) {
         avcodec_free_context(&m_codecContext);
@@ -804,5 +875,16 @@ asio::awaitable<void> NetworkCameraModule::OnShutdown() {
         m_swsContext = nullptr;
     }
 
+    m_h264ParameterSets.clear();
+    m_h264LengthSize = 4;
+    m_codecConfigSent = false;
+
+    co_return;
+}
+
+asio::awaitable<void> NetworkCameraModule::OnShutdown() {
+    const std::shared_ptr<BaseModule> instance = shared_from_this();
+    Debug::Log("NetworkCameraModule: OnShutdown");
+    co_await OnDisable();
     co_return;
 }

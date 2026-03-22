@@ -3,6 +3,7 @@
 
 #include <VCamAPI.h>
 #include <string>
+#include <atomic>
 #include <boost/uuid/uuid.hpp>
 
 class VirtualCamera final {
@@ -24,7 +25,7 @@ private:
     boost::uuids::uuid m_cameraID;
     VCamFormat m_format;
     VCamHandle m_handle;
-    bool m_active{false};
+    std::atomic<bool> m_active{false};
 };
 
 #endif //VIRTUAL_CAMERA_H

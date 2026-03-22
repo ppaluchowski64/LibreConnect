@@ -35,6 +35,15 @@ namespace SRTP {
         return delta;
     }
 
+    static asio::awaitable<bool> AsyncSendNoThrow(UDPSocket& socket, const void* data, const size_t size) {
+        std::error_code ec;
+        co_await socket.async_send(
+            asio::const_buffer(data, size),
+            asio::redirect_error(asio::use_awaitable, ec)
+        );
+        co_return !ec;
+    }
+
     Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context), m_context(context),
         m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate) {
 
@@ -71,6 +80,12 @@ namespace SRTP {
         }
         m_socket.bind(UDPEndpoint(asio::ip::udp::v4(), 0));
         return m_socket.local_endpoint();
+    }
+
+    void Stream::Close() {
+        std::error_code ec;
+        m_socket.cancel(ec);
+        m_socket.close(ec);
     }
 
     void Stream::Receive(std::vector<uint8_t>& payload) {
@@ -301,7 +316,9 @@ namespace SRTP {
                 co_return;
             }
 
-            co_await m_socket.async_send(asio::const_buffer(sendBuffer.data(), length));
+            if (!(co_await AsyncSendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length)))) {
+                co_return;
+            }
         } else {
             const uint8_t nalHeader = payload[0];
             const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
@@ -336,7 +353,9 @@ namespace SRTP {
                     co_return;
                 }
 
-                co_await m_socket.async_send(asio::const_buffer(sendBuffer.data(), length));
+                if (!(co_await AsyncSendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length)))) {
+                    co_return;
+                }
 
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
@@ -365,7 +384,9 @@ namespace SRTP {
                 co_return;
             }
 
-            co_await m_socket.async_send(asio::const_buffer(sendBuffer.data(), length));
+            if (!(co_await AsyncSendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length)))) {
+                co_return;
+            }
             co_return;
         }
 
@@ -404,7 +425,9 @@ namespace SRTP {
                 co_return;
             }
 
-            co_await m_socket.async_send(asio::const_buffer(sendBuffer.data(), length));
+            if (!(co_await AsyncSendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length)))) {
+                co_return;
+            }
 
             dataPtr += fragmentSize;
             remaining -= fragmentSize;
@@ -428,7 +451,14 @@ namespace SRTP {
         static constexpr uint8_t kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
 
         while (true) {
-            int length = co_await m_socket.async_receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
+            std::error_code ec;
+            int length = static_cast<int>(co_await m_socket.async_receive(
+                asio::mutable_buffer(m_buffer.data(), m_buffer.size()),
+                asio::redirect_error(asio::use_awaitable, ec)
+            ));
+            if (ec) {
+                co_return;
+            }
 
             if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
                 m_receiveLossSignal.fetch_add(1);
@@ -527,7 +557,9 @@ namespace SRTP {
 
             int length = sizeof(Header) + size;
             srtp_protect(m_sendSession, sendBuffer.data(), &length);
-            co_await m_socket.async_send(asio::const_buffer(sendBuffer.data(), length));
+            if (!(co_await AsyncSendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length)))) {
+                co_return;
+            }
         } else {
             const uint8_t nalHeader = payload[0];
             const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
@@ -557,7 +589,9 @@ namespace SRTP {
                 int length = sizeof(Header) + 2 + fragmentSize;
                 srtp_protect(m_sendSession, sendBuffer.data(), &length);
 
-                co_await m_socket.async_send(asio::const_buffer(sendBuffer.data(), length));
+                if (!(co_await AsyncSendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length)))) {
+                    co_return;
+                }
 
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
