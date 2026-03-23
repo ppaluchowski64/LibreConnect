@@ -43,6 +43,8 @@ private:
     std::atomic<uint16_t> m_portNumber{0};
     std::atomic<bool> m_streamActive{false};
     std::atomic<uint64_t> m_streamGeneration{0};
+    std::atomic<uint32_t> m_inFlightSendFrames{0};
+    std::atomic<bool> m_qtPipelineStopped{true};
     QMetaObject::Connection m_videoFrameConnection;
 
     const AVCodec* m_codec{nullptr};

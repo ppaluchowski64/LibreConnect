@@ -287,6 +287,24 @@ namespace {
 
         return updated;
     }
+
+    class InFlightFrameGuard {
+    public:
+        explicit InFlightFrameGuard(std::atomic<uint32_t>& counter)
+            : m_counter(counter) {
+            m_counter.fetch_add(1, std::memory_order_relaxed);
+        }
+
+        ~InFlightFrameGuard() {
+            m_counter.fetch_sub(1, std::memory_order_relaxed);
+        }
+
+        InFlightFrameGuard(const InFlightFrameGuard&) = delete;
+        InFlightFrameGuard& operator=(const InFlightFrameGuard&) = delete;
+
+    private:
+        std::atomic<uint32_t>& m_counter;
+    };
 }
 
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
@@ -540,6 +558,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 }
 
 asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
+    InFlightFrameGuard inFlightGuard(m_inFlightSendFrames);
+
     if (!m_streamActive.load()) {
         co_return;
     }
@@ -581,7 +601,67 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
         co_return;
     }
 
-    if (inputFmt != m_codecContext->pix_fmt) {
+    auto buildSourcePlanes = [&](const AVPixelFormat pixelFormat, const int width, const int height, const uint8_t* srcSlice[4], int srcStride[4]) -> bool {
+        for (int i = 0; i < 4; ++i) {
+            srcSlice[i] = nullptr;
+            srcStride[i] = 0;
+        }
+
+        const int planeCount = frame.planeCount();
+        for (int i = 0; i < planeCount && i < 4; ++i) {
+            srcSlice[i] = frame.bits(i);
+            srcStride[i] = frame.bytesPerLine(i);
+        }
+
+        if (pixelFormat == AV_PIX_FMT_NV12 && planeCount == 1) {
+            static bool loggedPackedNV12 = false;
+            if (!loggedPackedNV12) {
+                Debug::LogWarning("NetworkCameraModule: QVideoFrame NV12 exposed as packed single-plane; synthesizing UV plane");
+                loggedPackedNV12 = true;
+            }
+
+            const uint8_t* base = frame.bits(0);
+            const int yStride = frame.bytesPerLine(0);
+            if (!base || yStride <= 0 || width <= 0 || height <= 0) {
+                return false;
+            }
+
+            const size_t yBytes = static_cast<size_t>(yStride) * static_cast<size_t>(height);
+            srcSlice[1] = base + yBytes;
+            srcStride[1] = yStride;
+        }
+
+        if (!srcSlice[0]) {
+            return false;
+        }
+
+        if (pixelFormat == AV_PIX_FMT_NV12 && !srcSlice[1]) {
+            return false;
+        }
+
+        return true;
+    };
+
+    const bool sameSize = frame.width() == m_codecContext->width && frame.height() == m_codecContext->height;
+    const bool requiresScaleOrConvert = (inputFmt != m_codecContext->pix_fmt) || !sameSize;
+
+    const uint8_t* srcSlice[4] = {};
+    int srcStride[4] = {};
+    if (!buildSourcePlanes(inputFmt, frame.width(), frame.height(), srcSlice, srcStride)) {
+        Debug::LogError(
+            "NetworkCameraModule: Could not map source planes (fmt={}, planes={}, size={}x{}, stride0={})",
+            av_get_pix_fmt_name(inputFmt),
+            frame.planeCount(),
+            frame.width(),
+            frame.height(),
+            frame.planeCount() > 0 ? frame.bytesPerLine(0) : 0
+        );
+        av_frame_free(&avFrame);
+        frame.unmap();
+        co_return;
+    }
+
+    if (requiresScaleOrConvert) {
         m_swsContext = sws_getCachedContext(
             m_swsContext,
             frame.width(),
@@ -598,36 +678,21 @@ asio::awaitable<void> NetworkCameraModule::SendFrame(QVideoFrame frame) {
 
         if (!m_swsContext) {
             Debug::LogError("Could not initialize SwsContext");
+            av_frame_free(&avFrame);
             frame.unmap();
             co_return;
         }
 
-        const uint8_t* srcSlice[4] = {};
-        int srcStride[4] = {};
-
-        for (int i = 0; i < frame.planeCount(); ++i) {
-            srcSlice[i]  = frame.bits(i);
-            srcStride[i] = frame.bytesPerLine(i);
-        }
-
         sws_scale(m_swsContext, srcSlice, srcStride, 0, frame.height(), avFrame->data, avFrame->linesize);
     } else {
-        const uint8_t* srcSlice[4] = {};
-        int srcStride[4] = {};
-
-        for (int i = 0; i < frame.planeCount(); ++i) {
-            srcSlice[i]  = frame.bits(i);
-            srcStride[i] = frame.bytesPerLine(i);
-        }
-
         av_image_copy(
             avFrame->data,
             avFrame->linesize,
             srcSlice,
             srcStride,
             m_codecContext->pix_fmt,
-            frame.width(),
-            frame.height()
+            m_codecContext->width,
+            m_codecContext->height
         );
     }
 
@@ -832,38 +897,71 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_streamActive.store(false);
     m_streamGeneration.fetch_add(1);
 
-    if (QGuiApplication::instance()) {
-        auto stopQtPipeline = [this]() {
-            if (m_videoFrameConnection) {
-                QObject::disconnect(m_videoFrameConnection);
-                m_videoFrameConnection = {};
-            }
-
-            if (m_camera) {
-                m_camera->stop();
-            }
-
-            if (m_captureSession) {
-                m_captureSession->setVideoSink(nullptr);
-                m_captureSession->setCamera(nullptr);
-            }
-
-            m_videoSink.reset();
-            m_captureSession.reset();
-            m_camera.reset();
-        };
-
-        if (QThread::currentThread() == QGuiApplication::instance()->thread()) {
-            stopQtPipeline();
-        } else {
-            QMetaObject::invokeMethod(QGuiApplication::instance(), stopQtPipeline, Qt::BlockingQueuedConnection);
-        }
-    }
-
     if (m_videoStream) {
         m_videoStream->Close();
+        m_videoStream.reset();
     }
-    m_videoStream.reset();
+
+    if (QGuiApplication::instance()) {
+        m_qtPipelineStopped.store(false, std::memory_order_release);
+        const bool queued = QMetaObject::invokeMethod(
+            QGuiApplication::instance(),
+            [this, instance]() {
+                if (m_videoFrameConnection) {
+                    QObject::disconnect(m_videoFrameConnection);
+                    m_videoFrameConnection = {};
+                }
+
+                if (m_camera) {
+                    m_camera->stop();
+                }
+
+                if (m_captureSession) {
+                    m_captureSession->setVideoSink(nullptr);
+                    m_captureSession->setCamera(nullptr);
+                }
+
+                m_videoSink.reset();
+                m_captureSession.reset();
+                m_camera.reset();
+                m_qtPipelineStopped.store(true, std::memory_order_release);
+            },
+            Qt::QueuedConnection
+        );
+
+        if (!queued) {
+            Debug::LogWarning("NetworkCameraModule: Failed to queue Qt pipeline stop");
+            m_qtPipelineStopped.store(true, std::memory_order_release);
+        }
+    } else {
+        m_qtPipelineStopped.store(true, std::memory_order_release);
+    }
+
+    asio::steady_timer timer(m_context);
+    int waitedMs = 0;
+    constexpr int waitStepMs = 10;
+    constexpr int waitTimeoutMs = 2000;
+
+    while (
+        (
+            !m_qtPipelineStopped.load(std::memory_order_acquire) ||
+            m_inFlightSendFrames.load(std::memory_order_acquire) != 0
+        ) && waitedMs < waitTimeoutMs
+    ) {
+        timer.expires_after(asio::chrono::milliseconds(waitStepMs));
+        std::error_code ec;
+        co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+        waitedMs += waitStepMs;
+    }
+
+    if (!m_qtPipelineStopped.load(std::memory_order_acquire) ||
+        m_inFlightSendFrames.load(std::memory_order_acquire) != 0) {
+        Debug::LogWarning(
+            "NetworkCameraModule: OnDisable timeout waiting for shutdown (qt_stopped={}, in_flight={})",
+            m_qtPipelineStopped.load(std::memory_order_acquire),
+            m_inFlightSendFrames.load(std::memory_order_acquire)
+        );
+    }
 
     if (m_codecContext) {
         avcodec_free_context(&m_codecContext);

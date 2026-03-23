@@ -310,3 +310,52 @@ HRESULT RGB32ToNV12(BYTE* input, ULONG inputSize, LONG inputStride, UINT width, 
 	}
 	return S_OK;
 }
+
+static inline BYTE ClampToByte(const int value)
+{
+	return static_cast<BYTE>(value < 0 ? 0 : (value > 255 ? 255 : value));
+}
+
+HRESULT NV12ToRGB32(BYTE* input, ULONG inputSize, LONG inputStride, UINT width, UINT height, BYTE* output, ULONG outputSize, LONG outputStride)
+{
+	RETURN_HR_IF_NULL(E_INVALIDARG, input);
+	RETURN_HR_IF_NULL(E_INVALIDARG, output);
+	RETURN_HR_IF(E_UNEXPECTED, width == 0 || height == 0);
+	RETURN_HR_IF(E_UNEXPECTED, inputStride < static_cast<LONG>(width));
+	RETURN_HR_IF(E_UNEXPECTED, outputStride < static_cast<LONG>(width * 4));
+	RETURN_HR_IF(E_UNEXPECTED, static_cast<ULONG>(height * inputStride + (height / 2) * inputStride) > inputSize);
+	RETURN_HR_IF(E_UNEXPECTED, static_cast<ULONG>(height * outputStride) > outputSize);
+
+	BYTE* yPlane = input;
+	BYTE* uvPlane = input + static_cast<size_t>(height) * inputStride;
+
+	for (UINT y = 0; y < height; ++y)
+	{
+		BYTE* yRow = yPlane + static_cast<size_t>(y) * inputStride;
+		BYTE* uvRow = uvPlane + static_cast<size_t>(y / 2) * inputStride;
+		BYTE* outRow = output + static_cast<size_t>(y) * outputStride;
+
+		for (UINT x = 0; x < width; ++x)
+		{
+			const int Y = static_cast<int>(yRow[x]);
+			const int U = static_cast<int>(uvRow[(x & ~1u)]);
+			const int V = static_cast<int>(uvRow[(x & ~1u) + 1]);
+
+			const int C = Y - 16;
+			const int D = U - 128;
+			const int E = V - 128;
+
+			const int R = (298 * C + 409 * E + 128) >> 8;
+			const int G = (298 * C - 100 * D - 208 * E + 128) >> 8;
+			const int B = (298 * C + 516 * D + 128) >> 8;
+
+			BYTE* px = outRow + static_cast<size_t>(x) * 4;
+			px[0] = ClampToByte(B);
+			px[1] = ClampToByte(G);
+			px[2] = ClampToByte(R);
+			px[3] = 0xFF;
+		}
+	}
+
+	return S_OK;
+}
