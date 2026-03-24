@@ -305,11 +305,13 @@ namespace {
     private:
         std::atomic<uint32_t>& m_counter;
     };
+
 }
 
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
     if (!QGuiApplication::instance()) {
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+        ProcessError(ModuleFailReason::InternalError);
         co_return;
     }
 
@@ -331,6 +333,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             if (++attempts > 500) { // ~5 seconds at 10ms
                 Debug::LogError("SRTP port info not received in time");
                 ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                ProcessError(ModuleFailReason::Timeout);
                 co_return;
             }
             timer.expires_after(asio::chrono::milliseconds(10));
@@ -343,6 +346,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
         [=, this]() {
             if (generation != m_streamGeneration.load()) {
                 ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+                ProcessError(ModuleFailReason::InvalidState);
                 return;
             }
 
@@ -357,6 +361,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             if (cameraDevice == nullptr) {
                 ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                ProcessError(ModuleFailReason::IncorrectConfig);
                 return;
             }
 
@@ -391,6 +396,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             if (!formatFound) {
                 if (format.isNull()) {
                     ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                    ProcessError(ModuleFailReason::IncorrectConfig);
                     return;
                 }
 
@@ -407,6 +413,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             m_codec = GetEncoderCodec(CodecID::H264);
 
             if (m_codec == nullptr) {
+                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+                ProcessError(ModuleFailReason::InternalError);
                 return;
             }
 
@@ -483,6 +491,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                     char err[AV_ERROR_MAX_STRING_SIZE]{};
                     av_strerror(openRet, err, sizeof(err));
                     Debug::LogError("Failed to open encoder: {}", err);
+                    ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+                    ProcessError(ModuleFailReason::InternalError);
                     return;
                 }
             }
@@ -512,6 +522,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             if (inputPixFmt == AV_PIX_FMT_NONE) {
                 Debug::LogError("Unsupported input pixel format ({})", magic_enum::enum_name(format.pixelFormat()));
+                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                ProcessError(ModuleFailReason::IncorrectConfig);
                 return;
             }
 
@@ -531,6 +543,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
                 if (!m_swsContext) {
                     Debug::LogError("Could not initialize SwsContext");
+                    ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+                    ProcessError(ModuleFailReason::InternalError);
                     return;
                 }
             }
@@ -986,3 +1000,12 @@ asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     co_await OnDisable();
     co_return;
 }
+
+const char* NetworkCameraModule::GetModuleName() const {
+    return "NetworkCameraModule";
+}
+
+ModuleType NetworkCameraModule::GetModuleType() const {
+    return ModuleType::NetworkCamera;
+}
+

@@ -59,8 +59,8 @@ void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
 
     const CameraFormat& format = camera.formats.at(m_selectedFormatIndex);
     CameraSettings settings(
-        std::string_view{},
-        false,
+        camera.description,
+        true,
         format.width,
         format.height,
         format.framerate,

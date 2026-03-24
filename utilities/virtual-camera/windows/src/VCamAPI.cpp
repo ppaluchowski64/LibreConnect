@@ -400,7 +400,7 @@ static bool IsCameraActive(const GUID& clsid) {
 
     if (status != ERROR_SUCCESS)
     {
-        return HRESULT_FROM_WIN32(status);
+        return false;
     }
 
     DWORD isActive = 0;
@@ -419,7 +419,7 @@ static bool IsCameraActive(const GUID& clsid) {
     );
 
     if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
-        return HRESULT_FROM_WIN32(result);
+        return false;
     }
 
     if (isActive == 0) {
@@ -437,7 +437,7 @@ static bool IsCameraActive(const GUID& clsid) {
     );
 
     if (result != ERROR_SUCCESS && result != ERROR_FILE_NOT_FOUND) {
-        return HRESULT_FROM_WIN32(result);
+        return false;
     }
 
     if (IsProcessAlive(byProcess)) {
@@ -470,7 +470,6 @@ extern "C" {
 
         if (clsid == GUID_NULL) {
             SetError(std::to_string(Cameras_CLSID.size()).c_str(), handle);
-            g_camerasMutex.unlock();
             return VCAM_ERROR_INIT_FAILED;
         }
 
@@ -557,7 +556,7 @@ extern "C" {
             catch (const winrt::hresult_error& ex)
             {
                 HRESULT exHr = ex.code();
-                SetError(hr, handle);
+                SetError(exHr, handle);
 
                 if (instance->vcam)
                 {

@@ -48,6 +48,7 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
         response.value()->GetValue(entries);
     } else {
         Debug::LogError("Directory entries request failed");
+        ProcessError(ModuleFailReason::Timeout);
     }
 
     const std::unique_ptr<QEvent> event = std::make_unique<FetchDirectoryEntriesResultEvent>(std::move(path), std::move(entries));
@@ -66,6 +67,8 @@ asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAw
 
     if (response) {
         response.value()->GetValue(entries);
+    } else {
+        ProcessError(ModuleFailReason::Timeout);
     }
 
     co_return entries;
@@ -80,6 +83,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     Debug::Log("Fetch entry requested. Source: {}, Destination: {}", entryPath, destination);
     if (entryPath.empty()) {
         Debug::LogError("Fetch entry failed: empty source path");
+        ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -88,6 +92,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     std::filesystem::path filePath(destination);
     if (!std::filesystem::is_directory(filePath)) {
         Debug::LogError("Fetch entry failed: destination is not a directory ({})", destination);
+        ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -96,6 +101,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
     if (!response.has_value()) {
         Debug::LogError("Fetch entry failed: fetch request rejected for {}", entryPath);
+        ProcessError(ModuleFailReason::Timeout);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -107,6 +113,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     if (channelIndex >= m_transferChannels.size()) {
         Debug::LogError("Transfer channel {} doesn't exists", channelIndex);
+        ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
         co_return;
     }
@@ -114,6 +121,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     const std::shared_ptr<TransferChannel> channel = m_transferChannels[channelIndex];
     if (channel->IsUsed(false)) {
         Debug::LogError("Transfer channel {} is in use", channelIndex);
+        ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
         co_return;
     }
@@ -194,6 +202,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     Debug::Log("Post entry requested. Source: {}, Destination: {}", path.string(), destination.string());
     if (!std::filesystem::exists(path)) {
         Debug::LogError("File {} does not exist", path.string());
+        ProcessError(ModuleFailReason::IncorrectConfig);
         co_return;
     }
 
@@ -201,6 +210,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     if (!std::filesystem::is_directory(destination)) {
         Debug::LogError("Destination should be a directory ({})", destination.string());
+        ProcessError(ModuleFailReason::IncorrectConfig);
         co_return;
     }
 
@@ -221,6 +231,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), size_t{totalTransferSize}, isDirectory);
     if (!response.has_value()) {
+        ProcessError(ModuleFailReason::Timeout);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -231,6 +242,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
         Debug::LogError("Transfer channel index {} is out of range", channelIndex);
+        ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
         co_return;
     }
@@ -420,3 +432,12 @@ asio::awaitable<void> FileShareModule::OnShutdown() {
     m_transferChannels.clear();
     co_return;
 }
+
+const char* FileShareModule::GetModuleName() const {
+    return "FileShareModule";
+}
+
+ModuleType FileShareModule::GetModuleType() const {
+    return ModuleType::NetworkFileSystem;
+}
+

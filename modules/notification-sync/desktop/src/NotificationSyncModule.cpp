@@ -10,6 +10,8 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST);
     if (!response.has_value()) {
         Debug::LogError("Notification sync failed");
+        ProcessError(ModuleFailReason::Timeout);
+        Disable();
         co_return;
     }
 
@@ -33,6 +35,7 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
 
         if (!notification.has_value()) {
             Debug::LogError("Receiving notification failed. Remaining notifications: {}", notificationsCount + 1);
+            ProcessError(ModuleFailReason::Timeout);
             receiveFailed = true;
             break;
         }
@@ -66,6 +69,7 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
 
         if (!stream) {
             Debug::LogError("Could not open image file stream");
+            ProcessError(ModuleFailReason::InternalError);
             return;
         }
 
@@ -81,6 +85,7 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
 
         if (!stream) {
             Debug::LogError("Could not open image file stream");
+            ProcessError(ModuleFailReason::InternalError);
             return;
         }
 
@@ -139,6 +144,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         std::optional<NotificationPacket> notification = co_await instance->m_channel->Receive();
         if (!notification.has_value()) {
             Debug::LogError("Could not receive notification");
+            instance->ProcessError(ModuleFailReason::Timeout);
             co_return;
         }
 
@@ -212,4 +218,12 @@ asio::awaitable<void> NotificationSyncModule::OnShutdown() {
     Debug::Log("Notification sync module shutdown");
     m_channel.reset();
     co_return;
+}
+
+const char* NotificationSyncModule::GetModuleName() const {
+    return "NotificationSyncModule";
+}
+
+ModuleType NotificationSyncModule::GetModuleType() const {
+    return ModuleType::NotificationSync;
 }

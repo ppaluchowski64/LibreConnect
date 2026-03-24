@@ -40,6 +40,10 @@ protected:
     asio::awaitable<void> OnEnable() override;
     asio::awaitable<void> OnDisable() override;
     asio::awaitable<void> OnShutdown() override;
+
+    const char* GetModuleName() const override;
+    ModuleType GetModuleType() const override;
 };
 
 #endif //FILE_SHARE_MODULE_H
+

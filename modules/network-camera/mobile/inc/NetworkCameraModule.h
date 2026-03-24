@@ -63,6 +63,10 @@ protected:
     asio::awaitable<void> OnDisable() override;
     asio::awaitable<void> OnShutdown() override;
 
+    const char* GetModuleName() const override;
+    ModuleType GetModuleType() const override;
+
 };
 
 #endif //NETWORK_CAMERA_MODULE_H
+

@@ -75,6 +75,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         Debug::Log("Notification transfer channel connected");
         if (m_channel->GetConnectionState() != ConnectionState::CONNECTED) {
             Debug::LogError("Notification transfer channel failed to connect");
+            instance->ProcessError(ModuleFailReason::Timeout);
             co_return;
         }
         m_connectedFlag.Signal();
@@ -173,4 +174,12 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
     co_return;
+}
+
+const char* NotificationSyncModule::GetModuleName() const {
+    return "NotificationSyncModule";
+}
+
+ModuleType NotificationSyncModule::GetModuleType() const {
+    return ModuleType::NotificationSync;
 }

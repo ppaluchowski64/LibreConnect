@@ -39,6 +39,19 @@ namespace {
 
         return false;
     }
+
+    ModuleFailReason ToModuleFailReason(const StreamStartFailReason reason) {
+        switch (reason) {
+            case StreamStartFailReason::IncorrectConfig:
+                return ModuleFailReason::IncorrectConfig;
+            case StreamStartFailReason::InternalError:
+                return ModuleFailReason::InternalError;
+            case StreamStartFailReason::None:
+                break;
+        }
+
+        return ModuleFailReason::Unknown;
+    }
 }
 
 std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() const {
@@ -54,15 +67,42 @@ void NetworkCameraModule::SetCameraSettings(CameraSettings settings) {
 asio::awaitable<void> NetworkCameraModule::StartStream() {
     Debug::Log("NetworkCameraModule: StartStream");
     CameraSpecification cameraSpecification;
+    bool cameraFound = false;
     for (const auto& spec : m_camerasSpecification) {
         if (spec.id == m_cameraSettings.id) {
             cameraSpecification = spec;
+            cameraFound = true;
+            break;
         }
     }
 
-    const std::string& cameraName = m_cameraSettings.customCameraNameEnabled ? m_cameraSettings.cameraName : cameraSpecification.description;
+    std::string cameraName;
+    if (m_cameraSettings.customCameraNameEnabled && !m_cameraSettings.cameraName.empty()) {
+        cameraName = m_cameraSettings.cameraName;
+    } else if (cameraFound) {
+        cameraName = cameraSpecification.description;
+    } else {
+        Debug::LogError(
+            "NetworkCameraModule::StartStream: Camera id '{}' not found in {} reported camera specifications and no custom name provided",
+            m_cameraSettings.id,
+            m_camerasSpecification.size()
+        );
+        ProcessError(ModuleFailReason::IncorrectConfig);
+        co_return;
+    }
+
+    if (cameraName.empty()) {
+        Debug::LogError(
+            "NetworkCameraModule::StartStream: Selected camera id '{}' resolved to empty name",
+            m_cameraSettings.id
+        );
+        ProcessError(ModuleFailReason::IncorrectConfig);
+        co_return;
+    }
+
     if (!m_camera.Start(cameraName, m_cameraSettings.pixelFormat, m_cameraSettings.width, m_cameraSettings.height, m_cameraSettings.framerate)) {
         Debug::LogError("NetworkCameraModule::StartStream Failed to start camera");
+        ProcessError(ModuleFailReason::InternalError);
         co_return;
     }
 
@@ -88,6 +128,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
             char err[AV_ERROR_MAX_STRING_SIZE]{};
             av_strerror(openRet, err, sizeof(err));
             Debug::LogError("Failed to open decoder: {}", err);
+            ProcessError(ModuleFailReason::InternalError);
             co_return;
         }
     }
@@ -355,6 +396,7 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, std::vector(m_localKey));
         if (!response.has_value()) {
             Debug::LogError("No response");
+            ProcessError(ModuleFailReason::Timeout);
             co_return;
         }
 
@@ -373,12 +415,14 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM, std::move(cameraID), std::move(cameraFormat));
         if (!response.has_value()) {
             Debug::LogError("No response");
+            ProcessError(ModuleFailReason::Timeout);
             co_return;
         }
 
         const StreamStartFailReason reason = response.value()->GetValue<StreamStartFailReason>();
         if (reason != StreamStartFailReason::None) {
             Debug::LogError("Failed to start stream: {}", magic_enum::enum_name(reason));
+            ProcessError(ToModuleFailReason(reason));
             co_return;
         }
     }
@@ -450,3 +494,12 @@ asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     m_camera.Stop();
     co_return;
 }
+
+const char* NetworkCameraModule::GetModuleName() const {
+    return "NetworkCameraModule";
+}
+
+ModuleType NetworkCameraModule::GetModuleType() const {
+    return ModuleType::NetworkCamera;
+}
+
