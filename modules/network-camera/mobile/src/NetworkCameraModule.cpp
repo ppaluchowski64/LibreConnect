@@ -8,6 +8,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <set>
+#include <tuple>
 
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
@@ -306,6 +308,179 @@ namespace {
         std::atomic<uint32_t>& m_counter;
     };
 
+    AVPixelFormat ToAVPixelFormat(const QVideoFrameFormat::PixelFormat format) {
+        switch (format) {
+            case QVideoFrameFormat::Format_RGBA8888:
+                return AV_PIX_FMT_RGBA;
+            case QVideoFrameFormat::Format_BGRA8888:
+                return AV_PIX_FMT_BGRA;
+            case QVideoFrameFormat::Format_YUYV:
+                return AV_PIX_FMT_YUYV422;
+            case QVideoFrameFormat::Format_NV12:
+                return AV_PIX_FMT_NV12;
+            case QVideoFrameFormat::Format_NV21:
+                return AV_PIX_FMT_NV21;
+            case QVideoFrameFormat::Format_YUV420P:
+                return AV_PIX_FMT_YUV420P;
+            default:
+                return AV_PIX_FMT_NONE;
+        }
+    }
+
+    bool CodecSupportsPixelFormat(const AVCodec* codec, const AVPixelFormat format) {
+        if (!codec || !codec->pix_fmts || format == AV_PIX_FMT_NONE) {
+            return false;
+        }
+
+        for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+            if (*p == format) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    AVPixelFormat PickEncoderPixelFormat(const AVCodec* codec, const AVPixelFormat inputFormat) {
+        if (!codec || inputFormat == AV_PIX_FMT_NONE) {
+            return AV_PIX_FMT_NONE;
+        }
+
+        if (!codec->pix_fmts) {
+            return inputFormat;
+        }
+
+        if (CodecSupportsPixelFormat(codec, inputFormat)) {
+            return inputFormat;
+        }
+
+        if (!sws_isSupportedInput(inputFormat)) {
+            return AV_PIX_FMT_NONE;
+        }
+
+        if (CodecSupportsPixelFormat(codec, AV_PIX_FMT_YUV420P) && sws_isSupportedOutput(AV_PIX_FMT_YUV420P)) {
+            return AV_PIX_FMT_YUV420P;
+        }
+
+        for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+            if (sws_isSupportedOutput(*p)) {
+                return *p;
+            }
+        }
+
+        return AV_PIX_FMT_NONE;
+    }
+
+    bool CanOpenEncoderWithFormat(
+        const AVCodec* codec,
+        const int width,
+        const int height,
+        const int fps,
+        const AVPixelFormat encoderPixelFormat
+    ) {
+        if (!codec || width <= 0 || height <= 0 || fps <= 0 || encoderPixelFormat == AV_PIX_FMT_NONE) {
+            return false;
+        }
+
+        AVCodecContext* context = avcodec_alloc_context3(codec);
+        if (!context) {
+            return false;
+        }
+
+        context->width = width;
+        context->height = height;
+        context->pix_fmt = encoderPixelFormat;
+        context->time_base = {1, fps};
+        context->framerate = {fps, 1};
+        context->gop_size = std::max(15, fps);
+        context->max_b_frames = 0;
+
+        const int64_t pixelRate = static_cast<int64_t>(width) * height * fps;
+        const int64_t targetBitrate = std::clamp<int64_t>(pixelRate / 8, 1200000, 12000000);
+        context->bit_rate = static_cast<int>(targetBitrate);
+        context->rc_min_rate = static_cast<int>(targetBitrate * 3 / 4);
+        context->rc_max_rate = static_cast<int>(targetBitrate * 5 / 4);
+        context->bit_rate_tolerance = static_cast<int>(targetBitrate / 2);
+
+        const int openResult = avcodec_open2(context, codec, nullptr);
+        avcodec_free_context(&context);
+        return openResult >= 0;
+    }
+
+    bool IsCameraFormatSupportedByCodec(const AVCodec* codec, const QCameraFormat& cameraFormat, const int requestedFps) {
+        const AVPixelFormat inputFormat = ToAVPixelFormat(cameraFormat.pixelFormat());
+        const AVPixelFormat encoderPixelFormat = PickEncoderPixelFormat(codec, inputFormat);
+        if (encoderPixelFormat == AV_PIX_FMT_NONE) {
+            return false;
+        }
+
+        return CanOpenEncoderWithFormat(
+            codec,
+            cameraFormat.resolution().width(),
+            cameraFormat.resolution().height(),
+            std::max(1, requestedFps),
+            encoderPixelFormat
+        );
+    }
+
+    std::vector<CameraSpecification> FetchCamerasSpecificationForCodec(const AVCodec* codec) {
+        if (!QGuiApplication::instance() || !codec) {
+            return {};
+        }
+
+        QList<QCameraDevice> cameras;
+
+        if (QThread::currentThread() == QGuiApplication::instance()->thread()) {
+            cameras = QMediaDevices::videoInputs();
+        } else {
+            QMetaObject::invokeMethod(
+                QGuiApplication::instance(),
+                [&cameras]() {
+                    cameras = QMediaDevices::videoInputs();
+                },
+                Qt::BlockingQueuedConnection
+            );
+        }
+
+        std::vector<CameraSpecification> output;
+        output.reserve(cameras.size());
+
+        for (const QCameraDevice& camera : cameras) {
+            CameraSpecification specification;
+            specification.description = camera.description().toStdString();
+            specification.id = camera.id().toStdString();
+            specification.isDefault = camera.isDefault();
+
+            std::set<std::tuple<int32_t, int32_t, uint16_t>> uniqueFormats;
+
+            for (const QCameraFormat& format : camera.videoFormats()) {
+                const int width = format.resolution().width();
+                const int height = format.resolution().height();
+                const int fps = std::max(1, static_cast<int>(std::floor(format.maxFrameRate())));
+                if (!IsCameraFormatSupportedByCodec(codec, format, fps)) {
+                    continue;
+                }
+
+                uniqueFormats.emplace(
+                    static_cast<int32_t>(width),
+                    static_cast<int32_t>(height),
+                    static_cast<uint16_t>(fps)
+                );
+            }
+
+            specification.formats.reserve(uniqueFormats.size());
+            for (const auto& [w, h, f] : uniqueFormats) {
+                specification.formats.emplace_back(w, h, f);
+            }
+
+            if (!specification.formats.empty()) {
+                output.emplace_back(std::move(specification));
+            }
+        }
+
+        return output;
+    }
+
 }
 
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
@@ -350,6 +525,45 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                 return;
             }
 
+            m_streamActive.store(false);
+
+            if (m_videoFrameConnection) {
+                QObject::disconnect(m_videoFrameConnection);
+                m_videoFrameConnection = {};
+            }
+
+            if (m_camera) {
+                m_camera->stop();
+            }
+
+            if (m_captureSession) {
+                m_captureSession->setVideoSink(nullptr);
+                m_captureSession->setCamera(nullptr);
+            }
+
+            m_videoSink.reset();
+            m_captureSession.reset();
+            m_camera.reset();
+
+            if (m_videoStream) {
+                m_videoStream->Close();
+                m_videoStream.reset();
+            }
+
+            if (m_codecContext) {
+                avcodec_free_context(&m_codecContext);
+                m_codecContext = nullptr;
+            }
+
+            if (m_swsContext) {
+                sws_freeContext(m_swsContext);
+                m_swsContext = nullptr;
+            }
+
+            m_h264ParameterSets.clear();
+            m_h264LengthSize = 4;
+            m_codecConfigSent = false;
+
             QList<QCameraDevice> devices = QMediaDevices::videoInputs();
             const QCameraDevice* cameraDevice = nullptr;
 
@@ -365,11 +579,20 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                 return;
             }
 
+            m_codec = GetEncoderCodec(CodecID::H264);
+            if (m_codec == nullptr) {
+                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
+                ProcessError(ModuleFailReason::InternalError);
+                return;
+            }
+
             m_camera = std::make_unique<QCamera>(*cameraDevice);
 
             bool formatFound = false;
             const QList<QCameraFormat> supportedFormats = cameraDevice->videoFormats();
             QCameraFormat format = QCameraFormat();
+            QCameraFormat fallbackFormat = QCameraFormat();
+            bool fallbackFound = false;
 
             for (const auto& fm : supportedFormats) {
                 if (fm.resolution().width() != requestedFormat.width || fm.resolution().height() != requestedFormat.height) {
@@ -382,26 +605,38 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
                     continue;
                 }
 
-                format = fm;
-
-                if (fm.pixelFormat() != QVideoFrameFormat::Format_NV12) {
+                if (!IsCameraFormatSupportedByCodec(m_codec, fm, static_cast<int>(requestedFormat.framerate))) {
                     continue;
                 }
 
-                m_camera->setCameraFormat(fm);
-                formatFound = true;
-                break;
+                if (fm.pixelFormat() == QVideoFrameFormat::Format_NV12) {
+                    format = fm;
+                    formatFound = true;
+                    break;
+                }
+
+                if (!fallbackFound) {
+                    fallbackFormat = fm;
+                    fallbackFound = true;
+                }
             }
 
             if (!formatFound) {
-                if (format.isNull()) {
+                if (!fallbackFound) {
+                    Debug::LogError(
+                        "No encoder-compatible camera format for requested {}x{}@{}",
+                        requestedFormat.width,
+                        requestedFormat.height,
+                        requestedFormat.framerate
+                    );
                     ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
                     ProcessError(ModuleFailReason::IncorrectConfig);
                     return;
                 }
 
-                m_camera->setCameraFormat(format);
+                format = fallbackFormat;
             }
+            m_camera->setCameraFormat(format);
 
             m_videoSink = std::make_unique<QVideoSink>();
 
@@ -410,13 +645,6 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             m_captureSession->setVideoSink(m_videoSink.get());
 
             m_camera->start();
-            m_codec = GetEncoderCodec(CodecID::H264);
-
-            if (m_codec == nullptr) {
-                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::InternalError);
-                ProcessError(ModuleFailReason::InternalError);
-                return;
-            }
 
             if (m_codecContext) {
                 avcodec_free_context(&m_codecContext);
@@ -440,19 +668,14 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             m_codecContext->gop_size = std::max(15, fps);
             m_codecContext->max_b_frames = 0;
 
-            const AVPixelFormat inputPixFmt = GetFormat(format.pixelFormat());
-            const auto pickPixFmt = [](const AVCodec* codec, AVPixelFormat preferred) {
-                if (!codec || !codec->pix_fmts) return preferred;
-                for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
-                    if (*p == preferred) return *p;
-                }
-                for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
-                    if (*p == AV_PIX_FMT_YUV420P) return *p;
-                }
-                return codec->pix_fmts[0];
-            };
-
-            m_codecContext->pix_fmt = pickPixFmt(m_codec, inputPixFmt == AV_PIX_FMT_NONE ? AV_PIX_FMT_NV12 : inputPixFmt);
+            const AVPixelFormat inputPixFmt = ToAVPixelFormat(format.pixelFormat());
+            m_codecContext->pix_fmt = PickEncoderPixelFormat(m_codec, inputPixFmt);
+            if (m_codecContext->pix_fmt == AV_PIX_FMT_NONE) {
+                Debug::LogError("Codec does not support selected camera input format ({})", magic_enum::enum_name(format.pixelFormat()));
+                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
+                ProcessError(ModuleFailReason::IncorrectConfig);
+                return;
+            }
 
             if (m_codec->name && std::strstr(m_codec->name, "mediacodec")) {
                 m_codecContext->max_b_frames = 0;
@@ -518,13 +741,6 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 
             if (m_swsContext) {
                 sws_freeContext(m_swsContext);
-            }
-
-            if (inputPixFmt == AV_PIX_FMT_NONE) {
-                Debug::LogError("Unsupported input pixel format ({})", magic_enum::enum_name(format.pixelFormat()));
-                ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
-                ProcessError(ModuleFailReason::IncorrectConfig);
-                return;
             }
 
             if (inputPixFmt != m_codecContext->pix_fmt) {
@@ -837,10 +1053,17 @@ void NetworkCameraModule::EnableResponseCallbacks() {
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST , [instance, this](PC_Package&& package) mutable {
         Debug::Log("NetworkCameraModule: REQUEST_CAMERAS_SPECIFICATION_LIST");
         const size_t requestID = package->GetValue<size_t>();
+        const AVCodec* codec = GetEncoderCodec(CodecID::H264);
+        std::vector<CameraSpecification> specifications = FetchCamerasSpecificationForCodec(codec);
+        if (specifications.empty()) {
+            Debug::LogWarning("Encoder-filtered camera format list is empty, falling back to raw camera formats");
+            specifications = FetchCamerasSpecification();
+        }
+
         ConnectionManager::SendRequestResponse(
             requestID,
             PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST_RESPONSE,
-            FetchCamerasSpecification()
+            std::move(specifications)
         );
     });
 

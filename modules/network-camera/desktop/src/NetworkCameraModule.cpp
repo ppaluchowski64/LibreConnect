@@ -346,11 +346,13 @@ asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
     constexpr size_t UPDATE_DELAY = 20;
 
     while (GetModuleState() != ModuleState::Uninitialized) {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
-        if (!response.has_value()) {
-            Debug::LogWarning("NetworkCameraModule::UpdateCamerasSpecificationList: No response");
-        } else {
-            response.value()->GetValue(m_camerasSpecification);
+        if (GetModuleState() == ModuleState::Disabled) {
+            const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
+            if (!response.has_value()) {
+                Debug::LogWarning("NetworkCameraModule::UpdateCamerasSpecificationList: No response");
+            } else {
+                response.value()->GetValue(m_camerasSpecification);
+            }
         }
 
         asio::steady_timer timer(m_context);
@@ -449,7 +451,6 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     }
 
     m_camera.Stop();
-
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
 
     if (m_packet) {

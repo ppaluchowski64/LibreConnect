@@ -14,7 +14,7 @@ template<class>
 inline constexpr bool always_false = false;
 
 template<typename T>
-concept ModuleType = std::is_base_of_v<BaseModule, T>;
+concept ModuleType_ = std::is_base_of_v<BaseModule, T>;
 
 class ModulesManager : public QObject {
     Q_OBJECT
@@ -24,7 +24,7 @@ public:
     static void Initialize();
     static void Shutdown();
 
-    template <ModuleType type>
+    template <ModuleType_ type>
     static auto& GetModuleReference() {
         std::call_once(s_flag, Initialize);
 
