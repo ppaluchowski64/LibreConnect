@@ -60,11 +60,11 @@ void ModulesManager::Shutdown() {
     Debug::Log("ModulesManager: Shutdown called");
 
     if (s_instance != nullptr) {
-        s_instance->m_fileShareModule->Shutdown();
-        s_instance->m_networkCameraModule->Shutdown();
+        s_instance->m_fileShareModule->Shutdown(true);
+        s_instance->m_networkCameraModule->Shutdown(true);
 
 #ifndef IOS_DEVICE
-        s_instance->m_notificationSyncModule->Shutdown();
+        s_instance->m_notificationSyncModule->Shutdown(true);
 #endif
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");

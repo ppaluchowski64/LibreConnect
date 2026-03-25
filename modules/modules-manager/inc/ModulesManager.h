@@ -29,13 +29,16 @@ public:
         std::call_once(s_flag, Initialize);
 
         if constexpr (std::is_same_v<type, FileShareModule>) {
+            s_instance->m_fileShareModule->Initialize(true);
             return s_instance->m_fileShareModule;
         }
         else if constexpr (std::is_same_v<type, NetworkCameraModule>) {
+            s_instance->m_networkCameraModule->Initialize(true);
             return s_instance->m_networkCameraModule;
         }
         else if constexpr (std::is_same_v<type, NotificationSyncModule>) {
 #ifndef IOS_DEVICE
+            s_instance->m_notificationSyncModule->Initialize(true);
             return s_instance->m_notificationSyncModule;
 #else
             static_assert(always_false<std::shared_ptr<type>>, "NotificationSyncModule have no support for IOS");

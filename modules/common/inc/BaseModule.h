@@ -66,9 +66,12 @@ public:
     explicit BaseModule() : m_context(ThreadPool::GetContext()), m_moduleStrand(asio::make_strand(m_context)) {}
     virtual ~BaseModule() = default;
 
-    void Initialize() {
+    void Initialize(const bool disableWarnings = false) {
         if (GetModuleState() != ModuleState::Uninitialized) {
-            Debug::LogWarning("[Module::Initialize] Module already initialized");
+            if (!disableWarnings) {
+                Debug::LogWarning("[Module::Initialize] Module already initialized");
+            }
+
             return;
         }
 
@@ -92,7 +95,15 @@ public:
 
     asio::awaitable<void> EnableAwaitable(const bool disableWarnings = false) {
         const std::shared_ptr<BaseModule> instance = shared_from_this();
-        const ModuleState state = GetModuleState();
+        ModuleState state = GetModuleState();
+
+        if (state == ModuleState::Uninitialized) {
+            SetModuleState(ModuleState::Initializing);
+            EnableResponseCallbacks();
+            OnInitialize();
+            SetModuleState(ModuleState::Disabled);
+            state = ModuleState::Disabled;
+        }
 
         if (state != ModuleState::Disabled) {
             if (disableWarnings) {

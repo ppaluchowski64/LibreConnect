@@ -172,6 +172,11 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
     if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
+        if (callConnectionManagerDisconnect) {
+            const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
+            ConnectionManager::SendEvent(event);
+        }
+
         co_return;
     }
 
@@ -184,7 +189,8 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     Debug::Log("PrimaryConnection: Disconnected TLS primary connection successfully.");
 
     if (callConnectionManagerDisconnect) {
-        ConnectionManager::Disconnect(errorCode);
+        const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
+        ConnectionManager::SendEvent(event);
     }
 }
 

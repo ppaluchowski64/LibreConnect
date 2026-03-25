@@ -193,10 +193,12 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Disconnecting primary connection. Reason: {}", errorCode.message());
 
-    s_instance->m_primaryConnection->Disconnect(std::error_code{}, false);
+    s_instance->m_primaryConnection->Disconnect(errorCode, true);
 
-    const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
-    SendEvent(event);
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (s_instance->m_initialConnectionOut != nullptr) {
+        s_instance->m_initialConnectionOut->Disconnect();
+    }
 }
 
 std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID) {

@@ -117,16 +117,24 @@ asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) 
     Debug::Log("InitialConnection: Closing socket and cleaning up...");
     m_connectionState = ConnectionState::DISCONNECTING;
 
-    try {
-        if (m_socket.is_open()) {
-            m_socket.cancel();
-            m_socket.shutdown(asio::socket_base::shutdown_both);
-            m_socket.close();
+    if (m_socket.is_open()) {
+        std::error_code ec;
+        m_socket.cancel(ec);
+        if (ec && ec != asio::error::not_connected) {
+            HandleAsioError(ec);
         }
 
-    } catch (std::system_error& error) {
-        Debug::Log("InitialConnection: Error during shutdown - {}", error.what());
-        HandleAsioError(error.code());
+        ec.clear();
+        m_socket.shutdown(asio::socket_base::shutdown_both, ec);
+        if (ec && ec != asio::error::not_connected) {
+            HandleAsioError(ec);
+        }
+
+        ec.clear();
+        m_socket.close(ec);
+        if (ec && ec != asio::error::not_connected) {
+            HandleAsioError(ec);
+        }
     }
 
     m_connectionState = ConnectionState::DISCONNECTED;

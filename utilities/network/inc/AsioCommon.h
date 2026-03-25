@@ -126,14 +126,32 @@ inline asio::awaitable<void> CleanupSSLSocket(SSLSocket* socket) {
         co_return;
     }
 
-    try {
-        if (socket->lowest_layer().is_open()) {
-            socket->lowest_layer().cancel();
-            co_await socket->async_shutdown(asio::use_awaitable);
-            socket->lowest_layer().close();
-        }
-    } catch (std::system_error& error) {
-        HandleAsioError(error.code());
+    auto& tcpSocket = socket->lowest_layer();
+    if (!tcpSocket.is_open()) {
+        co_return;
+    }
+
+    std::error_code ec;
+    tcpSocket.cancel(ec);
+    if (ec) {
+        HandleAsioError(ec);
+    }
+
+    co_await socket->async_shutdown(asio::redirect_error(asio::use_awaitable, ec));
+    if (ec && ec != asio::error::eof && ec != asio::error::not_connected) {
+        HandleAsioError(ec);
+    }
+
+    ec.clear();
+    tcpSocket.shutdown(asio::socket_base::shutdown_both, ec);
+    if (ec && ec != asio::error::not_connected) {
+        HandleAsioError(ec);
+    }
+
+    ec.clear();
+    tcpSocket.close(ec);
+    if (ec && ec != asio::error::not_connected) {
+        HandleAsioError(ec);
     }
 }
 
