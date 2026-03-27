@@ -294,11 +294,15 @@ def run_conan_install(build_type: str, output_folder: Path):
         "install",
         ".",
         f"--output-folder={output_folder}",
+        "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
         common_build_missing,
         common_generator_flags,
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]
+
+    if platform == "win32":
+        cmd_parts.append("-s compiler.runtime=dynamic")
 
     if extra_flags:
         cmd_parts.append(extra_flags)
@@ -561,12 +565,12 @@ def prepare_desktop_deps():
         shutil.copytree(f"{ffmpeg_path}/lib", "./build/ffmpeg/lib", dirs_exist_ok=True)
 
 def run_desktop():
-    build_dir = Path("build") / "desktop"
-    build_dir.mkdir(parents=True, exist_ok=True)
+    build_root = Path("build") / "desktop"
+    build_root.mkdir(parents=True, exist_ok=True)
     prepare_desktop_deps()
     if not disable_debug:
-        run_conan_install("Debug", build_dir)
-    run_conan_install("Release", build_dir)
+        run_conan_install("Debug", build_root / "Debug")
+    run_conan_install("Release", build_root / "Release")
 
 def run_android():
     build_dir = Path("build") / "android"
@@ -574,6 +578,8 @@ def run_android():
     if not disable_debug:
         run_conan_install_android("Debug", build_dir)
     run_conan_install_android("Release", build_dir)
+
+shutil.rmtree("build", ignore_errors=True)
 
 if build_for == "Desktop":
     run_desktop()

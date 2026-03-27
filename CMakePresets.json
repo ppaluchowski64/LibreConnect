@@ -9,25 +9,26 @@
         {
             "name": "desktop-base",
             "displayName": "Desktop (Base)",
-            "binaryDir": "${sourceDir}/build/desktop",
-            "cacheVariables": {
-                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/desktop/generators/conan_toolchain.cmake"
-            }
+            "generator": "Ninja"
         },
         {
             "name": "desktop-debug",
             "displayName": "Desktop Debug",
             "inherits": "desktop-base",
+            "binaryDir": "${sourceDir}/build/desktop/build/Debug",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/desktop/build/Debug/generators/conan_toolchain.cmake"
             }
         },
         {
             "name": "desktop-release",
             "displayName": "Desktop Release",
             "inherits": "desktop-base",
+            "binaryDir": "${sourceDir}/build/desktop/build/Release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/build/desktop/build/Release/generators/conan_toolchain.cmake"
             }
         },
         {

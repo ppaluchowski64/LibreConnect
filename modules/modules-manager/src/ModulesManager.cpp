@@ -37,7 +37,7 @@ ModulesManager::ModulesManager() {
 #endif
 
 #ifdef ANDROID_DEVICE
-    StartMainService();
+    SetMainServiceBackendEnabled(true);
 #endif
 
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
@@ -70,3 +70,9 @@ void ModulesManager::Shutdown() {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }
 }
+
+#ifndef ANDROID_DEVICE
+void ModulesManager::SetMainServiceBackendEnabled(const bool enabled) {
+    (void)enabled;
+}
+#endif

@@ -7,8 +7,9 @@ class ConanApplication(ConanFile):
     generators = "CMakeToolchain", "CMakeDeps"
 
     default_options = {
-        "boost/*:without_system": False,
-        "boost/*:without_exception": False,
+        "boost/*:header_only": True,
+        "boost/*:without_system": True,
+        "boost/*:without_exception": True,
         "boost/*:without_cobalt": True,
         "boost/*:without_context": True,
         "boost/*:without_thread": True,
@@ -36,7 +37,7 @@ class ConanApplication(ConanFile):
         "boost/*:without_random": True,
         "boost/*:without_regex": True,
         "boost/*:without_serialization": True,
-        "boost/*:without_stacktrace": False,
+        "boost/*:without_stacktrace": True,
         "boost/*:without_test": True,
         "boost/*:without_timer": True,
         "boost/*:without_type_erasure": True,

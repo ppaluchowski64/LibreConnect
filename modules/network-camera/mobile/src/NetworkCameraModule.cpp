@@ -24,12 +24,17 @@
 #include <QMediaRecorder>
 #include <QVideoFrameInput>
 
+#ifdef ANDROID_DEVICE
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
+
 extern "C" {
     #include <libavutil/error.h>
     #include <libavutil/imgutils.h>
 }
 
-namespace {
+    namespace {
     struct NalSpan {
         const uint8_t* data;
         size_t size;
@@ -307,6 +312,56 @@ namespace {
     private:
         std::atomic<uint32_t>& m_counter;
     };
+
+#ifdef ANDROID_DEVICE
+    void UpdateMainServiceCameraRequest(const bool enabled) {
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        if (!context.isValid()) {
+            return;
+        }
+
+        const QJniObject serviceClass = QJniObject::callStaticObjectMethod(
+            "java/lang/Class",
+            "forName",
+            "(Ljava/lang/String;)Ljava/lang/Class;",
+            QJniObject::fromString("com.LibreConnect.mobile.MainService").object<jstring>()
+        );
+
+        if (!serviceClass.isValid()) {
+            return;
+        }
+
+        const QJniObject intent(
+            "android/content/Intent",
+            "(Landroid/content/Context;Ljava/lang/Class;)V",
+            context.object<jobject>(),
+            serviceClass.object<jclass>()
+        );
+
+        if (!intent.isValid()) {
+            return;
+        }
+
+        intent.callObjectMethod(
+            "setAction",
+            "(Ljava/lang/String;)Landroid/content/Intent;",
+            QJniObject::fromString("com.LibreConnect.mobile.action.SET_CAMERA_REQUEST").object<jstring>()
+        );
+
+        intent.callObjectMethod(
+            "putExtra",
+            "(Ljava/lang/String;Z)Landroid/content/Intent;",
+            QJniObject::fromString("com.LibreConnect.mobile.EXTRA_REQUEST_CAMERA").object<jstring>(),
+            static_cast<jboolean>(enabled)
+        );
+
+        context.callObjectMethod(
+            "startService",
+            "(Landroid/content/Intent;)Landroid/content/ComponentName;",
+            intent.object<jobject>()
+        );
+    }
+#endif
 
     AVPixelFormat ToAVPixelFormat(const QVideoFrameFormat::PixelFormat format) {
         switch (format) {
@@ -766,6 +821,9 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
             }
 
             m_ptsCounter = 0;
+#ifdef ANDROID_DEVICE
+            UpdateMainServiceCameraRequest(true);
+#endif
             m_streamActive.store(true);
             ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::None);
             if (m_videoFrameConnection) {
@@ -1131,6 +1189,9 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     Debug::Log("NetworkCameraModule: OnDisable");
+#ifdef ANDROID_DEVICE
+    UpdateMainServiceCameraRequest(false);
+#endif
     m_streamActive.store(false);
     m_streamGeneration.fetch_add(1);
 

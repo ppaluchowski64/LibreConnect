@@ -23,6 +23,7 @@ public:
     explicit ModulesManager();
     static void Initialize();
     static void Shutdown();
+    static void SetMainServiceBackendEnabled(bool enabled);
 
     template <ModuleType_ type>
     static auto& GetModuleReference() {

@@ -2,38 +2,20 @@
 #include <DebugLog.h>
 #include <boost/endian.hpp>
 #include <asio/awaitable.hpp>
+#include <asio.hpp>
 #include <openssl/rand.h>
+#include <algorithm>
+#include <unordered_map>
+#include <asio/experimental/awaitable_operators.hpp>
 
 namespace SRTP {
 
     static std::atomic<bool> g_isStrpInited{false};
-    static constexpr size_t MAX_PAYLOAD_SIZE = 1024;
+    static constexpr size_t MAX_PAYLOAD_SIZE = 1448;
+    static constexpr size_t SOCKET_BUFFER_SIZE = 4 * 1024 * 1024;
     static std::atomic<uint32_t> g_unprotectFailCount{0};
     static std::atomic<uint32_t> g_protectFailCount{0};
     static std::atomic<uint64_t> g_rtpReceivedCount{0};
-    static std::atomic<uint64_t> g_rtpLostCount{0};
-
-    static uint16_t TrackRtpSequenceGap(const uint16_t expectedSeq, const uint16_t seq) {
-        if (seq == expectedSeq) return 0;
-
-        const uint16_t delta = static_cast<uint16_t>(seq - expectedSeq);
-        if (delta == 0 || delta >= 0x8000) return 0;
-
-        const uint64_t totalLost = g_rtpLostCount.fetch_add(delta) + delta;
-        const uint64_t received = g_rtpReceivedCount.load();
-        if ((totalLost % 250) < delta) {
-            const uint64_t expectedTotal = received + totalLost;
-            const double lossPercent = expectedTotal == 0 ? 0.0 : static_cast<double>(totalLost) * 100.0 / static_cast<double>(expectedTotal);
-            Debug::LogWarning(
-                "RTP packet loss: +{} packets (total_lost={}, total_received={}, loss={:.2f}%)",
-                delta,
-                totalLost,
-                received,
-                lossPercent
-            );
-        }
-        return delta;
-    }
 
     static asio::awaitable<bool> AsyncSendNoThrow(UDPSocket& socket, const void* data, const size_t size) {
         std::error_code ec;
@@ -45,7 +27,7 @@ namespace SRTP {
     }
 
     Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context), m_context(context),
-        m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate) {
+        m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate), m_stopReceivingSignal(m_context.get_executor()) {
 
         if (!g_isStrpInited.exchange(true)) {
             if (srtp_init() != srtp_err_status_ok) {
@@ -62,6 +44,7 @@ namespace SRTP {
         if (!m_socket.is_open()) {
             m_socket.open(endpoint.protocol());
         }
+        ConfigureSocketBuffers();
         m_socket.connect(endpoint);
         Debug::Log("SRTP bind: {}:{}", endpoint.address().to_string(), endpoint.port());
     }
@@ -70,6 +53,7 @@ namespace SRTP {
         if (!m_socket.is_open()) {
             m_socket.open(endpoint.protocol());
         }
+        ConfigureSocketBuffers();
         m_socket.connect(endpoint);
         Debug::Log("SRTP bind: {}:{}", endpoint.address().to_string(), endpoint.port());
     }
@@ -78,6 +62,7 @@ namespace SRTP {
         if (!m_socket.is_open()) {
             m_socket.open(asio::ip::udp::v4());
         }
+        ConfigureSocketBuffers();
         m_socket.bind(UDPEndpoint(asio::ip::udp::v4(), 0));
         return m_socket.local_endpoint();
     }
@@ -90,11 +75,14 @@ namespace SRTP {
 
     void Stream::Receive(std::vector<uint8_t>& payload) {
         payload.clear();
-        bool assemblingFrame = false;
-        bool dropCurrentFrame = false;
+        bool frameActive = false;
+        bool markerSeen = false;
         uint16_t expectedSeq = 0;
-        uint32_t currentFrameTimestamp = 0;
+        uint16_t markerSeq = 0;
+        uint32_t frameTimestamp = 0;
         static constexpr uint8_t kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+        std::unordered_map<uint16_t, std::vector<uint8_t>> pendingPayloads;
+        static constexpr size_t MAX_REORDERED_PACKETS = 2048;
 
         while (true) {
             int length = m_socket.receive(asio::mutable_buffer(m_buffer.data(), m_buffer.size()));
@@ -119,60 +107,92 @@ namespace SRTP {
             const size_t rtpPayloadLen = length - sizeof(Header);
             if (rtpPayloadLen == 0) continue;
 
-            if (!assemblingFrame) {
-                assemblingFrame = true;
-                dropCurrentFrame = false;
+            if (!frameActive || timestamp != frameTimestamp) {
+                if (frameActive) {
+                    m_receiveLossSignal.fetch_add(1);
+                }
+                frameActive = true;
+                markerSeen = false;
                 payload.clear();
-                currentFrameTimestamp = timestamp;
-                expectedSeq = static_cast<uint16_t>(seq + 1);
+                pendingPayloads.clear();
+                frameTimestamp = timestamp;
+                expectedSeq = seq;
+            }
+
+            const uint8_t firstByte = rtpPayload[0];
+            const uint8_t nalType = firstByte & 0x1F;
+            std::vector<uint8_t> chunk;
+
+            if (nalType == 28) {
+                if (rtpPayloadLen < 2) {
+                    m_receiveLossSignal.fetch_add(1);
+                    payload.clear();
+                    pendingPayloads.clear();
+                    frameActive = false;
+                    markerSeen = false;
+                    continue;
+                }
+
+                const uint8_t fuHeader = rtpPayload[1];
+                const bool isStart = (fuHeader & 0x80) != 0;
+
+                if (isStart) {
+                    chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+                    uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
+                    chunk.push_back(reconstructedNalHeader);
+                }
+
+                chunk.insert(chunk.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
             } else {
-                if (seq != expectedSeq || timestamp != currentFrameTimestamp) {
-                    const uint16_t lost = TrackRtpSequenceGap(expectedSeq, seq);
-                    if (lost > 0 || timestamp != currentFrameTimestamp) {
-                        m_receiveLossSignal.fetch_add(1);
-                    }
-                    dropCurrentFrame = true;
-                }
-                expectedSeq = static_cast<uint16_t>(seq + 1);
+                chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+                chunk.insert(chunk.end(), rtpPayload, rtpPayload + rtpPayloadLen);
             }
 
-            if (!dropCurrentFrame) {
-                const uint8_t firstByte = rtpPayload[0];
-                const uint8_t nalType = firstByte & 0x1F;
-
-                if (nalType == 28) {
-                    if (rtpPayloadLen < 2) {
-                        dropCurrentFrame = true;
-                    } else {
-                        const uint8_t fuHeader = rtpPayload[1];
-                        const bool isStart = (fuHeader & 0x80) != 0;
-
-                        if (payload.empty() && !isStart) {
-                            dropCurrentFrame = true;
-                        } else {
-                            if (isStart) {
-                                payload.insert(payload.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                                uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
-                                payload.push_back(reconstructedNalHeader);
-                            }
-
-                            payload.insert(payload.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
-                        }
-                    }
-                } else {
-                    payload.insert(payload.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                    payload.insert(payload.end(), rtpPayload, rtpPayload + rtpPayloadLen);
-                }
-            }
-
+            pendingPayloads.try_emplace(seq, std::move(chunk));
             if (frameComplete) {
-                if (!dropCurrentFrame && !payload.empty()) {
+                markerSeen = true;
+                markerSeq = seq;
+            }
+
+            if (pendingPayloads.size() > MAX_REORDERED_PACKETS) {
+                m_receiveLossSignal.fetch_add(1);
+                payload.clear();
+                pendingPayloads.clear();
+                frameActive = false;
+                markerSeen = false;
+                continue;
+            }
+
+            bool dropFrame = false;
+            while (true) {
+                auto it = pendingPayloads.find(expectedSeq);
+                if (it == pendingPayloads.end()) break;
+
+                const std::vector<uint8_t>& orderedChunk = it->second;
+                if (payload.empty()) {
+                    if (orderedChunk.size() < sizeof(kStartCode) ||
+                        !std::equal(kStartCode, kStartCode + sizeof(kStartCode), orderedChunk.begin())) {
+                        m_receiveLossSignal.fetch_add(1);
+                        payload.clear();
+                        pendingPayloads.clear();
+                        frameActive = false;
+                        markerSeen = false;
+                        dropFrame = true;
+                        break;
+                    }
+                }
+
+                payload.insert(payload.end(), orderedChunk.begin(), orderedChunk.end());
+                pendingPayloads.erase(it);
+
+                if (markerSeen && expectedSeq == markerSeq) {
                     return;
                 }
+                expectedSeq = static_cast<uint16_t>(expectedSeq + 1);
+            }
 
-                payload.clear();
-                assemblingFrame = false;
-                dropCurrentFrame = false;
+            if (dropFrame) {
+                continue;
             }
         }
     }
@@ -443,21 +463,63 @@ namespace SRTP {
     }
 
     asio::awaitable<void> Stream::AsyncReceive(std::vector<uint8_t>& payload) {
-        payload.clear();
-        bool assemblingFrame = false;
-        bool dropCurrentFrame = false;
-        uint16_t expectedSeq = 0;
-        uint32_t currentFrameTimestamp = 0;
-        static constexpr uint8_t kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+        if (m_isReceiving.exchange(true)) {
+            m_stopReceiving.store(true);
+            m_stopReceivingSignal.cancel();
+            co_return;
+        }
 
-        while (true) {
+        struct ReceiveGuard {
+            std::atomic<bool>& isReceiving;
+            std::atomic<bool>& stopReceiving;
+            ~ReceiveGuard() {
+                stopReceiving.store(false);
+                isReceiving.store(false);
+            }
+        } guard{m_isReceiving, m_stopReceiving};
+
+        m_stopReceiving.store(false);
+        m_stopReceivingSignal.expires_at((asio::steady_timer::time_point::max)());
+
+        payload.clear();
+
+        bool frameActive = false;
+        bool markerSeen = false;
+        uint16_t expectedSeq = 0;
+        uint16_t markerSeq = 0;
+        uint32_t frameTimestamp = 0;
+
+        static constexpr uint8_t kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+        std::unordered_map<uint16_t, std::vector<uint8_t>> pendingPayloads;
+        static constexpr size_t MAX_REORDERED_PACKETS = 2048;
+
+        while (!m_stopReceiving.load()) {
             std::error_code ec;
-            int length = static_cast<int>(co_await m_socket.async_receive(
-                asio::mutable_buffer(m_buffer.data(), m_buffer.size()),
-                asio::redirect_error(asio::use_awaitable, ec)
-            ));
+            std::error_code stopEc;
+            (void)stopEc;
+            int length{};
+
+            {
+                using namespace asio::experimental::awaitable_operators;
+                auto result = co_await (
+                    m_socket.async_receive(
+                        asio::buffer(m_buffer),
+                        asio::redirect_error(asio::use_awaitable, ec)
+                    )
+                    || m_stopReceivingSignal.async_wait(asio::redirect_error(asio::use_awaitable, stopEc))
+                );
+
+                if (result.index() == 0) {
+                    length = std::get<0>(result);
+                } else {
+                    payload.clear();
+                    break;
+                }
+            }
+
             if (ec) {
-                co_return;
+                payload.clear();
+                break;
             }
 
             if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
@@ -480,63 +542,190 @@ namespace SRTP {
             const size_t rtpPayloadLen = length - sizeof(Header);
             if (rtpPayloadLen == 0) continue;
 
-            if (!assemblingFrame) {
-                assemblingFrame = true;
-                dropCurrentFrame = false;
+            if (!frameActive || timestamp != frameTimestamp) {
+                if (frameActive) {
+                    m_receiveLossSignal.fetch_add(1);
+                }
+                frameActive = true;
+                markerSeen = false;
                 payload.clear();
-                currentFrameTimestamp = timestamp;
-                expectedSeq = static_cast<uint16_t>(seq + 1);
+                pendingPayloads.clear();
+                frameTimestamp = timestamp;
+                expectedSeq = seq;
+            }
+
+            const uint8_t firstByte = rtpPayload[0];
+            const uint8_t nalType = firstByte & 0x1F;
+            std::vector<uint8_t> chunk;
+
+            if (nalType == 28) {
+                if (rtpPayloadLen < 2) {
+                    m_receiveLossSignal.fetch_add(1);
+                    payload.clear();
+                    pendingPayloads.clear();
+                    frameActive = false;
+                    continue;
+                }
+
+                const uint8_t fuHeader = rtpPayload[1];
+                const bool isStart = (fuHeader & 0x80) != 0;
+
+                if (isStart) {
+                    chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+                    uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
+                    chunk.push_back(reconstructedNalHeader);
+                }
+
+                chunk.insert(chunk.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
             } else {
-                if (seq != expectedSeq || timestamp != currentFrameTimestamp) {
-                    const uint16_t lost = TrackRtpSequenceGap(expectedSeq, seq);
-                    if (lost > 0 || timestamp != currentFrameTimestamp) {
-                        m_receiveLossSignal.fetch_add(1);
-                    }
-                    dropCurrentFrame = true;
-                }
-                expectedSeq = static_cast<uint16_t>(seq + 1);
+                chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+                chunk.insert(chunk.end(), rtpPayload, rtpPayload + rtpPayloadLen);
             }
 
-            if (!dropCurrentFrame) {
-                const uint8_t firstByte = rtpPayload[0];
-                const uint8_t nalType = firstByte & 0x1F;
-
-                if (nalType == 28) {
-                    if (rtpPayloadLen < 2) {
-                        dropCurrentFrame = true;
-                    } else {
-                        const uint8_t fuHeader = rtpPayload[1];
-                        const bool isStart = (fuHeader & 0x80) != 0;
-
-                        if (payload.empty() && !isStart) {
-                            dropCurrentFrame = true;
-                        } else {
-                            if (isStart) {
-                                payload.insert(payload.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                                uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
-                                payload.push_back(reconstructedNalHeader);
-                            }
-
-                            payload.insert(payload.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
-                        }
-                    }
-                } else {
-                    payload.insert(payload.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                    payload.insert(payload.end(), rtpPayload, rtpPayload + rtpPayloadLen);
-                }
-            }
-
+            pendingPayloads.try_emplace(seq, std::move(chunk));
             if (frameComplete) {
-                if (!dropCurrentFrame && !payload.empty()) {
+                markerSeen = true;
+                markerSeq = seq;
+            }
+
+            if (pendingPayloads.size() > MAX_REORDERED_PACKETS) {
+                m_receiveLossSignal.fetch_add(1);
+                payload.clear();
+                pendingPayloads.clear();
+                frameActive = false;
+                markerSeen = false;
+                continue;
+            }
+
+            bool dropFrame = false;
+            while (true) {
+                auto it = pendingPayloads.find(expectedSeq);
+                if (it == pendingPayloads.end()) break;
+
+                const std::vector<uint8_t>& orderedChunk = it->second;
+                if (payload.empty()) {
+                    if (orderedChunk.size() < sizeof(kStartCode) ||
+                        !std::equal(kStartCode, kStartCode + sizeof(kStartCode), orderedChunk.begin())) {
+                        m_receiveLossSignal.fetch_add(1);
+                        payload.clear();
+                        pendingPayloads.clear();
+                        frameActive = false;
+                        markerSeen = false;
+                        dropFrame = true;
+                        break;
+                    }
+                }
+
+                payload.insert(payload.end(), orderedChunk.begin(), orderedChunk.end());
+                pendingPayloads.erase(it);
+
+                if (markerSeen && expectedSeq == markerSeq) {
                     co_return;
                 }
+                expectedSeq = static_cast<uint16_t>(expectedSeq + 1);
+            }
 
-                payload.clear();
-                assemblingFrame = false;
-                dropCurrentFrame = false;
+            if (dropFrame) {
+                continue;
             }
         }
     }
+
+    // asio::awaitable<void> Stream::AsyncReceive(std::vector<uint8_t>& payload) {
+    //     payload.clear();
+    //     bool assemblingFrame = false;
+    //     bool dropCurrentFrame = false;
+    //     uint16_t expectedSeq = 0;
+    //     uint32_t currentFrameTimestamp = 0;
+    //     static constexpr uint8_t kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+    //
+    //     while (true) {
+    //         std::error_code ec;
+    //         int length = static_cast<int>(co_await m_socket.async_receive(
+    //             asio::mutable_buffer(m_buffer.data(), m_buffer.size()),
+    //             asio::redirect_error(asio::use_awaitable, ec)
+    //         ));
+    //         if (ec) {
+    //             co_return;
+    //         }
+    //
+    //         if (srtp_unprotect(m_recvSession, m_buffer.data(), &length) != srtp_err_status_ok) {
+    //             m_receiveLossSignal.fetch_add(1);
+    //             if ((++g_unprotectFailCount % 100) == 1) {
+    //                 Debug::LogWarning("SRTP unprotect failed (count={})", g_unprotectFailCount.load());
+    //             }
+    //             continue;
+    //         }
+    //
+    //         if (length <= sizeof(Header)) continue;
+    //
+    //         const Header* header = reinterpret_cast<Header*>(m_buffer.data());
+    //         const bool frameComplete = (header->m_pt & 0x80) != 0;
+    //         const uint16_t seq = boost::endian::big_to_native(header->seq);
+    //         const uint32_t timestamp = boost::endian::big_to_native(header->timestamp);
+    //         g_rtpReceivedCount.fetch_add(1);
+    //
+    //         const uint8_t* rtpPayload = m_buffer.data() + sizeof(Header);
+    //         const size_t rtpPayloadLen = length - sizeof(Header);
+    //         if (rtpPayloadLen == 0) continue;
+    //
+    //         if (!assemblingFrame) {
+    //             assemblingFrame = true;
+    //             dropCurrentFrame = false;
+    //             payload.clear();
+    //             currentFrameTimestamp = timestamp;
+    //             expectedSeq = static_cast<uint16_t>(seq + 1);
+    //         } else {
+    //             if (seq != expectedSeq || timestamp != currentFrameTimestamp) {
+    //                 const uint16_t lost = TrackRtpSequenceGap(expectedSeq, seq);
+    //                 if (lost > 0 || timestamp != currentFrameTimestamp) {
+    //                     m_receiveLossSignal.fetch_add(1);
+    //                 }
+    //                 dropCurrentFrame = true;
+    //             }
+    //             expectedSeq = static_cast<uint16_t>(seq + 1);
+    //         }
+    //
+    //         if (!dropCurrentFrame) {
+    //             const uint8_t firstByte = rtpPayload[0];
+    //             const uint8_t nalType = firstByte & 0x1F;
+    //
+    //             if (nalType == 28) {
+    //                 if (rtpPayloadLen < 2) {
+    //                     dropCurrentFrame = true;
+    //                 } else {
+    //                     const uint8_t fuHeader = rtpPayload[1];
+    //                     const bool isStart = (fuHeader & 0x80) != 0;
+    //
+    //                     if (payload.empty() && !isStart) {
+    //                         dropCurrentFrame = true;
+    //                     } else {
+    //                         if (isStart) {
+    //                             payload.insert(payload.end(), kStartCode, kStartCode + sizeof(kStartCode));
+    //                             uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
+    //                             payload.push_back(reconstructedNalHeader);
+    //                         }
+    //
+    //                         payload.insert(payload.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
+    //                     }
+    //                 }
+    //             } else {
+    //                 payload.insert(payload.end(), kStartCode, kStartCode + sizeof(kStartCode));
+    //                 payload.insert(payload.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+    //             }
+    //         }
+    //
+    //         if (frameComplete) {
+    //             if (!dropCurrentFrame && !payload.empty()) {
+    //                 co_return;
+    //             }
+    //
+    //             payload.clear();
+    //             assemblingFrame = false;
+    //             dropCurrentFrame = false;
+    //         }
+    //     }
+    // }
 
     asio::awaitable<void> Stream::AsyncSend(const std::vector<uint8_t>& payloadData) {
         const uint64_t size = payloadData.size();
@@ -596,6 +785,20 @@ namespace SRTP {
                 dataPtr += fragmentSize;
                 remaining -= fragmentSize;
             }
+        }
+    }
+
+    void Stream::ConfigureSocketBuffers() {
+        std::error_code ec;
+        m_socket.set_option(asio::socket_base::send_buffer_size(static_cast<int>(SOCKET_BUFFER_SIZE)), ec);
+        if (ec) {
+            Debug::LogWarning("Failed to set UDP send buffer size to {} bytes: {}", SOCKET_BUFFER_SIZE, ec.message());
+        }
+
+        ec.clear();
+        m_socket.set_option(asio::socket_base::receive_buffer_size(static_cast<int>(SOCKET_BUFFER_SIZE)), ec);
+        if (ec) {
+            Debug::LogWarning("Failed to set UDP receive buffer size to {} bytes: {}", SOCKET_BUFFER_SIZE, ec.message());
         }
     }
 
