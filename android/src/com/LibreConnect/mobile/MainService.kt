@@ -11,22 +11,35 @@ import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.Manifest
+import android.annotation.SuppressLint
 import android.util.Log
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainService : Service() {
     external fun nativeStartBackend()
     external fun nativeStopBackend()
+    external fun nativeOnCameraEncodedSample(
+        encodedSample: ByteBuffer,
+        size: Int,
+        flags: Int,
+        ptsUs: Long
+    )
 
     private val backendStarted = AtomicBoolean(false)
     private val cameraRequested = AtomicBoolean(false)
     private var notificationManager: NotificationManager? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var cpuWakeLock: PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
+        activeService = this
         startAsForeground()
     }
 
@@ -67,6 +80,9 @@ class MainService : Service() {
     }
 
     override fun onDestroy() {
+        if (activeService === this) {
+            activeService = null
+        }
         stopBackendIfNeeded()
         super.onDestroy()
     }
@@ -78,33 +94,40 @@ class MainService : Service() {
     private fun startAsForeground() {
         val manager = getSystemService(NotificationManager::class.java)
         notificationManager = manager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "LibreConnect Service",
-                NotificationManager.IMPORTANCE_LOW
-            )
-            manager.createNotificationChannel(channel)
-        }
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "LibreConnect Service",
+            NotificationManager.IMPORTANCE_LOW
+        )
+        manager.createNotificationChannel(channel)
 
         val notification = buildNotification(
             title = "LibreConnect running",
             text = "Background service active"
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val serviceTypes = resolveForegroundServiceTypes()
-
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            var serviceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            if (shouldIncludeCameraType()) {
+                serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
             startForeground(
                 NOTIFICATION_ID,
                 notification,
                 serviceTypes
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
         }
     }
 
+    @Suppress("unused")
     fun updateNotification(title: String, text: String) {
         val manager = notificationManager ?: getSystemService(NotificationManager::class.java).also {
             notificationManager = it
@@ -114,11 +137,7 @@ class MainService : Service() {
     }
 
     private fun buildNotification(title: String, text: String): Notification {
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, CHANNEL_ID)
-        } else {
-            Notification.Builder(this)
-        }
+        val builder = Notification.Builder(this, CHANNEL_ID)
 
         return builder
             .setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -128,20 +147,14 @@ class MainService : Service() {
             .build()
     }
 
-    private fun resolveForegroundServiceTypes(): Int {
-        var types = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-        if (shouldIncludeCameraType()) {
-            types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-        }
-        return types
-    }
-
     private fun startBackendIfNeeded() {
         if (!backendStarted.compareAndSet(false, true)) {
             return
         }
 
         acquireMulticastLock()
+        acquireWifiLock()
+        acquireCpuWakeLock()
         nativeStartBackend()
     }
 
@@ -151,6 +164,8 @@ class MainService : Service() {
         }
 
         releaseMulticastLock()
+        releaseWifiLock()
+        releaseCpuWakeLock()
     }
 
     private fun acquireMulticastLock() {
@@ -174,6 +189,54 @@ class MainService : Service() {
         multicastLock = null
     }
 
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) {
+            return
+        }
+
+        val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        @Suppress("DEPRECATION")
+        val lock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "LibreConnect:MainServiceWifi")
+        lock.setReferenceCounted(false)
+        lock.acquire()
+        wifiLock = lock
+    }
+
+    private fun releaseWifiLock() {
+        wifiLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        wifiLock = null
+    }
+
+    private fun acquireCpuWakeLock() {
+        if (cpuWakeLock?.isHeld == true) {
+            return
+        }
+
+        val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+        val lock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "LibreConnect:MainServiceCpu")
+        lock.setReferenceCounted(false)
+
+        try {
+            lock.acquire(CPU_WAKE_LOCK_TIMEOUT_MS)
+            cpuWakeLock = lock
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Failed to acquire CPU wake lock", e)
+        }
+    }
+
+    private fun releaseCpuWakeLock() {
+        cpuWakeLock?.let {
+            if (it.isHeld) {
+                it.release()
+            }
+        }
+        cpuWakeLock = null
+    }
+
     private fun shouldIncludeCameraType(): Boolean {
         if (!cameraRequested.get()) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
@@ -186,13 +249,59 @@ class MainService : Service() {
         const val CHANNEL_ID = "libreconnect_main_service"
         const val NOTIFICATION_ID = 1001
         const val EXTRA_REQUEST_CAMERA = "com.LibreConnect.mobile.EXTRA_REQUEST_CAMERA"
+        @Suppress("unused")
         const val ACTION_START_BACKEND = "com.LibreConnect.mobile.action.START_BACKEND"
         const val ACTION_STOP_BACKEND = "com.LibreConnect.mobile.action.STOP_BACKEND"
         const val ACTION_SET_CAMERA_REQUEST = "com.LibreConnect.mobile.action.SET_CAMERA_REQUEST"
+        private const val CPU_WAKE_LOCK_TIMEOUT_MS = 24L * 60L * 60L * 1000L
 
         @Volatile
         private var nativeLoaded = false
+        @Volatile
+        private var activeService: MainService? = null
 
+        @Suppress("unused")
+        @JvmStatic
+        @ExperimentalCamera2Interop
+        fun queryAvailableCameraConfigurations(context: Context): String {
+            return CameraFrameReceiver.queryAvailableCameraConfigurations(context)
+        }
+
+        @Suppress("unused")
+        @JvmStatic
+        @ExperimentalCamera2Interop
+        fun startCameraFrameReceiver(
+            context: Context,
+            requestedCameraId: String? = null,
+            requestedWidth: Int = 1280,
+            requestedHeight: Int = 720,
+            requestedFps: Int = 30,
+            requestedBitrate: Int = 2_000_000
+        ): Boolean {
+            return CameraFrameReceiver.start(
+                context = context,
+                requestedCameraId = requestedCameraId,
+                requestedWidth = requestedWidth,
+                requestedHeight = requestedHeight,
+                requestedFps = requestedFps,
+                requestedBitrate = requestedBitrate
+            ) { encodedSample, size, flags, ptsUs ->
+                activeService?.nativeOnCameraEncodedSample(
+                    encodedSample = encodedSample,
+                    size = size,
+                    flags = flags,
+                    ptsUs = ptsUs
+                )
+            }
+        }
+
+        @Suppress("unused")
+        @JvmStatic
+        fun stopCameraFrameReceiver() {
+            CameraFrameReceiver.stop()
+        }
+
+        @SuppressLint("UnsafeDynamicallyLoadedCode")
         fun ensureNativeLoaded(context: Context): Boolean {
             if (nativeLoaded) return true
 

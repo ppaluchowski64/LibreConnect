@@ -3,8 +3,72 @@
 #include <magic_enum/magic_enum.hpp>
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
+#include <chrono>
 
 namespace {
+    constexpr uint64_t kMaxWaitForIdrAfterLossMs = 2000;
+
+    uint64_t GetMonotonicTimeMs() {
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()
+            ).count()
+        );
+    }
+
+    AVPixelFormat NormalizeDeprecatedYuvjFormat(const AVPixelFormat format) {
+        switch (format) {
+            case AV_PIX_FMT_YUVJ420P:
+                return AV_PIX_FMT_YUV420P;
+            case AV_PIX_FMT_YUVJ422P:
+                return AV_PIX_FMT_YUV422P;
+            case AV_PIX_FMT_YUVJ444P:
+                return AV_PIX_FMT_YUV444P;
+            case AV_PIX_FMT_YUVJ440P:
+                return AV_PIX_FMT_YUV440P;
+            case AV_PIX_FMT_YUVJ411P:
+                return AV_PIX_FMT_YUV411P;
+            default:
+                return format;
+        }
+    }
+
+    bool IsFullRangeFrame(const AVFrame* frame) {
+        if (!frame) {
+            return false;
+        }
+
+        if (frame->color_range == AVCOL_RANGE_JPEG) {
+            return true;
+        }
+
+        const AVPixelFormat srcFmt = static_cast<AVPixelFormat>(frame->format);
+        return srcFmt == AV_PIX_FMT_YUVJ420P ||
+            srcFmt == AV_PIX_FMT_YUVJ422P ||
+            srcFmt == AV_PIX_FMT_YUVJ444P ||
+            srcFmt == AV_PIX_FMT_YUVJ440P ||
+            srcFmt == AV_PIX_FMT_YUVJ411P;
+    }
+
+    int ResolveSwsColorspace(const AVFrame* frame) {
+        if (!frame) {
+            return SWS_CS_DEFAULT;
+        }
+
+        switch (frame->colorspace) {
+            case AVCOL_SPC_BT709:
+                return SWS_CS_ITU709;
+            case AVCOL_SPC_BT470BG:
+            case AVCOL_SPC_SMPTE170M:
+                return SWS_CS_SMPTE170M;
+            case AVCOL_SPC_SMPTE240M:
+                return SWS_CS_SMPTE240M;
+            default:
+                // Prefer BT.709 fallback for HD frames; SD uses SMPTE170M.
+                return (frame->width >= 1280 || frame->height > 576) ? SWS_CS_ITU709 : SWS_CS_SMPTE170M;
+        }
+    }
+
     size_t FindStart(const uint8_t* data, const size_t size, const size_t from) {
         for (size_t j = from; j + 3 < size; ++j) {
             if (data[j] == 0x00 && data[j + 1] == 0x00 &&
@@ -113,13 +177,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     }
 
     m_codecContext = avcodec_alloc_context3(m_codec);
-    m_codecContext->bit_rate = 400000;
     m_codecContext->width = m_cameraSettings.width;
     m_codecContext->height = m_cameraSettings.height;
-    m_codecContext->time_base = {1, m_cameraSettings.framerate};
-    m_codecContext->framerate = {m_cameraSettings.framerate, 1};
-    m_codecContext->gop_size = 10;
-    m_codecContext->max_b_frames = 1;
     m_codecContext->pix_fmt = AV_PIX_FMT_NV12;
 
     {
@@ -138,6 +197,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     m_seenSps = false;
     m_seenPps = false;
     m_waitForIdrAfterLoss.store(false);
+    m_waitForIdrStartMs.store(0);
+    m_waitForIdrDroppedFrames.store(0);
     m_acceptFrames.store(true);
 
     asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
@@ -148,13 +209,35 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         return;
     }
 
+    const uint64_t nowMs = GetMonotonicTimeMs();
     const bool hasIdr = ContainsH264NalType(frameBuffer, 5);
+
     if (m_waitForIdrAfterLoss.load()) {
         if (!hasIdr) {
-            return;
+            const uint64_t waitStartMs = m_waitForIdrStartMs.load();
+            const uint64_t waitMs = (waitStartMs != 0 && nowMs >= waitStartMs) ? (nowMs - waitStartMs) : 0;
+            const uint32_t droppedFrames = m_waitForIdrDroppedFrames.fetch_add(1) + 1;
+
+            if (waitMs < kMaxWaitForIdrAfterLossMs) {
+                return;
+            }
+
+            Debug::LogWarning(
+                "IDR wait timeout after packet loss ({} ms, {} dropped frames); resuming decode without IDR",
+                waitMs,
+                droppedFrames
+            );
+            m_waitForIdrAfterLoss.store(false);
+            m_waitForIdrStartMs.store(0);
+            m_waitForIdrDroppedFrames.store(0);
+        } else {
+            const uint64_t waitStartMs = m_waitForIdrStartMs.load();
+            const uint64_t waitMs = (waitStartMs != 0 && nowMs >= waitStartMs) ? (nowMs - waitStartMs) : 0;
+            const uint32_t droppedFrames = m_waitForIdrDroppedFrames.exchange(0);
+            Debug::Log("Recovered stream sync on IDR after packet loss ({} ms, {} dropped frames)", waitMs, droppedFrames);
+            m_waitForIdrAfterLoss.store(false);
+            m_waitForIdrStartMs.store(0);
         }
-        Debug::Log("Recovered stream sync on IDR after packet loss");
-        m_waitForIdrAfterLoss.store(false);
     }
 
     m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
@@ -187,6 +270,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         const int targetW = m_cameraSettings.width;
         const int targetH = m_cameraSettings.height;
         constexpr AVPixelFormat targetFmt = AV_PIX_FMT_NV12;
+        const AVPixelFormat swsSrcFormat = NormalizeDeprecatedYuvjFormat(static_cast<AVPixelFormat>(m_frame->format));
 
         const AVFrame* srcFrame = m_frame;
         const bool needsConvert = (m_frame->format != targetFmt) ||
@@ -202,7 +286,8 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                 m_swsHeight != m_frame->height ||
                 m_swsDstWidth != targetW ||
                 m_swsDstHeight != targetH ||
-                m_swsSrcFormat != static_cast<AVPixelFormat>(m_frame->format)) {
+                m_swsSrcFormat != swsSrcFormat) {
+
                 if (m_swsContext) {
                     sws_freeContext(m_swsContext);
                 }
@@ -213,7 +298,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                 m_swsContext = sws_getContext(
                     m_frame->width,
                     m_frame->height,
-                    static_cast<AVPixelFormat>(m_frame->format),
+                    swsSrcFormat,
                     targetW,
                     targetH,
                     targetFmt,
@@ -240,7 +325,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                 m_frameNv12->width = targetW;
                 m_frameNv12->height = targetH;
 
-                m_swsSrcFormat = static_cast<AVPixelFormat>(m_frame->format);
+                m_swsSrcFormat = swsSrcFormat;
                 m_swsWidth = m_frame->width;
                 m_swsHeight = m_frame->height;
                 m_swsDstWidth = targetW;
@@ -250,6 +335,30 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
                     Debug::LogError("Failed to allocate NV12 frame buffer");
                     av_frame_unref(m_frame);
                     goto cleanup;
+                }
+            }
+
+            const int srcRange = IsFullRangeFrame(m_frame) ? 1 : 0;
+            // Virtual camera consumers typically expect NV12 in limited range.
+            const int dstRange = 0;
+            const int* cs = sws_getCoefficients(ResolveSwsColorspace(m_frame));
+            if (cs) {
+                const int setCsRet = sws_setColorspaceDetails(
+                    m_swsContext,
+                    cs,
+                    srcRange,
+                    cs,
+                    dstRange,
+                    0,
+                    1 << 16,
+                    1 << 16
+                );
+                if (setCsRet < 0) {
+                    static bool loggedColorRangeSetupError = false;
+                    if (!loggedColorRangeSetupError) {
+                        Debug::LogWarning("Failed to set sws colorspace/range details");
+                        loggedColorRangeSetupError = true;
+                    }
                 }
             }
 
@@ -305,7 +414,6 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
     m_receiveFramesRunning.store(true);
 
     Debug::Log("NetworkCameraModule: ReceiveFrames started");
-    Debug::Log("State {}", magic_enum::enum_name(GetModuleState()));
 
     asio::steady_timer timer(m_context);
 
@@ -326,10 +434,15 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
         }
 
         if (stream->ConsumeReceiveLossSignal()) {
-            if (!m_waitForIdrAfterLoss.load()) {
+            bool expected = false;
+            if (m_waitForIdrAfterLoss.compare_exchange_strong(expected, true)) {
                 Debug::LogWarning("RTP loss detected, waiting for next IDR frame");
+                m_waitForIdrStartMs.store(GetMonotonicTimeMs());
+                m_waitForIdrDroppedFrames.store(0);
+                if (m_codecContext) {
+                    avcodec_flush_buffers(m_codecContext);
+                }
             }
-            m_waitForIdrAfterLoss.store(true);
         }
 
         if (frameBuffer.empty()) {
@@ -437,6 +550,8 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     Debug::Log("NetworkCameraModule: OnDisable");
     m_acceptFrames.store(false);
     m_waitForIdrAfterLoss.store(false);
+    m_waitForIdrStartMs.store(0);
+    m_waitForIdrDroppedFrames.store(0);
 
     std::shared_ptr<SRTP::Stream> stream = m_videoStream;
     m_videoStream.reset();
@@ -480,6 +595,8 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
     m_seenSps = false;
     m_seenPps = false;
+    m_waitForIdrStartMs.store(0);
+    m_waitForIdrDroppedFrames.store(0);
 
     co_return;
 }

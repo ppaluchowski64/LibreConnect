@@ -76,13 +76,7 @@ else ()
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 endif ()
 
-if ((WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE)) AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
-endif ()
-
-if(ANDROID OR IOS)
-    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
-endif()
+set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
         debug-log

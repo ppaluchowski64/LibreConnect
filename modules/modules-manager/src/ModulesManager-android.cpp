@@ -19,27 +19,30 @@ void ModulesManager::SetMainServiceBackendEnabled(const bool enabled) {
         return;
     }
 
-    const QJniObject serviceClass = QJniObject::callStaticObjectMethod(
-        "java/lang/Class",
-        "forName",
-        "(Ljava/lang/String;)Ljava/lang/Class;",
-        QJniObject::fromString(MAIN_SERVICE_CLASS).object<jstring>()
-    );
-
-    if (!serviceClass.isValid()) {
-        return;
-    }
-
     const QJniObject intent(
         "android/content/Intent",
-        "(Landroid/content/Context;Ljava/lang/Class;)V",
-        context.object<jobject>(),
-        serviceClass.object<jclass>()
+        "()V"
     );
 
     if (!intent.isValid()) {
         return;
     }
+
+    const QJniObject packageName = context.callObjectMethod(
+        "getPackageName",
+        "()Ljava/lang/String;"
+    );
+
+    if (!packageName.isValid()) {
+        return;
+    }
+
+    intent.callObjectMethod(
+        "setClassName",
+        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+        packageName.object<jstring>(),
+        QJniObject::fromString(MAIN_SERVICE_CLASS).object<jstring>()
+    );
 
     intent.callObjectMethod(
         "setAction",
