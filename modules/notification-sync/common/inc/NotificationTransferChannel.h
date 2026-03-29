@@ -2,6 +2,8 @@
 #define NOTIFICATIONLISTENER_KT_NOTIFICATIONTRANSFERCHANNEL_H
 
 #include <filesystem>
+#include <memory>
+#include <mutex>
 
 #include <asio.hpp>
 #include <asio/ssl.hpp>
@@ -41,6 +43,8 @@ private:
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
     std::atomic<bool> m_readInProgress{false};
     std::atomic<bool> m_writeInProgress{false};
+    std::mutex m_acceptorMutex;
+    std::shared_ptr<TCPAcceptor> m_acceptor;
 };
 
 #endif //NOTIFICATIONLISTENER_KT_NOTIFICATIONTRANSFERCHANNEL_H

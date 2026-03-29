@@ -36,12 +36,18 @@ asio::awaitable<void> NotificationTransferChannel::Connect(TCPEndpoint endpoint)
         Debug::Log("Notification transfer channel connecting to {}:{}", endpoint.address().to_string(), endpoint.port());
 
         co_await CleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
+        auto socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
 
         Debug::Log("Notification transfer channel socket created, starting TLS connect");
-        co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
-        co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
+        co_await asio::async_connect(socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
+        co_await socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
+        if (m_connectionState.load() != ConnectionState::CONNECTING) {
+            co_await CleanupSSLSocket(socket.get());
+            co_return;
+        }
+
+        m_socket = std::move(socket);
         Debug::Log("Accepted TLS connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
         m_connectionState.store(ConnectionState::CONNECTED);
         Debug::Log("Notification transfer channel connected");
@@ -60,29 +66,48 @@ asio::awaitable<void> NotificationTransferChannel::Seek(AwaitableFlag& flag, uin
         Debug::Log("Notification transfer channel opening listener");
 
         co_await CleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
-
-        TCPAcceptor acceptor(m_context);
+        auto socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
+        const std::shared_ptr<TCPAcceptor> acceptor = std::make_shared<TCPAcceptor>(m_context);
         asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), 0);
 
-        acceptor.open(endpoint.protocol());
-        acceptor.set_option(asio::socket_base::reuse_address(true));
-        acceptor.bind(endpoint);
-        acceptor.listen();
+        {
+            std::lock_guard lock(m_acceptorMutex);
+            m_acceptor = acceptor;
+        }
 
-        port = acceptor.local_endpoint().port();
+        acceptor->open(endpoint.protocol());
+        acceptor->set_option(asio::socket_base::reuse_address(true));
+        acceptor->bind(endpoint);
+        acceptor->listen();
+
+        port = acceptor->local_endpoint().port();
         flag.Signal();
         Debug::Log("Notification transfer channel listening on port {}", port);
 
         Debug::Log("Notification transfer channel waiting for incoming connection");
-        co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
-        co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
+        co_await acceptor->async_accept(socket->lowest_layer(), asio::use_awaitable);
+        co_await socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
+        {
+            std::lock_guard lock(m_acceptorMutex);
+            if (m_acceptor == acceptor) {
+                m_acceptor.reset();
+            }
+        }
+
+        if (m_connectionState.load() != ConnectionState::CONNECTING) {
+            co_await CleanupSSLSocket(socket.get());
+            co_return;
+        }
+
+        m_socket = std::move(socket);
         Debug::Log("Accepted TLS connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
         m_connectionState.store(ConnectionState::CONNECTED);
         Debug::Log("Notification transfer channel connected");
 
     } catch (std::system_error& error) {
+        std::lock_guard lock(m_acceptorMutex);
+        m_acceptor.reset();
         HandleAsioError(error.code());
         asio::co_spawn(m_context, Disconnect(), asio::detached);
     }
@@ -97,6 +122,27 @@ asio::awaitable<void> NotificationTransferChannel::Disconnect() {
 
     Debug::Log("Notification transfer channel disconnect requested");
     m_connectionState.store(ConnectionState::DISCONNECTING);
+
+    std::shared_ptr<TCPAcceptor> acceptor;
+    {
+        std::lock_guard lock(m_acceptorMutex);
+        acceptor = std::move(m_acceptor);
+    }
+
+    if (acceptor) {
+        std::error_code ec;
+        acceptor->cancel(ec);
+        if (ec && ec != asio::error::not_connected && ec != asio::error::bad_descriptor) {
+            HandleAsioError(ec);
+        }
+
+        ec.clear();
+        acceptor->close(ec);
+        if (ec && ec != asio::error::not_connected && ec != asio::error::bad_descriptor) {
+            HandleAsioError(ec);
+        }
+    }
+
     co_await CleanupConnection();
     m_connectionState.store(ConnectionState::DISCONNECTED);
     Debug::Log("Notification transfer channel disconnected");

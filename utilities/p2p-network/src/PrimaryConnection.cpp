@@ -6,6 +6,8 @@
 #include <Events.h>
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
+#include <filesystem>
+#include <fstream>
 
 static constexpr size_t HEARTBEAT_INTERVAL = 2000;
 static constexpr size_t HEARTBEAT_MONITOR_INTERVAL = 30000;
@@ -335,17 +337,52 @@ asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor() {
 }
 
 void PrimaryConnection::SavePairData(const InitialConnectionData& data) {
-    const std::string targetDataPath{"certs/" + boost::uuids::to_string(data.deviceInfo.deviceID) + "/data.JSON"};
+    const std::filesystem::path targetDataPath = std::filesystem::path("certs")
+        / boost::uuids::to_string(data.deviceInfo.deviceID)
+        / "data.JSON";
 
     nlohmann::json targetData;
     targetData["name"] = data.deviceInfo.deviceName;
     targetData["type"] = data.deviceInfo.deviceType;
 
-    std::ofstream file(targetDataPath);
+    std::error_code errorCode;
+    std::filesystem::create_directories(targetDataPath.parent_path(), errorCode);
+    if (errorCode) {
+        Debug::LogError("PrimaryConnection: Failed to create pair data directory '{}': {} ({})",
+                        std::filesystem::absolute(targetDataPath.parent_path()).string(), errorCode.message(), errorCode.value());
+        return;
+    }
+
+    std::ofstream file(targetDataPath, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        Debug::LogError("PrimaryConnection: Failed to open pair data file '{}'",
+                        std::filesystem::absolute(targetDataPath).string());
+        return;
+    }
+
     file << targetData.dump(4);
+    file.flush();
+    if (!file.good()) {
+        Debug::LogError("PrimaryConnection: Failed while writing pair data file '{}'",
+                        std::filesystem::absolute(targetDataPath).string());
+        return;
+    }
+
+    Debug::Log("PrimaryConnection: Saved pair data to '{}'", std::filesystem::absolute(targetDataPath).string());
 }
 
 void PrimaryConnection::SaveCertificate(const InitialConnectionData& data) const {
-    const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(data.deviceInfo.deviceID) + "/cert.key"};
-    CryptographicIdentityManager::SavePeerCertificate(targetCertificatePath, m_socket.get());
+    const std::filesystem::path targetCertificatePath = std::filesystem::path("certs")
+        / boost::uuids::to_string(data.deviceInfo.deviceID)
+        / "cert.key";
+
+    const bool saved = CryptographicIdentityManager::SavePeerCertificate(targetCertificatePath.string(), m_socket.get());
+    if (!saved) {
+        Debug::LogError("PrimaryConnection: Failed to save peer certificate to '{}'",
+                        std::filesystem::absolute(targetCertificatePath).string());
+        return;
+    }
+
+    Debug::Log("PrimaryConnection: Saved peer certificate to '{}'",
+               std::filesystem::absolute(targetCertificatePath).string());
 }

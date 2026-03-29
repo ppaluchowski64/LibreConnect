@@ -148,14 +148,15 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         co_return;
     }
 
-    if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
+    if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
         Disable();
         co_return;
     }
 
-    if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
-        Disable();
-        co_return;
+    if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
+        Debug::LogWarning(
+            "NotificationSyncModule: Battery optimization is still enabled; notification relay reliability may be reduced"
+        );
     }
 
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);

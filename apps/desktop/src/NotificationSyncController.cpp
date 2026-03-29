@@ -16,24 +16,67 @@ void NotificationSyncController::setNotificationSyncEnabled(const bool enabled)
 {
     auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
     m_requestedEnabled = enabled;
+    const ModuleState state = module->GetModuleState();
 
     if (enabled) {
         setEnabledState(true);
+        if (state == ModuleState::Enabled) {
+            setBusy(false);
+            setStatusMessage(QStringLiteral("Notification sync is enabled on the connected devices."));
+            return;
+        }
+
         setBusy(true);
+        if (state == ModuleState::Disabling) {
+            setStatusMessage(QStringLiteral("Stopping notification sync..."));
+            return;
+        }
+
         setStatusMessage(QStringLiteral("Starting notification sync..."));
-        module->Enable(true);
+        if (state == ModuleState::Disabled) {
+            module->Enable(true);
+        }
     } else {
         setEnabledState(false);
+        if (state == ModuleState::Disabled) {
+            setBusy(false);
+            setStatusMessage(QStringLiteral("Notification sync is disabled."));
+            return;
+        }
+
         setBusy(true);
+        if (state == ModuleState::Enabling) {
+            setStatusMessage(QStringLiteral("Starting notification sync..."));
+            return;
+        }
+
         setStatusMessage(QStringLiteral("Stopping notification sync..."));
-        module->Disable(true);
+        if (state == ModuleState::Enabled) {
+            module->Disable(true);
+        }
     }
 }
 
 void NotificationSyncController::refreshState()
 {
-    const auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
+    auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
     const ModuleState state = module->GetModuleState();
+
+    if (state == ModuleState::Enabled && !m_requestedEnabled) {
+        setEnabledState(false);
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Stopping notification sync..."));
+        module->Disable(true);
+        return;
+    }
+
+    if (state == ModuleState::Disabled && m_requestedEnabled) {
+        setEnabledState(true);
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Starting notification sync..."));
+        module->Enable(true);
+        return;
+    }
 
     if (state == ModuleState::Enabled) {
         setEnabledState(true);
