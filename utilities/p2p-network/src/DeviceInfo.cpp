@@ -20,7 +20,7 @@ DeviceInfo DeviceInfo::GetThisDeviceInfo() {
 
     __system_property_get("ro.product.model", model);
     __system_property_get("ro.product.manufacturer", manufacturer);
-    device.deviceName = fmt::format("{} {}", model, manufacturer);
+    device.deviceName = fmt::format("{} {}", manufacturer, model);
 
 #endif
 

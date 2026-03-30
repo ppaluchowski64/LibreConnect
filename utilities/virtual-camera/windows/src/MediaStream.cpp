@@ -10,17 +10,33 @@ extern "C++" __declspec(dllimport) bool InitializeCameraInstance(const GUID& cls
 
 static void GetCameraConfig(const GUID& clsid, UINT& width, UINT& height, UINT& fps, GUID& format)
 {
-	const std::wstring keyPath = L"SOFTWARE\\LibreConnect_VirtualCamera_Configs\\" + GUID_ToStringW(clsid);
-	std::wstring format_str = GUID_ToStringW(GUID_NULL);
+	const std::wstring keyPath = L"SOFTWARE\\LibreConnect_VirtualCamera_Configs\\" + GUID_ToStringW(clsid, false);
 	HKEY hKey;
 	if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyPath.c_str(), 0, KEY_READ, &hKey) == ERROR_SUCCESS)
 	{
 		DWORD w = 0, h = 0, f = 0, size = sizeof(DWORD);
-		DWORD format_size = (format_str.size() + 1) * sizeof(wchar_t);
 		if (RegQueryValueExW(hKey, L"Width", nullptr, nullptr, reinterpret_cast<LPBYTE>(&w), &size) == ERROR_SUCCESS) width = w;
 		if (RegQueryValueExW(hKey, L"Height", nullptr, nullptr, reinterpret_cast<LPBYTE>(&h), &size) == ERROR_SUCCESS) height = h;
 		if (RegQueryValueExW(hKey, L"Fps", nullptr, nullptr, reinterpret_cast<LPBYTE>(&f), &size) == ERROR_SUCCESS) fps = f;
-		if (RegQueryValueExW(hKey, L"Format", nullptr, nullptr, reinterpret_cast<LPBYTE>(&format_str[0]), &format_size) == ERROR_SUCCESS) CLSIDFromString(format_str.c_str(), &format);
+
+		DWORD formatType = 0;
+		DWORD formatSize = 0;
+		if (RegQueryValueExW(hKey, L"Format", nullptr, &formatType, nullptr, &formatSize) == ERROR_SUCCESS &&
+			formatType == REG_SZ &&
+			formatSize >= sizeof(wchar_t))
+		{
+			std::wstring formatStr(formatSize / sizeof(wchar_t), L'\0');
+			if (RegQueryValueExW(hKey, L"Format", nullptr, nullptr, reinterpret_cast<LPBYTE>(formatStr.data()), &formatSize) == ERROR_SUCCESS) {
+				if (!formatStr.empty() && formatStr.back() == L'\0') {
+					formatStr.pop_back();
+				}
+
+				GUID parsedFormat = GUID_NULL;
+				if (CLSIDFromString(formatStr.c_str(), &parsedFormat) == NOERROR) {
+					format = parsedFormat;
+				}
+			}
+		}
 
 		RegCloseKey(hKey);
 	}
@@ -41,47 +57,59 @@ HRESULT MediaStream::Configure(const GUID& clsid)
 
 	InitializeCameraInstance(_clsid, _width, _height, _format);
 
-    auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
+	auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
 
-    wil::com_ptr_nothrow<IMFMediaType> rgbType;
-    RETURN_IF_FAILED(MFCreateMediaType(&rgbType));
-    rgbType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    rgbType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-    MFSetAttributeSize(rgbType.get(), MF_MT_FRAME_SIZE, _width, _height);
-    rgbType->SetUINT32(MF_MT_DEFAULT_STRIDE, _width * 4);
-    rgbType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    rgbType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-    MFSetAttributeRatio(rgbType.get(), MF_MT_FRAME_RATE, _fps, 1);
+	wil::com_ptr_nothrow<IMFMediaType> rgbType;
+	RETURN_IF_FAILED(MFCreateMediaType(&rgbType));
+	rgbType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+	rgbType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+	MFSetAttributeSize(rgbType.get(), MF_MT_FRAME_SIZE, _width, _height);
+	rgbType->SetUINT32(MF_MT_DEFAULT_STRIDE, _width * 4);
+	rgbType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+	rgbType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+	MFSetAttributeRatio(rgbType.get(), MF_MT_FRAME_RATE, _fps, 1);
 
-    auto bitrate = static_cast<uint32_t>(_width * _height * 4 * 8 * _fps);
-    rgbType->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
-    MFSetAttributeRatio(rgbType.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    types[0] = rgbType.detach();
+	auto bitrate = static_cast<uint32_t>(_width * _height * 4 * 8 * _fps);
+	rgbType->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
+	MFSetAttributeRatio(rgbType.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
 
-    // NV12 (Optional but recommended)
-    if (types.size() > 1)
-    {
-        wil::com_ptr_nothrow<IMFMediaType> nv12Type;
-        RETURN_IF_FAILED(MFCreateMediaType(&nv12Type));
-        nv12Type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-        nv12Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
-        nv12Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-        nv12Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-        MFSetAttributeSize(nv12Type.get(), MF_MT_FRAME_SIZE, _width, _height);
-        nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, static_cast<UINT>(_width * 1.5));
-        MFSetAttributeRatio(nv12Type.get(), MF_MT_FRAME_RATE, _fps, 1);
+	// NV12 (Optional but recommended)
+	wil::com_ptr_nothrow<IMFMediaType> nv12Type;
+	if (types.size() > 1)
+	{
+		RETURN_IF_FAILED(MFCreateMediaType(&nv12Type));
+		nv12Type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+		nv12Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+		nv12Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+		nv12Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+		MFSetAttributeSize(nv12Type.get(), MF_MT_FRAME_SIZE, _width, _height);
+		nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, static_cast<UINT>(_width));
+		MFSetAttributeRatio(nv12Type.get(), MF_MT_FRAME_RATE, _fps, 1);
 
-        bitrate = static_cast<uint32_t>(_width * 1.5 * _height * 8 * _fps);
-        nv12Type->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
-        MFSetAttributeRatio(nv12Type.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-        types[1] = nv12Type.detach();
-    }
+		bitrate = static_cast<uint32_t>(_width * _height * 3 / 2 * 8 * _fps);
+		nv12Type->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
+		MFSetAttributeRatio(nv12Type.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+	}
+
+	// Prefer the configured format as the current media type.
+	if (_format == MFVideoFormat_NV12 && nv12Type)
+	{
+		types[0] = nv12Type.detach();
+		types[1] = rgbType.detach();
+	}
+	else
+	{
+		types[0] = rgbType.detach();
+		if (nv12Type) {
+			types[1] = nv12Type.detach();
+		}
+	}
 
     RETURN_IF_FAILED_MSG(MFCreateStreamDescriptor(_index, static_cast<DWORD>(types.size()), types.get(), &_descriptor), "MFCreateStreamDescriptor failed");
 
-    wil::com_ptr_nothrow<IMFMediaTypeHandler> handler;
-    RETURN_IF_FAILED(_descriptor->GetMediaTypeHandler(&handler));
-    RETURN_IF_FAILED(handler->SetCurrentMediaType(types[0]));
+	wil::com_ptr_nothrow<IMFMediaTypeHandler> handler;
+	RETURN_IF_FAILED(_descriptor->GetMediaTypeHandler(&handler));
+	RETURN_IF_FAILED(handler->SetCurrentMediaType(types[0]));
 
     return S_OK;
 }

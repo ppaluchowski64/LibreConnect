@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
-project(p_connect LANGUAGES C CXX ASM)
+project(p_connect LANGUAGES CXX C)
+enable_language(ASM)
 
 if (APPLE AND NOT IOS)
     enable_language(OBJCXX)
@@ -7,6 +8,8 @@ endif ()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(ENABLE_TESTS ON)
 set(ENABLE_MOBILE_TEST_PROGRAMS OFF)
 
@@ -73,13 +76,7 @@ else ()
     find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Multimedia)
 endif ()
 
-if ((WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE)) AND CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
-endif ()
-
-if(ANDROID OR IOS)
-    set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
-endif()
+set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
 
 FetchContent_Declare(
         debug-log
@@ -119,13 +116,14 @@ endif()
 
 if(WIN32)
     target_compile_definitions(project_defaults PUBLIC _WIN32_WINNT=0x0601)
+    target_compile_definitions(project_defaults PUBLIC BOOST_ALL_NO_LIB)
 endif()
 
 BuildStaticLibrary(network-component-pc utilities/network project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core boost::boost)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
-BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
+BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
 
 add_subdirectory("utilities/virtual-camera")

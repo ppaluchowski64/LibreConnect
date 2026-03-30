@@ -28,10 +28,12 @@ default_env_content = """
 # Allowed values:
 #   Desktop
 #   Android
+#   All
 #
 # Example:
 #   BUILD_FOR=Desktop
 #   BUILD_FOR=Android
+#   BUILD_FOR=All
 #
 BUILD_FOR=
 
@@ -176,9 +178,19 @@ check_env_var("DISABLE_DEBUG")
 check_env_var("BUILD_FOR")
 check_env_var("BUILD_TESTS")
 
-if os.environ.get("BUILD_FOR") == "Desktop":
+build_for = os.environ.get("BUILD_FOR")
+
+if build_for == "Desktop":
     check_env_var("QT_DIR_DESKTOP")
-elif os.environ.get("BUILD_FOR") == "Android":
+elif build_for == "Android":
+    check_env_var("QT_DIR_ANDROID")
+    check_env_var("ANDROID_NDK_DIR")
+    check_env_var("ANDROID_SDK_DIR")
+    check_env_var("ANDROID_ARCH")
+    check_env_var("ANDROID_CLANG_VERSION")
+    check_env_var("ANDROID_OS_API_LEVEL")
+elif build_for == "All":
+    check_env_var("QT_DIR_DESKTOP")
     check_env_var("QT_DIR_ANDROID")
     check_env_var("ANDROID_NDK_DIR")
     check_env_var("ANDROID_SDK_DIR")
@@ -276,16 +288,21 @@ def install_linux_dependencies():
         sys.exit(e.returncode)
 
 
-def run_conan_install(build_type: str):
+def run_conan_install(build_type: str, output_folder: Path):
     cmd_parts = [
         "conan",
         "install",
         ".",
+        f"--output-folder={output_folder}",
+        "-c", "tools.cmake.cmaketoolchain:generator=Ninja",
         common_build_missing,
         common_generator_flags,
         f"-s compiler.cppstd={cppstd}",
         f"-s build_type={build_type}"
     ]
+
+    if platform == "win32":
+        cmd_parts.append("-s compiler.runtime=dynamic")
 
     if extra_flags:
         cmd_parts.append(extra_flags)
@@ -299,7 +316,7 @@ def run_conan_install(build_type: str):
         print(f"conan install failed for build_type={build_type} (exit {result.returncode})")
         sys.exit(result.returncode)
 
-def run_conan_install_android(build_type: str):
+def run_conan_install_android(build_type: str, output_folder: Path):
     arch_type = os.environ.get("ANDROID_ARCH")
     ndk = Path(os.environ.get("ANDROID_NDK_DIR")).expanduser()
     clang_version = os.environ.get("ANDROID_CLANG_VERSION")
@@ -358,6 +375,7 @@ def run_conan_install_android(build_type: str):
         cmd_args = [
             "conan", "install", ".",
             "--build=missing",
+            f"--output-folder={output_folder}",
             "-pr:h", tmp_profile_path,
             "-pr:b", "default",
 
@@ -454,11 +472,7 @@ if platform.startswith("linux"):
         with open(target, "a") as f:
             f.write(export_line)
 
-shutil.rmtree("./build", ignore_errors=True)
-
-
-
-if os.environ.get("BUILD_FOR") == "Desktop":
+def prepare_desktop_deps():
     def run(cmd, cwd=None):
         subprocess.run(cmd, cwd=cwd, check=True)
 
@@ -550,11 +564,27 @@ if os.environ.get("BUILD_FOR") == "Desktop":
         shutil.copytree(f"{ffmpeg_path}/include", "./build/ffmpeg/include", dirs_exist_ok=True)
         shutil.copytree(f"{ffmpeg_path}/lib", "./build/ffmpeg/lib", dirs_exist_ok=True)
 
-if os.environ.get("BUILD_FOR") == "Desktop":
+def run_desktop():
+    build_root = Path("build") / "desktop"
+    build_root.mkdir(parents=True, exist_ok=True)
+    prepare_desktop_deps()
     if not disable_debug:
-        run_conan_install("Debug")
-    run_conan_install("Release")
-elif os.environ.get("BUILD_FOR") == "Android":
+        run_conan_install("Debug", build_root / "Debug")
+    run_conan_install("Release", build_root / "Release")
+
+def run_android():
+    build_dir = Path("build") / "android"
+    build_dir.mkdir(parents=True, exist_ok=True)
     if not disable_debug:
-        run_conan_install_android("Debug")
-    run_conan_install_android("Release")
+        run_conan_install_android("Debug", build_dir)
+    run_conan_install_android("Release", build_dir)
+
+shutil.rmtree("build", ignore_errors=True)
+
+if build_for == "Desktop":
+    run_desktop()
+elif build_for == "Android":
+    run_android()
+elif build_for == "All":
+    run_desktop()
+    run_android()

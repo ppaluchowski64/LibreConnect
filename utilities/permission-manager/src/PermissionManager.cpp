@@ -3,12 +3,74 @@
 #include <PermissionManager.h>
 #include <QtCore/qcoreapplication_platform.h>
 #include <QtCore/private/qandroidextras_p.h>
-#include <QFutureWatcher>
 #include <QtGui/QGuiApplication>
+#include <atomic>
+#include <chrono>
 
 #include "DebugLog.h"
 
 namespace {
+using namespace std::chrono_literals;
+
+constexpr std::chrono::milliseconds kPermissionFlowRetryDelay = 50ms;
+constexpr std::chrono::seconds kPermissionRequestTimeout = 120s;
+
+std::atomic<bool> g_permissionFlowInProgress{false};
+
+class PermissionFlowLock final {
+public:
+    explicit PermissionFlowLock(const bool locked = false) noexcept : m_locked(locked) {}
+    PermissionFlowLock(PermissionFlowLock&& other) noexcept : m_locked(other.m_locked) {
+        other.m_locked = false;
+    }
+    PermissionFlowLock& operator=(PermissionFlowLock&& other) noexcept {
+        if (this != &other) {
+            Release();
+            m_locked = other.m_locked;
+            other.m_locked = false;
+        }
+        return *this;
+    }
+
+    PermissionFlowLock(const PermissionFlowLock&) = delete;
+    PermissionFlowLock& operator=(const PermissionFlowLock&) = delete;
+
+    ~PermissionFlowLock() {
+        Release();
+    }
+
+private:
+    void Release() noexcept {
+        if (m_locked) {
+            g_permissionFlowInProgress.store(false, std::memory_order_release);
+            m_locked = false;
+        }
+    }
+
+    bool m_locked{false};
+};
+
+asio::awaitable<PermissionFlowLock> AcquirePermissionFlowLock() {
+    const auto executor = co_await asio::this_coro::executor;
+    asio::steady_timer waitTimer(executor);
+
+    while (true) {
+        bool expected = false;
+        if (g_permissionFlowInProgress.compare_exchange_weak(
+            expected,
+            true,
+            std::memory_order_acq_rel,
+            std::memory_order_acquire
+        )) {
+            co_return PermissionFlowLock(true);
+        }
+
+        waitTimer.expires_after(kPermissionFlowRetryDelay);
+        asio::error_code ec;
+        co_await waitTimer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+    }
+}
+
 #ifdef ANDROID_DEVICE
 bool StartSettingsActivity(const QJniObject& intent) {
     if (!intent.isValid()) {
@@ -22,7 +84,7 @@ bool StartSettingsActivity(const QJniObject& intent) {
     );
 
     if (activity.isValid()) {
-        activity.callObjectMethod(
+        activity.callMethod<void>(
             "startActivity",
             "(Landroid/content/Intent;)V",
             intent.object<jobject>()
@@ -49,6 +111,8 @@ bool StartSettingsActivity(const QJniObject& intent) {
 
 
 asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+
     if (QNativeInterface::QAndroidApplication::sdkVersion() < 23) {
         co_return true;
     }
@@ -106,6 +170,8 @@ asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() 
 }
 
 asio::awaitable<bool> PermissionManager::RequestNotificationAccessPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+
     if (IsNotificationListenerEnabled()) {
         co_return true;
     }
@@ -142,6 +208,8 @@ asio::awaitable<bool> PermissionManager::RequestNotificationAccessPermission() {
 }
 
 asio::awaitable<bool> PermissionManager::RequestNotificationEmitPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+
     if (QNativeInterface::QAndroidApplication::sdkVersion() < 33) {
         co_return true;
     }
@@ -150,10 +218,13 @@ asio::awaitable<bool> PermissionManager::RequestNotificationEmitPermission() {
 }
 
 asio::awaitable<bool> PermissionManager::RequestCameraAccessPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
     co_return co_await RequestPermission(QString("android.permission.CAMERA"));
 }
 
 asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+
     if (QNativeInterface::QAndroidApplication::sdkVersion() < 30) {
         co_return co_await RequestPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE"));
     }
@@ -184,20 +255,42 @@ asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermissio
 
 asio::awaitable<void> PermissionManager::WaitForReturnToApp() {
     const auto executor = co_await asio::this_coro::executor;
-    asio::steady_timer timer(executor);
-    timer.expires_at(std::chrono::steady_clock::time_point::max());
+    asio::steady_timer phaseTimer(executor);
+    bool appWentBackground = (qApp->applicationState() != Qt::ApplicationActive);
 
-    const QMetaObject::Connection connection = QObject::connect(
+    // Some settings flows may not background the app (overlay/popup). If no
+    // transition happens shortly, continue instead of waiting indefinitely.
+    phaseTimer.expires_after(std::chrono::milliseconds(1500));
+    QMetaObject::Connection connection = QObject::connect(
         qApp, &QGuiApplication::applicationStateChanged,
-        [&timer](const Qt::ApplicationState state) {
-            if (state == Qt::ApplicationActive) {
-                timer.cancel();
+        [&phaseTimer, &appWentBackground](const Qt::ApplicationState state) {
+            if (state != Qt::ApplicationActive) {
+                appWentBackground = true;
+                phaseTimer.cancel();
             }
         }
     );
 
     asio::error_code ec;
-    co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+    co_await phaseTimer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+    QObject::disconnect(connection);
+
+    if (!appWentBackground || qApp->applicationState() == Qt::ApplicationActive) {
+        co_return;
+    }
+
+    phaseTimer.expires_after(std::chrono::seconds(120));
+    connection = QObject::connect(
+        qApp, &QGuiApplication::applicationStateChanged,
+        [&phaseTimer](const Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive) {
+                phaseTimer.cancel();
+            }
+        }
+    );
+
+    ec.clear();
+    co_await phaseTimer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
     QObject::disconnect(connection);
 }
 
@@ -209,25 +302,23 @@ asio::awaitable<bool> PermissionManager::RequestPermission(QString&& permission)
     }
 
     const QFuture<QtAndroidPrivate::PermissionResult> future = QtAndroidPrivate::requestPermission(permission);
-
     const auto executor = co_await asio::this_coro::executor;
-    asio::steady_timer timer(executor);
+    asio::steady_timer pollTimer(executor);
+    const std::chrono::time_point<std::chrono::steady_clock> timeoutAt = std::chrono::steady_clock::now() + kPermissionRequestTimeout;
 
-    /*
-     * 2 minutes timeout is enough, right????
-     */
-    timer.expires_at(std::chrono::steady_clock::now() + std::chrono::seconds(120));
+    while (!future.isFinished()) {
+        if (std::chrono::steady_clock::now() >= timeoutAt) {
+            Debug::LogWarning("Timed out waiting for permission result: {}", permission.toStdString());
+            co_return false;
+        }
 
-    QFutureWatcher<QtAndroidPrivate::PermissionResult> watcher;
-    QObject::connect(&watcher, &QFutureWatcher<QtAndroidPrivate::PermissionResult>::finished, [&timer]() {
-        timer.cancel();
-    });
+        pollTimer.expires_after(kPermissionFlowRetryDelay);
+        asio::error_code ec;
+        co_await pollTimer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+    }
 
-    watcher.setFuture(future);
-
-    asio::error_code ec;
-    co_await timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
-    co_return future.result() == QtAndroidPrivate::PermissionResult::Authorized;
+    const QtAndroidPrivate::PermissionResult result = future.result();
+    co_return result == QtAndroidPrivate::PermissionResult::Authorized;
 }
 
 bool PermissionManager::IsNotificationListenerEnabled() {

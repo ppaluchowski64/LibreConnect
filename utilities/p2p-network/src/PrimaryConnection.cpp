@@ -6,6 +6,8 @@
 #include <Events.h>
 #include <PrimaryConnection.h>
 #include <asio/buffer.hpp>
+#include <filesystem>
+#include <fstream>
 
 static constexpr size_t HEARTBEAT_INTERVAL = 2000;
 static constexpr size_t HEARTBEAT_MONITOR_INTERVAL = 30000;
@@ -172,6 +174,11 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
     if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
+        if (callConnectionManagerDisconnect) {
+            const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
+            ConnectionManager::SendEvent(event);
+        }
+
         co_return;
     }
 
@@ -184,7 +191,8 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     Debug::Log("PrimaryConnection: Disconnected TLS primary connection successfully.");
 
     if (callConnectionManagerDisconnect) {
-        ConnectionManager::Disconnect(errorCode);
+        const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
+        ConnectionManager::SendEvent(event);
     }
 }
 
@@ -272,19 +280,8 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
                 continue;
             }
 
-            if (!package) {
-                Debug::LogError("PrimaryConnection: CoReceive produced null package (type={}, size={})",
-                                static_cast<int>(header.type), header.size);
-            } else {
-                Debug::Log("PrimaryConnection: Enqueuing package ptr={}, type={}, size={}",
-                           static_cast<const void*>(package.get()),
-                           static_cast<int>(header.type),
-                           header.size);
-
-
-                m_packageIn.enqueue(std::move(package));
-                m_receiveFlag->Signal();
-            }
+            m_packageIn.enqueue(std::move(package));
+            m_receiveFlag->Signal();
         }
     } catch (std::system_error& error) {
         if (error.code() != asio::error::operation_aborted && error.code() != asio::error::eof) {
@@ -340,17 +337,52 @@ asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor() {
 }
 
 void PrimaryConnection::SavePairData(const InitialConnectionData& data) {
-    const std::string targetDataPath{"certs/" + boost::uuids::to_string(data.deviceInfo.deviceID) + "/data.JSON"};
+    const std::filesystem::path targetDataPath = std::filesystem::path("certs")
+        / boost::uuids::to_string(data.deviceInfo.deviceID)
+        / "data.JSON";
 
     nlohmann::json targetData;
     targetData["name"] = data.deviceInfo.deviceName;
     targetData["type"] = data.deviceInfo.deviceType;
 
-    std::ofstream file(targetDataPath);
+    std::error_code errorCode;
+    std::filesystem::create_directories(targetDataPath.parent_path(), errorCode);
+    if (errorCode) {
+        Debug::LogError("PrimaryConnection: Failed to create pair data directory '{}': {} ({})",
+                        std::filesystem::absolute(targetDataPath.parent_path()).string(), errorCode.message(), errorCode.value());
+        return;
+    }
+
+    std::ofstream file(targetDataPath, std::ios::binary | std::ios::trunc);
+    if (!file.is_open()) {
+        Debug::LogError("PrimaryConnection: Failed to open pair data file '{}'",
+                        std::filesystem::absolute(targetDataPath).string());
+        return;
+    }
+
     file << targetData.dump(4);
+    file.flush();
+    if (!file.good()) {
+        Debug::LogError("PrimaryConnection: Failed while writing pair data file '{}'",
+                        std::filesystem::absolute(targetDataPath).string());
+        return;
+    }
+
+    Debug::Log("PrimaryConnection: Saved pair data to '{}'", std::filesystem::absolute(targetDataPath).string());
 }
 
 void PrimaryConnection::SaveCertificate(const InitialConnectionData& data) const {
-    const std::string targetCertificatePath{"certs/" + boost::uuids::to_string(data.deviceInfo.deviceID) + "/cert.key"};
-    CryptographicIdentityManager::SavePeerCertificate(targetCertificatePath, m_socket.get());
+    const std::filesystem::path targetCertificatePath = std::filesystem::path("certs")
+        / boost::uuids::to_string(data.deviceInfo.deviceID)
+        / "cert.key";
+
+    const bool saved = CryptographicIdentityManager::SavePeerCertificate(targetCertificatePath.string(), m_socket.get());
+    if (!saved) {
+        Debug::LogError("PrimaryConnection: Failed to save peer certificate to '{}'",
+                        std::filesystem::absolute(targetCertificatePath).string());
+        return;
+    }
+
+    Debug::Log("PrimaryConnection: Saved peer certificate to '{}'",
+               std::filesystem::absolute(targetCertificatePath).string());
 }

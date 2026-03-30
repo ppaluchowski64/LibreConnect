@@ -60,7 +60,7 @@ conandata.yml            # Dependency versions
 
 ### Build/tooling
 
-- [CMake](https://cmake.org/) `4.2.2` (via Conan tool requirement)
+- [CMake](https://cmake.org/) `4.3.0` (via Conan tool requirement)
 - [Ninja](https://ninja-build.org/) `1.13.2`
 - [Conan](https://conan.io/) (package/dependency manager)
 - [pkgconf](https://github.com/pkgconf/pkgconf) `2.5.1`
@@ -70,10 +70,10 @@ conandata.yml            # Dependency versions
 
 - [Qt 6](https://www.qt.io/product/qt6) (Core, Gui, Quick, Qml, Multimedia, and DBus on Linux desktop)
 - [FFmpeg](https://ffmpeg.org/) `7.1.3`
-- [OpenSSL](https://www.openssl.org/) `3.5.0`
-- [Asio](https://think-async.com/Asio/) `1.34.2`
-- [Boost](https://www.boost.org/) `1.87.0`
-- [fmt](https://fmt.dev/) `12.0.0`
+- [OpenSSL](https://www.openssl.org/) `3.6.1`
+- [Asio](https://think-async.com/Asio/) `1.36.0`
+- [Boost](https://www.boost.org/) `1.90.0`
+- [fmt](https://fmt.dev/) `12.1.0`
 - [magic_enum](https://github.com/Neargye/magic_enum) `0.9.7`
 - [nlohmann/json](https://github.com/nlohmann/json) `3.12.0`
 - [concurrentqueue](https://github.com/cameron314/concurrentqueue) `1.0.4`

@@ -1,14 +1,14 @@
 requirements:
   tools:
     - "ninja/1.13.2"
-    - "cmake/4.2.2"
+    - "cmake/4.3.0"
     - "pkgconf/2.5.1"
   common:
-    - "boost/1.87.0"
-    - "openssl/3.5.0"
-    - "asio/1.34.2"
+    - "boost/1.90.0"
+    - "openssl/3.6.1"
+    - "asio/1.36.0"
     - "concurrentqueue/1.0.4"
-    - "fmt/12.0.0"
+    - "fmt/12.1.0"
     - "magic_enum/0.9.7"
     - "nlohmann_json/3.12.0"
     - "libsrtp/2.6.0"

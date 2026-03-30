@@ -4,6 +4,7 @@
 #include <atomic>
 #include <asio.hpp>
 #include <asio/awaitable.hpp>
+#include <coroutine>
 #include <srtp2/srtp.h>
 #include <AsioCommon.h>
 
@@ -24,6 +25,7 @@ namespace SRTP {
         void Bind(const UDPEndpoint& endpoint);
         void Bind(UDPEndpoint&& endpoint);
         UDPEndpoint Bind();
+        void Close();
 
         void Receive(std::vector<uint8_t>& payload);
         void Send(const std::vector<uint8_t>& payloadData);
@@ -32,11 +34,16 @@ namespace SRTP {
         asio::awaitable<void> AsyncReceive(std::vector<uint8_t>& payload);
         asio::awaitable<void> AsyncSend(const std::vector<uint8_t>& payloadData);
         asio::awaitable<void> AsyncSend(const uint8_t* payload, size_t size);
+        asio::awaitable<void> AsyncSendNal(const uint8_t* payload, size_t size, uint32_t timestamp, bool marker);
+        bool ConsumeReceiveLossSignal();
+
+        uint32_t NextTimestamp();
 
         static std::vector<uint8_t> GenerateKey();
 
     private:
         void BuildRtpHeader(void* dst, uint32_t timestamp, uint16_t sequence, bool marker) const;
+        void ConfigureSocketBuffers();
         static srtp_t CreateSrtpSession(const std::vector<uint8_t>& key, uint32_t ssrc, srtp_ssrc_type_t type);
 
         UDPSocket m_socket;
@@ -53,6 +60,14 @@ namespace SRTP {
 
         std::atomic<uint16_t> m_sequence{0};
         std::atomic<uint32_t> m_timestamp{0};
+        std::atomic<uint32_t> m_receiveLossSignal{0};
+
+        std::atomic<bool> m_isReceiving{false};
+
+        std::atomic<bool> m_stopReceiving{false};
+        asio::steady_timer m_stopReceivingSignal;
+
+
     };
 }
 

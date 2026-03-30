@@ -8,6 +8,9 @@
 
 #include <AsioCommon.h>
 #include <ThreadPool.h>
+#include <ConnectionManager.h>
+
+#include <QEvent>
 
 typedef asio::io_context IOContext;
 
@@ -33,6 +36,29 @@ enum class ModuleFailReason : uint8_t
     Unknown                   // Fallback for unmapped or future errors
 };
 
+enum class ModuleType : uint8_t {
+    Unknown = 0,              // Invalid state
+    NotificationSync,
+    NetworkCamera,
+    NetworkFileSystem
+};
+
+class ModuleErrorEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 300);
+    explicit ModuleErrorEvent(const ModuleFailReason failReason, const ModuleType type) : QEvent(Type), m_error(failReason), m_moduleType(type) {}
+    ModuleFailReason GetError() const { return m_error; }
+    ModuleType GetModuleType() const { return m_moduleType; }
+
+    ModuleErrorEvent* clone() const override {
+        return new ModuleErrorEvent(*this);
+    }
+
+private:
+    ModuleFailReason m_error;
+    ModuleType m_moduleType;
+};
+
 constexpr const char* APPLICATION_NAME = "LibreConnect";
 
 class BaseModule : public std::enable_shared_from_this<BaseModule> {
@@ -40,9 +66,12 @@ public:
     explicit BaseModule() : m_context(ThreadPool::GetContext()), m_moduleStrand(asio::make_strand(m_context)) {}
     virtual ~BaseModule() = default;
 
-    void Initialize() {
+    void Initialize(const bool disableWarnings = false) {
         if (GetModuleState() != ModuleState::Uninitialized) {
-            Debug::LogWarning("[Module::Initialize] Module already initialized");
+            if (!disableWarnings) {
+                Debug::LogWarning("[Module::Initialize] Module already initialized");
+            }
+
             return;
         }
 
@@ -66,7 +95,15 @@ public:
 
     asio::awaitable<void> EnableAwaitable(const bool disableWarnings = false) {
         const std::shared_ptr<BaseModule> instance = shared_from_this();
-        const ModuleState state = GetModuleState();
+        ModuleState state = GetModuleState();
+
+        if (state == ModuleState::Uninitialized) {
+            SetModuleState(ModuleState::Initializing);
+            EnableResponseCallbacks();
+            OnInitialize();
+            SetModuleState(ModuleState::Disabled);
+            state = ModuleState::Disabled;
+        }
 
         if (state != ModuleState::Disabled) {
             if (disableWarnings) {
@@ -176,6 +213,19 @@ protected:
     virtual asio::awaitable<void> OnEnable() = 0;
     virtual asio::awaitable<void> OnDisable() = 0;
     virtual asio::awaitable<void> OnShutdown() = 0;
+
+    virtual const char* GetModuleName() const {
+        return "Invalid Module";
+    }
+
+    virtual ModuleType GetModuleType() const {
+        return ModuleType::Unknown;
+    }
+
+    void ProcessError(const ModuleFailReason reason) const {
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleErrorEvent>(reason, GetModuleType());
+        ConnectionManager::SendEvent(event);
+    }
 };
 
 #endif //BASE_MODULE_H

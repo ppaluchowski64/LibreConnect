@@ -251,14 +251,14 @@ function(LinkFFMPEGLibs target)
         file(GLOB FFMPEG_LIBS ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib/*.lib)
 
         if(NOT FFMPEG_LIBS)
-            message(WARNING "No FFmpeg .lib files found in ${FFMPEG_BIN_DIR}.")
+            message(WARNING "No FFmpeg .lib files found in ${CMAKE_SOURCE_DIR}/build/ffmpeg/lib.")
         else()
             target_link_libraries(${target} PUBLIC ${FFMPEG_LIBS})
         endif()
 
         add_custom_command(TARGET ${target} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_directory
-                ${CMAKE_BINARY_DIR}/ffmpeg/bin
+                ${CMAKE_SOURCE_DIR}/build/ffmpeg/bin
                 $<TARGET_FILE_DIR:${target}>
         )
     elseif(UNIX AND NOT ANDROID AND NOT IOS)

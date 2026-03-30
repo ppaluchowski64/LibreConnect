@@ -22,6 +22,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     Debug::Log("Post entry requested. Source: {}, Destination: {}", path.string(), destination.string());
     if (!std::filesystem::exists(path)) {
         Debug::LogError("File {} does not exist", path.string());
+        ProcessError(ModuleFailReason::IncorrectConfig);
         co_return;
     }
 
@@ -29,6 +30,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     if (!std::filesystem::is_directory(destination)) {
         Debug::LogError("Destination should be a directory ({})", destination.string());
+        ProcessError(ModuleFailReason::IncorrectConfig);
         co_return;
     }
 
@@ -49,6 +51,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), size_t{totalTransferSize}, isDirectory);
     if (!response.has_value()) {
+        ProcessError(ModuleFailReason::Timeout);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
         co_return;
@@ -59,6 +62,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     if (channelIndex >= TRANSFER_CHANNELS_COUNT) {
         Debug::LogError("Transfer channel index {} is out of range", channelIndex);
+        ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
         co_return;
     }
@@ -109,6 +113,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         if (!entry.GetPath().has_value() || !entry.GetName().has_value()) {
             Debug::LogError("Missing file path");
+            ProcessError(ModuleFailReason::IncorrectConfig);
             ConnectionManager::Disconnect();
             co_return;
         }
@@ -287,3 +292,12 @@ asio::awaitable<void> FileShareModule::OnShutdown() {
     m_transferChannels.clear();
     co_return;
 }
+
+const char* FileShareModule::GetModuleName() const {
+    return "FileShareModule";
+}
+
+ModuleType FileShareModule::GetModuleType() const {
+    return ModuleType::NetworkFileSystem;
+}
+

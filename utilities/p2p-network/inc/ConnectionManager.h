@@ -59,13 +59,13 @@ public:
 
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE);
         const size_t requestID = s_instance->m_currentRequestID.fetch_add(1);
-        s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
 
         const std::shared_ptr<AwaitableFlag> flag = std::make_shared<AwaitableFlag>(
             s_instance->m_context.get_executor()
         );
 
         s_instance->m_requestAwaitableMap.InsertOrAssign(requestID, flag);
+        s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
         co_await flag->Wait();
         s_instance->m_requestAwaitableMap.Erase(requestID);
 

@@ -1,13 +1,6 @@
 #pragma once
 #include <QObject>
 
-#ifdef Q_OS_ANDROID
-#include <QJniObject>
-#endif
-
-#include <Scanner.h>
-#include <ConnectionManager.h>
-
 class AndroidAdvertiser : public QObject
 {
     Q_OBJECT
@@ -28,10 +21,5 @@ signals:
     void runningChanged();
 
 private:
-    bool m_hasLock = false;
     bool m_running = false;
-
-#ifdef Q_OS_ANDROID
-    QJniObject m_multicastLock;
-#endif
 };

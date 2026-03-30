@@ -8,10 +8,6 @@ ApplicationWindow {
     height: 640
     title: "Camera Utils"
 
-    CameraBackend {
-        id: backend
-    }
-
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 20

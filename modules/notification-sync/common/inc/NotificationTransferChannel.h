@@ -2,6 +2,8 @@
 #define NOTIFICATIONLISTENER_KT_NOTIFICATIONTRANSFERCHANNEL_H
 
 #include <filesystem>
+#include <memory>
+#include <mutex>
 
 #include <asio.hpp>
 #include <asio/ssl.hpp>
@@ -31,12 +33,18 @@ public:
     asio::awaitable<std::optional<NotificationPacket>> Receive();
 
 private:
+    asio::awaitable<void> WaitForIoSlot(std::atomic<bool>& flag) const;
+
     IOContext& m_context;
     std::unique_ptr<SSLSocket> m_socket;
     std::shared_ptr<SSLContext> m_sslContext;
     std::vector<uint8_t> m_buffer;
     std::atomic<bool> m_used{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
+    std::atomic<bool> m_readInProgress{false};
+    std::atomic<bool> m_writeInProgress{false};
+    std::mutex m_acceptorMutex;
+    std::shared_ptr<TCPAcceptor> m_acceptor;
 };
 
 #endif //NOTIFICATIONLISTENER_KT_NOTIFICATIONTRANSFERCHANNEL_H

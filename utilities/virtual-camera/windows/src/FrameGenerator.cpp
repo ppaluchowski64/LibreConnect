@@ -257,9 +257,14 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 	RETURN_IF_FAILED(mediaBuffer->QueryInterface(IID_PPV_ARGS(&buffer2D)));
 	RETURN_IF_FAILED(buffer2D->Lock2DSize(MF2DBuffer_LockFlags_Write, &scanline, &pitch, &start, &length));
 
-	if (_format == MFVideoFormat_RGB32)
+	const bool sourceRgb32 = (_format == MFVideoFormat_RGB32 || _format == MFVideoFormat_ARGB32);
+	const bool sourceNv12 = (_format == MFVideoFormat_NV12);
+	const bool outputRgb32 = (format == MFVideoFormat_RGB32 || format == MFVideoFormat_ARGB32);
+	const bool outputNv12 = (format == MFVideoFormat_NV12);
+
+	if (sourceRgb32)
 	{
-		if (format == MFVideoFormat_RGB32)
+		if (outputRgb32)
 		{
 			// Direct copy
 			UINT expectedStride = _width * 4;
@@ -281,13 +286,13 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 				}
 			}
 		}
-		else if (format == MFVideoFormat_NV12)
+		else if (outputNv12)
 		{
 			// Convert RGB32 to NV12
 			RETURN_IF_FAILED(RGB32ToNV12(frame.data.data(), (ULONG)frame.data.size(), _width * 4, _width, _height, scanline, length, pitch));
 		}
 	}
-	else if (_format == MFVideoFormat_NV12 && format == MFVideoFormat_NV12)
+	else if (sourceNv12 && outputNv12)
 	{
 		// Direct copy NV12
 		UINT expectedStride = _width;
@@ -311,6 +316,16 @@ HRESULT FrameGenerator::GenerateFromExternal(IMFSample* sample, const GUID& clsi
 				memcpy(uvDest + y * pitch, uvSrc + y * expectedStride, expectedStride);
 			}
 		}
+	}
+	else if (sourceNv12 && outputRgb32)
+	{
+		// Convert NV12 source from shared memory to RGB32 output sample.
+		RETURN_IF_FAILED(NV12ToRGB32(frame.data.data(), static_cast<ULONG>(frame.data.size()), _width, _width, _height, scanline, length, pitch));
+	}
+	else
+	{
+		buffer2D->Unlock2D();
+		return E_NOTIMPL;
 	}
 
 	buffer2D->Unlock2D();

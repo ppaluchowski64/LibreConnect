@@ -6,6 +6,8 @@
 #include <SRTP_Stream.h>
 #include <CameraSpecification.h>
 #include <VirtualCamera.h>
+#include <atomic>
+#include <cstdint>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -26,11 +28,11 @@ public:
     void SetCameraSettings(CameraSettings settings);
 
 private:
-    void StartStream();
-    void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer) const;
-    asio::awaitable<void> ReceiveFrames() const;
+    asio::awaitable<void> StartStream();
+    void ProcessEncodedFrame(const std::vector<uint8_t>& frameBuffer);
+    asio::awaitable<void> ReceiveFrames();
 
-    std::unique_ptr<SRTP::Stream> m_videoStream;
+    std::shared_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
     std::vector<CameraSpecification> m_camerasSpecification;
@@ -43,7 +45,21 @@ private:
     const AVCodec* m_codec{nullptr};
 
     AVFrame* m_frame{nullptr};
+    AVFrame* m_frameNv12{nullptr};
     AVPacket* m_packet{nullptr};
+    SwsContext* m_swsContext{nullptr};
+    AVPixelFormat m_swsSrcFormat{AV_PIX_FMT_NONE};
+    int m_swsWidth{0};
+    int m_swsHeight{0};
+    int m_swsDstWidth{0};
+    int m_swsDstHeight{0};
+    bool m_seenSps{false};
+    bool m_seenPps{false};
+    std::atomic<bool> m_waitForIdrAfterLoss{false};
+    std::atomic<uint64_t> m_waitForIdrStartMs{0};
+    std::atomic<uint32_t> m_waitForIdrDroppedFrames{0};
+    std::atomic<bool> m_acceptFrames{false};
+    std::atomic<bool> m_receiveFramesRunning{false};
 
 protected:
     void EnableResponseCallbacks() override;
@@ -54,6 +70,10 @@ protected:
     asio::awaitable<void> OnDisable() override;
     asio::awaitable<void> OnShutdown() override;
 
+    const char* GetModuleName() const override;
+    ModuleType GetModuleType() const override;
+
 };
 
 #endif //NETWORK_CAMERA_MODULE_H
+
