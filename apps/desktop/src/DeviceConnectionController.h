@@ -4,6 +4,7 @@
 #include <QPointer>
 #include <QEvent>
 #include <QString>
+#include <QVariantList>
 #include <memory>
 
 #include <ConnectionManager.h>
@@ -17,6 +18,7 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(bool connected READ connected NOTIFY connectedChanged)
     Q_PROPERTY(bool pending   READ pending   NOTIFY pendingChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
+    Q_PROPERTY(bool hasPairedDevices READ hasPairedDevices NOTIFY pairedDevicesChanged)
     Q_PROPERTY(bool verificationPending READ verificationPending NOTIFY verificationPendingChanged)
     Q_PROPERTY(int verificationTriesLeft READ verificationTriesLeft NOTIFY verificationTriesLeftChanged)
     Q_PROPERTY(QString verificationError READ verificationError NOTIFY verificationErrorChanged)
@@ -27,6 +29,7 @@ public:
     bool connected()  const { return m_connected; }
     bool pending()    const { return m_pending; }
     QString lastError() const { return m_lastError; }
+    bool hasPairedDevices() const { return m_hasPairedDevices; }
     bool verificationPending() const { return m_verificationPending; }
     int verificationTriesLeft() const { return m_verificationTriesLeft; }
     QString verificationError() const { return m_verificationError; }
@@ -36,13 +39,17 @@ public:
                                int mode);
 
     Q_INVOKABLE void disconnect();
+    Q_INVOKABLE QVariantList getPairedDevices();
+    Q_INVOKABLE bool removePairedDevice(const QString& deviceId);
     Q_INVOKABLE void submitVerificationCode(const QString& code);
     Q_INVOKABLE void cancelVerification();
+    Q_INVOKABLE void refreshPairedDevices();
 
     signals:
         void connectedChanged();
     void pendingChanged();
     void lastErrorChanged();
+    void pairedDevicesChanged();
     void verificationPendingChanged();
     void verificationTriesLeftChanged();
     void verificationErrorChanged();
@@ -67,6 +74,7 @@ private:
     bool m_connected = false;
     bool m_pending   = false;
     QString m_lastError;
+    bool m_hasPairedDevices = false;
     bool m_verificationPending = false;
     int m_verificationTriesLeft = 0;
     QString m_verificationError;

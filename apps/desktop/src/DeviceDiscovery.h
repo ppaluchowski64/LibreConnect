@@ -7,6 +7,7 @@
 #include "DeviceModel.h"
 #include <Scanner.h>
 #include <ConnectionManager.h>
+#include <boost/uuid/uuid_io.hpp>
 
 class DeviceDiscovery : public QObject {
     Q_OBJECT
@@ -55,6 +56,18 @@ public:
         return m_model.get(row);
     }
 
+    Q_INVOKABLE QVariantMap deviceById(const QString& id) const {
+        const int rows = m_model.rowCount();
+        for (int row = 0; row < rows; ++row) {
+            const QVariantMap entry = m_model.get(row);
+            if (entry.value("deviceId").toString() == id) {
+                return entry;
+            }
+        }
+
+        return {};
+    }
+
 signals:
     void searchingChanged();
 
@@ -69,6 +82,7 @@ private slots:
         for (const auto& dev : devices) {
             Device d;
 
+            d.deviceId   = QString::fromStdString(boost::uuids::to_string(dev.deviceID));
             d.icon       = QStringLiteral("android.png");
             d.deviceName = QString::fromStdString(dev.deviceName);
 

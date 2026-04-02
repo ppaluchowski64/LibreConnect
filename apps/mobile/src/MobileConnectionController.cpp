@@ -82,6 +82,12 @@ bool MobileConnectionController::event(QEvent* e)
         m_pendingDeviceName = QString::fromStdString(info.deviceName);
         emit pendingDeviceNameChanged();
 
+        if (ev->GetInitialConnectionMode() == InitialConnectionMode::CONNECT_WITH_PAIR) {
+            clearChallenge();
+            ev->AcceptConnection();
+            return true;
+        }
+
         const int codeValue = QRandomGenerator::global()->bounded(1000000);
         m_challengeCode = QString("%1").arg(codeValue, 6, 10, QLatin1Char('0'));
         emit challengeCodeChanged();

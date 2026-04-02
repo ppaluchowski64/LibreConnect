@@ -6,6 +6,7 @@
 #include <QSet>
 
 struct Device {
+    QString deviceId;
     QString icon;
     QString deviceName;
     QString ipAddress;
@@ -21,6 +22,7 @@ class DeviceModel : public QAbstractListModel {
 public:
     enum Roles {
         IconRole = Qt::UserRole + 1,
+        DeviceIdRole,
         DeviceNameRole,
         IpAddressRole,
         PortRole,
@@ -43,6 +45,7 @@ public:
         const auto& d = m_items[index.row()];
         switch (role) {
         case IconRole:       return d.icon;
+        case DeviceIdRole:   return d.deviceId;
         case DeviceNameRole: return d.deviceName;
         case IpAddressRole:  return d.ipAddress;
         case PortRole:       return d.port;
@@ -56,6 +59,7 @@ public:
     QHash<int, QByteArray> roleNames() const override {
         return {
             { IconRole,       "icon" },
+            { DeviceIdRole,   "deviceId" },
             { DeviceNameRole, "deviceName" },
             { IpAddressRole,  "ipAddress" },
             { PortRole,       "port" },
@@ -70,6 +74,7 @@ public:
         if (row < 0 || row >= m_items.size()) return m;
         const auto& d = m_items[row];
         m["icon"]        = d.icon;
+        m["deviceId"]    = d.deviceId;
         m["deviceName"]  = d.deviceName;
         m["ipAddress"]   = d.ipAddress;
         m["port"]        = d.port;
@@ -99,6 +104,7 @@ public:
                 const QModelIndex idx = index(i);
                 emit dataChanged(idx, idx, {
                     IconRole,
+                    DeviceIdRole,
                     DeviceNameRole,
                     IpAddressRole,
                     PortRole,

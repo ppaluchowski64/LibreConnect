@@ -27,6 +27,7 @@ public:
     static void SendEvent(const std::unique_ptr<QEvent>& event);
 
     static std::vector<DeviceInfoLite> GetPairedDevices();
+    static bool RemovePairedDevice(const std::string& deviceId);
 
     static void Disconnect(std::error_code errorCode = std::error_code{});
     static void AddResponseHandler(PC_PackageType type, RequestCallbackType&& handler);
