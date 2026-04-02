@@ -286,59 +286,84 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
     }
 
     while (true) {
-        co_await receiveFlag->Wait();
-        receiveFlag->Reset();
+        try {
+            co_await receiveFlag->Wait();
+            receiveFlag->Reset();
 
-        std::optional<std::unique_ptr<Package<PC_PackageType>>> packageOptional = m_primaryConnection->GetPackage();
-        while (packageOptional.has_value()) {
-            std::unique_ptr<Package<PC_PackageType>> value = std::move(packageOptional.value());
-            if (!value) {
-                Debug::LogWarning("ConnectionManager: Received null package pointer");
-                packageOptional = m_primaryConnection->GetPackage();
-                continue;
-            }
-            const PackageHeader header = value->GetHeader();
-            if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
-                size_t requestID = value->GetValue<size_t>();
-                auto flag = m_requestAwaitableMap.Pop(requestID);
+            std::optional<std::unique_ptr<Package<PC_PackageType>>> packageOptional = m_primaryConnection->GetPackage();
+            while (packageOptional.has_value()) {
+                std::unique_ptr<Package<PC_PackageType>> value = std::move(packageOptional.value());
+                if (!value) {
+                    Debug::LogWarning("ConnectionManager: Received null package pointer");
+                    packageOptional = m_primaryConnection->GetPackage();
+                    continue;
+                }
+                const PackageHeader header = value->GetHeader();
+                if ((header.flags & PackageFlag::REQUEST_AWAITABLE_RESPONSE) != 0) {
+                    size_t requestID = value->GetValue<size_t>();
+                    auto flag = m_requestAwaitableMap.Pop(requestID);
 
-                if (flag.has_value()) {
-                    m_requestPackageMap.InsertOrAssign(requestID, std::move(value));
-                    flag.value()->Signal();
+                    if (flag.has_value()) {
+                        m_requestPackageMap.InsertOrAssign(requestID, std::move(value));
+                        flag.value()->Signal();
+                    } else {
+                        Debug::LogWarning("ConnectionManager: No awaitable flag for Request ID: {}", requestID);
+                    }
+
                 } else {
-                    Debug::LogWarning("ConnectionManager: No awaitable flag for Request ID: {}", requestID);
+                    PC_PackageType type = static_cast<PC_PackageType>(header.type);
+                    if (type == PC_PackageType::HEARTBEAT) {
+                        m_primaryConnection->MarkHeartbeatReceived();
+                        packageOptional = m_primaryConnection->GetPackage();
+                        continue;
+                    }
+
+                    std::optional<RequestCallbackType> callbackOptional = m_responseHandlerMap.Get(type);
+                    std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
+
+                    if (callbackOptional.has_value()) {
+                        asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
+                            try {
+                                callback(std::move(package));
+                            } catch (const std::exception& exception) {
+                                Debug::LogError("ConnectionManager: Response handler exception: {}", exception.what());
+                            } catch (...) {
+                                Debug::LogError("ConnectionManager: Response handler exception: unknown");
+                            }
+                        });
+
+                        packageOptional = m_primaryConnection->GetPackage();
+                        continue;
+                    }
+
+                    if (awaitableCallbackOptional.has_value()) {
+                        RequestAwaitableCallbackType awaitableCallback = std::move(awaitableCallbackOptional.value());
+                        asio::co_spawn(m_context, [callback = std::move(awaitableCallback), package = std::move(value)]() mutable -> asio::awaitable<void> {
+                            try {
+                                co_await callback(std::move(package));
+                            } catch (const std::exception& exception) {
+                                Debug::LogError("ConnectionManager: Awaitable response handler exception: {}", exception.what());
+                            } catch (...) {
+                                Debug::LogError("ConnectionManager: Awaitable response handler exception: unknown");
+                            }
+
+                            co_return;
+                        }(), asio::detached);
+                        packageOptional = m_primaryConnection->GetPackage();
+                        continue;
+                    }
+
+                    Debug::LogWarning("ConnectionManager: No handler registered for package type {}", static_cast<int>(type));
                 }
 
-            } else {
-                PC_PackageType type = static_cast<PC_PackageType>(header.type);
-                if (type == PC_PackageType::HEARTBEAT) {
-                    m_primaryConnection->MarkHeartbeatReceived();
-                    packageOptional = m_primaryConnection->GetPackage();
-                    continue;
-                }
-
-                std::optional<RequestCallbackType> callbackOptional = m_responseHandlerMap.Get(type);
-                std::optional<RequestAwaitableCallbackType> awaitableCallbackOptional = m_responseAwaitableHandlerMap.Get(type);
-
-                if (callbackOptional.has_value()) {
-                    asio::post(m_context, [callback = std::move(callbackOptional.value()), package = std::move(value)]() mutable {
-                        callback(std::move(package));
-                    });
-
-                    packageOptional = m_primaryConnection->GetPackage();
-                    continue;
-                }
-
-                if (awaitableCallbackOptional.has_value()) {
-                    asio::co_spawn(m_context, awaitableCallbackOptional.value()(std::move(value)), asio::detached);
-                    packageOptional = m_primaryConnection->GetPackage();
-                    continue;
-                }
-
-                Debug::LogWarning("ConnectionManager: No handler registered for package type {}", static_cast<int>(type));
+                packageOptional = m_primaryConnection->GetPackage();
             }
-
-            packageOptional = m_primaryConnection->GetPackage();
+        } catch (const std::exception& exception) {
+            Debug::LogError("ConnectionManager: Package processing exception: {}", exception.what());
+            Disconnect(std::make_error_code(std::errc::bad_message));
+        } catch (...) {
+            Debug::LogError("ConnectionManager: Package processing exception: unknown");
+            Disconnect(std::make_error_code(std::errc::bad_message));
         }
     }
 }

@@ -11,8 +11,12 @@ public:
 
 private:
     asio::awaitable<void> SendNewNotification(std::string key) const;
+    std::shared_ptr<NotificationTransferChannel> GetChannel() const;
+    void SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel);
+    std::shared_ptr<NotificationTransferChannel> TakeChannel();
 
     AwaitableFlag m_connectedFlag;
+    mutable std::mutex m_channelMutex;
     std::shared_ptr<NotificationTransferChannel> m_channel;
 
 protected:

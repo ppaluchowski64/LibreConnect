@@ -126,7 +126,7 @@ public:
         } catch (const std::exception& exc) {
             SetModuleState(ModuleState::Disabled);
             Debug::LogError("[Module::EnableHelper] Exception during OnEnable: {}", exc.what());
-            throw;
+            ProcessError(ModuleFailReason::InternalError);
         }
     }
 
@@ -150,7 +150,7 @@ public:
         } catch (const std::exception& exc) {
             SetModuleState(ModuleState::Disabled);
             Debug::LogError("[Module::DisableHelper] Exception during OnDisable: {}", exc.what());
-            throw;
+            ProcessError(ModuleFailReason::InternalError);
         }
     }
 

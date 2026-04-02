@@ -10,8 +10,12 @@ private:
     asio::awaitable<void> FetchNotificationList();
     void ProcessNotificationPacket(NotificationPacket&& packet);
     void ProcessNotificationButtonAction(int64_t id, std::wstring&& option);
+    std::shared_ptr<NotificationTransferChannel> GetChannel() const;
+    void SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel);
+    std::shared_ptr<NotificationTransferChannel> TakeChannel();
 
     std::mutex m_notificationsVectorMutex;
+    mutable std::mutex m_channelMutex;
     std::unordered_map<int64_t, NotificationRecord> m_notifications;
     std::shared_ptr<NotificationTransferChannel> m_channel;
 

@@ -2,6 +2,7 @@
 #include <NotificationListenerHandler.h>
 #include <ConnectionManager.h>
 #include <PermissionManager.h>
+#include <utility>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
@@ -10,12 +11,27 @@ extern std::vector<NotificationData> g_notificationDatas;
 extern std::mutex g_notificationCallbackMutex;
 extern std::function<void(std::string key)> g_notificationCallback;
 
+std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::GetChannel() const {
+    std::lock_guard lock(m_channelMutex);
+    return m_channel;
+}
+
+void NotificationSyncModule::SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel) {
+    std::lock_guard lock(m_channelMutex);
+    m_channel = channel;
+}
+
+std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::TakeChannel() {
+    std::lock_guard lock(m_channelMutex);
+    return std::exchange(m_channel, nullptr);
+}
+
 asio::awaitable<void> NotificationSyncModule::SendNewNotification(const std::string key) const {
     if (GetModuleState() != ModuleState::Enabled) {
         co_return;
     }
 
-    const std::shared_ptr<NotificationTransferChannel> channel = m_channel;
+    const std::shared_ptr<NotificationTransferChannel> channel = GetChannel();
     if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
         Debug::LogWarning("Notification transfer channel not connected, skipping new notification send");
         co_return;
@@ -69,11 +85,12 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         const IPAddress address = ConnectionManager::GetPeerAddress();
 
         Debug::Log("Received notification sync port info. Address: {}, Port: {}", address.to_string(), port);
-        m_channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextClient(), m_context);
+        const std::shared_ptr<NotificationTransferChannel> channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextClient(), m_context);
+        SetChannel(channel);
         Debug::Log("Connecting notification transfer channel");
-        co_await m_channel->Connect(TCPEndpoint(address, port));
+        co_await channel->Connect(TCPEndpoint(address, port));
         Debug::Log("Notification transfer channel connected");
-        if (m_channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        if (channel->GetConnectionState() != ConnectionState::CONNECTED || GetChannel() != channel) {
             Debug::LogError("Notification transfer channel failed to connect");
             instance->ProcessError(ModuleFailReason::Timeout);
             co_return;
@@ -86,7 +103,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         uint16_t notificationCount = 0;
 
         std::vector<NotificationData> notifications;
-        const std::shared_ptr<NotificationTransferChannel> channel = m_channel;
+        const std::shared_ptr<NotificationTransferChannel> channel = GetChannel();
 
         Debug::Log("Received all notifications request. RequestID: {}", requestID);
         {
@@ -167,13 +184,16 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
     m_connectedFlag.Reset();
 
-    if (m_channel) {
-        co_await m_channel->Disconnect();
-        m_channel.reset();
+    if (std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
+        co_await channel->Disconnect();
     }
 }
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
+    if (std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
+        co_await channel->Disconnect();
+    }
+
     co_return;
 }
 

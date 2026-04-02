@@ -6,6 +6,8 @@
 #include <type_traits>
 #include <vector>
 #include <string>
+#include <cstring>
+#include <stdexcept>
 #include <boost/endian/conversion.hpp>
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
@@ -54,6 +56,10 @@ inline void SerializeObject(T object, std::vector<uint8_t>& buffer, size_t& offs
 
 template <Primitive T>
 inline void DeserializeObject(T& object, const std::vector<uint8_t>& buffer, size_t& offset) {
+    if (offset > buffer.size() || sizeof(object) > buffer.size() - offset) {
+        throw std::runtime_error("DeserializeObject primitive out of bounds");
+    }
+
     std::memcpy(&object, &buffer[offset], sizeof(object));
     boost::endian::big_to_native_inplace(object);
     offset += sizeof(object);
@@ -82,6 +88,10 @@ inline void DeserializeObject(std::string& object, const std::vector<uint8_t>& b
 
     if (size == 0) {
         return;
+    }
+
+    if (offset > buffer.size() || size > buffer.size() - offset) {
+        throw std::runtime_error("DeserializeObject string out of bounds");
     }
 
     object.resize(size);
@@ -139,6 +149,10 @@ template <Primitive T>
 inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
     DeserializeObject(size, buffer, offset);
+    if (offset > buffer.size() || size > (buffer.size() - offset) / sizeof(T)) {
+        throw std::runtime_error("DeserializeObject vector<primitive> out of bounds");
+    }
+
     object.resize(size);
 
     for (auto& element : object) {
@@ -150,6 +164,10 @@ template <Packable T>
 inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
     DeserializeObject(size, buffer, offset);
+    if (offset > buffer.size() || size > buffer.size() - offset) {
+        throw std::runtime_error("DeserializeObject vector<packable> size invalid");
+    }
+
     object.resize(size);
 
     for (auto& element : object) {
@@ -160,6 +178,10 @@ inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>
 inline void DeserializeObject(std::vector<std::string>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
     DeserializeObject(size, buffer, offset);
+    if (offset > buffer.size() || size > buffer.size() - offset) {
+        throw std::runtime_error("DeserializeObject vector<string> size invalid");
+    }
+
     object.resize(size);
 
     for (auto& element : object) {

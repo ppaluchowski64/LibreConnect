@@ -2,11 +2,35 @@
 #include <ConnectionManager.h>
 #include <NotificationEmitter.h>
 #include <boost/nowide/convert.hpp>
+#include <utility>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
+std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::GetChannel() const {
+    std::lock_guard lock(m_channelMutex);
+    return m_channel;
+}
+
+void NotificationSyncModule::SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel) {
+    std::lock_guard lock(m_channelMutex);
+    m_channel = channel;
+}
+
+std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::TakeChannel() {
+    std::lock_guard lock(m_channelMutex);
+    return std::exchange(m_channel, nullptr);
+}
+
 asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
+    const std::shared_ptr<NotificationTransferChannel> channel = GetChannel();
+    if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        Debug::LogError("Notification sync failed: transfer channel not connected");
+        ProcessError(ModuleFailReason::Timeout);
+        Disable();
+        co_return;
+    }
+
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST);
     if (!response.has_value()) {
         Debug::LogError("Notification sync failed");
@@ -31,7 +55,7 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
 
     while (notificationsCount > 0) {
         notificationsCount--;
-        std::optional<NotificationPacket> notification = co_await m_channel->Receive();
+        std::optional<NotificationPacket> notification = co_await channel->Receive();
 
         if (!notification.has_value()) {
             Debug::LogError("Receiving notification failed. Remaining notifications: {}", notificationsCount + 1);
@@ -55,75 +79,83 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
 
     Debug::Log("Processing notification packet");
-    NotificationRecord notificationRecord;
+    try {
+        NotificationRecord notificationRecord;
 
-    notificationRecord.key = std::move(packet.key);
-    notificationRecord.title = std::move(packet.title);
-    notificationRecord.content = std::move(packet.content);
-    notificationRecord.timestamp = std::move(packet.timestamp);
-    notificationRecord.buttons = std::move(packet.buttons);
+        notificationRecord.key = std::move(packet.key);
+        notificationRecord.title = std::move(packet.title);
+        notificationRecord.content = std::move(packet.content);
+        notificationRecord.timestamp = std::move(packet.timestamp);
+        notificationRecord.buttons = std::move(packet.buttons);
 
-    if (!packet.iconImage.empty()) {
-        notificationRecord.iconPath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
-        std::ofstream stream(notificationRecord.iconPath.value(), std::ios::binary);
+        if (!packet.iconImage.empty()) {
+            notificationRecord.iconPath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
+            std::ofstream stream(notificationRecord.iconPath.value(), std::ios::binary);
 
-        if (!stream) {
-            Debug::LogError("Could not open image file stream");
-            ProcessError(ModuleFailReason::InternalError);
-            return;
-        }
-
-        stream.write(reinterpret_cast<const char*>(packet.iconImage.data()), packet.iconImage.size());
-
-    } else {
-        notificationRecord.iconPath = std::nullopt;
-    }
-
-    if (!packet.mainImage.empty()) {
-        notificationRecord.mainImagePath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
-        std::ofstream stream(notificationRecord.mainImagePath.value(), std::ios::binary);
-
-        if (!stream) {
-            Debug::LogError("Could not open image file stream");
-            ProcessError(ModuleFailReason::InternalError);
-            return;
-        }
-
-        stream.write(reinterpret_cast<const char*>(packet.mainImage.data()), packet.mainImage.size());
-
-    } else {
-        notificationRecord.mainImagePath = std::nullopt;
-    }
-
-    std::vector<NotificationEmitter::ButtonAction> notificationEmitterButtonActions;
-    notificationEmitterButtonActions.reserve(notificationRecord.buttons.size());
-
-    std::weak_ptr<NotificationSyncModule> weakInstance = instance;
-    std::shared_ptr<int64_t> notificationID = std::make_shared<int64_t>();
-    for (const auto& button : notificationRecord.buttons) {
-        std::wstring buttonWString = boost::nowide::widen(button);
-
-        notificationEmitterButtonActions.emplace_back(
-            buttonWString,
-            [weakInstance, notificationID, buttonWString]() mutable {
-                if (const std::shared_ptr<NotificationSyncModule> module = weakInstance.lock()) {
-                    module->ProcessNotificationButtonAction(*notificationID, std::move(buttonWString));
-                }
+            if (!stream) {
+                Debug::LogError("Could not open image file stream");
+                ProcessError(ModuleFailReason::InternalError);
+                return;
             }
+
+            stream.write(reinterpret_cast<const char*>(packet.iconImage.data()), packet.iconImage.size());
+
+        } else {
+            notificationRecord.iconPath = std::nullopt;
+        }
+
+        if (!packet.mainImage.empty()) {
+            notificationRecord.mainImagePath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
+            std::ofstream stream(notificationRecord.mainImagePath.value(), std::ios::binary);
+
+            if (!stream) {
+                Debug::LogError("Could not open image file stream");
+                ProcessError(ModuleFailReason::InternalError);
+                return;
+            }
+
+            stream.write(reinterpret_cast<const char*>(packet.mainImage.data()), packet.mainImage.size());
+
+        } else {
+            notificationRecord.mainImagePath = std::nullopt;
+        }
+
+        std::vector<NotificationEmitter::ButtonAction> notificationEmitterButtonActions;
+        notificationEmitterButtonActions.reserve(notificationRecord.buttons.size());
+
+        std::weak_ptr<NotificationSyncModule> weakInstance = instance;
+        std::shared_ptr<int64_t> notificationID = std::make_shared<int64_t>();
+        for (const auto& button : notificationRecord.buttons) {
+            std::wstring buttonWString = boost::nowide::widen(button);
+
+            notificationEmitterButtonActions.emplace_back(
+                buttonWString,
+                [weakInstance, notificationID, buttonWString]() mutable {
+                    if (const std::shared_ptr<NotificationSyncModule> module = weakInstance.lock()) {
+                        module->ProcessNotificationButtonAction(*notificationID, std::move(buttonWString));
+                    }
+                }
+            );
+        }
+
+        *notificationID = NotificationEmitter::Emit(
+            boost::nowide::widen(notificationRecord.title),
+            boost::nowide::widen(notificationRecord.content),
+            notificationRecord.iconPath,
+            notificationRecord.mainImagePath,
+            notificationEmitterButtonActions
         );
+
+        std::lock_guard lock(m_notificationsVectorMutex);
+        m_notifications[*notificationID] = std::move(notificationRecord);
+        Debug::Log("Notification packet appended to cache");
+    } catch (const std::exception& exception) {
+        Debug::LogError("Processing notification packet failed: {}", exception.what());
+        ProcessError(ModuleFailReason::InternalError);
+    } catch (...) {
+        Debug::LogError("Processing notification packet failed: unknown error");
+        ProcessError(ModuleFailReason::InternalError);
     }
-
-    *notificationID = NotificationEmitter::Emit(
-        boost::nowide::widen(notificationRecord.title),
-        boost::nowide::widen(notificationRecord.content),
-        notificationRecord.iconPath,
-        notificationRecord.mainImagePath,
-        notificationEmitterButtonActions
-    );
-
-    std::lock_guard lock(m_notificationsVectorMutex);
-    m_notifications[*notificationID] = std::move(notificationRecord);
-    Debug::Log("Notification packet appended to cache");
 }
 
 void NotificationSyncModule::ProcessNotificationButtonAction(const int64_t id, std::wstring&& option) {
@@ -141,7 +173,13 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NEW_NOTIFICATION, [instance](PC_Package&& package) -> asio::awaitable<void> {
         Debug::Log("Received new-notification signal");
-        std::optional<NotificationPacket> notification = co_await instance->m_channel->Receive();
+        const std::shared_ptr<NotificationTransferChannel> channel = instance->GetChannel();
+        if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogWarning("Notification packet ignored: transfer channel not connected");
+            co_return;
+        }
+
+        std::optional<NotificationPacket> notification = co_await channel->Receive();
         if (!notification.has_value()) {
             Debug::LogError("Could not receive notification");
             instance->ProcessError(ModuleFailReason::Timeout);
@@ -175,22 +213,35 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
     Debug::Log("Notification sync module enabling");
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
 
-    m_channel.reset();
-    m_channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextServer(), m_context);
+    if (std::shared_ptr<NotificationTransferChannel> previousChannel = TakeChannel()) {
+        co_await previousChannel->Disconnect();
+    }
+
+    const std::shared_ptr<NotificationTransferChannel> channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextServer(), m_context);
+    SetChannel(channel);
 
     AwaitableFlag flag(m_context.get_executor());
     uint16_t port{};
 
-    asio::co_spawn(m_context, m_channel->Seek(flag, port), asio::detached);
+    asio::co_spawn(m_context, channel->Seek(flag, port), asio::detached);
     co_await flag.Wait();
     Debug::Log("Notification channel seek opened local port {}", port);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO, port);
 
     asio::steady_timer timer(m_context.get_executor());
-    while (m_channel && m_channel->GetConnectionState() != ConnectionState::CONNECTED) {
+    while (channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        if (GetChannel() != channel) {
+            co_return;
+        }
+
         timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
         co_await timer.async_wait();
     }
+
+    if (GetChannel() != channel) {
+        co_return;
+    }
+
     Debug::Log("Notification channel connected");
 
     co_await FetchNotificationList();
@@ -202,9 +253,8 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
     Debug::Log("Notification sync module disabling");
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
 
-    if (m_channel) {
-        co_await m_channel->Disconnect();
-        m_channel.reset();
+    if (std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
+        co_await channel->Disconnect();
     }
 
     {
@@ -216,7 +266,10 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
     Debug::Log("Notification sync module shutdown");
-    m_channel.reset();
+    if (std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
+        co_await channel->Disconnect();
+    }
+
     co_return;
 }
 

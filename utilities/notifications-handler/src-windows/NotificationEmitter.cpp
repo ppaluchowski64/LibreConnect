@@ -3,6 +3,36 @@
 #include <wintoastlib.h>
 #include <DebugLog.h>
 #include <magic_enum/magic_enum.hpp>
+#include <mutex>
+
+namespace {
+std::mutex g_toastMutex;
+std::once_flag g_toastInitFlag;
+bool g_toastInitialized = false;
+
+bool EnsureToastInitialized() {
+    WinToastLib::WinToast* instance = WinToastLib::WinToast::instance();
+    std::call_once(g_toastInitFlag, [instance]() {
+        constexpr const wchar_t* APPNAME = L"LibreConnect";
+        instance->setAppName(APPNAME);
+
+        const auto aumi = WinToastLib::WinToast::configureAUMI(
+            L"Default",
+            APPNAME,
+            L"main",
+            L"1.0"
+        );
+
+        instance->setAppUserModelId(aumi);
+        g_toastInitialized = instance->initialize();
+        if (!g_toastInitialized) {
+            Debug::LogError("NotificationEmitter: WinToast initialization failed");
+        }
+    });
+
+    return g_toastInitialized;
+}
+} // namespace
 
 class NotificationHandler : public WinToastLib::IWinToastHandler {
 public:
@@ -39,23 +69,11 @@ int64_t NotificationEmitter::Emit(
     const std::optional<std::filesystem::path>& appIconPath,
     const std::optional<std::filesystem::path>& mainImagePath,
     std::vector<ButtonAction> buttons) {
-    const std::wstring APPNAME = L"LibreConnect";
+    std::lock_guard lock(g_toastMutex);
 
     WinToastLib::WinToast* instance = WinToastLib::WinToast::instance();
-    instance->setAppName(APPNAME);
-
-    // TEMP
-    const auto aumi = WinToastLib::WinToast::configureAUMI(
-        L"Default",
-        APPNAME,
-        L"main",
-        L"1.0"
-    );
-
-    instance->setAppUserModelId(aumi);
-
-    if (!instance->initialize()) {
-        return 0;
+    if (!EnsureToastInitialized()) {
+        return -1;
     }
 
     const WinToastLib::WinToastTemplate::WinToastTemplateType templateType = appIconPath
@@ -80,13 +98,19 @@ int64_t NotificationEmitter::Emit(
     }
 
     const auto handler = new NotificationHandler(std::move(buttons));
-    return instance->showToast(templ, handler);
+    const int64_t toastID = instance->showToast(templ, handler);
+    if (toastID < 0) {
+        Debug::LogWarning("NotificationEmitter: WinToast showToast failed with id {}", toastID);
+    }
+
+    return toastID;
 }
 
 void NotificationEmitter::Remove(const int64_t id) {
+    std::lock_guard lock(g_toastMutex);
     WinToastLib::WinToast* instance = WinToastLib::WinToast::instance();
 
-    if (instance && id >= 0) {
+    if (instance && EnsureToastInitialized() && id >= 0) {
         instance->hideToast(static_cast<INT64>(id));
     }
 }

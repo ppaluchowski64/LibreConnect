@@ -52,8 +52,8 @@ asio::awaitable<void> NotificationTransferChannel::Connect(TCPEndpoint endpoint)
         m_connectionState.store(ConnectionState::CONNECTED);
         Debug::Log("Notification transfer channel connected");
 
-    } catch (std::system_error& error) {
-        HandleAsioError(error.code());
+    } catch (const std::exception& error) {
+        Debug::LogError("Notification transfer channel connect failed: {}", error.what());
         asio::co_spawn(m_context, Disconnect(), asio::detached);
     }
 }
@@ -105,10 +105,10 @@ asio::awaitable<void> NotificationTransferChannel::Seek(AwaitableFlag& flag, uin
         m_connectionState.store(ConnectionState::CONNECTED);
         Debug::Log("Notification transfer channel connected");
 
-    } catch (std::system_error& error) {
+    } catch (const std::exception& error) {
         std::lock_guard lock(m_acceptorMutex);
         m_acceptor.reset();
-        HandleAsioError(error.code());
+        Debug::LogError("Notification transfer channel seek failed: {}", error.what());
         asio::co_spawn(m_context, Disconnect(), asio::detached);
     }
 }
@@ -198,8 +198,8 @@ asio::awaitable<bool> NotificationTransferChannel::Send(const NotificationPacket
         Debug::Log("Notification transfer channel sent packet (payload bytes: {})", size);
         m_writeInProgress.store(false, std::memory_order_release);
 
-    } catch (std::system_error& error) {
-        HandleAsioError(error.code());
+    } catch (const std::exception& error) {
+        Debug::LogError("Notification transfer channel send failed: {}", error.what());
         m_writeInProgress.store(false, std::memory_order_release);
         asio::co_spawn(m_context, Disconnect(), asio::detached);
         co_return false;
@@ -257,8 +257,8 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
         Debug::Log("Notification transfer channel received packet");
         m_readInProgress.store(false, std::memory_order_release);
 
-    } catch (std::system_error& error) {
-        HandleAsioError(error.code());
+    } catch (const std::exception& error) {
+        Debug::LogError("Notification transfer channel receive failed: {}", error.what());
         m_readInProgress.store(false, std::memory_order_release);
         asio::co_spawn(m_context, Disconnect(), asio::detached);
         co_return std::nullopt;
