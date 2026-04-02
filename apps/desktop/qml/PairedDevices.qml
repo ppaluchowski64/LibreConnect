@@ -140,7 +140,6 @@ Page {
                 ListView {
                     id: pairedList
                     anchors.fill: parent
-                    anchors.margins: 8
                     model: pairedDevices
                     clip: true
 
@@ -151,30 +150,40 @@ Page {
 
                         width: pairedList.width
                         height: 80
-                        radius: 4
                         color: selected ? "#eaf4ff" : "white"
                         border.color: selected ? "#2196f3" : "#e0e0e0"
                         border.width: selected ? 2 : 1
 
-                        Column {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
+                        Row {
+                            anchors.fill: parent
                             anchors.margins: 12
-                            spacing: 4
+                            spacing: 12
 
-                            Text {
-                                text: rowItem.modelData.deviceName
-                                font.pixelSize: 18
-                                font.bold: true
-                                color: "#111111"
+                            Image {
+                                source: "android.png"
+                                width: 48
+                                height: 48
+                                anchors.verticalCenter: parent.verticalCenter
                             }
 
-                            Text {
-                                text: rowItem.modelData.deviceType + "  |  " + rowItem.modelData.deviceId
-                                font.pixelSize: 12
-                                color: "#555555"
-                                elide: Text.ElideRight
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 72
+                                spacing: 4
+
+                                Text {
+                                    text: rowItem.modelData.deviceName
+                                    font.pixelSize: 18
+                                    font.bold: true
+                                    color: "#111111"
+                                }
+
+                                Text {
+                                    text: rowItem.modelData.deviceType + "  |  " + rowItem.modelData.deviceId
+                                    font.pixelSize: 12
+                                    color: "#555555"
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
 
