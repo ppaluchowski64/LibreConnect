@@ -2,10 +2,14 @@
 #include <fstream>
 #include <Packable.h>
 #include <fmt/os.h>
+#include <ConnectionManager.h>
+#include <ThreadPool.h>
 
 static constexpr size_t TRANSFER_BUFFER_SIZE = 1024 * 256;
 
-TransferChannel::TransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) { }
+TransferChannel::TransferChannel() : m_socket(nullptr), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) {
+    Debug::Log("TransferChannel created or smth");
+}
 
 size_t TransferChannel::FetchTransferProgress() const {
     return m_progress.load();
@@ -21,12 +25,14 @@ ConnectionState TransferChannel::GetConnectionState() const {
 
 asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    IOContext& context = ThreadPool::GetContext();
+    m_sslContext = ConnectionManager::GetSSLContextClient();
 
     try {
         m_connectionState.store(ConnectionState::CONNECTING);
 
         co_await CleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
+        m_socket = std::make_unique<SSLSocket>(context, *m_sslContext);
 
         co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
         co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
@@ -36,20 +42,22 @@ asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(m_context, Disconnect(), asio::detached);
+        asio::co_spawn(context, Disconnect(), asio::detached);
     }
 }
 
 asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    IOContext& context = ThreadPool::GetContext();
+    m_sslContext = ConnectionManager::GetSSLContextServer();
 
     try {
         m_connectionState.store(ConnectionState::CONNECTING);
 
         co_await CleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
+        m_socket = std::make_unique<SSLSocket>(context, *m_sslContext);
 
-        TCPAcceptor acceptor(m_context);
+        TCPAcceptor acceptor(context);
         asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), 0);
 
         acceptor.open(endpoint.protocol());
@@ -68,7 +76,7 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(m_context, Disconnect(), asio::detached);
+        asio::co_spawn(context, Disconnect(), asio::detached);
     }
 }
 
@@ -118,7 +126,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(m_context, Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
     }
 
     m_receive.store(false);
@@ -173,7 +181,7 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
 
     } catch (const std::exception& e) {
         Debug::LogError("Directory transfer failed");
-        asio::co_spawn(m_context, Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
     }
 
     m_send.store(false);
@@ -257,7 +265,7 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(m_context, Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
         co_return false;
     }
 
@@ -291,7 +299,7 @@ asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(m_context, Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
         co_return false;
     }
 

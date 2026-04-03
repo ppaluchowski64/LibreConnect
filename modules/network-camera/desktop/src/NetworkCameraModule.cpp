@@ -119,6 +119,7 @@ namespace {
 }
 
 std::vector<CameraSpecification> NetworkCameraModule::GetCamerasSpecification() const {
+    std::scoped_lock lock(m_camerasSpecificationMutex);
     return m_camerasSpecification;
 }
 
@@ -132,11 +133,15 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     Debug::Log("NetworkCameraModule: StartStream");
     CameraSpecification cameraSpecification;
     bool cameraFound = false;
-    for (const auto& spec : m_camerasSpecification) {
-        if (spec.id == m_cameraSettings.id) {
-            cameraSpecification = spec;
-            cameraFound = true;
-            break;
+
+    {
+        std::scoped_lock lock(m_camerasSpecificationMutex);
+        for (const auto& spec : m_camerasSpecification) {
+            if (spec.id == m_cameraSettings.id) {
+                cameraSpecification = spec;
+                cameraFound = true;
+                break;
+            }
         }
     }
 
@@ -149,7 +154,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
         Debug::LogError(
             "NetworkCameraModule::StartStream: Camera id '{}' not found in {} reported camera specifications and no custom name provided",
             m_cameraSettings.id,
-            m_camerasSpecification.size()
+            GetCamerasSpecification().size()
         );
         ProcessError(ModuleFailReason::IncorrectConfig);
         co_return;
@@ -464,7 +469,12 @@ asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
             if (!response.has_value()) {
                 Debug::LogWarning("NetworkCameraModule::UpdateCamerasSpecificationList: No response");
             } else {
-                response.value()->GetValue(m_camerasSpecification);
+                std::vector<CameraSpecification> updatedSpecifications;
+                response.value()->GetValue(updatedSpecifications);
+                {
+                    std::scoped_lock lock(m_camerasSpecificationMutex);
+                    m_camerasSpecification = std::move(updatedSpecifications);
+                }
             }
         }
 
@@ -484,12 +494,10 @@ void NetworkCameraModule::EnableResponseCallbacks() {
 }
 
 void NetworkCameraModule::DisableResponseCallbacks() {
-    Debug::Log("NetworkCameraModule: DisableResponseCallbacks");
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
 }
 
 void NetworkCameraModule::OnInitialize() {
-    Debug::Log("NetworkCameraModule: OnInitialize");
     asio::co_spawn(m_context, UpdateCamerasSpecificationList(), asio::detached);
 }
 
@@ -547,7 +555,6 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-    Debug::Log("NetworkCameraModule: OnDisable");
     m_acceptFrames.store(false);
     m_waitForIdrAfterLoss.store(false);
     m_waitForIdrStartMs.store(0);
@@ -603,7 +610,6 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-    Debug::Log("NetworkCameraModule: OnShutdown");
     m_acceptFrames.store(false);
     if (m_videoStream) {
         m_videoStream->Close();

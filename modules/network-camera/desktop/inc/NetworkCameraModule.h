@@ -8,6 +8,7 @@
 #include <VirtualCamera.h>
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -35,6 +36,7 @@ private:
     std::shared_ptr<SRTP::Stream> m_videoStream;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
+    mutable std::mutex m_camerasSpecificationMutex;
     std::vector<CameraSpecification> m_camerasSpecification;
     asio::awaitable<void> UpdateCamerasSpecificationList();
 

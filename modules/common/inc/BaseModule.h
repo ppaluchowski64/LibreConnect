@@ -11,6 +11,7 @@
 #include <ConnectionManager.h>
 
 #include <QEvent>
+#include <magic_enum/magic_enum.hpp>
 
 typedef asio::io_context IOContext;
 
@@ -69,16 +70,18 @@ public:
     void Initialize(const bool disableWarnings = false) {
         if (GetModuleState() != ModuleState::Uninitialized) {
             if (!disableWarnings) {
-                Debug::LogWarning("[Module::Initialize] Module already initialized");
+                Debug::LogWarning("{}: Initialize skipped - module already initialized", GetModuleName());
             }
 
             return;
         }
 
+        Debug::Log("{}: Initialize started", GetModuleName());
         SetModuleState(ModuleState::Initializing);
         EnableResponseCallbacks();
         OnInitialize();
         SetModuleState(ModuleState::Disabled);
+        Debug::Log("{}: Initialize completed", GetModuleName());
     }
 
     void Enable(const bool disableWarnings = false) {
@@ -98,10 +101,12 @@ public:
         ModuleState state = GetModuleState();
 
         if (state == ModuleState::Uninitialized) {
+            Debug::Log("{}: Initialize started (via Enable)", GetModuleName());
             SetModuleState(ModuleState::Initializing);
             EnableResponseCallbacks();
             OnInitialize();
             SetModuleState(ModuleState::Disabled);
+            Debug::Log("{}: Initialize completed (via Enable)", GetModuleName());
             state = ModuleState::Disabled;
         }
 
@@ -111,21 +116,33 @@ public:
             }
 
             if (state == ModuleState::Enabled) {
-                Debug::LogWarning("[Module::Enable] Module already enabled");
+                Debug::LogWarning("{}: Enable skipped - module already enabled", GetModuleName());
                 co_return;
             }
 
-            Debug::LogWarning("[Module::Enable] Module enable failed");
+            Debug::LogWarning("{}: Enable skipped - invalid state {}", GetModuleName(), static_cast<int>(state));
             co_return;
         }
 
+        Debug::Log("{}: Enable started", GetModuleName());
         SetModuleState(ModuleState::Enabling);
         try {
             co_await OnEnable();
+            if (GetModuleState() != ModuleState::Enabling) {
+                Debug::LogWarning(
+                    "{}: Enable completion ignored - state changed to {}",
+                    GetModuleName(),
+                    magic_enum::enum_name(GetModuleState())
+                );
+                co_return;
+            }
             SetModuleState(ModuleState::Enabled);
+            Debug::Log("{}: Enable completed", GetModuleName());
         } catch (const std::exception& exc) {
-            SetModuleState(ModuleState::Disabled);
-            Debug::LogError("[Module::EnableHelper] Exception during OnEnable: {}", exc.what());
+            if (GetModuleState() == ModuleState::Enabling) {
+                SetModuleState(ModuleState::Disabled);
+            }
+            Debug::LogError("{}: Enable failed with exception: {}", GetModuleName(), exc.what());
             ProcessError(ModuleFailReason::InternalError);
         }
     }
@@ -139,17 +156,29 @@ public:
                 co_return;
             }
 
-            Debug::LogWarning("[Module::Disable] Module isn't enabled");
+            Debug::LogWarning("{}: Disable skipped - module is not enabled", GetModuleName());
             co_return;
         }
 
+        Debug::Log("{}: Disable started", GetModuleName());
         SetModuleState(ModuleState::Disabling);
         try {
             co_await OnDisable();
+            if (GetModuleState() != ModuleState::Disabling) {
+                Debug::LogWarning(
+                    "{}: Disable completion ignored - state changed to {}",
+                    GetModuleName(),
+                    magic_enum::enum_name(GetModuleState())
+                );
+                co_return;
+            }
             SetModuleState(ModuleState::Disabled);
+            Debug::Log("{}: Disable completed", GetModuleName());
         } catch (const std::exception& exc) {
-            SetModuleState(ModuleState::Disabled);
-            Debug::LogError("[Module::DisableHelper] Exception during OnDisable: {}", exc.what());
+            if (GetModuleState() == ModuleState::Disabling) {
+                SetModuleState(ModuleState::Disabled);
+            }
+            Debug::LogError("{}: Disable failed with exception: {}", GetModuleName(), exc.what());
             ProcessError(ModuleFailReason::InternalError);
         }
     }
@@ -163,10 +192,15 @@ public:
                 co_return;
             }
 
-            Debug::LogWarning("[Module::Shutdown] Module is not initialized");
+            Debug::LogWarning("{}: Shutdown skipped - module is not initialized", GetModuleName());
             co_return;
         }
 
+        if (state == ModuleState::Enabling) {
+            SetModuleState(ModuleState::Disabling);
+        }
+
+        Debug::Log("{}: Shutdown started", GetModuleName());
         DisableResponseCallbacks();
 
         if (GetModuleState() == ModuleState::Enabled) {
@@ -176,10 +210,11 @@ public:
         try {
             co_await OnShutdown();
         } catch (const std::exception& exc) {
-            Debug::LogError("[Module::Shutdown] Exception during Shutdown: {}", exc.what());
+            Debug::LogError("{}: Shutdown failed with exception: {}", GetModuleName(), exc.what());
         }
 
         SetModuleState(ModuleState::Uninitialized);
+        Debug::Log("{}: Shutdown completed", GetModuleName());
     }
 
     ModuleState GetModuleState() const {
@@ -204,6 +239,7 @@ protected:
     IOContextStrand m_moduleStrand;
 
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
+    std::atomic<bool> m_peerModuleEnabled = false;
     std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
 
     virtual void EnableResponseCallbacks() = 0;

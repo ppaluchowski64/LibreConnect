@@ -210,7 +210,6 @@ void NotificationSyncModule::DisableResponseCallbacks() {
 void NotificationSyncModule::OnInitialize() {}
 
 asio::awaitable<void> NotificationSyncModule::OnEnable() {
-    Debug::Log("Notification sync module enabling");
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
 
     if (std::shared_ptr<NotificationTransferChannel> previousChannel = TakeChannel()) {

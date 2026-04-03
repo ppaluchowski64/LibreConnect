@@ -16,7 +16,7 @@ public:
 private:
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
 
-    std::atomic<uint8_t> m_transferChannelInitializationIndex;
+    std::atomic_size_t m_transferChannelInitializationIndex;
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 
 protected:

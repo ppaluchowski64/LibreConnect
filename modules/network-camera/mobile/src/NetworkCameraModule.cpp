@@ -152,7 +152,6 @@ void NetworkCameraModule::EnableResponseCallbacks() {
 }
 
 void NetworkCameraModule::DisableResponseCallbacks() {
-    Debug::Log("NetworkCameraModule: DisableResponseCallbacks");
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_CAMERAS_SPECIFICATION_LIST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM);
@@ -162,7 +161,6 @@ void NetworkCameraModule::DisableResponseCallbacks() {
 }
 
 void NetworkCameraModule::OnInitialize() {
-    Debug::Log("NetworkCameraModule: OnInitialize");
 }
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
@@ -198,7 +196,6 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-    Debug::Log("NetworkCameraModule: OnDisable");
 
     m_streamActive.store(false);
     m_streamGeneration.fetch_add(1);
@@ -224,7 +221,6 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
 asio::awaitable<void> NetworkCameraModule::OnShutdown() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
-    Debug::Log("NetworkCameraModule: OnShutdown");
     co_await OnDisable();
     co_return;
 }

@@ -11,10 +11,9 @@
 
 class TransferChannel final : public std::enable_shared_from_this<TransferChannel>{
 public:
-    TransferChannel() = delete;
+    explicit TransferChannel();
     TransferChannel(const TransferChannel&) = delete;
     TransferChannel& operator=(const TransferChannel&) = delete;
-    explicit TransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context);
 
     size_t FetchTransferProgress() const;
     bool IsUsed(bool outTransfer) const;
@@ -46,7 +45,6 @@ private:
     asio::awaitable<bool> Send(std::filesystem::path file);
     asio::awaitable<bool> Receive(std::filesystem::path destination, size_t length);
 
-    IOContext& m_context;
     std::unique_ptr<SSLSocket> m_socket;
     std::shared_ptr<SSLContext> m_sslContext;
     std::vector<uint8_t> m_bufferIn;
