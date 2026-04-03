@@ -11,7 +11,7 @@
 
 class TransferChannel final : public std::enable_shared_from_this<TransferChannel>{
 public:
-    explicit TransferChannel();
+    TransferChannel();
     TransferChannel(const TransferChannel&) = delete;
     TransferChannel& operator=(const TransferChannel&) = delete;
 

@@ -7,9 +7,7 @@
 
 static constexpr size_t TRANSFER_BUFFER_SIZE = 1024 * 256;
 
-TransferChannel::TransferChannel() : m_socket(nullptr), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) {
-    Debug::Log("TransferChannel created or smth");
-}
+TransferChannel::TransferChannel() : m_socket(nullptr), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) {}
 
 size_t TransferChannel::FetchTransferProgress() const {
     return m_progress.load();

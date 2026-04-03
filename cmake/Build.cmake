@@ -219,6 +219,21 @@ function(DeployQT Target)
         set(DESKTOP_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/LibreConnect.desktop")
         set(ICON_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.png")
 
+        # Non-desktop/test executables need an Exec entry that matches their binary name.
+        if(NOT Target STREQUAL "appLibreConnect_desktop")
+            set(DESKTOP_FILE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${Target}.desktop")
+            file(WRITE "${DESKTOP_FILE_PATH}"
+                    "[Desktop Entry]\n"
+                    "Type=Application\n"
+                    "Name=${Target}\n"
+                    "Comment=${Target}\n"
+                    "Exec=${Target}\n"
+                    "Icon=libreconnect_logo\n"
+                    "Terminal=false\n"
+                    "Categories=Network;Utility;\n"
+            )
+        endif()
+
         set_target_properties(${Target} PROPERTIES
                 RUNTIME_OUTPUT_DIRECTORY ${DEPLOY_DIR}/usr/bin
         )
