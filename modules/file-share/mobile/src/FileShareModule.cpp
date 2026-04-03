@@ -9,6 +9,14 @@
 #include <QUrl>
 #include <magic_enum/magic_enum.hpp>
 
+#ifdef ANDROID_DEVICE
+#include <QJniEnvironment>
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
+#endif
+
+#include "FileIconDensity.h"
+
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
@@ -92,6 +100,68 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     Debug::Log("FileShareModule: Post entry transfer finished. Success: {}, Bytes: {}/{}", success, transferred, totalTransferSize);
     const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
     ConnectionManager::SendEvent(event);
+}
+
+std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, const FileIconDensity density) {
+#ifdef ANDROID_DEVICE
+    if (file.empty()) {
+        return {};
+    }
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return {};
+    }
+
+    const QJniObject filePath = QJniObject::fromString(QString::fromStdString(file));
+    const QJniObject response = QJniObject::callStaticObjectMethod(
+        "com/LibreConnect/mobile/FileSystemUtils",
+        "getFileIconAsPngBytes",
+        "(Landroid/content/Context;Ljava/lang/String;I)[B",
+        context.object<jobject>(),
+        filePath.object<jstring>(),
+        static_cast<jint>(density)
+    );
+
+    const QJniEnvironment env;
+    if (!response.isValid()) {
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+        return {};
+    }
+
+    const jbyteArray bytes = response.object<jbyteArray>();
+    if (!bytes) {
+        return {};
+    }
+
+    const jsize length = env->GetArrayLength(bytes);
+    if (length <= 0) {
+        return {};
+    }
+
+    std::vector<uint8_t> buffer(static_cast<size_t>(length));
+    env->GetByteArrayRegion(
+        bytes,
+        0,
+        length,
+        reinterpret_cast<jbyte*>(buffer.data())
+    );
+
+    if (env->ExceptionCheck()) {
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return {};
+    }
+
+    return buffer;
+#else
+    (void)file;
+    (void)density;
+    return {};
+#endif
 }
 
 void FileShareModule::EnableResponseCallbacks() {
@@ -283,6 +353,30 @@ void FileShareModule::EnableResponseCallbacks() {
         const bool newState = package->GetValue<bool>();
         m_peerModuleEnabled.store(newState);
     });
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID        = package->GetValue<size_t>();
+        const FileEntry entry         = package->GetValue<FileEntry>();
+        const FileIconDensity density = package->GetValue<FileIconDensity>();
+
+        const std::optional<std::string> name = entry.GetName();
+        const std::optional<std::string> path = entry.GetPath();
+
+        if (!path || !name) {
+            ProcessError(ModuleFailReason::IncorrectConfig);
+            co_return;
+        }
+
+        const std::filesystem::path filePath = std::filesystem::path(path.value()) / name.value();
+        std::vector<uint8_t> icon = GetEntryIcon(filePath.string(), density);
+
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_RESPONSE,
+            std::move(icon)
+        );
+
+        co_return;
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {
@@ -293,6 +387,7 @@ void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_REQUEST);
 }
 
 void FileShareModule::OnInitialize() {

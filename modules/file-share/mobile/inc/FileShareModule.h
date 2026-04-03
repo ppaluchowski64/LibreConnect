@@ -7,6 +7,7 @@
 #include <BaseModule.h>
 #include <TransferChannel.h>
 #include <ConnectionManager.h>
+#include <FileIconDensity.h>
 
 class FileShareModule final : public BaseModule {
 public:
@@ -15,6 +16,7 @@ public:
 
 private:
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
+    std::vector<uint8_t> GetEntryIcon(const std::string& file, FileIconDensity density);
 
     std::atomic_size_t m_transferChannelInitializationIndex;
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;

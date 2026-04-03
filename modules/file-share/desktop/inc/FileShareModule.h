@@ -9,6 +9,7 @@
 #include <ConnectionManager.h>
 
 #include <FileSystemManager.h>
+#include <FileIconDensity.h>
 
 class FileShareModule final : public BaseModule {
 public:
@@ -22,6 +23,7 @@ public:
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
     void PasteEntryFromClipboard(const std::filesystem::path& destination) const;
     void OpenEntry(const FileEntry& entry) const;
+    void FetchEntryIcon(const FileEntry& entry, FileIconDensity density) const;
 
 private:
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
@@ -29,6 +31,7 @@ private:
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;
+    static asio::awaitable<void> FetchEntryIconAwaitable(FileEntry entry, FileIconDensity density);
 
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
 

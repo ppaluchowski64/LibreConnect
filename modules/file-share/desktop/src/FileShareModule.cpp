@@ -285,10 +285,46 @@ void FileShareModule::OpenEntry(const FileEntry& entry) const {
     asio::co_spawn(m_context, OpenEntryAwaitable(entry), asio::detached);
 }
 
+void FileShareModule::FetchEntryIcon(const FileEntry& entry, const FileIconDensity density) const {
+    asio::co_spawn(m_context, FetchEntryIconAwaitable(entry, density), asio::detached);
+}
+
 asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry) const {
     const std::filesystem::path destination = std::filesystem::temp_directory_path() / std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
     co_await FetchEntryAwaitable(entry, destination.string());
     QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(destination.string())));
+}
+
+asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry entry, const FileIconDensity density) {
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_REQUEST, FileEntry(entry), density);
+    if (!response) {
+        const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+
+    const std::vector<uint8_t> iconBuffer = response.value()->GetValue<std::vector<uint8_t>>();
+    const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+
+    // TODO: Add device specific temp
+
+    const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
+    std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / fmt::format("{}.png", name);
+
+    {
+        std::ofstream stream(entryDestination, std::ios::binary);
+        if (!stream.good()) {
+            const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
+            ConnectionManager::SendEvent(event);
+            co_return;
+        }
+
+        stream << iconBuffer.data();
+    }
+
+    const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, entryDestination, true);
+    ConnectionManager::SendEvent(event);
 }
 
 void FileShareModule::EnableResponseCallbacks() {

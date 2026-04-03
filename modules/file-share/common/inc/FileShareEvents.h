@@ -14,7 +14,7 @@ enum class TransferOperation : bool {
 class EntryTransferProgressEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase);
-    explicit EntryTransferProgressEvent(const FileEntry& entry, const size_t totalBytes, const size_t bytesTransferred, TransferOperation operation) : QEvent(Type), m_fileEntry(entry), m_totalBytes(totalBytes), m_bytesTransferred(bytesTransferred), m_operation(operation) {}
+    explicit EntryTransferProgressEvent(const FileEntry& entry, const size_t totalBytes, const size_t bytesTransferred, const TransferOperation operation) : QEvent(Type), m_fileEntry(entry), m_totalBytes(totalBytes), m_bytesTransferred(bytesTransferred), m_operation(operation) {}
 
     FileEntry GetFileEntry() const { return m_fileEntry; };
     size_t GetTotalBytes() const { return m_totalBytes; }
@@ -88,5 +88,23 @@ private:
     bool m_success;
 };
 
+class FetchEntryIconResultEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+4);
+    explicit FetchEntryIconResultEvent(const FileEntry& entry, const std::filesystem::path& path , const bool success) : QEvent(Type), m_entry(entry), m_path(path), m_success(success) {}
+
+    std::filesystem::path GetIconPath() const { return m_path; }
+    FileEntry GetEntry() const { return m_entry; }
+    bool Success() const { return m_success; }
+
+    FetchEntryIconResultEvent* clone() const override {
+        return new FetchEntryIconResultEvent(*this);
+    }
+
+private:
+    std::filesystem::path m_path;
+    FileEntry m_entry;
+    bool m_success;
+};
 
 #endif // FILE_SHARE_EVENTS_H
