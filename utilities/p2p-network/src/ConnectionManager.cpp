@@ -11,6 +11,7 @@
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <ThreadPool.h>
+#include <boost/uuid/string_generator.hpp>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -153,7 +154,7 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
 
             try {
                 device.deviceID = generator(name);
-            } catch (const std::system_error& e) {
+            } catch (const std::exception&) {
                 Debug::LogWarning("ConnectionManager: Invalid UUID directory found: {}", name);
                 continue;
             }
@@ -187,6 +188,39 @@ std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
     }
 
     return devices;
+}
+
+bool ConnectionManager::RemovePairedDevice(const std::string& deviceId) {
+    static boost::uuids::string_generator generator;
+
+    boost::uuids::uuid parsedId;
+    try {
+        parsedId = generator(deviceId);
+    } catch (const std::exception&) {
+        Debug::LogWarning("ConnectionManager: RemovePairedDevice received invalid UUID '{}'", deviceId);
+        return false;
+    }
+
+    const std::filesystem::path targetPath = std::filesystem::path("certs") / boost::uuids::to_string(parsedId);
+    std::error_code errorCode;
+
+    if (!std::filesystem::exists(targetPath, errorCode)) {
+        if (errorCode) {
+            Debug::LogWarning("ConnectionManager: Failed checking paired device path '{}': {}",
+                              targetPath.string(), errorCode.message());
+        }
+        return false;
+    }
+
+    std::filesystem::remove_all(targetPath, errorCode);
+    if (errorCode) {
+        Debug::LogError("ConnectionManager: Failed removing paired device '{}' at '{}': {} ({})",
+                        deviceId, targetPath.string(), errorCode.message(), errorCode.value());
+        return false;
+    }
+
+    Debug::Log("ConnectionManager: Removed paired device '{}' at '{}'", deviceId, targetPath.string());
+    return true;
 }
 
 void ConnectionManager::Disconnect(const std::error_code errorCode) {

@@ -1,7 +1,27 @@
 #include "DeviceConnectionController.h"
+#include <boost/uuid/uuid_io.hpp>
 
 namespace
 {
+QString DeviceTypeToLabel(const DeviceType type)
+{
+    switch (type) {
+    case DeviceType::Linux:
+        return QStringLiteral("Linux");
+    case DeviceType::macOS:
+        return QStringLiteral("macOS");
+    case DeviceType::Windows:
+        return QStringLiteral("Windows");
+    case DeviceType::Android:
+        return QStringLiteral("Android");
+    case DeviceType::iOS:
+        return QStringLiteral("iOS");
+    case DeviceType::Unknown:
+    default:
+        return QStringLiteral("Unknown");
+    }
+}
+
 bool IsBenignScannerShutdownError(const std::error_code& errorCode)
 {
     return errorCode.message() == "The I/O operation has been aborted because of either a thread exit or an application request.";
@@ -17,6 +37,7 @@ DeviceConnectionController::DeviceConnectionController(QObject* parent)
     : QObject(parent)
 {
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+    refreshPairedDevices();
 }
 
 void DeviceConnectionController::connectTo(const QString& ipAddress,
@@ -41,6 +62,47 @@ void DeviceConnectionController::connectTo(const QString& ipAddress,
 void DeviceConnectionController::disconnect()
 {
     ConnectionManager::Disconnect();
+}
+
+QVariantList DeviceConnectionController::getPairedDevices()
+{
+    QVariantList entries;
+    const std::vector<DeviceInfoLite> devices = ConnectionManager::GetPairedDevices();
+    entries.reserve(static_cast<int>(devices.size()));
+
+    for (const auto& device : devices) {
+        QVariantMap entry;
+        entry.insert(QStringLiteral("deviceId"), QString::fromStdString(boost::uuids::to_string(device.deviceID)));
+        entry.insert(QStringLiteral("deviceName"), QString::fromStdString(device.deviceName));
+        entry.insert(QStringLiteral("deviceType"), DeviceTypeToLabel(device.deviceType));
+        entries.push_back(entry);
+    }
+
+    const bool hasDevices = !entries.isEmpty();
+    if (m_hasPairedDevices != hasDevices) {
+        m_hasPairedDevices = hasDevices;
+        emit pairedDevicesChanged();
+    }
+
+    return entries;
+}
+
+bool DeviceConnectionController::removePairedDevice(const QString& deviceId)
+{
+    const bool removed = ConnectionManager::RemovePairedDevice(deviceId.toStdString());
+    refreshPairedDevices();
+    return removed;
+}
+
+void DeviceConnectionController::refreshPairedDevices()
+{
+    const bool hasDevices = !ConnectionManager::GetPairedDevices().empty();
+    if (m_hasPairedDevices == hasDevices) {
+        return;
+    }
+
+    m_hasPairedDevices = hasDevices;
+    emit pairedDevicesChanged();
 }
 
 void DeviceConnectionController::submitVerificationCode(const QString& code)
@@ -108,11 +170,18 @@ bool DeviceConnectionController::event(QEvent* e)
 void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
 {
     const bool success = (ev->GetResult() == EventResult::SUCCESS);
+    const bool connectedChangedValue = (m_connected != success);
+    const bool pendingChangedValue = m_pending;
     m_connected = success;
     m_pending   = false;
 
-    emit connectedChanged();
-    emit pendingChanged();
+    if (connectedChangedValue) {
+        emit connectedChanged();
+    }
+
+    if (pendingChangedValue) {
+        emit pendingChanged();
+    }
 
     if (m_verificationPending) {
         m_verificationPending = false;
@@ -128,11 +197,18 @@ void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
 
 void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
 {
+    const bool connectedChangedValue = m_connected;
+    const bool pendingChangedValue = m_pending;
     m_connected = false;
     m_pending   = false;
 
-    emit connectedChanged();
-    emit pendingChanged();
+    if (connectedChangedValue) {
+        emit connectedChanged();
+    }
+
+    if (pendingChangedValue) {
+        emit pendingChanged();
+    }
 
     if (m_verificationPending) {
         m_verificationPending = false;

@@ -51,6 +51,13 @@ Window {
         })
     }
 
+    function showPairedDevices() {
+        replaceRootPage("qrc:/LibreConnect/desktop/PairedDevices.qml", {
+            windowRef: window,
+            connectionController: connectionController
+        })
+    }
+
     function showDevicePicker() {
         replaceRootPage("qrc:/LibreConnect/desktop/DevicePicker.qml", {
             windowRef: window,
@@ -195,10 +202,23 @@ Window {
         target: connectionController
 
         function onConnectedChanged() {
-            if (!connectionController.connected && stackView.depth > 0)
-                showDevicePicker()
+            if (!connectionController.connected && stackView.depth > 0) {
+                connectionController.refreshPairedDevices()
+                if (connectionController.hasPairedDevices) {
+                    showPairedDevices()
+                } else {
+                    showInitial()
+                }
+            }
         }
     }
 
-    Component.onCompleted: showInitial()
+    Component.onCompleted: {
+        connectionController.refreshPairedDevices()
+        if (connectionController.hasPairedDevices) {
+            showPairedDevices()
+        } else {
+            showInitial()
+        }
+    }
 }
