@@ -105,11 +105,14 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, const FileIconDensity density) {
 #ifdef ANDROID_DEVICE
     if (file.empty()) {
+        Debug::LogWarning("FileShareModule: GetEntryIcon skipped: empty file path");
         return {};
     }
+    Debug::Log("FileShareModule: GetEntryIcon request. Path: {}, Density: {}", file, static_cast<int>(density));
 
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     if (!context.isValid()) {
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: Android context is invalid");
         return {};
     }
 
@@ -129,16 +132,19 @@ std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, cons
             env->ExceptionDescribe();
             env->ExceptionClear();
         }
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: JNI response is invalid");
         return {};
     }
 
     const jbyteArray bytes = response.object<jbyteArray>();
     if (!bytes) {
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: JNI byte array is null");
         return {};
     }
 
     const jsize length = env->GetArrayLength(bytes);
     if (length <= 0) {
+        Debug::LogWarning("FileShareModule: GetEntryIcon returned empty icon bytes");
         return {};
     }
 
@@ -153,13 +159,16 @@ std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, cons
     if (env->ExceptionCheck()) {
         env->ExceptionDescribe();
         env->ExceptionClear();
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed while reading JNI byte array");
         return {};
     }
 
+    Debug::Log("FileShareModule: GetEntryIcon success. Path: {}, Bytes: {}", file, buffer.size());
     return buffer;
 #else
     (void)file;
     (void)density;
+    Debug::LogWarning("FileShareModule: GetEntryIcon is unavailable on non-Android platform");
     return {};
 #endif
 }
@@ -362,18 +371,27 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::optional<std::string> path = entry.GetPath();
 
         if (!path || !name) {
+            Debug::LogError("FileShareModule: Missing file path/name for icon request. RequestID: {}", requestID);
             ProcessError(ModuleFailReason::IncorrectConfig);
             co_return;
         }
 
         const std::filesystem::path filePath = std::filesystem::path(path.value()) / name.value();
+        Debug::Log(
+            "FileShareModule: Processing entry icon request. RequestID: {}, Path: {}, Density: {}",
+            requestID,
+            filePath.string(),
+            static_cast<int>(density)
+        );
         std::vector<uint8_t> icon = GetEntryIcon(filePath.string(), density);
+        const size_t iconSize = icon.size();
 
         ConnectionManager::SendRequestResponse(
             requestID,
             PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_RESPONSE,
             std::move(icon)
         );
+        Debug::Log("FileShareModule: Sent entry icon response. RequestID: {}, Bytes: {}", requestID, iconSize);
 
         co_return;
     });

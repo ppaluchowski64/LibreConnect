@@ -286,6 +286,14 @@ void FileShareModule::OpenEntry(const FileEntry& entry) const {
 }
 
 void FileShareModule::FetchEntryIcon(const FileEntry& entry, const FileIconDensity density) const {
+    const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+    Debug::Log(
+        "FileShareModule: FetchEntryIcon requested. Path: {}, Name: {}, Density: {}",
+        path,
+        name,
+        static_cast<int>(density)
+    );
     asio::co_spawn(m_context, FetchEntryIconAwaitable(entry, density), asio::detached);
 }
 
@@ -296,16 +304,25 @@ asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry)
 }
 
 asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry entry, const FileIconDensity density) {
+    const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+    Debug::Log(
+        "FileShareModule: FetchEntryIconAwaitable start. Path: {}, Name: {}, Density: {}",
+        path,
+        name,
+        static_cast<int>(density)
+    );
+
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_REQUEST, FileEntry(entry), density);
     if (!response) {
+        Debug::LogError("FileShareModule: FetchEntryIcon request failed (no response)");
         const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
         ConnectionManager::SendEvent(event);
         co_return;
     }
 
     const std::vector<uint8_t> iconBuffer = response.value()->GetValue<std::vector<uint8_t>>();
-    const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
-    const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+    Debug::Log("FileShareModule: FetchEntryIcon response received. Bytes: {}", iconBuffer.size());
 
     // TODO: Add device specific temp
 
@@ -315,6 +332,7 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
     {
         std::ofstream stream(entryDestination, std::ios::binary);
         if (!stream.good()) {
+            Debug::LogError("FileShareModule: Failed to open icon destination for writing: {}", entryDestination.string());
             const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
             ConnectionManager::SendEvent(event);
             co_return;
@@ -323,6 +341,7 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
         stream << iconBuffer.data();
     }
 
+    Debug::Log("FileShareModule: FetchEntryIcon saved icon to {}", entryDestination.string());
     const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, entryDestination, true);
     ConnectionManager::SendEvent(event);
 }
