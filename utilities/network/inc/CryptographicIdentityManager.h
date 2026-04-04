@@ -16,6 +16,8 @@
 
 #include <mutex>
 #include <filesystem>
+#include <string>
+#include <string_view>
 
 class CryptographicIdentityManager {
 public:
@@ -25,6 +27,10 @@ public:
 
     static bool SavePeerCertificate(std::string_view certificatePath, SSLSocket& socket);
     static bool SavePeerCertificate(std::string_view certificatePath, SSLSocket* socket);
+    static std::string GetPeerCertificateFingerprint(SSLSocket& socket);
+    static std::string GetPeerCertificateFingerprint(SSLSocket* socket);
+
+    static std::string GetCertificateFingerprint(std::string_view certificatePath);
 
     static std::string GetPublicKey();
     static std::string GenerateRandomChallenge(size_t size = 32);

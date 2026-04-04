@@ -255,16 +255,16 @@ Page {
             width: 360
 
             Text {
-                text: "Enter the code shown on your phone to approve this connection."
+                text: "Enter the pairing code shown on your phone to approve this connection."
                 wrapMode: Text.WordWrap
                 width: parent.width
             }
 
             TextField {
                 id: verificationCodeField
-                placeholderText: "6-digit code"
+                placeholderText: "12-digit code"
                 inputMethodHints: Qt.ImhDigitsOnly
-                maximumLength: 6
+                maximumLength: 12
                 width: parent.width
                 onAccepted: connectionController.submitVerificationCode(verificationCodeField.text)
             }

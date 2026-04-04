@@ -90,8 +90,7 @@ private:
     static void SeekInitialConnection(TCPEndpoint endpoint);
 
     static void Initialize();
-    static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid());
-    static bool VerifyCallbackAlwaysAccept(bool preverified, asio::ssl::verify_context& ctx);
+    static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid(), bool allowUnpinnedPairing = false);
     static void RunContext();
     static void SetSeekingEndpoint(TCPEndpoint endpoint);
 

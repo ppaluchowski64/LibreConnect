@@ -58,9 +58,11 @@ private:
 class ConnectionPendingEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+3);
-    explicit ConnectionPendingEvent(const DeviceInfo& deviceInfo, const InitialConnectionMode mode, std::function<void(bool, std::string)>&& callback) : QEvent(Type), m_mode(mode), m_deviceInfo(deviceInfo), m_callback(std::move(callback)) {}
+    explicit ConnectionPendingEvent(const DeviceInfo& deviceInfo, const InitialConnectionMode mode, std::string pairingCode, std::function<void(bool, std::string)>&& callback)
+        : QEvent(Type), m_mode(mode), m_deviceInfo(deviceInfo), m_pairingCode(std::move(pairingCode)), m_callback(std::move(callback)) {}
     DeviceInfo GetDeviceInfo() const { return m_deviceInfo; }
     InitialConnectionMode GetInitialConnectionMode() const { return m_mode; }
+    std::string GetPairingCode() const { return m_pairingCode; }
 
     void AcceptConnection() const { m_callback(true, ""); }
     void AcceptConnectionIfVerified(const std::string& challenge) const { m_callback(true, challenge); }
@@ -73,6 +75,7 @@ public:
 private:
     InitialConnectionMode m_mode;
     DeviceInfo m_deviceInfo;
+    std::string m_pairingCode;
     std::function<void(bool, std::string)> m_callback;
 
 };

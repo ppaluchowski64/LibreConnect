@@ -24,9 +24,10 @@ void ConnectionManager::ConnectPrimary(const InitialConnectionData& data) {
     const uuid targetUUID = data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR
         ? data.deviceInfo.deviceID
         : boost::uuids::nil_uuid();
+    const bool allowUnpinnedPairing = data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT;
 
-    s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID);
-    s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID);
+    s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID, allowUnpinnedPairing);
+    s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID, allowUnpinnedPairing);
 
     s_instance->m_primaryConnection->Connect(s_instance->m_sslContextClient, data);
 }
@@ -38,9 +39,10 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
     const uuid targetUUID = data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR
         ? data.deviceInfo.deviceID
         : boost::uuids::nil_uuid();
+    const bool allowUnpinnedPairing = data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT;
 
-    s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID);
-    s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID);
+    s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID, allowUnpinnedPairing);
+    s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID, allowUnpinnedPairing);
 
     s_instance->m_primaryConnection->Seek(s_instance->m_sslContextServer, data, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
@@ -235,7 +237,7 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
     }
 }
 
-std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID) {
+std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID, const bool allowUnpinnedPairing) {
     Debug::Log("ConnectionManager: Creating SSL Context (Role: {}, Target: {})",
                isServer ? "Server" : "Client", boost::uuids::to_string(targetUUID));
 
@@ -250,14 +252,31 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
 
     std::shared_ptr<SSLContext> context = std::make_shared<SSLContext>(isServer ? SSLContext::tlsv13_server : SSLContext::tlsv13_client);
 
-    if (targetUUID != boost::uuids::nil_uuid() && std::filesystem::exists(targetCertificatePath)) {
-        Debug::Log("ConnectionManager: Loading verification file for target device");
+    if (targetUUID != boost::uuids::nil_uuid()) {
+        if (std::filesystem::exists(targetCertificatePath)) {
+            Debug::Log("ConnectionManager: Loading pinned certificate for target device");
+            context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+            context->load_verify_file(targetCertificatePath);
+        } else {
+            Debug::LogError(
+                "ConnectionManager: Missing pinned certificate for target device at '{}'. Refusing untrusted TLS session.",
+                targetCertificatePath
+            );
+            context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
+            context->set_verify_callback([](bool, asio::ssl::verify_context&) { return false; });
+        }
+    } else if (allowUnpinnedPairing) {
+        Debug::LogWarning(
+            "ConnectionManager: Using explicit PAIR_AND_CONNECT bootstrap mode (accept self-signed certs, but require peer cert)"
+        );
         context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
-        context->load_verify_file(targetCertificatePath);
+        context->set_verify_callback([](bool, asio::ssl::verify_context&) { return true; });
     } else {
-        Debug::Log("ConnectionManager: No target certificate found, requesting peer certificate and using 'Always Accept' callback");
+        Debug::LogError(
+            "ConnectionManager: Refusing unpinned TLS session to prevent MITM. Pair securely first, then reconnect using pinned certificate."
+        );
         context->set_verify_mode(asio::ssl::verify_peer);
-        context->set_verify_callback(std::bind(&ConnectionManager::VerifyCallbackAlwaysAccept, std::placeholders::_1, std::placeholders::_2));
+        context->set_verify_callback([](bool, asio::ssl::verify_context&) { return false; });
     }
 
     context->set_options(
@@ -276,20 +295,6 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
     }
 
     return context;
-}
-
-bool ConnectionManager::VerifyCallbackAlwaysAccept(const bool preverified, asio::ssl::verify_context& ctx) {
-    if (!preverified) {
-        const X509_STORE_CTX* cert_ctx = ctx.native_handle();
-        const int error_code = X509_STORE_CTX_get_error(cert_ctx);
-        const char* error_string = X509_verify_cert_error_string(error_code);
-
-        Debug::Log("ConnectionManager: Certificate presented but failed standard verification: {}", error_string);
-    } else {
-        Debug::Log("ConnectionManager: Certificate pre-verified successfully");
-    }
-
-    return true;
 }
 
 void ConnectionManager::RunContext() {

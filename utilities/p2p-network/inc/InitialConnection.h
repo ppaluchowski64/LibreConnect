@@ -69,6 +69,7 @@ private:
     asio::awaitable<void> CoProcessConnectionVerificationEvent(std::string response);
     asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string challenge);
     asio::awaitable<void> CoPrimaryConnectionCallback(InitialConnectionData data);
+    static std::string ComputePairingCode(const std::string& localFingerprint, const std::string& remoteFingerprint);
 
     IOContext& m_context;
     IOContextStrand m_strand;
@@ -76,6 +77,8 @@ private:
     AwaitableFlag m_sendFlag;
     TCPSocket m_socket;
     std::string m_challengeResult;
+    std::string m_localCertificateFingerprint;
+    std::string m_expectedChallengeCode;
 
     std::deque<std::unique_ptr<Package<InitialConnectionPackageType>>> m_packagesOut;
     std::shared_ptr<InitialConnection> m_temporaryOwnership;

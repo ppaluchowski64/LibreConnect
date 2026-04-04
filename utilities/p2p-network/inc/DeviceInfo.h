@@ -22,6 +22,7 @@ struct DeviceInfo {
     std::uint16_t deviceAddressPort;
     boost::uuids::uuid deviceID;
     DeviceType deviceType;
+    std::string certificateFingerprint;
 
     static DeviceInfo GetThisDeviceInfo();
 
@@ -30,6 +31,7 @@ struct DeviceInfo {
         SerializeObject(deviceAddressPort, buffer, offset);
         SerializeObject(deviceID, buffer, offset);
         SerializeObject(deviceType, buffer, offset);
+        SerializeObject(certificateFingerprint, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
@@ -37,10 +39,15 @@ struct DeviceInfo {
         DeserializeObject(deviceAddressPort, buffer,offset);
         DeserializeObject(deviceID, buffer, offset);
         DeserializeObject(deviceType, buffer, offset);
+        DeserializeObject(certificateFingerprint, buffer, offset);
     }
 
     inline size_t GetSerializedSize() const {
-        return GetObjectSerializedSize(deviceName) + GetObjectSerializedSize(deviceAddressPort) + GetObjectSerializedSize(deviceID) + GetObjectSerializedSize(deviceType);
+        return GetObjectSerializedSize(deviceName) +
+            GetObjectSerializedSize(deviceAddressPort) +
+            GetObjectSerializedSize(deviceID) +
+            GetObjectSerializedSize(deviceType) +
+            GetObjectSerializedSize(certificateFingerprint);
     }
 };
 

@@ -10,7 +10,6 @@
 #include <boost/uuid.hpp>
 #include <DeviceInfo.h>
 
-
 class LanDeviceScanner {
 public:
     LanDeviceScanner();

@@ -3,6 +3,8 @@
 #include <openssl/pem.h>
 #include <openssl/x509v3.h>
 #include <openssl/err.h>
+#include <iomanip>
+#include <sstream>
 #include <DebugLog.h>
 #include <filesystem>
 
@@ -10,6 +12,36 @@ std::mutex CryptographicIdentityManager::m_mutex{};
 EVP_PKEY* CryptographicIdentityManager::m_keyPair{nullptr};
 
 constexpr static const char* KEYS_PAIR_FILE_NAME = "keys.pem";
+
+namespace {
+std::string FingerprintToHex(const unsigned char* data, const unsigned int length) {
+    if (data == nullptr || length == 0) {
+        return {};
+    }
+
+    std::ostringstream oss;
+    oss << std::hex << std::setfill('0');
+    for (unsigned int i = 0; i < length; ++i) {
+        oss << std::setw(2) << static_cast<int>(data[i]);
+    }
+
+    return oss.str();
+}
+
+std::string GetFingerprintFromCertificate(X509* cert) {
+    if (cert == nullptr) {
+        return {};
+    }
+
+    unsigned char digest[EVP_MAX_MD_SIZE]{};
+    unsigned int digestLen = 0;
+    if (X509_digest(cert, EVP_sha256(), digest, &digestLen) != 1 || digestLen == 0) {
+        return {};
+    }
+
+    return FingerprintToHex(digest, digestLen);
+}
+}
 
 void CryptographicIdentityManager::GenerateCertificate(const std::string_view privateKeyPath, const std::string_view certificatePath) {
     std::lock_guard<std::mutex> lock(m_mutex);
@@ -210,6 +242,40 @@ bool CryptographicIdentityManager::SavePeerCertificate(const std::string_view ce
     }
 
     return true;
+}
+
+std::string CryptographicIdentityManager::GetPeerCertificateFingerprint(SSLSocket& socket) {
+    return GetPeerCertificateFingerprint(&socket);
+}
+
+std::string CryptographicIdentityManager::GetPeerCertificateFingerprint(SSLSocket* socket) {
+    if (socket == nullptr) {
+        Debug::LogError("Socket is null");
+        return {};
+    }
+
+    const SSL* nativeHandler = socket->native_handle();
+    const std::unique_ptr<X509, decltype(&X509_free)> certificate(SSL_get1_peer_certificate(nativeHandler), X509_free);
+    return GetFingerprintFromCertificate(certificate.get());
+}
+
+std::string CryptographicIdentityManager::GetCertificateFingerprint(const std::string_view certificatePath) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+
+    FILE* fp = fopen(certificatePath.data(), "rb");
+    if (!fp) {
+        return {};
+    }
+
+    X509* cert = PEM_read_X509(fp, nullptr, nullptr, nullptr);
+    fclose(fp);
+    if (!cert) {
+        return {};
+    }
+
+    const std::string fingerprint = GetFingerprintFromCertificate(cert);
+    X509_free(cert);
+    return fingerprint;
 }
 
 std::string CryptographicIdentityManager::GetPublicKey() {

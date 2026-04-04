@@ -8,11 +8,49 @@
 #include <asio/buffer.hpp>
 #include <filesystem>
 #include <fstream>
+#include <system_error>
 
 static constexpr size_t HEARTBEAT_INTERVAL = 2000;
 static constexpr size_t HEARTBEAT_MONITOR_INTERVAL = 30000;
 
 class ConnectionManager;
+
+namespace {
+bool VerifyPairingPeerFingerprint(SSLSocket* socket, const InitialConnectionData& data) {
+    if (data.initialConnectionMode != InitialConnectionMode::PAIR_AND_CONNECT) {
+        return true;
+    }
+
+    if (socket == nullptr) {
+        Debug::LogError("PrimaryConnection: Pairing fingerprint verification failed because TLS socket is null");
+        return false;
+    }
+
+    const std::string expectedFingerprint = data.deviceInfo.certificateFingerprint;
+    if (expectedFingerprint.empty()) {
+        Debug::LogError("PrimaryConnection: Pairing fingerprint verification failed because expected fingerprint is empty");
+        return false;
+    }
+
+    const std::string peerFingerprint = CryptographicIdentityManager::GetPeerCertificateFingerprint(socket);
+    if (peerFingerprint.empty()) {
+        Debug::LogError("PrimaryConnection: Pairing fingerprint verification failed because peer certificate is missing");
+        return false;
+    }
+
+    if (peerFingerprint != expectedFingerprint) {
+        Debug::LogError(
+            "PrimaryConnection: Pairing fingerprint mismatch. Expected {}, got {}",
+            expectedFingerprint,
+            peerFingerprint
+        );
+        return false;
+    }
+
+    Debug::Log("PrimaryConnection: Pairing fingerprint verification succeeded");
+    return true;
+}
+}
 
 PrimaryConnection::PrimaryConnection()
     : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)), m_sslContext(nullptr), m_socket(nullptr),
@@ -79,6 +117,13 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
         Debug::Log("PrimaryConnection: TCP Connection established. Starting SSL handshake...");
         co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
+        if (!VerifyPairingPeerFingerprint(m_socket.get(), data)) {
+            throw std::system_error(
+                std::make_error_code(std::errc::permission_denied),
+                "PAIR_AND_CONNECT peer fingerprint verification failed"
+            );
+        }
+
         Debug::Log("PrimaryConnection: Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 
         m_connectionState.store(ConnectionState::CONNECTED);
@@ -139,6 +184,13 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         Debug::Log("PrimaryConnection: Incoming connection accepted. Starting SSL handshake as server...");
 
         co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
+
+        if (!VerifyPairingPeerFingerprint(m_socket.get(), data)) {
+            throw std::system_error(
+                std::make_error_code(std::errc::permission_denied),
+                "PAIR_AND_CONNECT peer fingerprint verification failed"
+            );
+        }
 
         Debug::Log("PrimaryConnection: Accepted TLS primary connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
 

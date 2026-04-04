@@ -2,6 +2,7 @@
 #include <asio.hpp>
 #include <ConnectionManager.h>
 #include <DeviceData.h>
+#include <CryptographicIdentityManager.h>
 #include <fmt/format.h>
 
 #ifdef ANDROID_DEVICE
@@ -9,6 +10,13 @@
 #endif
 
 DeviceInfo DeviceInfo::GetThisDeviceInfo() {
+    constexpr std::string_view privateKeyPath{"certs/local/pkey.key"};
+    constexpr std::string_view certificatePath{"certs/local/cert.key"};
+
+    if (!CryptographicIdentityManager::IsCertificateValid(certificatePath)) {
+        CryptographicIdentityManager::GenerateCertificate(privateKeyPath, certificatePath);
+    }
+
     const TCPEndpoint endpoint = ConnectionManager::GetSeekEndpoint();
     DeviceInfo device{};
 
@@ -27,6 +35,7 @@ DeviceInfo DeviceInfo::GetThisDeviceInfo() {
     device.deviceID   = DeviceData::GetDeviceUUID();
     device.deviceAddressPort = endpoint.port();
     device.deviceType = DeviceTypeDetector::GetDeviceType();
+    device.certificateFingerprint = CryptographicIdentityManager::GetCertificateFingerprint(certificatePath);
 
     return device;
 }

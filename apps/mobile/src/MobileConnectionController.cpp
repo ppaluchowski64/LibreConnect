@@ -88,8 +88,12 @@ bool MobileConnectionController::event(QEvent* e)
             return true;
         }
 
-        const int codeValue = QRandomGenerator::global()->bounded(1000000);
-        m_challengeCode = QString("%1").arg(codeValue, 6, 10, QLatin1Char('0'));
+        m_challengeCode = QString::fromStdString(ev->GetPairingCode());
+        if (m_challengeCode.isEmpty()) {
+            // Fallback for legacy/invalid payloads.
+            const int codeValue = QRandomGenerator::global()->bounded(1000000);
+            m_challengeCode = QString("%1").arg(codeValue, 6, 10, QLatin1Char('0'));
+        }
         emit challengeCodeChanged();
 
         if (!m_challengeVisible) {
