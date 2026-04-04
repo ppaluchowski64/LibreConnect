@@ -6,6 +6,7 @@
 #include <ConnectionManager.h>
 #include <Scanner.h>
 #include <DebugLog.h>
+#include <ThreadPool.h>
 
 namespace
 {
@@ -101,6 +102,7 @@ void StartBackendIfNeeded()
     }
 
     Debug::Log("MainServiceBackendBridge: starting backend");
+    ThreadPool::Start();
     ConnectionManager::StartAcceptingConnections();
     LanDeviceScanner::BeginScan();
     g_backendRunning = true;
@@ -114,6 +116,7 @@ void StopBackendIfNeeded()
     }
 
     Debug::Log("MainServiceBackendBridge: stopping backend");
+    ThreadPool::Stop();
     LanDeviceScanner::EndScan();
     ConnectionManager::StopAcceptingConnections();
     g_backendRunning = false;

@@ -199,7 +199,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             size_t offset = 0;
             header.Deserialize(headerBuffer, offset);
 
-            Debug::Log("InitialConnection: [IN] Type: {} Size: {} bytes", (int)header.type, header.size);
+            Debug::Log("InitialConnection: [IN] Type: {} Size: {} bytes", header.type, header.size);
 
             if (header.size > MAX_PACKAGE_SIZE) {
                 Debug::Log("InitialConnection: Received package size ({}) exceeds limit!", header.size);
@@ -218,15 +218,19 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
                 Debug::Log("InitialConnection: Handshake step 1 - Received DEVICE_DATA_FC from {}", data.deviceInfo.deviceName);
 
-                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
-                    try {
-                        asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
-                    } catch (const std::exception& ex) {
-                        Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
-                    }
-                });
+                if (data.initialConnectionMode != InitialConnectionMode::CONNECT_WITH_PAIR) {
+                    std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
+                        try {
+                            asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
+                        } catch (const std::exception& ex) {
+                            Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
+                        }
+                    });
 
-                ConnectionManager::SendEvent(event);
+                    ConnectionManager::SendEvent(event);
+                } else {
+                    asio::co_spawn(m_strand, CoProcessConnectionPendingCallback(true, data, ""), asio::detached);
+                }
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FS)) {
                 // Client side receiving final confirmation

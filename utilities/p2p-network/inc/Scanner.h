@@ -17,9 +17,11 @@ public:
 
     static void BeginScan();
     static void EndScan();
+    static void RestartScan();
     static std::vector<DeviceInfo> GetDiscoveredDevices();
 
 private:
+    asio::awaitable<void> Co_RestartScan() const;
     asio::awaitable<void> Co_JoinMulticastGroup();
     asio::awaitable<void> Co_LeaveMulticastGroup();
     asio::awaitable<void> Co_SendProbes() const;
