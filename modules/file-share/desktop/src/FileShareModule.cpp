@@ -389,8 +389,8 @@ void FileShareModule::EnableResponseCallbacks() {
         Debug::Log("FileShareModule: Selected transfer channel {} for incoming post request {}", transferChannelIndex, requestID);
 
         const auto future = isDirectory ?
-            asio::co_spawn(m_context, channel->SendDirectory(destinationPath), asio::use_future) :
-            asio::co_spawn(m_context, channel->SendFile(destinationPath), asio::use_future);
+            asio::co_spawn(m_context, channel->ReceiveDirectory(destinationPath), asio::use_future) :
+            asio::co_spawn(m_context, channel->ReceiveFile(destinationPath), asio::use_future);
 
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::FILE_SHARE_TRANSFER_POST_RESPONSE, transferChannelIndex);
         FileEntry entry(destinationPath);

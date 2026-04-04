@@ -77,6 +77,7 @@ std::optional<std::unique_ptr<Package<PC_PackageType>>> PrimaryConnection::GetPa
     static thread_local moodycamel::ConsumerToken consumerToken(m_packageIn);
 
     if (std::unique_ptr<Package<PC_PackageType>> package; m_packageIn.try_dequeue(consumerToken, package)) {
+        m_inboundQueuedBytes -= package->GetHeader().size;
         return std::move(package);
     }
 
@@ -314,10 +315,9 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             if (m_connectionState.load() != ConnectionState::CONNECTED) break;
 
             if (header.size > MAX_PACKAGE_SIZE) {
-                // TODO: find correct package size limit
-
-                Debug::LogWarning("Package over the limit warning {}", header.size);
-                //throw std::runtime_error("PrimaryConnection receive package size too large");
+                Debug::LogError("Package over the limit {} bytes", header.size);
+                Disconnect(std::make_error_code(std::errc::message_size));
+                co_return;
             }
 
             std::unique_ptr<Package<PC_PackageType>> package = std::make_unique<Package<PC_PackageType>>(header);
@@ -330,6 +330,13 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             if (header.type == static_cast<uint16_t>(PC_PackageType::HEARTBEAT)) {
                 m_heartbeatReceived.store(true);
                 continue;
+            }
+
+            m_inboundQueuedBytes += header.size;
+            if (m_inboundQueuedBytes.load() > MAX_INBOUND_QUEUED_BYTES) {
+                Debug::LogError("Queued packages size over the limit: {} bytes", m_inboundQueuedBytes.load());
+                Disconnect(std::make_error_code(std::errc::message_size));
+                co_return;
             }
 
             m_packageIn.enqueue(std::move(package));

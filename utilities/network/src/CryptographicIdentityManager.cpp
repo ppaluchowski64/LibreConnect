@@ -28,7 +28,7 @@ std::string FingerprintToHex(const unsigned char* data, const unsigned int lengt
     return oss.str();
 }
 
-std::string GetFingerprintFromCertificate(X509* cert) {
+std::string GetFingerprintFromCertificate(const X509* cert) {
     if (cert == nullptr) {
         return {};
     }
@@ -367,7 +367,6 @@ bool CryptographicIdentityManager::VerifySignature(const std::string& publicKeyS
 }
 
 std::string CryptographicIdentityManager::GetOpenSSLError() {
-    std::lock_guard<std::mutex> lock(m_mutex);
     const unsigned long err = ERR_get_error();
 
     if (err == 0)

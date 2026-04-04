@@ -15,6 +15,7 @@
 #include <InitialConnection.h>
 
 static constexpr size_t MAX_PACKAGE_SIZE = 1024 * 256;
+static constexpr size_t MAX_INBOUND_QUEUED_BYTES = 1024 * 1024 * 16;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
 public:
@@ -78,6 +79,7 @@ private:
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageOut;
     moodycamel::ConcurrentQueue<std::unique_ptr<Package<PC_PackageType>>> m_packageIn;
 
+    std::atomic<uint64_t> m_inboundQueuedBytes{0};
     std::atomic<bool> m_heartbeatReceived{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
 
