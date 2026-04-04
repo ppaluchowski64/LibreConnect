@@ -45,6 +45,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
 #else
     StartStream_IOS(requestID, cameraID, requestedFormat);
 #endif
+
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
 }
 
 bool NetworkCameraModule::TryReserveFrameSlot(const char* sourceTag) {
@@ -87,6 +89,8 @@ void NetworkCameraModule::EnableResponseCallbacks() {
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, [instance, this](PC_Package&& package) mutable {
         Debug::Log("NetworkCameraModule: REQUEST_REMOTE_KEY");
+        m_peerModuleEnabled.store(false);
+        m_portNumber.store(0);
         m_localKey = SRTP::Stream::GenerateKey();
 
         const size_t requestID = package->GetValue<size_t>();
@@ -142,12 +146,21 @@ void NetworkCameraModule::EnableResponseCallbacks() {
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM, [instance, this](PC_Package&& package) mutable {
         Debug::Log("NetworkCameraModule: REQUEST_STOP_STREAM");
+        m_peerModuleEnabled.store(false);
+        ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, false);
         Disable(true);
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE, [instance, this](PC_Package&& package) mutable {
         Debug::Log("NetworkCameraModule: ENABLE");
+        if (GetModuleState() == ModuleState::Enabled) {
+            ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
+            return;
+        }
         Enable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, [instance, this](PC_Package&& package) mutable {
+       m_peerModuleEnabled.store(package->GetValue<bool>());
     });
 }
 
@@ -158,6 +171,7 @@ void NetworkCameraModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_PORT_INFO);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED);
 }
 
 void NetworkCameraModule::OnInitialize() {
@@ -165,16 +179,14 @@ void NetworkCameraModule::OnInitialize() {
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
 
-    m_portNumber.store(0);
     m_droppedFramesBackpressure.store(0, std::memory_order_relaxed);
 
 #ifdef ANDROID_DEVICE
     if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
-        Debug::LogWarning(
-            "NetworkCameraModule: Battery optimization is still enabled; background/screen-off streaming reliability may be reduced"
-        );
+        Debug::LogWarning("NetworkCameraModule: Battery optimization is still enabled; background/screen-off streaming reliability may be reduced");
     }
 #endif
 
@@ -187,15 +199,20 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
     UpdateMainServiceCameraRequest(true);
 #endif
 
-    Debug::Log(
-        "NetworkCameraModule: Enabled, waiting for SRTP port, camera permission granted"
-    );
+    Debug::Log("NetworkCameraModule: Enabled, waiting for SRTP port, camera permission granted");
 
-    co_return;
+    asio::steady_timer timer(m_context);
+    while (!m_peerModuleEnabled.load()) {
+        timer.expires_after(std::chrono::milliseconds(10));
+        co_await timer.async_wait();
+    }
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    m_peerModuleEnabled.store(false);
+    m_portNumber.store(0);
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, false);
 
     m_streamActive.store(false);
     m_streamGeneration.fetch_add(1);

@@ -192,12 +192,22 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE, [instance](PC_Package&& package) {
         Debug::Log("Received notification sync enable request");
+        if (instance->GetModuleState() == ModuleState::Enabled) {
+            ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, true);
+            return;
+        }
         instance->Enable(true);
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE, [instance](PC_Package&& package) {
         Debug::Log("Received notification sync disable request");
+        instance->m_peerModuleEnabled.store(false);
+        ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, false);
         instance->Disable(true);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, [instance](PC_Package&& package) {
+        instance->m_peerModuleEnabled.store(package->GetValue<bool>());
     });
 }
 
@@ -205,14 +215,16 @@ void NotificationSyncModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NEW_NOTIFICATION);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE);
 }
 
 void NotificationSyncModule::OnInitialize() {}
 
 asio::awaitable<void> NotificationSyncModule::OnEnable() {
+    m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
 
-    if (std::shared_ptr<NotificationTransferChannel> previousChannel = TakeChannel()) {
+    if (const std::shared_ptr<NotificationTransferChannel> previousChannel = TakeChannel()) {
         co_await previousChannel->Disconnect();
     }
 
@@ -243,16 +255,22 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
 
     Debug::Log("Notification channel connected");
 
+    while (!m_peerModuleEnabled.load()) {
+        timer.expires_after(std::chrono::milliseconds(10));
+        co_await timer.async_wait();
+    }
+
     co_await FetchNotificationList();
-    Debug::Log("Notification sync module enabled");
-    co_return;
+    ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, true);
 }
 
 asio::awaitable<void> NotificationSyncModule::OnDisable() {
     Debug::Log("Notification sync module disabling");
+    m_peerModuleEnabled.store(false);
+    ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, false);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
 
-    if (std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
+    if (const std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
         co_await channel->Disconnect();
     }
 
@@ -265,7 +283,7 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
     Debug::Log("Notification sync module shutdown");
-    if (std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
+    if (const std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
         co_await channel->Disconnect();
     }
 

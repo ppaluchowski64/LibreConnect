@@ -488,13 +488,21 @@ asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
 void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE, [instance, this](PC_Package&&) mutable {
+        if (GetModuleState() == ModuleState::Enabled) {
+            ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
+            return;
+        }
         Enable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, [instance, this](PC_Package&& package) mutable {
+       m_peerModuleEnabled.store(package->GetValue<bool>());
     });
 
 }
 
 void NetworkCameraModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED);
 }
 
 void NetworkCameraModule::OnInitialize() {
@@ -503,6 +511,7 @@ void NetworkCameraModule::OnInitialize() {
 
 asio::awaitable<void> NetworkCameraModule::OnEnable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
 
     Debug::Log(
@@ -550,11 +559,21 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         }
     }
 
+    asio::steady_timer timer(m_context);
+    while (!m_peerModuleEnabled.load()) {
+        timer.expires_after(std::chrono::milliseconds(10));
+        co_await timer.async_wait();
+    }
+
     co_await StartStream();
+
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
 }
 
 asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
+    m_peerModuleEnabled.store(false);
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, false);
     m_acceptFrames.store(false);
     m_waitForIdrAfterLoss.store(false);
     m_waitForIdrStartMs.store(0);
