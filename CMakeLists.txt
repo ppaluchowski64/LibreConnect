@@ -47,7 +47,6 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     set(ENABLE_MOBILE_TEST_PROGRAMS OFF)
 endif()
 
-
 if(ANDROID)
     find_package(ffmpeg REQUIRED)
     add_library(ffmpeg_headers ALIAS ffmpeg::ffmpeg)
@@ -123,6 +122,7 @@ BuildStaticLibrary(network-component-pc utilities/network project_defaults opens
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core boost::boost)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
+BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-component-pc Qt6::Core Qt6::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
 
@@ -198,8 +198,6 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
 
 endif ()
 
-
-
 if (ANDROID)
     add_subdirectory("apps/mobile")
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
@@ -213,6 +211,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
+    BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
 
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)

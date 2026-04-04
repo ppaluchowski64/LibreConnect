@@ -1,69 +1,53 @@
 #include "FileSystemManager.h"
 #include "OverloadedStreams.h"
 
-#include <QGuiApplication>
-
 #include <vector>
 #include <iostream>
 #include <fstream>
 #include <filesystem>
 
+#include <QGuiApplication>
+
 int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
-
-    const std::filesystem::path testDir = "test_dir";
-    const std::filesystem::path copyDir = testDir / "copy";
-    const std::filesystem::path testFile = testDir / "test.txt";
-
-    const bool fileCreated = !(
-        std::filesystem::exists(testDir)
-        && std::filesystem::exists(copyDir)
-        && std::filesystem::exists(testFile)
-    );
-
-    if (!std::filesystem::exists(testDir)) {
-        std::filesystem::create_directory(testDir);
-        std::cout << "Created directory: " << testDir << '\n';
-    }
-
-    if (!std::filesystem::exists(copyDir)) {
-        std::filesystem::create_directory(copyDir);
-        std::cout << "Created directory: " << copyDir << '\n';
-    }
-
-    if (!std::filesystem::exists(testFile)) {
-        std::ofstream file(testFile);
-        file << "Just a test content :)\n";
-        std::cout << "Created file: " << testFile << '\n';
-    }
-
-    if (fileCreated)
-        std::cout << '\n';
-
-    std::cout << "[ENTRIES IN " << testDir << "]\n\n";
-    const auto result = FileSystemManager::GetEntries(testDir);
-
-    if (!result.success) {
-        std::cout << "Failed to access directory: " << testDir << '\n';
-    }
-    else if (result.entries.empty()) {
-        std::cout << "Directory is empty: " << testDir << '\n';
-    }
-    else {
-        for (const auto& entry : result.entries) {
-            std::cout << entry << '\n';
-        }
-    }
 
     std::cout << "[APP DATA PATH]\n";
 
     const std::string appName = "LibreConnect";
     const auto appDataPath = FileSystemManager::GetAppDataPath(appName);
 
-    if (appDataPath.empty())
+    if (appDataPath.empty()) {
         std::cout << "Failed to get application data path\n";
-    else
-        std::cout << "App data path: " << appDataPath << "\n\n";
+        return 1;
+    }
+
+    std::cout << "App data path: " << appDataPath << "\n\n";
+
+    const std::filesystem::path baseDir = appDataPath / "fs_test";
+    const std::filesystem::path copyDir = baseDir / "copy";
+    const std::filesystem::path testFile = baseDir / "test.txt";
+
+    std::filesystem::create_directories(copyDir);
+
+    if (!std::filesystem::exists(testFile)) {
+        std::ofstream file(testFile);
+        file << "Just a test content :)\n";
+    }
+
+    std::cout << "[ENTRIES IN " << baseDir << "]\n\n";
+    const auto result = FileSystemManager::GetEntries(baseDir);
+
+    if (!result.success) {
+        std::cout << "Failed to access directory: " << baseDir << '\n';
+    }
+    else if (result.entries.empty()) {
+        std::cout << "Directory is empty: " << baseDir << '\n';
+    }
+    else {
+        for (const auto& entry : result.entries) {
+            std::cout << entry << '\n';
+        }
+    }
 
     std::cout << "[FILE CLIPBOARD]\n";
 
@@ -81,29 +65,6 @@ int main(int argc, char *argv[]) {
         }
     } else {
         std::cout << "Something went wrong with copying files\n";
-    }
-
-    std::cout << "\n[TEXT CLIPBOARD]\n";
-    const std::string sampleText = "Hello from Clipboard!";
-
-    if (TextClipboard::Set(sampleText)) {
-        std::cout << "Text has been set to clipboard\n";
-
-        if (TextClipboard::Has()) {
-            std::cout << "Clipboard contains text\n";
-
-            const std::string clipboardText = TextClipboard::Get();
-            std::cout << "Clipboard text: " << clipboardText << '\n';
-
-            if (clipboardText == sampleText)
-                std::cout << "TextClipboard test passed\n";
-            else
-                std::cout << "TextClipboard test failed\n";
-        } else {
-            std::cout << "Clipboard unexpectedly empty\n";
-        }
-    } else {
-        std::cout << "Failed to set text to clipboard\n";
     }
 
     return 0;
