@@ -3,39 +3,65 @@
 #include <DeviceInfo.h>
 #include <chrono>
 #include <vector>
-#include <DeviceData.h>
 #include <Events.h>
 #include <ConnectionManager.h>
 #include <ThreadPool.h>
 #include <DebugLog.h>
+#include <QNetworkInformation>
 
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
-LanDeviceScanner::LanDeviceScanner() : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)), m_outSocket(nullptr), m_inSocket(nullptr) { }
+LanDeviceScanner::LanDeviceScanner() : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)), m_outSocket(nullptr), m_inSocket(nullptr) {
+    const auto netInstance = QNetworkInformation::instance();
+    QObject::connect(netInstance, &QNetworkInformation::transportMediumChanged, [this]() {
+        if (!m_isScanning.load()) {
+            return;
+        }
+
+        Debug::Log("LanDeviceScanner: transport medium changed, restarting scan");
+        RestartScan();
+    });
+}
 
 void LanDeviceScanner::EndScan() {
     if (s_instance == nullptr) {
+        Debug::Log("LanDeviceScanner::EndScan ignored: scanner instance is null");
         return;
     }
 
     if (!s_instance->m_isScanning.load()) {
+        Debug::Log("LanDeviceScanner::EndScan ignored: scanner is not active");
         return;
     }
 
+    Debug::Log("LanDeviceScanner::EndScan requested");
     asio::co_spawn(s_instance->m_strand, s_instance->Co_LeaveMulticastGroup(), asio::detached);
+}
+
+void LanDeviceScanner::RestartScan() {
+    if (s_instance == nullptr) {
+        Debug::Log("LanDeviceScanner::RestartScan ignored: scanner instance is null");
+        return;
+    }
+
+    Debug::Log("LanDeviceScanner::RestartScan requested");
+    asio::co_spawn(s_instance->m_strand, s_instance->Co_RestartScan(), asio::detached);
 }
 
 void LanDeviceScanner::BeginScan() {
     if (s_instance == nullptr) {
         s_instance = new LanDeviceScanner();
+        Debug::Log("LanDeviceScanner::BeginScan created scanner instance");
     }
 
     if (s_instance->m_isScanning.load()) {
+        Debug::Log("LanDeviceScanner::BeginScan ignored: scanner already active");
         return;
     }
 
     s_instance->m_discoveredDevices.clear();
     s_instance->m_devicesLastProbe.clear();
+    Debug::Log("LanDeviceScanner::BeginScan started");
 
     asio::co_spawn(s_instance->m_strand, s_instance->Co_JoinMulticastGroup(), asio::detached);
 }
@@ -43,12 +69,14 @@ void LanDeviceScanner::BeginScan() {
 std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
     if (s_instance == nullptr) {
         s_instance = new LanDeviceScanner();
+        Debug::Log("LanDeviceScanner::GetDiscoveredDevices created scanner instance");
     }
 
     const size_t currentTime = GetTimeMS();
     constexpr size_t minimalLastProbe = 2500;
 
     std::lock_guard<std::mutex> lock(s_instance->m_mutex);
+    const size_t previousCount = s_instance->m_discoveredDevices.size();
 
     std::erase_if(s_instance->m_discoveredDevices, [&](const DeviceInfo& deviceInfo) {
         if (currentTime - s_instance->m_devicesLastProbe[deviceInfo.deviceID] >= minimalLastProbe) {
@@ -59,13 +87,31 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
         return false;
     });
 
+    const size_t removed = previousCount - s_instance->m_discoveredDevices.size();
+    if (removed > 0) {
+        Debug::Log("LanDeviceScanner::GetDiscoveredDevices removed stale devices: {} (remaining: {})", removed, s_instance->m_discoveredDevices.size());
+    }
+
     return s_instance->m_discoveredDevices;
+}
+
+asio::awaitable<void> LanDeviceScanner::Co_RestartScan() const {
+    if (!m_isScanning.load()) {
+        Debug::Log("LanDeviceScanner::Co_RestartScan scanner not active, starting new scan");
+        BeginScan();
+        co_return;
+    }
+
+    Debug::Log("LanDeviceScanner::Co_RestartScan restarting active scan");
+    co_await s_instance->Co_LeaveMulticastGroup();
+    BeginScan();
 }
 
 asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
     try {
         co_await Co_LeaveMulticastGroup();
         const std::vector<IPAddress> addresses = AddressResolver::GetAllPrivateIPv4();
+        Debug::Log("LanDeviceScanner::Co_JoinMulticastGroup private IPv4 interfaces: {}", addresses.size());
 
         m_isScanning.store(true);
 
@@ -93,16 +139,20 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
 
         for (const auto& address : addresses) {
             if (address.is_loopback()) {
+                Debug::Log("LanDeviceScanner::Co_JoinMulticastGroup skipping loopback interface: {}", address.to_string());
                 continue;
             }
 
+            Debug::Log("LanDeviceScanner::Co_JoinMulticastGroup joining multicast on {}", address.to_string());
             m_inSocket->set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
         }
 
         asio::co_spawn(m_strand, Co_SendProbes(), asio::detached);
         asio::co_spawn(m_strand, Co_ReceiveResponses(), asio::detached);
+        Debug::Log("LanDeviceScanner::Co_JoinMulticastGroup joined and probe tasks started");
 
     } catch (const std::system_error& errorCode) {
+        Debug::LogError("LanDeviceScanner::Co_JoinMulticastGroup failed: {}", errorCode.what());
         ProcessError(errorCode);
     }
 
@@ -111,18 +161,21 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
 
 asio::awaitable<void> LanDeviceScanner::Co_LeaveMulticastGroup() {
     try {
+        Debug::Log("LanDeviceScanner::Co_LeaveMulticastGroup stopping scan");
         m_isScanning.store(false);
 
         if (m_inSocket != nullptr && m_inSocket->is_open()) {
             m_inSocket->cancel();
             m_inSocket->close();
             m_inSocket.reset();
+            Debug::Log("LanDeviceScanner::Co_LeaveMulticastGroup input socket closed");
         }
 
         if (m_outSocket != nullptr && m_outSocket->is_open()) {
             m_outSocket->cancel();
             m_outSocket->close();
             m_outSocket.reset();
+            Debug::Log("LanDeviceScanner::Co_LeaveMulticastGroup output socket closed");
         }
 
     } catch (const std::system_error& errorCode) {
@@ -151,6 +204,9 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() const {
             const asio::const_buffer constBuffer = asio::const_buffer(buffer.data(), buffer.size());
 
             for (const auto& address : addresses) {
+                if (address.is_loopback()) {
+                    continue;
+                }
                 m_outSocket->set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
                 co_await m_outSocket->async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
             }
@@ -193,6 +249,7 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
                     *it = device;
                 } else {
                     m_discoveredDevices.push_back(device);
+                    Debug::Log("LanDeviceScanner::Co_ReceiveResponses discovered new device {} ({})", boost::uuids::to_string(device.deviceID), device.deviceAddress);
                 }
 
                 m_devicesLastProbe[device.deviceID] = GetTimeMS();
@@ -216,5 +273,3 @@ void LanDeviceScanner::ProcessError(const asio::system_error& error) {
 size_t LanDeviceScanner::GetTimeMS() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 }
-
-
