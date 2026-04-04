@@ -4,8 +4,57 @@
 #include <fmt/os.h>
 #include <ConnectionManager.h>
 #include <ThreadPool.h>
+#include <algorithm>
+#include <optional>
 
 static constexpr size_t TRANSFER_BUFFER_SIZE = 1024 * 256;
+
+namespace {
+
+bool IsSubpath(const std::filesystem::path& basePath, const std::filesystem::path& candidatePath) {
+    const auto mismatch = std::mismatch(basePath.begin(), basePath.end(), candidatePath.begin(), candidatePath.end());
+    return mismatch.first == basePath.end();
+}
+
+std::optional<std::filesystem::path> BuildSafeReceivePath(const std::filesystem::path& canonicalBasePath, const std::string& relativePathRaw) {
+    std::filesystem::path relativePath(relativePathRaw);
+    if (relativePath.empty() || relativePath.is_absolute() || relativePath.has_root_name() || relativePath.has_root_directory()) {
+        return std::nullopt;
+    }
+
+    relativePath = relativePath.lexically_normal();
+    if (relativePath.empty()) {
+        return std::nullopt;
+    }
+
+    for (const auto& part : relativePath) {
+        if (part == "..") {
+            return std::nullopt;
+        }
+    }
+
+    std::error_code errorCode;
+    std::filesystem::path candidatePath = std::filesystem::weakly_canonical(canonicalBasePath / relativePath, errorCode);
+    if (errorCode) {
+        return std::nullopt;
+    }
+
+    if (!IsSubpath(canonicalBasePath, candidatePath)) {
+        return std::nullopt;
+    }
+
+    return candidatePath;
+}
+
+asio::awaitable<void> DrainSocketBytes(SSLSocket& socket, std::vector<uint8_t>& buffer, const size_t bytesToDrain) {
+    size_t drainedBytes = 0;
+    while (drainedBytes < bytesToDrain) {
+        const size_t chunkSize = std::min(buffer.size(), bytesToDrain - drainedBytes);
+        co_await asio::async_read(socket, asio::mutable_buffer(buffer.data(), chunkSize), asio::use_awaitable);
+        drainedBytes += chunkSize;
+    }
+}
+}
 
 TransferChannel::TransferChannel() : m_socket(nullptr), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) {}
 
@@ -89,6 +138,13 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
     try {
         std::filesystem::create_directories(path);
+        std::error_code errorCode;
+        const std::filesystem::path canonicalBasePath = std::filesystem::weakly_canonical(path, errorCode);
+        if (errorCode) {
+            Debug::LogError("Failed to canonicalize destination directory '{}' ({})", path.string(), errorCode.message());
+            m_receive.store(false);
+            co_return;
+        }
 
         FileHeader fileHeader{};
         std::vector<uint8_t> buffer(1024);
@@ -117,8 +173,18 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
                 break;
             }
 
-            const std::filesystem::path filePath = path / fileHeader.relativePath;
-            co_await Receive(filePath, fileHeader.fileSize);
+            const std::optional<std::filesystem::path> filePath = BuildSafeReceivePath(canonicalBasePath, fileHeader.relativePath);
+            if (!filePath.has_value()) {
+                Debug::LogError(
+                    "Rejected incoming file path '{}' outside destination '{}'",
+                    fileHeader.relativePath,
+                    canonicalBasePath.string()
+                );
+                co_await DrainSocketBytes(*m_socket, m_bufferIn, fileHeader.fileSize);
+                continue;
+            }
+
+            co_await Receive(filePath.value(), fileHeader.fileSize);
 
         } while (!fileHeader.last);
 

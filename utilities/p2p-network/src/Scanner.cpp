@@ -225,21 +225,31 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() const {
 }
 
 asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
+    constexpr size_t RECEIVE_BUFFER_SIZE_ = 1024;
+
     Debug::Log("LanDeviceScanner started receiving probes");
 
     try {
         DeviceInfo device = {};
         std::vector<uint8_t> buffer;
-        buffer.resize(1024);
+        buffer.reserve(RECEIVE_BUFFER_SIZE_);
 
         do {
+            buffer.resize(RECEIVE_BUFFER_SIZE_);
             asio::mutable_buffer mutableBuffer(buffer.data(), buffer.size());
             UDPEndpoint senderEndpoint;
 
-            co_await m_inSocket->async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
+            size_t receivedBytes = co_await m_inSocket->async_receive_from(mutableBuffer, senderEndpoint, asio::use_awaitable);
+            buffer.resize(receivedBytes);
 
             std::size_t offset = 0;
-            device.Deserialize(buffer, offset);
+
+            try {
+                device.Deserialize(buffer, offset);
+            } catch (...) {
+                continue;
+            }
+
             device.deviceAddress = senderEndpoint.address().to_string();
 
             {
