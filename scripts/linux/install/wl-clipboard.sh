@@ -1,26 +1,45 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
+
+run_as_root() {
+    if [[ "$(id -u)" -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+SKIP_PACKAGE_INSTALL="${LIBRECONNECT_SKIP_PACKAGE_INSTALL:-0}"
+if [[ "$SKIP_PACKAGE_INSTALL" == "1" ]]; then
+    echo "Package installation disabled (LIBRECONNECT_SKIP_PACKAGE_INSTALL=1)."
+    if command -v wl-copy >/dev/null 2>&1 && command -v wl-paste >/dev/null 2>&1; then
+        echo "wl-copy and wl-paste are available."
+        exit 0
+    fi
+    echo "wl-clipboard is not installed."
+    exit 0
+fi
 
 install_debian() {
-    sudo apt update
-    sudo apt install -y wl-clipboard
+    run_as_root apt update
+    run_as_root apt install -y wl-clipboard
 }
 
 install_fedora() {
-    sudo dnf install -y wl-clipboard
+    run_as_root dnf install -y wl-clipboard
 }
 
 install_arch() {
-    sudo pacman -S --noconfirm wl-clipboard
+    run_as_root pacman -S --noconfirm wl-clipboard
 }
 
 install_opensuse() {
-    sudo zypper install -y wl-clipboard
+    run_as_root zypper install -y wl-clipboard
 }
 
 install_alpine() {
-    sudo apk add wl-clipboard
+    run_as_root apk add wl-clipboard
 }
 
 echo "Detecting distribution..."
