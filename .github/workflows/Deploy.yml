@@ -118,7 +118,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses > /dev/null
+          set +o pipefail
+          yes 2>/dev/null | sdkmanager --licenses > /dev/null
+          set -o pipefail
           sdkmanager --install "build-tools;34.0.0"
 
       - name: Sign Android APK
@@ -154,7 +156,7 @@ jobs:
 
           KEYSTORE_PATH="${RUNNER_TEMP}/release.jks"
           ALIGNED_APK="${RUNNER_TEMP}/app-aligned.apk"
-          SIGNED_APK="${GITHUB_WORKSPACE}/out/android/appLibreConnect_mobile-${{ inputs.version }}-android-arm64-v8a-signed.apk"
+          SIGNED_APK="${GITHUB_WORKSPACE}/out/android/LibreConnect-${{ inputs.version }}-arm64-v8a.apk"
 
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
           chmod 600 "${KEYSTORE_PATH}"

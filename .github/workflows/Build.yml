@@ -453,7 +453,9 @@ jobs:
 
       - name: Install NDK and SDK components
         run: |
-          yes | sdkmanager --licenses > /dev/null
+          set +o pipefail
+          yes 2>/dev/null | sdkmanager --licenses > /dev/null
+          set -o pipefail
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-24" \
