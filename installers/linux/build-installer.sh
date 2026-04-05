@@ -86,6 +86,7 @@ DEPLOY_DIR="$(resolve_path "$SCRIPT_DIR" "$DEPLOY_DIR_REL")"
 OUTPUT_DIR="$(resolve_path "$SCRIPT_DIR" "$OUTPUT_DIR_REL")"
 MAIN_EXE="${DEPLOY_DIR}/usr/bin/appLibreConnect_desktop"
 APPRUN_EXE="${DEPLOY_DIR}/AppRun"
+LAUNCH_TARGET_REL="AppRun"
 CMAKE_BUILD_DIR="$(cd "${DEPLOY_DIR}/../../.." && pwd)"
 V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
 LINUX_INSTALL_SCRIPTS_DIR="${ROOT_DIR}/scripts/linux/install"
@@ -103,8 +104,9 @@ if [[ ! -f "$MAIN_EXE" ]]; then
 fi
 
 if [[ ! -f "$APPRUN_EXE" ]]; then
-    echo "AppRun not found: $APPRUN_EXE" >&2
-    exit 1
+    # Some builds (for example Linux ARM) may not ship AppRun.
+    # Fall back to the desktop executable directly in that case.
+    LAUNCH_TARGET_REL="usr/bin/appLibreConnect_desktop"
 fi
 
 if ! command -v dpkg-deb >/dev/null 2>&1; then
@@ -141,7 +143,7 @@ cp -a "${LINUX_INSTALL_SCRIPTS_DIR}" "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux
 
 cat > "${PKG_ROOT}/usr/bin/libreconnect" <<EOF
 #!/usr/bin/env bash
-exec "${INSTALL_PREFIX}/AppRun" "\$@"
+exec "${INSTALL_PREFIX}/${LAUNCH_TARGET_REL}" "\$@"
 EOF
 chmod 0755 "${PKG_ROOT}/usr/bin/libreconnect"
 
