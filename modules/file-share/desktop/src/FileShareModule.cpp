@@ -338,7 +338,16 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
             co_return;
         }
 
-        stream << iconBuffer.data();
+        if (!iconBuffer.empty()) {
+            stream.write(reinterpret_cast<const char*>(iconBuffer.data()), static_cast<std::streamsize>(iconBuffer.size()));
+        }
+
+        if (!stream.good()) {
+            Debug::LogError("FileShareModule: Failed while writing icon bytes to {}", entryDestination.string());
+            const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
+            ConnectionManager::SendEvent(event);
+            co_return;
+        }
     }
 
     Debug::Log("FileShareModule: FetchEntryIcon saved icon to {}", entryDestination.string());

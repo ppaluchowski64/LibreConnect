@@ -7,6 +7,7 @@
 #include <functional>
 #include <type_traits>
 #include <mutex>
+#include <optional>
 
 #include <asio.hpp>
 #include <AsioCommon.h>
@@ -57,7 +58,7 @@ private:
     static std::once_flag s_flag;
 
     IOContext m_context;
-    IOWorkGuard m_workGuard;
+    std::optional<IOWorkGuard> m_workGuard;
     std::mutex m_mutex;
     std::vector<std::thread> m_threads;
 

@@ -1,4 +1,6 @@
 #include <jni.h>
+#include <chrono>
+#include <future>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -116,9 +118,15 @@ void StopBackendIfNeeded()
     }
 
     Debug::Log("MainServiceBackendBridge: stopping backend");
-    ThreadPool::Stop();
     LanDeviceScanner::EndScan();
     ConnectionManager::StopAcceptingConnections();
+
+    const auto shutdownFence = ThreadPool::PostFuture([] {});
+    if (shutdownFence.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+        Debug::LogWarning("MainServiceBackendBridge: shutdown fence timed out before ThreadPool::Stop");
+    }
+
+    ThreadPool::Stop();
     g_backendRunning = false;
 }
 }

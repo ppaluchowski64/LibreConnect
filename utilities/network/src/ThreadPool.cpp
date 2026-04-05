@@ -23,6 +23,11 @@ void ThreadPool::StartImpl() {
         s_instance->m_context.restart();
     }
 
+    if (!s_instance->m_workGuard.has_value() || !s_instance->m_workGuard->owns_work()) {
+        Debug::Log("ThreadPool: recreating work guard");
+        s_instance->m_workGuard.emplace(asio::make_work_guard(s_instance->m_context));
+    }
+
     unsigned int threadCount = std::thread::hardware_concurrency();
     if (threadCount == 0) {
         Debug::LogWarning("ThreadPool: hardware_concurrency returned 0, using 1 thread");
@@ -39,7 +44,8 @@ void ThreadPool::StartImpl() {
     }
 }
 
-ThreadPool::ThreadPool() : m_workGuard(asio::make_work_guard(m_context)) {}
+ThreadPool::ThreadPool()
+    : m_workGuard(std::in_place, asio::make_work_guard(m_context)) {}
 
 IOContext& ThreadPool::GetContext() {
     std::call_once(s_flag, Initialize);

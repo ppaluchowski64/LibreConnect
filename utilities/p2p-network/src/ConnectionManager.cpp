@@ -491,9 +491,10 @@ void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
 
     Debug::Log("ConnectionManager: Dispatching event to {} listeners", targets.size());
     for (const auto& obj : targets) {
-        QMetaObject::invokeMethod(obj, [event = event->clone(), obj]() {
-            if (obj.isNull()) return;
-            obj->event(event);
-        });
+        if (obj.isNull()) {
+            continue;
+        }
+
+        QCoreApplication::postEvent(obj.data(), event->clone());
     }
 }
