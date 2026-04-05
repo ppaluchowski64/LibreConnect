@@ -88,11 +88,18 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Windows-Latest
+          name: ${{ github.ref_name }}-build-application-Windows-Latest
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Windows-Latest
           path: build
+
 
   build-ubuntu:
     name: Build Linux
@@ -163,10 +170,23 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Construct deployed application
+        run: |
+          mkdir deployed-application
+          cp -r build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/usr deployed-application
+          cp -r build/desktop/Release/build/Release/scripts deployed-application
+          cp build/desktop/Release/build/Release/v4l2loopback-helper deployed-application
+
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Ubuntu-Latest
+          name: ${{ github.ref_name }}-build-application-Ubuntu-Latest
+          path: deployed-application
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Ubuntu-Latest
           path: build
 
   build-ubuntu-arm:
@@ -241,10 +261,23 @@ jobs:
       - name: Build
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Construct deployed application
+        run: |
+          mkdir deployed-application
+          cp -r build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/usr deployed-application
+          cp -r build/desktop/Release/build/Release/scripts deployed-application
+          cp build/desktop/Release/build/Release/v4l2loopback-helper deployed-application
+
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Ubuntu-ARM-Latest
+          name: ${{ github.ref_name }}-build-application-Ubuntu-ARM-Latest
+          path: deployed-application
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Ubuntu-ARM-Latest
           path: build
 
   build-macOS:
@@ -302,10 +335,16 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
+      - name: Upload deployed application artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-application-macOS-Latest
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/appLibreConnect_desktop.dmg
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-macOS-Latest
+          name: ${{ github.ref_name }}-build-dir-macOS-Latest
           path: build
 
   build-android-armv8:
@@ -388,8 +427,14 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Android-armv8
+          name: ${{ github.ref_name }}-build-application-Android-armv8
+          path: build/android/build/Release/apps/mobile/android-build/appLibreConnect_mobile.apk
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Android-armv8
           path: build

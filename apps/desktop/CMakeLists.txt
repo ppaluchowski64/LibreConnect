@@ -11,4 +11,6 @@ BuildQTExecutable(appLibreConnect_desktop
 )
 
 LinkVirtualCameraLibs(appLibreConnect_desktop)
-LinkFFMPEGLibs(appLibreConnect_desktop)
+if (WIN32)
+    LinkFFMPEGLibs(appLibreConnect_desktop)
+endif()

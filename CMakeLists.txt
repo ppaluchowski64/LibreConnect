@@ -172,6 +172,8 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             virtual-camera
     )
 
+    LinkFFMPEGLibs(network-camera-module)
+
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/desktop
             common-module
             file-system
