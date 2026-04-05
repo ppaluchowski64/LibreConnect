@@ -302,11 +302,12 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 }
 
                 Debug::Log("InitialConnection: Challenge Verified. Seeking Primary...");
-                ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
-                    initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
-                    initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
-                    initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
-                    asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
+                InitialConnectionData responseData = data;
+                responseData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+                ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), responseData = std::move(responseData)](const TCPEndpoint endpoint) mutable {
+                    responseData.deviceInfo.deviceAddress = endpoint.address().to_string();
+                    responseData.deviceInfo.deviceAddressPort = endpoint.port();
+                    asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(responseData), asio::detached);
                 });
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER)) {
@@ -404,12 +405,13 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     }
 
     Debug::Log("InitialConnection: No challenge required. Moving to Primary Seek.");
-    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
-        initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
-        initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
-        initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
+    InitialConnectionData responseData = data;
+    responseData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), responseData = std::move(responseData)](const TCPEndpoint endpoint) mutable {
+        responseData.deviceInfo.deviceAddress = endpoint.address().to_string();
+        responseData.deviceInfo.deviceAddressPort = endpoint.port();
 
-        asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
+        asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(responseData), asio::detached);
     });
 }
 

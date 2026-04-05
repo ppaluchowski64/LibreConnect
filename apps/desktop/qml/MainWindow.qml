@@ -15,6 +15,7 @@ Window {
     color: "white"
     property string baseWindowTitle: "LibreConnect"
     property string currentWindowTitleSuffix: ""
+    property var fileManagerWindow: null
     title: currentWindowTitleSuffix.length > 0
            ? baseWindowTitle + " - " + currentWindowTitleSuffix
            : baseWindowTitle
@@ -58,10 +59,11 @@ Window {
         })
     }
 
-    function showDevicePicker() {
+    function showDevicePicker(allowBackToPairedDevices) {
         replaceRootPage("qrc:/LibreConnect/desktop/DevicePicker.qml", {
             windowRef: window,
-            connectionController: connectionController
+            connectionController: connectionController,
+            allowBackToPairedDevices: allowBackToPairedDevices === true
         })
     }
 
@@ -73,9 +75,21 @@ Window {
     }
 
     function showFileManager() {
-        stackView.push("qrc:/LibreConnect/desktop/FileManagerPage.qml", {
-            windowRef: window
-        })
+        if (!fileManagerWindow) {
+            fileManagerWindow = fileManagerWindowComponent.createObject(window)
+            if (fileManagerWindow) {
+                fileManagerWindow.windowClosed.connect(function() {
+                    fileManagerWindow = null
+                })
+            }
+        }
+
+        if (!fileManagerWindow)
+            return
+
+        fileManagerWindow.show()
+        fileManagerWindow.raise()
+        fileManagerWindow.requestActivate()
     }
 
     function showSettings() {
@@ -219,6 +233,12 @@ Window {
             showPairedDevices()
         } else {
             showInitial()
+        }
+    }
+
+    Component {
+        id: fileManagerWindowComponent
+        FileManagerWindow {
         }
     }
 }

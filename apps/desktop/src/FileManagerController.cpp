@@ -4,6 +4,7 @@
 #include <QStandardPaths>
 
 #include <algorithm>
+#include <filesystem>
 
 #include <ConnectionManager.h>
 #include <FileShareEvents.h>
@@ -38,6 +39,35 @@ QString fileTypeLabel(const std::optional<FileType>& type)
     case FileType::Unknown:
     default:
         return QStringLiteral("Unknown");
+    }
+}
+
+QString fileTypeIconSource(const std::optional<FileType>& type)
+{
+    if (!type.has_value()) {
+        return QStringLiteral("qrc:/LibreConnect/desktop/unknown.svg");
+    }
+
+    switch (type.value()) {
+    case FileType::Directory:
+        return QStringLiteral("qrc:/LibreConnect/desktop/folder.svg");
+    case FileType::Text:
+        return QStringLiteral("qrc:/LibreConnect/desktop/text.svg");
+    case FileType::Image:
+        return QStringLiteral("qrc:/LibreConnect/desktop/image.svg");
+    case FileType::Video:
+        return QStringLiteral("qrc:/LibreConnect/desktop/video.svg");
+    case FileType::Audio:
+        return QStringLiteral("qrc:/LibreConnect/desktop/audio.svg");
+    case FileType::Document:
+        return QStringLiteral("qrc:/LibreConnect/desktop/document.svg");
+    case FileType::Archive:
+        return QStringLiteral("qrc:/LibreConnect/desktop/archive.svg");
+    case FileType::Executable:
+        return QStringLiteral("qrc:/LibreConnect/desktop/executable.svg");
+    case FileType::Unknown:
+    default:
+        return QStringLiteral("qrc:/LibreConnect/desktop/unknown.svg");
     }
 }
 }
@@ -115,6 +145,7 @@ void FileManagerController::downloadEntry(const QString& remotePath)
     }
 
     m_pendingEntryPath = normalizedPath;
+    m_pendingLocalPath.clear();
     m_activeEntryPath = normalizedPath;
     m_activeEntryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
     m_pendingAction = PendingAction::Download;
@@ -125,6 +156,115 @@ void FileManagerController::downloadEntry(const QString& remotePath)
         m_waitingForModule = true;
         setBusy(true);
         setStatusMessage(QStringLiteral("Preparing download channels..."));
+        module->Enable(true);
+        return;
+    }
+
+    startPendingActionIfReady();
+}
+
+void FileManagerController::openEntry(const QString& remotePath)
+{
+    const QString normalizedPath = normalizeRemotePath(remotePath);
+    if (normalizedPath.isEmpty()) {
+        setStatusMessage(QStringLiteral("Select a file first."));
+        return;
+    }
+
+    auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+    if (lookup == m_entryLookup.end()) {
+        setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+        return;
+    }
+
+    if (lookup->second.GetType().has_value() && lookup->second.GetType().value() == FileType::Directory) {
+        setStatusMessage(QStringLiteral("Folders cannot be opened directly."));
+        return;
+    }
+
+    m_pendingEntryPath = normalizedPath;
+    m_pendingLocalPath.clear();
+    m_activeEntryPath = normalizedPath;
+    m_activeEntryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
+    m_pendingAction = PendingAction::Open;
+    setTransferProgress(0.0);
+
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        m_waitingForModule = true;
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Preparing file channels..."));
+        module->Enable(true);
+        return;
+    }
+
+    startPendingActionIfReady();
+}
+
+void FileManagerController::copyEntry(const QString& remotePath)
+{
+    const QString normalizedPath = normalizeRemotePath(remotePath);
+    if (normalizedPath.isEmpty()) {
+        setStatusMessage(QStringLiteral("Select a file first."));
+        return;
+    }
+
+    auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+    if (lookup == m_entryLookup.end()) {
+        setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+        return;
+    }
+
+    if (lookup->second.GetType().has_value() && lookup->second.GetType().value() == FileType::Directory) {
+        setStatusMessage(QStringLiteral("Folders cannot be copied to clipboard from this view."));
+        return;
+    }
+
+    m_pendingEntryPath = normalizedPath;
+    m_pendingLocalPath.clear();
+    m_activeEntryPath = normalizedPath;
+    m_activeEntryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
+    m_pendingAction = PendingAction::Copy;
+    setTransferProgress(0.0);
+
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        m_waitingForModule = true;
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Preparing clipboard transfer..."));
+        module->Enable(true);
+        return;
+    }
+
+    startPendingActionIfReady();
+}
+
+void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
+{
+    const QString localPath = localPathUrl.toLocalFile().trimmed();
+    if (localPath.isEmpty()) {
+        setStatusMessage(QStringLiteral("Choose a local file first."));
+        return;
+    }
+
+    const std::filesystem::path sourcePath = localPath.toStdString();
+    if (!std::filesystem::exists(sourcePath)) {
+        setStatusMessage(QStringLiteral("The selected local file does not exist anymore."));
+        return;
+    }
+
+    m_pendingLocalPath = localPath;
+    m_pendingEntryPath.clear();
+    m_activeEntryPath = normalizeRemotePath(localPath);
+    m_activeEntryName = QString::fromStdString(sourcePath.filename().string());
+    m_pendingAction = PendingAction::Upload;
+    setTransferProgress(0.0);
+
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        m_waitingForModule = true;
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Preparing upload channels..."));
         module->Enable(true);
         return;
     }
@@ -175,41 +315,86 @@ bool FileManagerController::event(QEvent* event)
     }
 
     if (event->type() == EntryTransferProgressEvent::Type) {
-        auto* progressEvent = static_cast<EntryTransferProgressEvent*>(event);
-        if (progressEvent->GetOperation() != TransferOperation::Fetch) {
+        if (m_pendingAction == PendingAction::None) {
             return true;
         }
 
+        auto* progressEvent = static_cast<EntryTransferProgressEvent*>(event);
+        const TransferOperation operation = progressEvent->GetOperation();
         const QString entryPath = composeRemotePath(progressEvent->GetFileEntry());
-        if (!m_activeEntryPath.isEmpty() && entryPath != m_activeEntryPath) {
+
+        if (!m_activeEntryPath.isEmpty() && entryPath != m_activeEntryPath)
             return true;
-        }
 
         const size_t totalBytes = progressEvent->GetTotalBytes();
         const size_t transferredBytes = progressEvent->GetBytesTransferred();
         const double progress = totalBytes == 0 ? 0.0 : static_cast<double>(transferredBytes) / static_cast<double>(totalBytes);
         setTransferProgress(progress);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Downloading %1 (%2%)").arg(
+        setStatusMessage(QStringLiteral("%1 %2 (%3%)").arg(
+            operation == TransferOperation::Post ? QStringLiteral("Uploading") : QStringLiteral("Transferring"),
             m_activeEntryName,
             QString::number(progress * 100.0, 'f', 0)));
         return true;
     }
 
     if (event->type() == EntryTransferResultEvent::Type) {
+        if (m_pendingAction == PendingAction::None) {
+            return true;
+        }
+
         auto* resultEvent = static_cast<EntryTransferResultEvent*>(event);
         const QString entryPath = composeRemotePath(resultEvent->GetFileEntry());
         if (!m_activeEntryPath.isEmpty() && entryPath != m_activeEntryPath) {
             return true;
         }
 
+        if (m_pendingAction == PendingAction::Copy) {
+            return true;
+        }
+
+        setBusy(false);
+        setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
+        if (m_pendingAction == PendingAction::Upload) {
+            setStatusMessage(resultEvent->Success()
+                ? QStringLiteral("Uploaded %1 to %2.").arg(m_activeEntryName, m_currentRemotePath)
+                : QStringLiteral("Failed to upload %1.").arg(m_activeEntryName));
+            if (resultEvent->Success()) {
+                refreshEntries();
+            }
+        } else if (m_pendingAction == PendingAction::Open) {
+            setStatusMessage(resultEvent->Success()
+                ? QStringLiteral("Opened %1.").arg(m_activeEntryName)
+                : QStringLiteral("Failed to open %1.").arg(m_activeEntryName));
+        } else {
+            setStatusMessage(resultEvent->Success()
+                ? QStringLiteral("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
+                : QStringLiteral("Failed to download %1.").arg(m_activeEntryName));
+        }
+
+        m_pendingEntryPath.clear();
+        m_pendingLocalPath.clear();
+        m_activeEntryPath.clear();
+        m_activeEntryName.clear();
+        m_waitingForModule = false;
+        m_pendingAction = PendingAction::None;
+        return true;
+    }
+
+    if (event->type() == EntriesCopyResultEvent::Type) {
+        auto* resultEvent = static_cast<EntriesCopyResultEvent*>(event);
+        if (m_pendingAction != PendingAction::Copy) {
+            return true;
+        }
+
         setBusy(false);
         setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
         setStatusMessage(resultEvent->Success()
-            ? QStringLiteral("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
-            : QStringLiteral("Failed to download %1.").arg(m_activeEntryName));
+            ? QStringLiteral("Copied %1 to clipboard.").arg(m_activeEntryName)
+            : QStringLiteral("Failed to copy %1 to clipboard.").arg(m_activeEntryName));
 
         m_pendingEntryPath.clear();
+        m_pendingLocalPath.clear();
         m_activeEntryPath.clear();
         m_activeEntryName.clear();
         m_waitingForModule = false;
@@ -249,6 +434,31 @@ void FileManagerController::startPendingActionIfReady()
         return;
     }
 
+    if (m_pendingAction == PendingAction::Upload) {
+        if (m_pendingLocalPath.isEmpty()) {
+            m_waitingForModule = false;
+            m_pendingAction = PendingAction::None;
+            setBusy(false);
+            setStatusMessage(QStringLiteral("No local file selected for upload."));
+            return;
+        }
+
+        const std::filesystem::path localPath = m_pendingLocalPath.toStdString();
+        if (!std::filesystem::exists(localPath)) {
+            m_waitingForModule = false;
+            m_pendingAction = PendingAction::None;
+            setBusy(false);
+            setStatusMessage(QStringLiteral("The selected local file no longer exists."));
+            return;
+        }
+
+        m_waitingForModule = false;
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Uploading %1...").arg(m_activeEntryName));
+        module->PostEntry(localPath, m_currentRemotePath.toStdString());
+        return;
+    }
+
     if (m_pendingEntryPath.isEmpty()) {
         return;
     }
@@ -264,8 +474,18 @@ void FileManagerController::startPendingActionIfReady()
 
     m_waitingForModule = false;
     setBusy(true);
-    setStatusMessage(QStringLiteral("Downloading %1...").arg(m_activeEntryName));
-    module->FetchEntry(lookup->second, m_localDownloadDirectory.toStdString());
+    if (m_pendingAction == PendingAction::Open) {
+        setStatusMessage(QStringLiteral("Opening %1...").arg(m_activeEntryName));
+        module->OpenEntry(lookup->second);
+    } else if (m_pendingAction == PendingAction::Copy) {
+        setStatusMessage(QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName));
+        std::vector<FileEntry> entries;
+        entries.push_back(lookup->second);
+        module->CopyEntriesToClipboard(std::move(entries));
+    } else {
+        setStatusMessage(QStringLiteral("Downloading %1...").arg(m_activeEntryName));
+        module->FetchEntry(lookup->second, m_localDownloadDirectory.toStdString());
+    }
 }
 
 void FileManagerController::loadDirectory(const QString& remotePath)
@@ -398,5 +618,8 @@ QVariantMap FileManagerController::toVariantMap(const FileEntry& entry)
     item.insert(QStringLiteral("isDirectory"), isDirectory);
     item.insert(QStringLiteral("size"), static_cast<qulonglong>(entry.GetSize().value_or(0)));
     item.insert(QStringLiteral("typeLabel"), fileTypeLabel(entry.GetType()));
+    item.insert(QStringLiteral("iconSource"), fileTypeIconSource(entry.GetType()));
     return item;
 }
+
+

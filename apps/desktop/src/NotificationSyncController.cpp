@@ -5,6 +5,10 @@
 NotificationSyncController::NotificationSyncController(QObject* parent)
     : QObject(parent)
 {
+    auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
+    const ModuleState initialState = module->GetModuleState();
+    m_requestedEnabled = (initialState == ModuleState::Enabled || initialState == ModuleState::Enabling);
+
     m_pollTimer.setInterval(400);
     connect(&m_pollTimer, &QTimer::timeout, this, &NotificationSyncController::refreshState);
     m_pollTimer.start();

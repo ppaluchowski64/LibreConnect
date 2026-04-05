@@ -230,7 +230,7 @@ Page {
                     width: parent.width
                     height: 48
                     enabled: !isConnecting && !removingDevice
-                    onClicked: windowRef.showInitial()
+                    onClicked: windowRef.showDevicePicker(true)
                 }
             }
 
