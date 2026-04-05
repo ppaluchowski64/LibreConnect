@@ -190,7 +190,8 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
         }
 
         bool result = FileSystemManager::CopyToClipboard(paths);
-        std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), result);
+        const std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), result);
+        ConnectionManager::SendEvent(event);
     });
 }
 

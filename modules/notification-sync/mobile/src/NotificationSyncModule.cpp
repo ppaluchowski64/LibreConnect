@@ -189,7 +189,12 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
     }
 
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
-    co_await m_connectedFlag.Wait();
+    if (co_await m_connectedFlag.WaitFor(std::chrono::seconds(5)) == AwaitableFlag::Result::TIMEOUT) {
+        ProcessError(ModuleFailReason::Timeout);
+        Disable();
+        co_return;
+    }
+
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, true);
 
     asio::steady_timer timer(m_context.get_executor());

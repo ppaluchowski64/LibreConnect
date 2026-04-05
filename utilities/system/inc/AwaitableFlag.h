@@ -9,8 +9,13 @@
 
 class AwaitableFlag {
 public:
-    explicit AwaitableFlag(asio::any_io_executor executor, const std::chrono::time_point<std::chrono::steady_clock> timeout = asio::steady_timer::time_point::max())
-        : m_executor(executor), m_timer(executor, timeout), m_flag(false) {}
+    enum class Result : bool {
+        TIMEOUT,
+        SUCCESS
+    };
+
+    explicit AwaitableFlag(const asio::any_io_executor& executor)
+        : m_executor(executor), m_timer(executor), m_flag(false) {}
 
     void Reset() {
         m_flag.store(false, std::memory_order_release);
@@ -21,16 +26,26 @@ public:
         m_timer.cancel();
     }
 
-    asio::awaitable<void> Wait() {
+    asio::awaitable<Result> Wait(const std::chrono::time_point<std::chrono::steady_clock> timeout = asio::steady_timer::time_point::max()) {
         if (m_flag.load(std::memory_order_acquire))
-            co_return;
+            co_return Result::SUCCESS;
 
-        m_timer.expires_at(std::chrono::steady_clock::time_point::max());
+        m_timer.expires_at(timeout);
 
         asio::error_code errorCode;
         co_await m_timer.async_wait(asio::redirect_error(asio::use_awaitable, errorCode));
 
-        co_return;
+        if (errorCode == asio::error::operation_aborted && m_flag.load(std::memory_order_acquire)) {
+            co_return Result::SUCCESS;
+        }
+
+        co_return Result::TIMEOUT;
+    }
+
+    template <typename Rep, typename Period>
+    asio::awaitable<Result> WaitFor(const std::chrono::duration<Rep, Period>& timeout) {
+        const auto timeoutDuration = std::chrono::duration_cast<std::chrono::steady_clock::duration>(timeout);
+        co_return co_await Wait(std::chrono::steady_clock::now() + timeoutDuration);
     }
 
 private:

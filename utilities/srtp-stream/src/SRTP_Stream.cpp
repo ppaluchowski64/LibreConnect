@@ -33,8 +33,14 @@ namespace SRTP {
         return !ec;
     }
 
-    Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, const uint32_t framerate) : m_socket(context), m_context(context),
-        m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_timestampInc(90000 / framerate), m_stopReceivingSignal(m_context.get_executor()) {
+    Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, uint32_t framerate) : m_socket(context), m_context(context),
+        m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_stopReceivingSignal(m_context.get_executor()) {
+
+        if (framerate == 0) {
+            framerate = 30;
+        }
+
+        m_timestampInc = 90000 / framerate;
 
         if (!g_isStrpInited.exchange(true)) {
             if (srtp_init() != srtp_err_status_ok) {

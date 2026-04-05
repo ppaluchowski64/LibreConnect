@@ -230,7 +230,7 @@ private:
         m_state.store(state);
     }
 
-    void SetModuleFailReason(const ModuleFailReason reason) {
+    void SetModuleFailReason(const ModuleFailReason reason) const {
         m_failReason.store(reason);
     }
 
@@ -240,7 +240,7 @@ protected:
 
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
     std::atomic<bool> m_peerModuleEnabled = false;
-    std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
+    mutable std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
 
     virtual void EnableResponseCallbacks() = 0;
     virtual void DisableResponseCallbacks() = 0;
@@ -259,6 +259,7 @@ protected:
     }
 
     void ProcessError(const ModuleFailReason reason) const {
+        m_failReason.store(reason);
         const std::unique_ptr<QEvent> event = std::make_unique<ModuleErrorEvent>(reason, GetModuleType());
         ConnectionManager::SendEvent(event);
     }

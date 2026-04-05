@@ -292,8 +292,6 @@ std::string CryptographicIdentityManager::GetPublicKey() {
         return "";
     }
 
-
-
     BUF_MEM* buffer = nullptr;
     BIO_get_mem_ptr(publicKeyBio, &buffer);
 
@@ -348,13 +346,29 @@ std::string CryptographicIdentityManager::SignChallenge(const std::string& chall
 bool CryptographicIdentityManager::VerifySignature(const std::string& publicKeyString, const std::string& challenge, const std::string& signature) {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    BIO* bio = BIO_new_mem_buf(publicKeyString.data(), static_cast<int>(publicKeyString.size()));
-    EVP_PKEY* publicKey = PEM_read_bio_PUBKEY(bio, nullptr, nullptr, nullptr);
-    BIO_free(bio);
+    const std::unique_ptr<BIO, decltype(&BIO_free)> bio(
+        BIO_new_mem_buf(publicKeyString.data(), static_cast<int>(publicKeyString.size())),
+        BIO_free
+    );
+
+    if (!bio) {
+        Debug::LogError("OpenSSL error: {}", GetOpenSSLError());
+        return false;
+    }
+
+    const std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> publicKey(
+        PEM_read_bio_PUBKEY(bio.get(), nullptr, nullptr, nullptr),
+        EVP_PKEY_free
+    );
+
+    if (!publicKey) {
+        Debug::LogError("OpenSSL error: {}", GetOpenSSLError());
+        return false;
+    }
 
     EVP_MD_CTX* context = EVP_MD_CTX_new();
     if (!context ||
-        EVP_DigestVerifyInit(context, nullptr, EVP_sha256(), nullptr, publicKey) <= 0 ||
+        EVP_DigestVerifyInit(context, nullptr, EVP_sha256(), nullptr, publicKey.get()) <= 0 ||
         EVP_DigestVerifyUpdate(context, challenge.data(), challenge.size()) <= 0) {
         Debug::LogError("OpenSSL error: {}", GetOpenSSLError());
         EVP_MD_CTX_free(context);
