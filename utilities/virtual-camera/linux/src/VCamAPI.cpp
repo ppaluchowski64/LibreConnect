@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <csignal>
+#include <cerrno>
+#include <set>
 #include <fmt/format.h>
 #include <thread>
 
@@ -39,6 +41,43 @@ static void SetError(const std::string_view str, const VCamHandle handle) {
 
 static bool IsProcessAlive(const pid_t pid) {
     return kill(pid, 0) == 0 || errno == EPERM;
+}
+
+static int RunCommand(const std::vector<std::string>& args) {
+    if (args.empty()) {
+        return 1;
+    }
+
+    std::vector<char*> execArgs;
+    execArgs.reserve(args.size() + 1);
+    for (const std::string& arg : args) {
+        execArgs.push_back(const_cast<char*>(arg.c_str()));
+    }
+    execArgs.push_back(nullptr);
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        return 1;
+    }
+
+    if (pid == 0) {
+        execvp(execArgs[0], execArgs.data());
+        _exit(127);
+    }
+
+    int status = 0;
+    while (waitpid(pid, &status, 0) == -1) {
+        if (errno == EINTR) {
+            continue;
+        }
+        return 1;
+    }
+
+    if (!WIFEXITED(status)) {
+        return 1;
+    }
+
+    return WEXITSTATUS(status);
 }
 
 std::vector<std::string> ListVideoDevices() {
@@ -124,10 +163,32 @@ extern "C" {
         std::string deviceName = fmt::format("{}: {}", reinterpret_cast<long long>(*handle), name);
 
         {
-            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper add \"{}\"", deviceName);
+            constexpr size_t MAX_DEVICE_NAME_LENGTH = 128;
+            if (deviceName.empty() || deviceName.size() > MAX_DEVICE_NAME_LENGTH) {
+                SetError("Invalid device name length", *handle);
+                return VCAM_ERROR_INIT_FAILED;
+            }
 
-            if (std::system(cmd.c_str()) != 0) {
-                SetError("Failed to add v4l2loopback device", handle);
+            const std::set<char> whiteList = {
+                'a','b','c','d','e','f','g','h','i','j','k','l','m',
+                'n','o','p','q','r','s','t','u','v','w','x','y','z',
+                'A','B','C','D','E','F','G','H','I','J','K','L','M',
+                'N','O','P','Q','R','S','T','U','V','W','X','Y','Z',
+                '0','1','2','3','4','5','6','7','8','9',
+                ' ', '-', '_', ':', '.'
+            };
+
+            for (char c : deviceName) {
+                if (!whiteList.contains(c)) {
+                    SetError("Invalid character in device name", *handle);
+                    return VCAM_ERROR_INIT_FAILED;
+                }
+            }
+        }
+
+        {
+            if (RunCommand({"pkexec", "/usr/libexec/v4l2loopback-helper", "add", deviceName}) != 0) {
+                SetError("Failed to add v4l2loopback device", *handle);
                 return VCAM_ERROR_INIT_FAILED;
             }
         }
@@ -249,9 +310,12 @@ extern "C" {
         close(instance->v4l2Device);
 
         {
-            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper remove {}", instance->videoID);
-
-            if (std::system(cmd.c_str()) != 0) {
+            if (RunCommand({
+                "pkexec",
+                "/usr/libexec/v4l2loopback-helper",
+                "remove",
+                std::to_string(instance->videoID)
+            }) != 0) {
                 SetError("Failed to delete v4l2loopback device", handle);
                 return VCAM_ERROR_CAMERA_DESTRUCTION_FAILED;
             }
@@ -320,8 +384,12 @@ void StartWatcher(const int videoID, const int fd, const pid_t parentPid) {
     while (true) {
         if (kill(parentPid, 0) == -1) {
             close(fd);
-            const std::string cmd = fmt::format("pkexec /usr/libexec/v4l2loopback-helper remove {}", videoID);
-            std::system(cmd.c_str());
+            (void)RunCommand({
+                "pkexec",
+                "/usr/libexec/v4l2loopback-helper",
+                "remove",
+                std::to_string(videoID)
+            });
             _exit(0);
         }
 
