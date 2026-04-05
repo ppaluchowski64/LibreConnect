@@ -125,6 +125,7 @@ BuildStaticLibrary(network-component-pc utilities/network project_defaults opens
 BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl::openssl asio::asio Debug-Log concurrentqueue::concurrentqueue magic_enum::magic_enum boost::boost)
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core boost::boost)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
+BuildStaticLibrary(remote-input utilities/remote-input project_defaults)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
 
@@ -215,6 +216,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
+    BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
     BuildTestProgram(TransferFileChannelTest file-share-module/TransferFileChannelTest.cpp file-share-module)
     BuildTestProgram(TransferDirectoryChannelTest file-share-module/TransferDirectoryChannelTest.cpp file-share-module)
 
