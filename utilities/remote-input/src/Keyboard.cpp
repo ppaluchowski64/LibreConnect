@@ -65,9 +65,31 @@
         sendKeyEvent(uinput_fd, keyCode, 0);
     }
 
-    void Keyboard::PressAndReleaseKey(int keyCode) {
-        PressKey(keyCode);
-        ReleaseKey(keyCode);
+#elif _WIN32
+
+    #include <Windows.h>
+
+    Keyboard::Keyboard() = default;
+    Keyboard::~Keyboard() = default;
+
+    void Keyboard::PressKey(int keyCode) {
+        INPUT input{};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = keyCode;
+        SendInput(1, &input, sizeof(INPUT));
+    }
+
+    void Keyboard::ReleaseKey(int keyCode) {
+        INPUT input{};
+        input.type = INPUT_KEYBOARD;
+        input.ki.wVk = keyCode;
+        input.ki.dwFlags = KEYEVENTF_KEYUP;
+        SendInput(1, &input, sizeof(INPUT));
     }
 
 #endif
+
+void Keyboard::PressAndReleaseKey(int keyCode) {
+    PressKey(keyCode);
+    ReleaseKey(keyCode);
+}
