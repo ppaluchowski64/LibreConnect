@@ -261,6 +261,64 @@ jobs:
       - name: Build
         run: cmake --build --preset conan-release
 
+      - name: Ensure ARM deploy bundle contains Qt runtime assets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DEPLOY_DIR=""
+          for candidate in \
+            build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop \
+            build/desktop/build/Release/deploy/Release/appLibreConnect_desktop
+          do
+            if [[ -d "$candidate" ]]; then
+              DEPLOY_DIR="$candidate"
+              break
+            fi
+          done
+
+          if [[ -z "$DEPLOY_DIR" ]]; then
+            DEPLOY_DIR="$(find build -type d -name appLibreConnect_desktop | head -n1 || true)"
+          fi
+
+          if [[ -z "$DEPLOY_DIR" || ! -d "$DEPLOY_DIR" ]]; then
+            echo "Could not locate appLibreConnect_desktop deploy directory in ARM build." >&2
+            find build -maxdepth 7 -type d | sort
+            exit 1
+          fi
+
+          if [[ -z "${QT_ROOT_DIR:-}" || ! -d "${QT_ROOT_DIR}" ]]; then
+            echo "QT_ROOT_DIR is missing or invalid: '${QT_ROOT_DIR:-}'" >&2
+            exit 1
+          fi
+
+          mkdir -p "$DEPLOY_DIR/usr"
+
+          for asset_dir in qml plugins translations; do
+            src_dir="${QT_ROOT_DIR}/${asset_dir}"
+            dst_dir="${DEPLOY_DIR}/usr/${asset_dir}"
+
+            if [[ ! -d "$src_dir" ]]; then
+              echo "Skipping ${asset_dir}: ${src_dir} does not exist."
+              continue
+            fi
+
+            if [[ -d "$dst_dir" ]]; then
+              echo "Keeping existing ${asset_dir} directory in deploy bundle."
+              continue
+            fi
+
+            echo "Adding missing ${asset_dir} directory from Qt SDK."
+            cp -a "$src_dir" "$dst_dir"
+          done
+
+          for asset_dir in qml plugins translations; do
+            if [[ ! -d "${DEPLOY_DIR}/usr/${asset_dir}" ]]; then
+              echo "Missing required deploy directory: ${DEPLOY_DIR}/usr/${asset_dir}" >&2
+              exit 1
+            fi
+          done
+
       - name: Construct deployed application
         run: |
           mkdir deployed-application
