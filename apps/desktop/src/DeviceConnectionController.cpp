@@ -1,5 +1,7 @@
 #include "DeviceConnectionController.h"
 #include <boost/uuid/uuid_io.hpp>
+#include <asio/error.hpp>
+#include <asio/ssl/error.hpp>
 
 namespace
 {
@@ -24,12 +26,19 @@ QString DeviceTypeToLabel(const DeviceType type)
 
 bool IsBenignScannerShutdownError(const std::error_code& errorCode)
 {
-    return errorCode.message() == "The I/O operation has been aborted because of either a thread exit or an application request.";
+    return errorCode == asio::error::operation_aborted ||
+           errorCode == asio::error::not_connected;
 }
 
 bool IsBenignDisconnectError(const std::error_code& errorCode)
 {
-    return !errorCode || errorCode.message() == "The operation completed successfully.";
+    return !errorCode ||
+           errorCode == asio::error::operation_aborted ||
+           errorCode == asio::error::eof ||
+           errorCode == asio::error::connection_reset ||
+           errorCode == asio::error::connection_aborted ||
+           errorCode == asio::error::shut_down ||
+           errorCode == asio::ssl::error::stream_truncated;
 }
 }
 

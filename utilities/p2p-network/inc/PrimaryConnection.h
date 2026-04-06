@@ -81,6 +81,7 @@ private:
 
     std::atomic<uint64_t> m_inboundQueuedBytes{0};
     std::atomic<bool> m_heartbeatReceived{false};
+    std::atomic<bool> m_disconnectedEventSent{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
 
 };
