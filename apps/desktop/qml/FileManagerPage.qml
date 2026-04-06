@@ -6,8 +6,11 @@ import QtQuick.Layouts
 Page {
     id: root
 
-    required property var windowRef
+    property var windowRef: null
+    property bool standaloneWindow: false
+    property string selectedRemotePath: ""
     readonly property string windowTitleSuffix: "File Manager"
+    signal requestClose()
 
     FileManagerController {
         id: fileManagerController
@@ -26,6 +29,40 @@ Page {
         }
     }
 
+    FileDialog {
+        id: uploadDialog
+        title: "Select files to upload"
+        fileMode: FileDialog.OpenFiles
+        onAccepted: {
+            for (let i = 0; i < selectedFiles.length; ++i) {
+                fileManagerController.uploadLocalEntry(selectedFiles[i])
+            }
+        }
+    }
+
+    Menu {
+        id: fileContextMenu
+        property string targetPath: ""
+
+        MenuItem {
+            text: "Open"
+            enabled: fileContextMenu.targetPath.length > 0
+            onTriggered: fileManagerController.openEntry(fileContextMenu.targetPath)
+        }
+
+        MenuItem {
+            text: "Copy"
+            enabled: fileContextMenu.targetPath.length > 0
+            onTriggered: fileManagerController.copyEntry(fileContextMenu.targetPath)
+        }
+
+        MenuItem {
+            text: "Download"
+            enabled: fileContextMenu.targetPath.length > 0
+            onTriggered: fileManagerController.downloadEntry(fileContextMenu.targetPath)
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 28
@@ -36,10 +73,16 @@ Page {
             spacing: 16
 
             Button {
-                text: "Back"
+                text: standaloneWindow ? "Close" : "Back"
                 width: 100
                 height: 42
-                onClicked: windowRef.goBack()
+                onClicked: {
+                    if (standaloneWindow) {
+                        requestClose()
+                    } else if (windowRef) {
+                        windowRef.goBack()
+                    }
+                }
             }
 
             Text {
@@ -107,9 +150,15 @@ Page {
                         onClicked: folderDialog.open()
                     }
 
+                    Button {
+                        text: "Upload Files"
+                        width: 150
+                        onClicked: uploadDialog.open()
+                    }
+
                     Text {
                         text: fileManagerController.localDownloadDirectory
-                        width: parent.width - 240
+                        width: parent.width - 400
                         wrapMode: Text.WordWrap
                         color: "#444444"
                         verticalAlignment: Text.AlignVCenter
@@ -138,7 +187,7 @@ Page {
                     width: entriesView.width
                     height: 58
                     radius: 10
-                    color: modelData.isDirectory ? "#eef5ff" : "#f2f2f2"
+                    color: root.selectedRemotePath === modelData.path ? "#deedff" : (modelData.isDirectory ? "#eef5ff" : "#f2f2f2")
                     border.color: modelData.isDirectory ? "#bfd3f2" : "#d8d8d8"
 
                     Row {
@@ -146,15 +195,16 @@ Page {
                         anchors.margins: 12
                         spacing: 12
 
-                        Text {
-                            text: modelData.isDirectory ? "Folder" : "File"
-                            width: 60
-                            color: "#444444"
-                            verticalAlignment: Text.AlignVCenter
+                        Image {
+                            source: modelData.iconSource
+                            width: 24
+                            height: 24
+                            anchors.verticalCenter: parent.verticalCenter
+                            fillMode: Image.PreserveAspectFit
                         }
 
                         Column {
-                            width: parent.width - 170
+                            width: parent.width - 50
                             spacing: 2
 
                             Text {
@@ -167,22 +217,29 @@ Page {
                             }
 
                             Text {
-                                text: modelData.path
+                                text: modelData.typeLabel + "  |  " + modelData.path
                                 font.pixelSize: 12
                                 color: "#666666"
                                 elide: Text.ElideRight
                                 width: parent.width
                             }
                         }
+                    }
 
-                        Button {
-                            width: 74
-                            text: modelData.isDirectory ? "Open" : "Get"
-                            onClicked: {
-                                if (modelData.isDirectory)
-                                    fileManagerController.browseTo(modelData.path)
-                                else
-                                    fileManagerController.downloadEntry(modelData.path)
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onPressed: function(mouse) {
+                            root.selectedRemotePath = modelData.path
+                            if (mouse.button === Qt.RightButton && !modelData.isDirectory) {
+                                fileContextMenu.targetPath = modelData.path
+                                const position = mapToItem(root, mouse.x, mouse.y)
+                                fileContextMenu.popup(position.x, position.y)
+                            }
+                        }
+                        onClicked: function(mouse) {
+                            if (mouse.button === Qt.LeftButton && modelData.isDirectory) {
+                                fileManagerController.browseTo(modelData.path)
                             }
                         }
                     }

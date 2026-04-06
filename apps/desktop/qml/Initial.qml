@@ -66,6 +66,6 @@ Page {
         width: 160
         height: 56
         font.pixelSize: 20
-        onClicked: windowRef.showDevicePicker()
+        onClicked: windowRef.showDevicePicker(false)
     }
 }

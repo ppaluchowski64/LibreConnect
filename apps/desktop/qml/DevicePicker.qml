@@ -7,6 +7,7 @@ Page {
 
     required property var windowRef
     required property var connectionController
+    property bool allowBackToPairedDevices: false
     readonly property string windowTitleSuffix: "Setup"
 
     DeviceDiscovery {
@@ -150,6 +151,16 @@ Page {
         anchors.right: logo.left
         anchors.rightMargin: 20
         spacing: 12
+
+        Button {
+            id: backButton
+            text: "Back"
+            width: 120
+            height: 48
+            font.pixelSize: 16
+            visible: allowBackToPairedDevices
+            onClicked: windowRef.showPairedDevices()
+        }
 
         Button {
             id: connectButton

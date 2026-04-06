@@ -38,6 +38,9 @@ public:
     Q_INVOKABLE void browseTo(const QString& remotePath);
     Q_INVOKABLE void goUp();
     Q_INVOKABLE void downloadEntry(const QString& remotePath);
+    Q_INVOKABLE void openEntry(const QString& remotePath);
+    Q_INVOKABLE void copyEntry(const QString& remotePath);
+    Q_INVOKABLE void uploadLocalEntry(const QUrl& localPathUrl);
 
 protected:
     bool event(QEvent* event) override;
@@ -54,7 +57,10 @@ private:
     enum class PendingAction {
         None,
         Browse,
-        Download
+        Download,
+        Open,
+        Copy,
+        Upload
     };
 
     void refreshModuleState();
@@ -76,6 +82,7 @@ private:
     QString m_statusMessage = QStringLiteral("Browse files on the connected device.");
     QString m_pendingEntryPath;
     QString m_pendingBrowsePath;
+    QString m_pendingLocalPath;
     QString m_activeEntryPath;
     QString m_activeEntryName;
     QVariantList m_remoteEntries;
