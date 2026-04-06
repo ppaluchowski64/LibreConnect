@@ -405,13 +405,14 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
 
     Debug::Log("InitialConnection: No challenge required. Moving to Primary Seek.");
 
+    auto responseData = data;
     responseData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
 
-    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), data](const TCPEndpoint endpoint) mutable {
+    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), responseData](const TCPEndpoint endpoint) mutable {
         responseData.deviceInfo.deviceAddress = endpoint.address().to_string();
         responseData.deviceInfo.deviceAddressPort = endpoint.port();
 
-        asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(data), asio::detached);
+        asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(responseData), asio::detached);
     });
 }
 
