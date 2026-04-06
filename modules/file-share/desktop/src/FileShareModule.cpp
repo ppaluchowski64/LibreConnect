@@ -80,9 +80,17 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
 
 asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::string entryName = entry.GetName().has_value() ? entry.GetName().value() : std::string();
     Debug::Log("FileShareModule: Fetch entry requested. Source: {}, Destination: {}", entryPath, destination);
     if (entryPath.empty()) {
         Debug::LogError("FileShareModule: Fetch entry failed: empty source path");
+        ProcessError(ModuleFailReason::IncorrectConfig);
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+    if (entryName.empty()) {
+        Debug::LogError("FileShareModule: Fetch entry failed: empty source name");
         ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
@@ -128,11 +136,12 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
     const std::filesystem::path path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::filesystem::path entryNamePath = std::filesystem::path(entryName);
     if (type == FileType::Directory) {
-        filePath /= path.lexically_normal().filename();
+        filePath /= entryNamePath;
         std::filesystem::create_directories(filePath);
     } else {
-        filePath /= path.filename();
+        filePath /= entryNamePath;
         std::filesystem::create_directories(filePath.parent_path());
     }
     Debug::Log("FileShareModule: Fetch entry transfer started to {}", filePath.string());
@@ -179,10 +188,12 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
             // TODO: Add device specific temp
 
             const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
-            std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / name;
+            std::filesystem::path destinationDirectory = std::filesystem::temp_directory_path() / std::to_string(hash);
+            std::filesystem::create_directories(destinationDirectory);
+            std::filesystem::path entryDestination = destinationDirectory / name;
 
             paths.push_back(entryDestination);
-            futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, entryDestination.string()), asio::use_future));
+            futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, destinationDirectory.string()), asio::use_future));
         }
 
         for (auto& future : futures) {
@@ -299,9 +310,16 @@ void FileShareModule::FetchEntryIcon(const FileEntry& entry, const FileIconDensi
 }
 
 asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry) const {
-    const std::filesystem::path destination = std::filesystem::temp_directory_path() / std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
-    co_await FetchEntryAwaitable(entry, destination.string());
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(destination.string())));
+    const std::filesystem::path destinationDirectory =
+        std::filesystem::temp_directory_path() /
+        std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
+    std::filesystem::create_directories(destinationDirectory);
+
+    co_await FetchEntryAwaitable(entry, destinationDirectory.string());
+
+    const std::filesystem::path openedPath = destinationDirectory /
+        std::filesystem::path(entry.GetName().value_or(std::string()));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(openedPath.string())));
 }
 
 asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry entry, const FileIconDensity density) {

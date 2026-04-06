@@ -4,11 +4,43 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <utility>
 
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QMimeData>
 #include <QUrl>
+#include <QMetaObject>
+#include <QThread>
+
+namespace
+{
+template <typename Fn>
+auto InvokeOnGuiThreadSync(Fn&& fn) -> decltype(fn())
+{
+    using ReturnType = decltype(fn());
+
+    QCoreApplication* app = QGuiApplication::instance();
+    if (!app) {
+        return ReturnType{};
+    }
+
+    if (QThread::currentThread() == app->thread()) {
+        return fn();
+    }
+
+    ReturnType result{};
+    QMetaObject::invokeMethod(
+        app,
+        [&result, callable = std::forward<Fn>(fn)]() mutable {
+            result = callable();
+        },
+        Qt::BlockingQueuedConnection
+    );
+
+    return result;
+}
+}
 
 std::filesystem::path FileSystemManager::GetAppDataPath(const std::string& appName) {
     std::filesystem::path basePath;
@@ -82,13 +114,18 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
     if (!anyCopied)
         return false;
 
-    auto mimeData = std::make_unique<QMimeData>();
-    mimeData->setUrls(urlList);
+    return InvokeOnGuiThreadSync([urlList]() mutable {
+        auto mimeData = std::make_unique<QMimeData>();
+        mimeData->setUrls(urlList);
 
-    QClipboard* const clipboard = QGuiApplication::clipboard();
-    clipboard->setMimeData(mimeData.release());
+        QClipboard* const clipboard = QGuiApplication::clipboard();
+        if (!clipboard) {
+            return false;
+        }
 
-    return true;
+        clipboard->setMimeData(mimeData.release());
+        return true;
+    });
 }
 
 bool FileSystemManager::CopyToClipboard(const std::filesystem::path& path) {
@@ -99,62 +136,72 @@ bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDi
     if (!QGuiApplication::instance())
         return false;
 
-    const QClipboard* const clipboard = QGuiApplication::clipboard();
-    const QMimeData* const mime = clipboard->mimeData();
+    return InvokeOnGuiThreadSync([targetDir]() -> bool {
+        const QClipboard* const clipboard = QGuiApplication::clipboard();
+        if (!clipboard) {
+            return false;
+        }
 
-    if (!mime->hasUrls())
-        return false;
+        const QMimeData* const mime = clipboard->mimeData();
+        if (!mime || !mime->hasUrls())
+            return false;
 
-    if (!std::filesystem::is_directory(targetDir))
-        return false;
+        if (!std::filesystem::is_directory(targetDir))
+            return false;
 
-    bool anyPasted = false;
+        bool anyPasted = false;
 
-    for (const auto& url : mime->urls()) {
-        if (!url.isLocalFile())
-            continue;
+        for (const auto& url : mime->urls()) {
+            if (!url.isLocalFile())
+                continue;
 
-        std::filesystem::path path = url.toLocalFile().toStdString();
-        if (!std::filesystem::exists(path))
-            continue;
+            std::filesystem::path path = url.toLocalFile().toStdString();
+            if (!std::filesystem::exists(path))
+                continue;
 
-        try {
-            std::filesystem::copy(
-                path,
-                targetDir / path.filename(),
-                std::filesystem::copy_options::recursive |
-                std::filesystem::copy_options::overwrite_existing
-            );
-            anyPasted = true;
-        } catch (const std::filesystem::filesystem_error&) {}
-    }
+            try {
+                std::filesystem::copy(
+                    path,
+                    targetDir / path.filename(),
+                    std::filesystem::copy_options::recursive |
+                    std::filesystem::copy_options::overwrite_existing
+                );
+                anyPasted = true;
+            } catch (const std::filesystem::filesystem_error&) {}
+        }
 
-    return anyPasted;
+        return anyPasted;
+    });
 }
 
 bool FileSystemManager::FilesInClipboard() {
     if (!QGuiApplication::instance())
         return false;
 
-    const QClipboard* const clipboard = QGuiApplication::clipboard();
-    const QMimeData* const mime = clipboard->mimeData();
+    return InvokeOnGuiThreadSync([]() -> bool {
+        const QClipboard* const clipboard = QGuiApplication::clipboard();
+        if (!clipboard) {
+            return false;
+        }
 
-    if (!mime->hasUrls())
-        return false;
+        const QMimeData* const mime = clipboard->mimeData();
+        if (!mime || !mime->hasUrls())
+            return false;
 
-    bool anyFound = false;
+        bool anyFound = false;
 
-    for (const auto& url : mime->urls()) {
-        if (!url.isLocalFile())
-            continue;
+        for (const auto& url : mime->urls()) {
+            if (!url.isLocalFile())
+                continue;
 
-        std::filesystem::path path = url.toLocalFile().toStdString();
-        if (!std::filesystem::exists(path))
-            continue;
+            std::filesystem::path path = url.toLocalFile().toStdString();
+            if (!std::filesystem::exists(path))
+                continue;
 
-        anyFound = true;
-        break;
-    }
+            anyFound = true;
+            break;
+        }
 
-    return anyFound;
+        return anyFound;
+    });
 }
