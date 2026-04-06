@@ -302,7 +302,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 }
 
                 Debug::Log("InitialConnection: Challenge Verified. Seeking Primary...");
-                ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
+                ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = data](const TCPEndpoint endpoint) mutable {
                     initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
                     initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
                     initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
@@ -404,7 +404,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     }
 
     Debug::Log("InitialConnection: No challenge required. Moving to Primary Seek.");
-    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = std::move(data)](const TCPEndpoint endpoint) mutable {
+    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = data](const TCPEndpoint endpoint) mutable {
         initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
         initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
         initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
