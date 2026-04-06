@@ -41,10 +41,10 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: pwsh
         run: |
           $conan_version = conan --version -q | ForEach-Object { ($_ -match '\d+\.\d+\.\d+')[0] }
@@ -130,10 +130,10 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
           CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
@@ -203,10 +203,10 @@ jobs:
             libgstreamer1.0-0 \
             libgstreamer-plugins-base1.0-0 \
             libgstreamer-plugins-bad1.0-0
-      
+
           NONINTERACTIVE=1 /bin/bash -c \
           "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-      
+
           echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
           echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
 
@@ -217,10 +217,10 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
           CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
@@ -261,70 +261,59 @@ jobs:
       - name: Build
         run: cmake --build --preset conan-release
 
-      - name: Ensure ARM deploy bundle contains Qt runtime assets
+      - name: Create FULL Qt self-contained bundle
         shell: bash
         run: |
           set -euo pipefail
 
-          DEPLOY_DIR=""
-          for candidate in \
-            build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop \
-            build/desktop/build/Release/deploy/Release/appLibreConnect_desktop
-          do
-            if [[ -d "$candidate" ]]; then
-              DEPLOY_DIR="$candidate"
-              break
-            fi
-          done
+          DEPLOY_DIR=$(find build -type d -name appLibreConnect_desktop | head -n1)
 
           if [[ -z "$DEPLOY_DIR" ]]; then
-            DEPLOY_DIR="$(find build -type d -name appLibreConnect_desktop | head -n1 || true)"
-          fi
-
-          if [[ -z "$DEPLOY_DIR" || ! -d "$DEPLOY_DIR" ]]; then
-            echo "Could not locate appLibreConnect_desktop deploy directory in ARM build." >&2
-            find build -maxdepth 7 -type d | sort
+            echo "Deploy dir not found!"
             exit 1
           fi
 
-          if [[ -z "${QT_ROOT_DIR:-}" || ! -d "${QT_ROOT_DIR}" ]]; then
-            echo "QT_ROOT_DIR is missing or invalid: '${QT_ROOT_DIR:-}'" >&2
-            exit 1
+          echo "Using deploy dir: $DEPLOY_DIR"
+
+          mkdir -p "$DEPLOY_DIR/usr/lib"
+          mkdir -p "$DEPLOY_DIR/usr/plugins"
+          mkdir -p "$DEPLOY_DIR/usr/qml"
+          mkdir -p "$DEPLOY_DIR/usr/translations"
+
+          echo "Copying Qt libraries (.so)..."
+          find "$QT_ROOT_DIR" -name "libQt6*.so*" -exec cp -a {} "$DEPLOY_DIR/usr/lib/" \;
+
+          echo "Copying plugins..."
+          if [[ -d "$QT_ROOT_DIR/plugins" ]]; then
+            cp -a "$QT_ROOT_DIR/plugins/." "$DEPLOY_DIR/usr/plugins/"
           fi
 
-          mkdir -p "$DEPLOY_DIR/usr"
+          echo "Copying QML..."
+          if [[ -d "$QT_ROOT_DIR/qml" ]]; then
+            cp -a "$QT_ROOT_DIR/qml/." "$DEPLOY_DIR/usr/qml/"
+          fi
 
-          for asset_dir in qml plugins translations; do
-            src_dir="${QT_ROOT_DIR}/${asset_dir}"
-            dst_dir="${DEPLOY_DIR}/usr/${asset_dir}"
+          echo "Copying translations..."
+          if [[ -d "$QT_ROOT_DIR/translations" ]]; then
+            cp -a "$QT_ROOT_DIR/translations/." "$DEPLOY_DIR/usr/translations/"
+          fi
 
-            if [[ ! -d "$src_dir" ]]; then
-              echo "Skipping ${asset_dir}: ${src_dir} does not exist."
-              continue
-            fi
+          echo "Creating run script..."
+          cat > "$DEPLOY_DIR/run.sh" << 'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/usr/lib:$LD_LIBRARY_PATH"
+          export QT_PLUGIN_PATH="$DIR/usr/plugins"
+          export QML2_IMPORT_PATH="$DIR/usr/qml"
+          "$DIR/appLibreConnect_desktop"
+          EOF
 
-            if [[ -d "$dst_dir" ]]; then
-              echo "Keeping existing ${asset_dir} directory in deploy bundle."
-              continue
-            fi
-
-            echo "Adding missing ${asset_dir} directory from Qt SDK."
-            cp -a "$src_dir" "$dst_dir"
-          done
-
-          for asset_dir in qml plugins translations; do
-            if [[ ! -d "${DEPLOY_DIR}/usr/${asset_dir}" ]]; then
-              echo "Missing required deploy directory: ${DEPLOY_DIR}/usr/${asset_dir}" >&2
-              exit 1
-            fi
-          done
+          chmod +x "$DEPLOY_DIR/run.sh"
 
       - name: Construct deployed application
         run: |
           mkdir deployed-application
-          cp -r build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/usr deployed-application
-          cp -r build/desktop/Release/build/Release/scripts deployed-application
-          cp build/desktop/Release/build/Release/v4l2loopback-helper deployed-application
+          cp -r build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/* deployed-application/
 
       - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
@@ -353,7 +342,7 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
       - name: Set Conan Env
@@ -423,10 +412,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
           CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')

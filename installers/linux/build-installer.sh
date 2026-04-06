@@ -85,8 +85,7 @@ done
 DEPLOY_DIR="$(resolve_path "$SCRIPT_DIR" "$DEPLOY_DIR_REL")"
 OUTPUT_DIR="$(resolve_path "$SCRIPT_DIR" "$OUTPUT_DIR_REL")"
 MAIN_EXE="${DEPLOY_DIR}/usr/bin/appLibreConnect_desktop"
-APPRUN_EXE="${DEPLOY_DIR}/AppRun"
-LAUNCH_TARGET_REL="AppRun"
+LAUNCHER_REL="libreconnect-run.sh"
 CMAKE_BUILD_DIR="$(cd "${DEPLOY_DIR}/../../.." && pwd)"
 V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
 LINUX_INSTALL_SCRIPTS_DIR="${ROOT_DIR}/scripts/linux/install"
@@ -101,12 +100,6 @@ fi
 if [[ ! -f "$MAIN_EXE" ]]; then
     echo "Main executable not found: $MAIN_EXE" >&2
     exit 1
-fi
-
-if [[ ! -f "$APPRUN_EXE" ]]; then
-    # Some builds (for example Linux ARM) may not ship AppRun.
-    # Fall back to the desktop executable directly in that case.
-    LAUNCH_TARGET_REL="usr/bin/appLibreConnect_desktop"
 fi
 
 if ! command -v dpkg-deb >/dev/null 2>&1; then
@@ -141,9 +134,64 @@ mkdir -p "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux"
 cp -a "${DEPLOY_DIR}/." "${PKG_ROOT}${INSTALL_PREFIX}/"
 cp -a "${LINUX_INSTALL_SCRIPTS_DIR}" "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux/install"
 
+PACKAGED_MAIN_EXE="${PKG_ROOT}${INSTALL_PREFIX}/usr/bin/appLibreConnect_desktop"
+if [[ ! -f "$PACKAGED_MAIN_EXE" ]]; then
+    echo "Main executable missing in package root: $PACKAGED_MAIN_EXE" >&2
+    exit 1
+fi
+
+chmod 0755 "${PACKAGED_MAIN_EXE}"
+if [[ -f "${PKG_ROOT}${INSTALL_PREFIX}/AppRun" ]]; then
+    chmod 0755 "${PKG_ROOT}${INSTALL_PREFIX}/AppRun"
+fi
+if [[ -d "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux/install" ]]; then
+    find "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux/install" -type f -name "*.sh" -exec chmod 0755 {} +
+fi
+
+cat > "${PKG_ROOT}${INSTALL_PREFIX}/${LAUNCHER_REL}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+APPDIR="${INSTALL_PREFIX}"
+APPRUN="\${APPDIR}/AppRun"
+MAIN_EXE="\${APPDIR}/usr/bin/appLibreConnect_desktop"
+
+if [[ -x "\${APPRUN}" ]]; then
+    exec "\${APPRUN}" "\$@"
+fi
+
+# If AppRun is unavailable (common on ARM), force bundled Qt paths to avoid
+# mixing bundled Qt with system Qt.
+if [[ -d "\${APPDIR}/usr/plugins" ]]; then
+    export QT_PLUGIN_PATH="\${APPDIR}/usr/plugins"
+    export QT_QPA_PLATFORM_PLUGIN_PATH="\${APPDIR}/usr/plugins/platforms"
+fi
+if [[ -d "\${APPDIR}/usr/qml" ]]; then
+    export QML2_IMPORT_PATH="\${APPDIR}/usr/qml"
+    export QML_IMPORT_PATH="\${APPDIR}/usr/qml"
+fi
+if [[ -d "\${APPDIR}/usr/translations" ]]; then
+    export QT_TRANSLATIONS_PATH="\${APPDIR}/usr/translations"
+fi
+
+LIB_PATHS=()
+for lib_dir in "\${APPDIR}/usr/lib" "\${APPDIR}/usr/lib/aarch64-linux-gnu" "\${APPDIR}/usr/lib/x86_64-linux-gnu"; do
+    if [[ -d "\${lib_dir}" ]]; then
+        LIB_PATHS+=("\${lib_dir}")
+    fi
+done
+if [[ \${#LIB_PATHS[@]} -gt 0 ]]; then
+    BUNDLED_LD_PATH="\$(IFS=:; echo "\${LIB_PATHS[*]}")"
+    export LD_LIBRARY_PATH="\${BUNDLED_LD_PATH}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+fi
+
+exec "\${MAIN_EXE}" "\$@"
+EOF
+chmod 0755 "${PKG_ROOT}${INSTALL_PREFIX}/${LAUNCHER_REL}"
+
 cat > "${PKG_ROOT}/usr/bin/libreconnect" <<EOF
 #!/usr/bin/env bash
-exec "${INSTALL_PREFIX}/${LAUNCH_TARGET_REL}" "\$@"
+exec "${INSTALL_PREFIX}/${LAUNCHER_REL}" "\$@"
 EOF
 chmod 0755 "${PKG_ROOT}/usr/bin/libreconnect"
 
