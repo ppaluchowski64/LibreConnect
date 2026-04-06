@@ -416,7 +416,7 @@ void FileManagerController::refreshModuleState()
 
 void FileManagerController::startPendingActionIfReady()
 {
-    if (!m_waitingForModule || m_pendingAction == PendingAction::None) {
+    if (m_pendingAction == PendingAction::None) {
         return;
     }
 
