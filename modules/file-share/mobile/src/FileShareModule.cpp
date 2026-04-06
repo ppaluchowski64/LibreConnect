@@ -176,9 +176,20 @@ std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, cons
 void FileShareModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
-    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [instance, this](PC_Package&& package) mutable {
-       Enable(true);
-    });
+	ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [instance, this](PC_Package&& package) mutable {
+           const ModuleState state = GetModuleState();
+           if (state == ModuleState::Enabled) {
+               // Reconnect flow: peer requested enable while we are already enabled.
+               m_peerModuleEnabled.store(true);
+               m_transferChannelInitializationIndex.store(0);
+               ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
+               ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
+               return;
+           }
+
+           m_transferChannelInitializationIndex.store(0);
+	       Enable(true);
+	    });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [instance, this](PC_Package&& package) mutable {
        Disable(true);
     });
@@ -330,14 +341,14 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
         ConnectionManager::SendEvent(event);
     });
-    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
-        const ModuleState state = GetModuleState();
-        if (state != ModuleState::Enabling) {
-            Debug::LogWarning(
-                "FileShareModule: Ignoring transfer port info in state {}",
-                static_cast<int>(state)
-            );
-            co_return;
+	    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+	        const ModuleState state = GetModuleState();
+	        if (state != ModuleState::Enabling && state != ModuleState::Enabled) {
+	            Debug::LogWarning(
+	                "FileShareModule: Ignoring transfer port info in state {}",
+	                static_cast<int>(state)
+	            );
+	            co_return;
         }
 
         const IPAddress ip  = ConnectionManager::GetPeerAddress();
@@ -417,6 +428,8 @@ void FileShareModule::OnInitialize() {
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
+    m_peerModuleEnabled.store(false);
+
     if (!co_await PermissionManager::RequestManagingExternalStoragePermission()) {
         Debug::LogWarning("FileShareModule: External storage permission denied; disabling module");
         Disable();
@@ -434,6 +447,7 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 }
 
 asio::awaitable<void> FileShareModule::OnDisable() {
+    m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     for (size_t i = 0; i < m_transferChannels.size(); ++i) {
         asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
@@ -443,6 +457,7 @@ asio::awaitable<void> FileShareModule::OnDisable() {
 }
 
 asio::awaitable<void> FileShareModule::OnShutdown() {
+    m_peerModuleEnabled.store(false);
     m_transferChannels.clear();
     co_return;
 }

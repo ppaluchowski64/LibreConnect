@@ -15,6 +15,24 @@
 
 namespace
 {
+QString PathToQString(const std::filesystem::path& path)
+{
+#ifdef _WIN32
+    return QString::fromStdWString(path.wstring());
+#else
+    return QString::fromStdString(path.string());
+#endif
+}
+
+std::filesystem::path QStringToPath(const QString& value)
+{
+#ifdef _WIN32
+    return std::filesystem::path(value.toStdWString());
+#else
+    return std::filesystem::path(value.toStdString());
+#endif
+}
+
 template <typename Fn>
 auto InvokeOnGuiThreadSync(Fn&& fn) -> decltype(fn())
 {
@@ -107,7 +125,7 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
         if (!std::filesystem::exists(path))
             continue;
 
-        urlList.append(QUrl::fromLocalFile(QString::fromStdString(path.string())));
+        urlList.append(QUrl::fromLocalFile(PathToQString(path)));
         anyCopied = true;
     }
 
@@ -155,7 +173,7 @@ bool FileSystemManager::PasteFromClipboard(const std::filesystem::path& targetDi
             if (!url.isLocalFile())
                 continue;
 
-            std::filesystem::path path = url.toLocalFile().toStdString();
+            std::filesystem::path path = QStringToPath(url.toLocalFile());
             if (!std::filesystem::exists(path))
                 continue;
 
@@ -194,7 +212,7 @@ bool FileSystemManager::FilesInClipboard() {
             if (!url.isLocalFile())
                 continue;
 
-            std::filesystem::path path = url.toLocalFile().toStdString();
+            std::filesystem::path path = QStringToPath(url.toLocalFile());
             if (!std::filesystem::exists(path))
                 continue;
 
