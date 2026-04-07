@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import LibreConnect.desktop 1.0
 
 Page {
     id: root
@@ -12,7 +13,7 @@ Page {
     }
 
     background: Rectangle {
-        color: "white"
+        color: Theme.backgroundColor
     }
 
     Column {
@@ -23,7 +24,7 @@ Page {
         Row {
             spacing: 16
 
-            Button {
+            ThemedButton {
                 text: "Back"
                 width: 100
                 height: 42
@@ -32,9 +33,10 @@ Page {
 
             Text {
                 text: "Virtual Camera"
+                font.family: Theme.fontFamily
                 font.pixelSize: 30
                 font.bold: true
-                color: "#111111"
+                color: Theme.textColor
                 verticalAlignment: Text.AlignVCenter
             }
         }
@@ -43,8 +45,8 @@ Page {
             width: parent.width
             height: 220
             radius: 12
-            color: "#f4f4f4"
-            border.color: "#d8d8d8"
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
 
             Column {
                 anchors.fill: parent
@@ -53,9 +55,10 @@ Page {
 
                 Text {
                     text: "Choose the remote camera and format to expose through the virtual camera."
+                    font.family: Theme.fontFamily
                     font.pixelSize: 18
                     wrapMode: Text.WordWrap
-                    color: "#111111"
+                    color: Theme.textColor
                     width: parent.width
                 }
 
@@ -75,7 +78,7 @@ Page {
                     onActivated: virtualCameraController.selectedFormatIndex = currentIndex
                 }
 
-                Button {
+                ThemedButton {
                     text: virtualCameraController.enabled ? "Disable Virtual Camera" : (virtualCameraController.busy ? "Working..." : "Enable Virtual Camera")
                     width: 220
                     height: 42
@@ -89,7 +92,8 @@ Page {
             text: virtualCameraController.statusMessage
             width: parent.width
             wrapMode: Text.WordWrap
-            color: "#444444"
+            color: Theme.mutedTextColor
+            font.family: Theme.fontFamily
             font.pixelSize: 15
         }
     }

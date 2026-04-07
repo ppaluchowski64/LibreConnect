@@ -17,7 +17,7 @@ Page {
     property bool isConnecting: false
 
     background: Rectangle {
-        color: "white"
+        color: Theme.backgroundColor
     }
 
     function connectToCurrent() {
@@ -47,9 +47,9 @@ Page {
         anchors.bottom: parent.bottom
         anchors.margins: 20
         width: 400
-        border.color: "#cccccc"
+        border.color: Theme.panelBorderColor
         border.width: 1
-        color: "white"
+        color: Theme.panelColor
 
         ListView {
             id: deviceListView
@@ -60,8 +60,8 @@ Page {
             model: discovery.model
 
             highlight: Rectangle {
-                color: "#e3f2fd"
-                border.color: "#2196f3"
+                color: Theme.selectedColor
+                border.color: Theme.selectedBorderColor
                 border.width: 1
                 radius: 2
                 visible: deviceListView.currentIndex >= 0
@@ -76,8 +76,8 @@ Page {
                 radius: 4
                 property bool pressed: false
 
-                color: pressed ? "#d7eafc" : (ListView.isCurrentItem ? "#eaf4ff" : "white")
-                border.color: ListView.isCurrentItem ? "#2196f3" : "#e0e0e0"
+                color: pressed ? Qt.darker(Theme.selectedColor, 1.08) : (ListView.isCurrentItem ? Theme.selectedColor : Theme.backgroundColor)
+                border.color: ListView.isCurrentItem ? Theme.selectedBorderColor : Theme.panelBorderColor
                 border.width: ListView.isCurrentItem ? 2 : 1
 
                 Row {
@@ -99,21 +99,24 @@ Page {
 
                         Text {
                             text: deviceName
+                            font.family: Theme.fontFamily
                             font.pixelSize: 18
                             font.bold: true
-                            color: "#111111"
+                            color: Theme.textColor
                         }
 
                         Text {
                             text: "IP: " + ipAddress + ", " + osName + " " + osVersion
+                            font.family: Theme.fontFamily
                             font.pixelSize: 14
-                            color: "#555555"
+                            color: Theme.mutedTextColor
                         }
 
                         Text {
                             text: "App version " + appVersion
+                            font.family: Theme.fontFamily
                             font.pixelSize: 14
-                            color: "#555555"
+                            color: Theme.mutedTextColor
                         }
                     }
                 }
@@ -133,8 +136,9 @@ Page {
                 width: deviceListView.width
                 topPadding: 20
                 horizontalAlignment: Text.AlignHCenter
+                font.family: Theme.fontFamily
                 font.pixelSize: 16
-                color: "#666666"
+                color: Theme.subtleTextColor
                 visible: deviceListView.count === 0
                 text: discovery.searching ? "Searching for devices..." : "No devices found"
             }
@@ -152,7 +156,7 @@ Page {
         anchors.rightMargin: 20
         spacing: 12
 
-        Button {
+        ThemedButton {
             id: backButton
             text: "Back"
             width: 120
@@ -162,7 +166,7 @@ Page {
             onClicked: windowRef.showPairedDevices()
         }
 
-        Button {
+        ThemedButton {
             id: connectButton
             text: isConnecting ? "Connecting..." : "Connect"
             width: 120
@@ -174,7 +178,7 @@ Page {
             onClicked: devicePicker.connectToCurrent()
         }
 
-        Button {
+        ThemedButton {
             id: refreshButton
             text: "Refresh"
             width: 120
@@ -196,9 +200,10 @@ Page {
 
         Text {
             text: "If your phone isn't appearing:"
+            font.family: Theme.fontFamily
             font.pixelSize: 16
             font.bold: true
-            color: "#111111"
+            color: Theme.textColor
             width: parent.width
         }
 
@@ -207,16 +212,18 @@ Page {
 
             Text {
                 text: "\u2022 Make sure both of your devices are on the same network"
+                font.family: Theme.fontFamily
                 font.pixelSize: 14
-                color: "#333333"
+                color: Theme.mutedTextColor
                 wrapMode: Text.WordWrap
                 width: parent.width - 20
             }
 
             Text {
                 text: "\u2022 Make sure the app is in the foreground"
+                font.family: Theme.fontFamily
                 font.pixelSize: 14
-                color: "#333333"
+                color: Theme.mutedTextColor
                 wrapMode: Text.WordWrap
                 width: parent.width - 20
             }
@@ -256,17 +263,33 @@ Page {
     Dialog {
         id: verificationDialog
         modal: true
-        title: "Verify connection"
+        title: ""
         closePolicy: Popup.NoAutoClose
         x: Math.round((parent.width - width) / 2)
         y: Math.round((parent.height - height) / 2)
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
 
         Column {
             spacing: 12
             width: 360
 
             Text {
+                text: "Verify connection"
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                color: Theme.textColor
+            }
+
+            Text {
                 text: "Enter the pairing code shown on your phone to approve this connection."
+                font.family: Theme.fontFamily
+                color: Theme.textColor
                 wrapMode: Text.WordWrap
                 width: parent.width
             }
@@ -277,19 +300,29 @@ Page {
                 inputMethodHints: Qt.ImhDigitsOnly
                 maximumLength: 12
                 width: parent.width
+                color: Theme.textColor
+                placeholderTextColor: Theme.subtleTextColor
+                background: Rectangle {
+                    radius: 6
+                    color: Theme.backgroundColor
+                    border.color: Theme.selectedBorderColor
+                    border.width: 1
+                }
                 onAccepted: connectionController.submitVerificationCode(verificationCodeField.text)
             }
 
             Text {
                 visible: connectionController.verificationTriesLeft > 0
                 text: "Tries left: " + connectionController.verificationTriesLeft
-                color: "#666666"
+                font.family: Theme.fontFamily
+                color: Theme.subtleTextColor
             }
 
             Text {
                 visible: connectionController.verificationError.length > 0
                 text: connectionController.verificationError
-                color: "#b00020"
+                font.family: Theme.fontFamily
+                color: Theme.dangerColor
                 wrapMode: Text.WordWrap
                 width: parent.width
             }
@@ -297,13 +330,13 @@ Page {
             Row {
                 spacing: 10
 
-                Button {
+                ThemedButton {
                     text: "Submit"
                     enabled: verificationCodeField.text.length > 0
                     onClicked: connectionController.submitVerificationCode(verificationCodeField.text)
                 }
 
-                Button {
+                ThemedButton {
                     text: "Cancel"
                     onClicked: connectionController.cancelVerification()
                 }

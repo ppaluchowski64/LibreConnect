@@ -21,6 +21,7 @@ import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainService : Service() {
+    external fun nativeConfigureStorage(storageRootPath: String)
     external fun nativeStartBackend()
     external fun nativeStopBackend()
     external fun nativeOnCameraEncodedSample(
@@ -152,6 +153,7 @@ class MainService : Service() {
             return
         }
 
+        nativeConfigureStorage(filesDir.absolutePath)
         acquireMulticastLock()
         acquireWifiLock()
         acquireCpuWakeLock()
