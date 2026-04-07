@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import LibreConnect.desktop 1.0
 
 Window {
@@ -12,7 +11,7 @@ Window {
     minimumHeight: height
     maximumWidth: width
     maximumHeight: height
-    color: "white"
+    color: Theme.backgroundColor
     property string baseWindowTitle: "LibreConnect"
     property string currentWindowTitleSuffix: ""
     property var fileManagerWindow: null
@@ -76,7 +75,9 @@ Window {
 
     function showFileManager() {
         if (!fileManagerWindow) {
-            fileManagerWindow = fileManagerWindowComponent.createObject(window)
+            fileManagerWindow = fileManagerWindowComponent.createObject(window, {
+                connectionController: connectionController
+            })
             if (fileManagerWindow) {
                 fileManagerWindow.windowClosed.connect(function() {
                     fileManagerWindow = null
@@ -217,6 +218,10 @@ Window {
 
         function onConnectedChanged() {
             if (!connectionController.connected && stackView.depth > 0) {
+                if (fileManagerWindow) {
+                    fileManagerWindow.close()
+                }
+
                 connectionController.refreshPairedDevices()
                 if (connectionController.hasPairedDevices) {
                     showPairedDevices()

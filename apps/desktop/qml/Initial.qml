@@ -9,7 +9,7 @@ Page {
     readonly property string windowTitleSuffix: "Setup"
 
     background: Rectangle {
-        color: "white"
+        color: Theme.backgroundColor
     }
 
     Image {
@@ -29,8 +29,9 @@ Page {
         anchors.right: logo.left
         anchors.top: parent.top
         anchors.margins: 32
+        font.family: Theme.fontFamily
         font.pixelSize: 44
-        color: "black"
+        color: Theme.textColor
     }
 
     Column {
@@ -43,21 +44,23 @@ Page {
 
         Text {
             text: "Thank you for downloading LibreConnect!\nLet\u2019s set up your phone now."
+            font.family: Theme.fontFamily
             font.pixelSize: 20
             wrapMode: Text.WordWrap
-            color: "#111111"
+            color: Theme.textColor
         }
 
         Text {
             text: "(Please ensure the app for your relevant OS is \ndownloaded and open before you continue.)"
+            font.family: Theme.fontFamily
             font.pixelSize: 20
             font.italic: true
             wrapMode: Text.WordWrap
-            color: "#333333"
+            color: Theme.mutedTextColor
         }
     }
 
-    Button {
+    ThemedButton {
         id: nextButton
         text: "Next"
         anchors.right: parent.right

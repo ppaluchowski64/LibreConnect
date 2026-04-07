@@ -4,6 +4,8 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <filesystem>
+#include <system_error>
 
 #include <ConnectionManager.h>
 #include <Scanner.h>
@@ -14,6 +16,9 @@ namespace
 {
 std::mutex g_backendMutex;
 bool g_backendRunning = false;
+std::mutex g_storageConfigMutex;
+bool g_storageConfigured = false;
+std::string g_storageRoot;
 std::mutex g_cameraFrameCallbackMutex;
 
 std::string JStringToStdString(JNIEnv* env, jstring value)
@@ -129,6 +134,48 @@ void StopBackendIfNeeded()
     ThreadPool::Stop();
     g_backendRunning = false;
 }
+
+void ConfigureStorage(const std::string& storageRootPath)
+{
+    if (storageRootPath.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_storageConfigMutex);
+
+    if (g_storageConfigured && g_storageRoot == storageRootPath) {
+        return;
+    }
+
+    const std::filesystem::path storageRoot(storageRootPath);
+
+    std::error_code ec;
+    std::filesystem::create_directories(storageRoot, ec);
+
+    std::filesystem::current_path(storageRoot, ec);
+
+    const Debug::Settings settings{
+        .rootPath = storageRoot.string(),
+        .maxFileSize = 64 * 1024 * 1024ULL,
+        .maxLogFilesAmount = 5,
+        .deleteLogsAfter = 60 * 60 * 24 * 7
+    };
+
+    try {
+        Debug::SetSettings(settings);
+    } catch (...) {}
+
+    g_storageRoot = storageRootPath;
+    g_storageConfigured = true;
+}
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeConfigureStorage(
+    JNIEnv* env,
+    jobject,
+    jstring storageRootPath)
+{
+    ConfigureStorage(JStringToStdString(env, storageRootPath));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeStartBackend(

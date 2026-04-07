@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import LibreConnect.desktop 1.0
 
 Page {
     id: root
@@ -9,7 +10,7 @@ Page {
     readonly property string windowTitleSuffix: ""
 
     background: Rectangle {
-        color: "white"
+        color: Theme.backgroundColor
     }
 
     Image {
@@ -29,8 +30,9 @@ Page {
         anchors.top: logo.bottom
         anchors.topMargin: 8
         anchors.horizontalCenter: parent.horizontalCenter
+        font.family: Theme.fontFamily
         font.pixelSize: 38
-        color: "#111111"
+        color: Theme.textColor
     }
 
     Column {
@@ -40,14 +42,14 @@ Page {
         anchors.topMargin: 28
         spacing: 18
 
-        Button {
+        ThemedButton {
             text: "File Manager"
             width: 150
             height: 46
             onClicked: windowRef.showFileManager()
         }
 
-        Button {
+        ThemedButton {
             text: "Cameras"
             width: 150
             height: 46
@@ -62,21 +64,21 @@ Page {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 18
 
-        Button {
+        ThemedButton {
             text: "Settings"
             width: 136
             height: 42
             onClicked: windowRef.showSettings()
         }
 
-        Button {
+        ThemedButton {
             text: "Disconnect"
             width: 136
             height: 42
             onClicked: connectionController.disconnect()
         }
 
-        Button {
+        ThemedButton {
             text: "Exit"
             width: 136
             height: 42

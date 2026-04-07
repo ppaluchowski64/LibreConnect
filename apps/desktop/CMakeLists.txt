@@ -6,6 +6,7 @@ BuildQTExecutable(appLibreConnect_desktop
         p2p-network-component-pc
         Qt6::Quick
         Qt6::Qml
+        Qt6::QuickControls2
         Qt6::Multimedia
         modules-manager
 )

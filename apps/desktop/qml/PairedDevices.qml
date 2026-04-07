@@ -14,9 +14,61 @@ Page {
     property string statusMessage: ""
     property bool removingDevice: false
     property bool isConnecting: false
+    property var onlineDeviceIds: ({})
 
     DeviceDiscovery {
         id: discovery
+    }
+
+    function isDeviceOnline(deviceId) {
+        return onlineDeviceIds[deviceId] === true
+    }
+
+    function sortPairedDevices() {
+        if (!pairedDevices || pairedDevices.length <= 1) {
+            return
+        }
+
+        const selectedId = selectedDeviceId
+        const sorted = pairedDevices.slice().sort(function(lhs, rhs) {
+            const lhsOnline = isDeviceOnline(lhs.deviceId)
+            const rhsOnline = isDeviceOnline(rhs.deviceId)
+            if (lhsOnline !== rhsOnline) {
+                return lhsOnline ? -1 : 1
+            }
+
+            const lhsName = (lhs.deviceName || "").toLowerCase()
+            const rhsName = (rhs.deviceName || "").toLowerCase()
+            if (lhsName < rhsName) {
+                return -1
+            }
+            if (lhsName > rhsName) {
+                return 1
+            }
+
+            return lhs.deviceId < rhs.deviceId ? -1 : (lhs.deviceId > rhs.deviceId ? 1 : 0)
+        })
+
+        pairedDevices = sorted
+
+        if (selectedId && selectedId.length > 0) {
+            selectedDeviceId = selectedId
+        } else if (pairedDevices.length > 0) {
+            selectedDeviceId = pairedDevices[0].deviceId
+        }
+    }
+
+    function rebuildOnlineStatus() {
+        const updated = {}
+        const rows = discovery.model.rowCount()
+        for (let i = 0; i < rows; ++i) {
+            const device = discovery.deviceAt(i)
+            if (device && device.deviceId)
+                updated[device.deviceId] = true
+        }
+
+        onlineDeviceIds = updated
+        sortPairedDevices()
     }
 
     function reloadPairedDevices() {
@@ -39,11 +91,18 @@ Page {
         if (!selectedDeviceId || !hasSelectedDevice) {
             selectedDeviceId = pairedDevices[0].deviceId
         }
+
+        sortPairedDevices()
     }
 
     function connectSelectedDevice() {
         if (!selectedDeviceId || isConnecting || connectionController.pending || connectionController.connected)
             return
+
+        if (!isDeviceOnline(selectedDeviceId)) {
+            statusMessage = "Selected device is currently offline. Open the mobile app and try again."
+            return
+        }
 
         const discoveredDevice = discovery.deviceById(selectedDeviceId)
         if (!discoveredDevice || !discoveredDevice.ipAddress || discoveredDevice.port <= 0) {
@@ -74,7 +133,7 @@ Page {
     }
 
     background: Rectangle {
-        color: "white"
+        color: Theme.backgroundColor
     }
 
     Image {
@@ -94,8 +153,9 @@ Page {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.margins: 24
+        font.family: Theme.fontFamily
         font.pixelSize: 36
-        color: "black"
+        color: Theme.textColor
     }
 
     Text {
@@ -105,7 +165,8 @@ Page {
         anchors.top: title.bottom
         anchors.topMargin: 8
         wrapMode: Text.WordWrap
-        color: "#333333"
+        font.family: Theme.fontFamily
+        color: Theme.mutedTextColor
         font.pixelSize: 16
     }
 
@@ -133,9 +194,9 @@ Page {
                 y: 8
                 width: contentRow.width - actionColumn.width - 20
                 height: 250
-                border.color: "#cccccc"
+                border.color: Theme.panelBorderColor
                 border.width: 1
-                color: "white"
+                color: Theme.panelColor
 
                 ListView {
                     id: pairedList
@@ -147,11 +208,12 @@ Page {
                         id: rowItem
                         required property var modelData
                         property bool selected: root.selectedDeviceId === modelData.deviceId
+                        property bool online: root.isDeviceOnline(modelData.deviceId)
 
                         width: pairedList.width
                         height: 80
-                        color: selected ? "#eaf4ff" : "white"
-                        border.color: selected ? "#2196f3" : "#e0e0e0"
+                        color: selected ? Theme.selectedColor : Theme.backgroundColor
+                        border.color: selected ? Theme.selectedBorderColor : Theme.panelBorderColor
                         border.width: selected ? 2 : 1
 
                         Row {
@@ -173,16 +235,37 @@ Page {
 
                                 Text {
                                     text: rowItem.modelData.deviceName
+                                    font.family: Theme.fontFamily
                                     font.pixelSize: 18
                                     font.bold: true
-                                    color: "#111111"
+                                    color: Theme.textColor
                                 }
 
                                 Text {
                                     text: rowItem.modelData.deviceType + "  |  " + rowItem.modelData.deviceId
+                                    font.family: Theme.fontFamily
                                     font.pixelSize: 12
-                                    color: "#555555"
+                                    color: Theme.mutedTextColor
                                     elide: Text.ElideRight
+                                }
+
+                                Row {
+                                    spacing: 6
+
+                                    Rectangle {
+                                        width: 10
+                                        height: 10
+                                        radius: 5
+                                        color: rowItem.online ? "#3BB54A" : Theme.subtleTextColor
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+
+                                    Text {
+                                        text: rowItem.online ? "Online" : "Offline"
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 12
+                                        color: rowItem.online ? "#3BB54A" : Theme.subtleTextColor
+                                    }
                                 }
                             }
                         }
@@ -206,18 +289,19 @@ Page {
                 spacing: 12
                 anchors.bottom: pairedListContainer.bottom
 
-                Button {
+                ThemedButton {
                     text: isConnecting || connectionController.pending ? "Connecting..." : "Connect"
                     width: parent.width
                     height: 48
                     enabled: root.selectedDeviceId.length > 0
+                             && root.isDeviceOnline(root.selectedDeviceId)
                              && !isConnecting
                              && !connectionController.pending
                              && !connectionController.connected
                     onClicked: root.connectSelectedDevice()
                 }
 
-                Button {
+                ThemedButton {
                     text: removingDevice ? "Removing..." : "Remove"
                     width: parent.width
                     height: 48
@@ -225,7 +309,7 @@ Page {
                     onClicked: root.removeSelectedDevice()
                 }
 
-                Button {
+                ThemedButton {
                     text: "New Pairing"
                     width: parent.width
                     height: 48
@@ -240,7 +324,8 @@ Page {
                 anchors.top: pairedListContainer.bottom
                 anchors.topMargin: 10
                 text: statusMessage
-                color: "#b00020"
+                color: Theme.dangerColor
+                font.family: Theme.fontFamily
                 font.pixelSize: 13
                 visible: statusMessage.length > 0
                 wrapMode: Text.WordWrap
@@ -275,8 +360,29 @@ Page {
         }
     }
 
+    Connections {
+        target: discovery.model
+
+        function onDataChanged() {
+            rebuildOnlineStatus()
+        }
+
+        function onRowsInserted() {
+            rebuildOnlineStatus()
+        }
+
+        function onRowsRemoved() {
+            rebuildOnlineStatus()
+        }
+
+        function onModelReset() {
+            rebuildOnlineStatus()
+        }
+    }
+
     Component.onCompleted: {
         reloadPairedDevices()
         discovery.discover()
+        rebuildOnlineStatus()
     }
 }

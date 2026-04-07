@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import LibreConnect.desktop 1.0
 
 Page {
     id: root
@@ -7,7 +8,7 @@ Page {
     readonly property string windowTitleSuffix: ""
 
     background: Rectangle {
-        color: "white"
+        color: Theme.backgroundColor
     }
 
     Image {
@@ -27,8 +28,9 @@ Page {
         anchors.right: logo.left
         anchors.top: parent.top
         anchors.margins: 32
+        font.family: Theme.fontFamily
         font.pixelSize: 44
-        color: "black"
+        color: Theme.textColor
     }
 
     Column {
@@ -40,19 +42,21 @@ Page {
         spacing: 12
         Text {
             text: "Connected!"
+            font.family: Theme.fontFamily
             font.pixelSize: 20
             font.bold: true
-            color: "#111111"
+            color: Theme.textColor
         }
 
         Text {
             text: "Follow the instructions on your mobile device to\nenable the relevant app permissions."
+            font.family: Theme.fontFamily
             font.pixelSize: 20
-            color: "#111111"
+            color: Theme.textColor
         }
     }
 
-    Button {
+    ThemedButton {
         id: homeButton
         text: "Home"
         anchors.right: parent.right
@@ -63,7 +67,6 @@ Page {
         font.pixelSize: 20
 
         onClicked: {
-            // TODO: home screen!
             console.log("Home clicked")
         }
     }
