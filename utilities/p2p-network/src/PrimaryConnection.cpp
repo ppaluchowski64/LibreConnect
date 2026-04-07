@@ -103,6 +103,7 @@ void PrimaryConnection::MarkHeartbeatReceived() {
 asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
+    m_disconnectedEventSent.store(false);
     m_connectionState.store(ConnectionState::CONNECTING);
 
     try {
@@ -158,6 +159,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
+    m_disconnectedEventSent.store(false);
     m_connectionState.store(ConnectionState::CONNECTING);
 
     try {
@@ -227,11 +229,6 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
 
     if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
-        if (callConnectionManagerDisconnect) {
-            const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
-            ConnectionManager::SendEvent(event);
-        }
-
         co_return;
     }
 
@@ -243,7 +240,7 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
 
     Debug::Log("PrimaryConnection: Disconnected TLS primary connection successfully.");
 
-    if (callConnectionManagerDisconnect) {
+    if (callConnectionManagerDisconnect && !m_disconnectedEventSent.exchange(true)) {
         const std::unique_ptr<QEvent> event = std::make_unique<DisconnectedEvent>(errorCode);
         ConnectionManager::SendEvent(event);
     }
@@ -378,12 +375,12 @@ asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor() {
             timer.expires_after(std::chrono::milliseconds(HEARTBEAT_MONITOR_INTERVAL));
             co_await timer.async_wait(asio::use_awaitable);
 
-            if (!m_heartbeatReceived.load()) {
-                Disconnect({});
+            const bool receivedHeartbeat = m_heartbeatReceived.exchange(false);
+            if (!receivedHeartbeat) {
+                Debug::LogWarning("PrimaryConnection: Heartbeat timeout (no heartbeat received for {} ms)", HEARTBEAT_MONITOR_INTERVAL);
+                Disconnect(std::make_error_code(std::errc::timed_out));
                 co_return;
             }
-
-            m_heartbeatReceived.store(false);
         }
 
     } catch (std::system_error& error) {

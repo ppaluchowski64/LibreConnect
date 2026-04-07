@@ -13,6 +13,22 @@ std::once_flag ModulesManager::s_flag{};
 std::mutex ModulesManager::s_mutex{};
 
 bool ModulesManager::event(QEvent* event) {
+    if (event->type() == ConnectedEvent::Type) {
+        Debug::Log("ModulesManager: ConnectedEvent received, ensuring modules are initialized");
+
+        std::lock_guard<std::mutex> lock(s_mutex);
+        if (s_instance != nullptr) {
+            s_instance->m_fileShareModule->Initialize(true);
+            s_instance->m_networkCameraModule->Initialize(true);
+
+#ifndef IOS_DEVICE
+            s_instance->m_notificationSyncModule->Initialize(true);
+#endif
+        }
+
+        return true;
+    }
+
     if (event->type() == DisconnectedEvent::Type) {
         Debug::Log("ModulesManager: DisconnectedEvent received, shutting down modules");
         Shutdown();

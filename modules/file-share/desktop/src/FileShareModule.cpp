@@ -7,6 +7,21 @@
 #include <QDesktopServices>
 #include <QUrl>
 
+#include <chrono>
+#include <stdexcept>
+
+namespace
+{
+QString PathToQString(const std::filesystem::path& path)
+{
+#ifdef _WIN32
+    return QString::fromStdWString(path.wstring());
+#else
+    return QString::fromStdString(path.string());
+#endif
+}
+}
+
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
@@ -80,9 +95,17 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
 
 asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::string entryName = entry.GetName().has_value() ? entry.GetName().value() : std::string();
     Debug::Log("FileShareModule: Fetch entry requested. Source: {}, Destination: {}", entryPath, destination);
     if (entryPath.empty()) {
         Debug::LogError("FileShareModule: Fetch entry failed: empty source path");
+        ProcessError(ModuleFailReason::IncorrectConfig);
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+    if (entryName.empty()) {
+        Debug::LogError("FileShareModule: Fetch entry failed: empty source name");
         ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
@@ -128,11 +151,12 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
     const std::filesystem::path path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+    const std::filesystem::path entryNamePath = std::filesystem::u8path(entryName);
     if (type == FileType::Directory) {
-        filePath /= path.lexically_normal().filename();
+        filePath /= entryNamePath;
         std::filesystem::create_directories(filePath);
     } else {
-        filePath /= path.filename();
+        filePath /= entryNamePath;
         std::filesystem::create_directories(filePath.parent_path());
     }
     Debug::Log("FileShareModule: Fetch entry transfer started to {}", filePath.string());
@@ -179,10 +203,12 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
             // TODO: Add device specific temp
 
             const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
-            std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / name;
+            std::filesystem::path destinationDirectory = std::filesystem::temp_directory_path() / std::to_string(hash);
+            std::filesystem::create_directories(destinationDirectory);
+            std::filesystem::path entryDestination = destinationDirectory / std::filesystem::u8path(name);
 
             paths.push_back(entryDestination);
-            futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, entryDestination.string()), asio::use_future));
+            futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, destinationDirectory.string()), asio::use_future));
         }
 
         for (auto& future : futures) {
@@ -299,9 +325,16 @@ void FileShareModule::FetchEntryIcon(const FileEntry& entry, const FileIconDensi
 }
 
 asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry) const {
-    const std::filesystem::path destination = std::filesystem::temp_directory_path() / std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
-    co_await FetchEntryAwaitable(entry, destination.string());
-    QDesktopServices::openUrl(QUrl::fromLocalFile(QString::fromStdString(destination.string())));
+    const std::filesystem::path destinationDirectory =
+        std::filesystem::temp_directory_path() /
+        std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
+    std::filesystem::create_directories(destinationDirectory);
+
+    co_await FetchEntryAwaitable(entry, destinationDirectory.string());
+
+    const std::filesystem::path openedPath = destinationDirectory /
+        std::filesystem::u8path(entry.GetName().value_or(std::string()));
+    QDesktopServices::openUrl(QUrl::fromLocalFile(PathToQString(openedPath)));
 }
 
 asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry entry, const FileIconDensity density) {
@@ -433,6 +466,8 @@ void FileShareModule::DisableResponseCallbacks() {
 }
 
 void FileShareModule::OnInitialize() {
+    m_peerModuleEnabled.store(false);
+    m_transferChannels.clear();
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
 
     std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextServer();
@@ -448,6 +483,9 @@ void FileShareModule::OnInitialize() {
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
+    // Always require a fresh peer ack for the current primary connection.
+    m_peerModuleEnabled.store(false);
+
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
     std::vector<std::pair<std::unique_ptr<AwaitableFlag>, uint16_t>> ports;
     ports.reserve(m_transferChannels.size());
@@ -465,7 +503,12 @@ asio::awaitable<void> FileShareModule::OnEnable() {
     }
 
     asio::steady_timer timer(m_context);
+    const auto peerEnableDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!m_peerModuleEnabled.load()) {
+        if (std::chrono::steady_clock::now() >= peerEnableDeadline) {
+            throw std::runtime_error("FileShareModule enable timed out waiting for peer module acknowledgement");
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
@@ -475,6 +518,7 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         ConnectionManager::Send(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, ports[i].second);
     }
 
+    const auto channelsDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     while (true) {
         const ModuleState state = GetModuleState();
         if (state != ModuleState::Enabling && state != ModuleState::Enabled) {
@@ -490,6 +534,10 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         break;
 
         WaitForChannels:
+        if (std::chrono::steady_clock::now() >= channelsDeadline) {
+            throw std::runtime_error("FileShareModule enable timed out waiting for transfer channels");
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
@@ -498,6 +546,7 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 }
 
 asio::awaitable<void> FileShareModule::OnDisable() {
+    m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     for (size_t i = 0; i < m_transferChannels.size(); ++i) {
         asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
@@ -507,6 +556,7 @@ asio::awaitable<void> FileShareModule::OnDisable() {
 }
 
 asio::awaitable<void> FileShareModule::OnShutdown() {
+    m_peerModuleEnabled.store(false);
     m_transferChannels.clear();
     co_return;
 }

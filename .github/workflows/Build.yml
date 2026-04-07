@@ -41,10 +41,10 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: pwsh
         run: |
           $conan_version = conan --version -q | ForEach-Object { ($_ -match '\d+\.\d+\.\d+')[0] }
@@ -88,11 +88,18 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Windows-Latest
+          name: ${{ github.ref_name }}-build-application-Windows-Latest
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Windows-Latest
           path: build
+
 
   build-ubuntu:
     name: Build Linux
@@ -123,10 +130,10 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
           CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
@@ -152,7 +159,11 @@ jobs:
         run: conan profile detect --force
 
       - name: Write Qt path to .env for CMake
-        run: echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env && echo DISABLE_DEBUG=true >> .env && echo BUILD_FOR=Desktop >> .env && echo BUILD_TESTS=true >> .env
+        run: |
+          echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env
+          echo "DISABLE_DEBUG=true" >> .env
+          echo "BUILD_FOR=Desktop" >> .env
+          echo "BUILD_TESTS=true" >> .env
 
       - name: Install Conan deps
         run: python configure_project.py
@@ -163,10 +174,70 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Create self-contained Qt bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DEPLOY_DIR=$(find build -type d -name appLibreConnect_desktop | head -n1)
+
+          if [[ -z "$DEPLOY_DIR" ]]; then
+            echo "Deploy dir not found!"
+            exit 1
+          fi
+
+          echo "Using deploy dir: $DEPLOY_DIR"
+
+          mkdir -p "$DEPLOY_DIR/usr/lib"
+          mkdir -p "$DEPLOY_DIR/usr/plugins"
+          mkdir -p "$DEPLOY_DIR/usr/qml"
+          mkdir -p "$DEPLOY_DIR/usr/translations"
+
+          echo "Copying Qt libraries (.so)..."
+          find "$QT_ROOT_DIR" -name "libQt6*.so*" -exec cp -a {} "$DEPLOY_DIR/usr/lib/" \;
+
+          echo "Copying plugins..."
+          if [[ -d "$QT_ROOT_DIR/plugins" ]]; then
+            cp -a "$QT_ROOT_DIR/plugins/." "$DEPLOY_DIR/usr/plugins/"
+          fi
+
+          echo "Copying QML..."
+          if [[ -d "$QT_ROOT_DIR/qml" ]]; then
+            cp -a "$QT_ROOT_DIR/qml/." "$DEPLOY_DIR/usr/qml/"
+          fi
+
+          echo "Copying translations..."
+          if [[ -d "$QT_ROOT_DIR/translations" ]]; then
+            cp -a "$QT_ROOT_DIR/translations/." "$DEPLOY_DIR/usr/translations/"
+          fi
+  
+          echo "Creating run script..."
+          cat > "$DEPLOY_DIR/run.sh" << 'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/usr/lib:$LD_LIBRARY_PATH"
+          export QT_PLUGIN_PATH="$DIR/usr/plugins"
+          export QML2_IMPORT_PATH="$DIR/usr/qml"
+          "$DIR/appLibreConnect_desktop"
+          EOF
+
+          chmod +x "$DEPLOY_DIR/run.sh"
+
+      - name: Construct deployed application
+        run: |
+          mkdir deployed-application
+          cp -r build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/* deployed-application/
+
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Ubuntu-Latest
+          name: ${{ github.ref_name }}-build-application-Ubuntu-Latest
+          path: deployed-application
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Ubuntu-Latest
           path: build
 
   build-ubuntu-arm:
@@ -183,24 +254,25 @@ jobs:
             libgstreamer1.0-0 \
             libgstreamer-plugins-base1.0-0 \
             libgstreamer-plugins-bad1.0-0
-      
+
           NONINTERACTIVE=1 /bin/bash -c \
           "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-      
+
           echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
           echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
 
       - name: Verify Brew
         run: brew --version
 
-      - uses: actions/setup-python@v4
+      - name: Install Python
+        uses: actions/setup-python@v4
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
           CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
@@ -225,7 +297,7 @@ jobs:
       - name: Create Conan profile
         run: conan profile detect --force
 
-      - name: Write env
+      - name: Write Qt path to .env for CMake
         run: |
           echo QT_DIR_DESKTOP=$QT_ROOT_DIR >> .env
           echo DISABLE_DEBUG=true >> .env
@@ -241,10 +313,70 @@ jobs:
       - name: Build
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Create self-contained Qt bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DEPLOY_DIR=$(find build -type d -name appLibreConnect_desktop | head -n1)
+
+          if [[ -z "$DEPLOY_DIR" ]]; then
+            echo "Deploy dir not found!"
+            exit 1
+          fi
+
+          echo "Using deploy dir: $DEPLOY_DIR"
+
+          mkdir -p "$DEPLOY_DIR/usr/lib"
+          mkdir -p "$DEPLOY_DIR/usr/plugins"
+          mkdir -p "$DEPLOY_DIR/usr/qml"
+          mkdir -p "$DEPLOY_DIR/usr/translations"
+
+          echo "Copying Qt libraries (.so)..."
+          find "$QT_ROOT_DIR" -name "libQt6*.so*" -exec cp -a {} "$DEPLOY_DIR/usr/lib/" \;
+
+          echo "Copying plugins..."
+          if [[ -d "$QT_ROOT_DIR/plugins" ]]; then
+            cp -a "$QT_ROOT_DIR/plugins/." "$DEPLOY_DIR/usr/plugins/"
+          fi
+
+          echo "Copying QML..."
+          if [[ -d "$QT_ROOT_DIR/qml" ]]; then
+            cp -a "$QT_ROOT_DIR/qml/." "$DEPLOY_DIR/usr/qml/"
+          fi
+
+          echo "Copying translations..."
+          if [[ -d "$QT_ROOT_DIR/translations" ]]; then
+            cp -a "$QT_ROOT_DIR/translations/." "$DEPLOY_DIR/usr/translations/"
+          fi
+
+          echo "Creating run script..."
+          cat > "$DEPLOY_DIR/run.sh" << 'EOF'
+          #!/bin/bash
+          DIR="$(cd "$(dirname "$0")" && pwd)"
+          export LD_LIBRARY_PATH="$DIR/usr/lib:$LD_LIBRARY_PATH"
+          export QT_PLUGIN_PATH="$DIR/usr/plugins"
+          export QML2_IMPORT_PATH="$DIR/usr/qml"
+          "$DIR/appLibreConnect_desktop"
+          EOF
+
+          chmod +x "$DEPLOY_DIR/run.sh"
+
+      - name: Construct deployed application
+        run: |
+          mkdir deployed-application
+          cp -r build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/* deployed-application/
+
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Ubuntu-ARM-Latest
+          name: ${{ github.ref_name }}-build-application-Ubuntu-ARM-Latest
+          path: deployed-application
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Ubuntu-ARM-Latest
           path: build
 
   build-macOS:
@@ -262,7 +394,7 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
       - name: Set Conan Env
@@ -302,10 +434,16 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
+      - name: Upload deployed application artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-application-macOS-Latest
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/appLibreConnect_desktop.dmg
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-macOS-Latest
+          name: ${{ github.ref_name }}-build-dir-macOS-Latest
           path: build
 
   build-android-armv8:
@@ -326,10 +464,10 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: "Setup Conan"
+      - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: "Set Conan Env"
+      - name: Set Conan Env
         shell: bash
         run: |
           CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
@@ -356,7 +494,9 @@ jobs:
 
       - name: Install NDK and SDK components
         run: |
-          yes | sdkmanager --licenses > /dev/null
+          set +o pipefail
+          yes 2>/dev/null | sdkmanager --licenses > /dev/null
+          set -o pipefail
           sdkmanager --install \
             "platform-tools" \
             "platforms;android-24" \
@@ -388,8 +528,14 @@ jobs:
       - name: Build CMake
         run: cmake --build --preset conan-release
 
-      - name: Upload build artifacts
+      - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-Android-armv8
+          name: ${{ github.ref_name }}-build-application-Android-armv8
+          path: build/android/build/Release/apps/mobile/android-build/appLibreConnect_mobile.apk
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Android-armv8
           path: build

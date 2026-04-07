@@ -1,0 +1,76 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <?ifndef ProductVersion ?>
+    <?define ProductVersion = "1.0.0" ?>
+    <?endif?>
+
+    <Package
+        Name="LibreConnect"
+        Language="1033"
+        Version="$(var.ProductVersion)"
+        Manufacturer="LibreConnect"
+        UpgradeCode="23f75d81-8241-4cb2-8960-49b03e2b56be">
+        <MediaTemplate EmbedCab="yes" />
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+        <Feature Id="ProductFeature" Title="LibreConnect" Level="1">
+            <ComponentGroupRef Id="HarvestedFiles" />
+            <ComponentRef Id="VirtualCameraSetupScriptComponent" />
+            <ComponentRef Id="ProgramMenuFolderCleanup" />
+        </Feature>
+
+        <ComponentGroup Id="HarvestedFiles" Directory="INSTALLFOLDER">
+            <Files Include="$(var.DeployDir)\**" />
+        </ComponentGroup>
+
+        <DirectoryRef Id="INSTALLFOLDER">
+            <Directory Id="ScriptsDir" Name="scripts">
+                <Directory Id="WindowsScriptsDir" Name="windows">
+                    <Directory Id="InstallScriptsDir" Name="install">
+                        <Component Id="VirtualCameraSetupScriptComponent" Guid="{C62A2684-2EA8-46D9-95A5-FE7397D6A010}">
+                            <File
+                                Id="VirtualCameraSetupScriptFile"
+                                Source="$(var.InstallerScriptSourceDir)\virtual-camera-dll-setup.ps1"
+                                KeyPath="yes" />
+                        </Component>
+                    </Directory>
+                </Directory>
+            </Directory>
+        </DirectoryRef>
+
+        <CustomAction
+            Id="RunVirtualCameraSetupScript"
+            Directory="INSTALLFOLDER"
+            Execute="deferred"
+            Impersonate="no"
+            Return="check"
+            ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[#VirtualCameraSetupScriptFile]&quot;" />
+
+        <InstallExecuteSequence>
+            <Custom Action="RunVirtualCameraSetupScript" After="InstallFiles" Condition='NOT REMOVE~="ALL"' />
+        </InstallExecuteSequence>
+
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="INSTALLFOLDER" Name="LibreConnect" />
+        </StandardDirectory>
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Directory Id="ProgramMenuDir" Name="LibreConnect">
+                <Component Id="ProgramMenuFolderCleanup" Guid="{18D3A7D8-D85E-44A7-B2FC-C88E5F68C9A0}">
+                    <Shortcut
+                        Id="StartMenuShortcut"
+                        Name="LibreConnect"
+                        Description="LibreConnect"
+                        Target="[INSTALLFOLDER]appLibreConnect_desktop.exe"
+                        WorkingDirectory="INSTALLFOLDER" />
+                    <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" Directory="ProgramMenuDir" />
+                    <RegistryValue
+                        Root="HKLM"
+                        Key="Software\LibreConnect"
+                        Name="Installed"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+    </Package>
+</Wix>
