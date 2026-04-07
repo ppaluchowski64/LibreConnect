@@ -1,9 +1,13 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQmlContext>
 #include <QDir>
 #include <QDirIterator>
 #include <QStandardPaths>
 #include <QtQml>
+#include <QFontDatabase>
+#include <QFont>
+#include <QQuickStyle>
 #include <DebugLog.h>
 #include "DeviceDiscovery.h"
 #include "DeviceModel.h"
@@ -11,13 +15,20 @@
 #include "NotificationSyncController.h"
 #include "FileManagerController.h"
 #include "VirtualCameraController.h"
+#include "ThemeController.h"
 
 
 int main(int argc, char *argv[])
 {
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnect");
+
+    QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-VariableFont.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-Italic-VariableFont.ttf"));
+    app.setFont(QFont(QStringLiteral("Inter")));
 
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {
@@ -36,7 +47,10 @@ int main(int argc, char *argv[])
         } catch (...) {}
     }
 
+    ThemeController themeController;
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("Theme"), &themeController);
+
     qmlRegisterType<DeviceDiscovery>("LibreConnect.desktop", 1, 0, "DeviceDiscovery");
     qmlRegisterType<DeviceModel>("LibreConnect.desktop", 1, 0, "DeviceModel");
     qmlRegisterType<DeviceConnectionController>("LibreConnect.desktop", 1, 0, "DeviceConnectionController");

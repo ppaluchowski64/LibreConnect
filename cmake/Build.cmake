@@ -112,6 +112,8 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
             ${RootPath}/res/*.svg
             ${RootPath}/res/*.ico
             ${RootPath}/res/*.webp
+            ${RootPath}/res/*.ttf
+            ${RootPath}/res/*.otf
     )
 
     qt_add_executable(${ExecutableName}

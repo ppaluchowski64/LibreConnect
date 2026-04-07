@@ -127,9 +127,13 @@ void FileManagerController::goUp()
 
 void FileManagerController::downloadEntry(const QString& remotePath)
 {
-    const QString normalizedPath = normalizeRemotePath(remotePath);
-    if (normalizedPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select a file or folder first."));
+    downloadEntries(QStringList{remotePath});
+}
+
+void FileManagerController::downloadEntries(const QStringList& remotePaths)
+{
+    if (remotePaths.isEmpty()) {
+        setStatusMessage(QStringLiteral("Select one or more files or folders first."));
         return;
     }
 
@@ -138,29 +142,45 @@ void FileManagerController::downloadEntry(const QString& remotePath)
         return;
     }
 
-    auto lookup = m_entryLookup.find(normalizedPath.toStdString());
-    if (lookup == m_entryLookup.end()) {
-        setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+    QStringList queue;
+    queue.reserve(remotePaths.size());
+    for (const QString& remotePath : remotePaths) {
+        const QString normalizedPath = normalizeRemotePath(remotePath);
+        if (normalizedPath.isEmpty()) {
+            continue;
+        }
+
+        auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+        if (lookup == m_entryLookup.end()) {
+            continue;
+        }
+
+        if (!queue.contains(normalizedPath)) {
+            queue.push_back(normalizedPath);
+        }
+    }
+
+    if (queue.isEmpty()) {
+        setStatusMessage(QStringLiteral("The selected entries are no longer available in the current folder."));
         return;
     }
 
-    m_pendingEntryPath = normalizedPath;
-    m_pendingLocalPath.clear();
-    m_activeEntryPath = normalizedPath;
-    m_activeEntryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
-    m_pendingAction = PendingAction::Download;
-    setTransferProgress(0.0);
-
-    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
-    if (module->GetModuleState() != ModuleState::Enabled) {
-        m_waitingForModule = true;
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Preparing download channels..."));
-        module->Enable(true);
+    if (queue.size() == 1) {
+        m_pendingDownloadQueue.clear();
+        m_downloadBatchActive = false;
+        m_downloadBatchTotal = 1;
+        m_downloadBatchCompleted = 0;
+        m_downloadBatchFailed = 0;
+        beginDownloadForPath(queue.front(), false);
         return;
     }
 
-    startPendingActionIfReady();
+    m_pendingDownloadQueue = queue;
+    m_downloadBatchActive = true;
+    m_downloadBatchTotal = m_pendingDownloadQueue.size();
+    m_downloadBatchCompleted = 0;
+    m_downloadBatchFailed = 0;
+    startNextQueuedDownload();
 }
 
 void FileManagerController::openEntry(const QString& remotePath)
@@ -203,27 +223,47 @@ void FileManagerController::openEntry(const QString& remotePath)
 
 void FileManagerController::copyEntry(const QString& remotePath)
 {
-    const QString normalizedPath = normalizeRemotePath(remotePath);
-    if (normalizedPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select a file first."));
+    copyEntries(QStringList{remotePath});
+}
+
+void FileManagerController::copyEntries(const QStringList& remotePaths)
+{
+    if (remotePaths.isEmpty()) {
+        setStatusMessage(QStringLiteral("Select one or more files or folders first."));
         return;
     }
 
-    auto lookup = m_entryLookup.find(normalizedPath.toStdString());
-    if (lookup == m_entryLookup.end()) {
-        setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+    std::vector<FileEntry> entries;
+    entries.reserve(static_cast<size_t>(remotePaths.size()));
+
+    QStringList uniquePaths;
+    for (const QString& remotePath : remotePaths) {
+        const QString normalizedPath = normalizeRemotePath(remotePath);
+        if (normalizedPath.isEmpty() || uniquePaths.contains(normalizedPath)) {
+            continue;
+        }
+
+        auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+        if (lookup == m_entryLookup.end()) {
+            continue;
+        }
+
+        uniquePaths.push_back(normalizedPath);
+        entries.push_back(lookup->second);
+    }
+
+    if (entries.empty()) {
+        setStatusMessage(QStringLiteral("The selected entries are no longer available in the current folder."));
         return;
     }
 
-    if (lookup->second.GetType().has_value() && lookup->second.GetType().value() == FileType::Directory) {
-        setStatusMessage(QStringLiteral("Folders cannot be copied to clipboard from this view."));
-        return;
-    }
-
-    m_pendingEntryPath = normalizedPath;
+    m_pendingCopyPaths = uniquePaths;
+    m_pendingEntryPath = uniquePaths.size() == 1 ? uniquePaths.front() : QString();
     m_pendingLocalPath.clear();
-    m_activeEntryPath = normalizedPath;
-    m_activeEntryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
+    m_activeEntryPath = m_pendingEntryPath;
+    m_activeEntryName = uniquePaths.size() == 1
+        ? QString::fromStdString(entries.front().GetName().value_or(std::string()))
+        : QStringLiteral("%1 entries").arg(entries.size());
     m_pendingAction = PendingAction::Copy;
     setTransferProgress(0.0);
 
@@ -236,7 +276,12 @@ void FileManagerController::copyEntry(const QString& remotePath)
         return;
     }
 
-    startPendingActionIfReady();
+    m_waitingForModule = false;
+    setBusy(true);
+    setStatusMessage(uniquePaths.size() == 1
+        ? QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName)
+        : QStringLiteral("Copying %1 entries to clipboard...").arg(uniquePaths.size()));
+    module->CopyEntriesToClipboard(std::move(entries));
 }
 
 void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
@@ -353,9 +398,9 @@ bool FileManagerController::event(QEvent* event)
             return true;
         }
 
-        setBusy(false);
         setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
         if (m_pendingAction == PendingAction::Upload) {
+            setBusy(false);
             setStatusMessage(resultEvent->Success()
                 ? QStringLiteral("Uploaded %1 to %2.").arg(m_activeEntryName, m_currentRemotePath)
                 : QStringLiteral("Failed to upload %1.").arg(m_activeEntryName));
@@ -363,19 +408,47 @@ bool FileManagerController::event(QEvent* event)
                 refreshEntries();
             }
         } else if (m_pendingAction == PendingAction::Open) {
+            setBusy(false);
             setStatusMessage(resultEvent->Success()
                 ? QStringLiteral("Opened %1.").arg(m_activeEntryName)
                 : QStringLiteral("Failed to open %1.").arg(m_activeEntryName));
         } else {
-            setStatusMessage(resultEvent->Success()
-                ? QStringLiteral("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
-                : QStringLiteral("Failed to download %1.").arg(m_activeEntryName));
+            if (m_downloadBatchActive) {
+                ++m_downloadBatchCompleted;
+                if (!resultEvent->Success()) {
+                    ++m_downloadBatchFailed;
+                }
+
+                if (!m_pendingDownloadQueue.isEmpty()) {
+                    startNextQueuedDownload();
+                    return true;
+                }
+
+                setBusy(false);
+                setStatusMessage(m_downloadBatchFailed == 0
+                    ? QStringLiteral("Downloaded %1 entries to %2.").arg(m_downloadBatchCompleted).arg(m_localDownloadDirectory)
+                    : QStringLiteral("Downloaded %1 of %2 entries (%3 failed).")
+                        .arg(m_downloadBatchCompleted - m_downloadBatchFailed)
+                        .arg(m_downloadBatchTotal)
+                        .arg(m_downloadBatchFailed));
+            } else {
+                setBusy(false);
+                setStatusMessage(resultEvent->Success()
+                    ? QStringLiteral("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
+                    : QStringLiteral("Failed to download %1.").arg(m_activeEntryName));
+            }
         }
 
         m_pendingEntryPath.clear();
         m_pendingLocalPath.clear();
         m_activeEntryPath.clear();
         m_activeEntryName.clear();
+        m_pendingCopyPaths.clear();
+        m_pendingDownloadQueue.clear();
+        m_downloadBatchActive = false;
+        m_downloadBatchTotal = 0;
+        m_downloadBatchCompleted = 0;
+        m_downloadBatchFailed = 0;
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
         return true;
@@ -397,6 +470,7 @@ bool FileManagerController::event(QEvent* event)
         m_pendingLocalPath.clear();
         m_activeEntryPath.clear();
         m_activeEntryName.clear();
+        m_pendingCopyPaths.clear();
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
         return true;
@@ -459,6 +533,33 @@ void FileManagerController::startPendingActionIfReady()
         return;
     }
 
+    if (m_pendingAction == PendingAction::Copy && !m_pendingCopyPaths.isEmpty()) {
+        std::vector<FileEntry> entries;
+        entries.reserve(static_cast<size_t>(m_pendingCopyPaths.size()));
+        for (const QString& path : m_pendingCopyPaths) {
+            auto lookup = m_entryLookup.find(path.toStdString());
+            if (lookup != m_entryLookup.end()) {
+                entries.push_back(lookup->second);
+            }
+        }
+
+        if (entries.empty()) {
+            m_waitingForModule = false;
+            m_pendingAction = PendingAction::None;
+            setBusy(false);
+            setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+            return;
+        }
+
+        m_waitingForModule = false;
+        setBusy(true);
+        setStatusMessage(entries.size() == 1
+            ? QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName)
+            : QStringLiteral("Copying %1 entries to clipboard...").arg(entries.size()));
+        module->CopyEntriesToClipboard(std::move(entries));
+        return;
+    }
+
     if (m_pendingEntryPath.isEmpty()) {
         return;
     }
@@ -486,6 +587,70 @@ void FileManagerController::startPendingActionIfReady()
         setStatusMessage(QStringLiteral("Downloading %1...").arg(m_activeEntryName));
         module->FetchEntry(lookup->second, m_localDownloadDirectory.toStdString());
     }
+}
+
+void FileManagerController::beginDownloadForPath(const QString& normalizedPath, const bool partOfBatch)
+{
+    auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+    if (lookup == m_entryLookup.end()) {
+        if (partOfBatch) {
+            ++m_downloadBatchCompleted;
+            ++m_downloadBatchFailed;
+            if (!m_pendingDownloadQueue.isEmpty()) {
+                startNextQueuedDownload();
+            } else {
+                setBusy(false);
+                setStatusMessage(QStringLiteral("Downloaded %1 of %2 entries (%3 failed).")
+                    .arg(m_downloadBatchCompleted - m_downloadBatchFailed)
+                    .arg(m_downloadBatchTotal)
+                    .arg(m_downloadBatchFailed));
+                m_pendingEntryPath.clear();
+                m_pendingLocalPath.clear();
+                m_activeEntryPath.clear();
+                m_activeEntryName.clear();
+                m_pendingDownloadQueue.clear();
+                m_downloadBatchActive = false;
+                m_downloadBatchTotal = 0;
+                m_downloadBatchCompleted = 0;
+                m_downloadBatchFailed = 0;
+                m_waitingForModule = false;
+                m_pendingAction = PendingAction::None;
+            }
+        } else {
+            setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+        }
+        return;
+    }
+
+    m_pendingEntryPath = normalizedPath;
+    m_pendingLocalPath.clear();
+    m_activeEntryPath = normalizedPath;
+    m_activeEntryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
+    m_pendingAction = PendingAction::Download;
+    m_waitingForModule = false;
+    setTransferProgress(0.0);
+
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        m_waitingForModule = true;
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Preparing download channels..."));
+        module->Enable(true);
+        return;
+    }
+
+    startPendingActionIfReady();
+}
+
+void FileManagerController::startNextQueuedDownload()
+{
+    if (m_pendingDownloadQueue.isEmpty()) {
+        return;
+    }
+
+    const QString nextPath = m_pendingDownloadQueue.front();
+    m_pendingDownloadQueue.pop_front();
+    beginDownloadForPath(nextPath, true);
 }
 
 void FileManagerController::loadDirectory(const QString& remotePath)
@@ -621,5 +786,3 @@ QVariantMap FileManagerController::toVariantMap(const FileEntry& entry)
     item.insert(QStringLiteral("iconSource"), fileTypeIconSource(entry.GetType()));
     return item;
 }
-
-
