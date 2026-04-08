@@ -190,11 +190,11 @@ object CameraFrameReceiver {
                         )
                         interop.setCaptureRequestOption(
                             CaptureRequest.NOISE_REDUCTION_MODE,
-                            CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY
+                            CaptureRequest.NOISE_REDUCTION_MODE_FAST
                         )
                         interop.setCaptureRequestOption(
                             CaptureRequest.EDGE_MODE,
-                            CaptureRequest.EDGE_MODE_HIGH_QUALITY
+                            CaptureRequest.EDGE_MODE_FAST
                         )
 
                         val preview = previewBuilder.build()
