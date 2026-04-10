@@ -1,8 +1,11 @@
 #include "VCamAPI.h"
 
 #include <atomic>
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <vector>
 #include <nlohmann/json.hpp>
 #include <unistd.h>
@@ -10,6 +13,7 @@
 #include <csignal>
 #include <cerrno>
 #include <set>
+#include <unordered_set>
 #include <fmt/format.h>
 #include <thread>
 
@@ -80,6 +84,111 @@ static int RunCommand(const std::vector<std::string>& args) {
     return WEXITSTATUS(status);
 }
 
+static bool RemoveLoopbackDevice(const int videoID) {
+    return RunCommand({
+        "pkexec",
+        "/usr/libexec/v4l2loopback-helper",
+        "remove",
+        std::to_string(videoID)
+    }) == 0;
+}
+
+static bool TryRemoveLoopbackDeviceWithRetry(const int videoID, const int attempts, const std::chrono::milliseconds delay) {
+    for (int i = 0; i < attempts; ++i) {
+        if (RemoveLoopbackDevice(videoID)) {
+            return true;
+        }
+
+        if (i + 1 < attempts) {
+            std::this_thread::sleep_for(delay);
+        }
+    }
+
+    return false;
+}
+
+static std::vector<std::string> FindDeviceUsers(const int videoID) {
+    std::vector<std::string> users;
+    std::unordered_set<int> seenPids;
+    const std::string targetPath = fmt::format("/dev/video{}", videoID);
+
+    std::error_code ec;
+    for (const auto& procEntry : std::filesystem::directory_iterator("/proc", ec)) {
+        if (ec) {
+            break;
+        }
+
+        if (!procEntry.is_directory()) {
+            continue;
+        }
+
+        const std::string pidStr = procEntry.path().filename().string();
+        if (pidStr.empty() || !std::ranges::all_of(pidStr, [](const unsigned char ch) { return std::isdigit(ch) != 0; })) {
+            continue;
+        }
+
+        int pid = 0;
+        try {
+            pid = std::stoi(pidStr);
+        } catch (...) {
+            continue;
+        }
+
+        std::error_code fdEc;
+        const auto fdDir = procEntry.path() / "fd";
+        for (const auto& fdEntry : std::filesystem::directory_iterator(fdDir, fdEc)) {
+            if (fdEc) {
+                break;
+            }
+
+            std::error_code linkEc;
+            const auto linkTarget = std::filesystem::read_symlink(fdEntry.path(), linkEc);
+            if (linkEc) {
+                continue;
+            }
+
+            if (linkTarget.string() != targetPath) {
+                continue;
+            }
+
+            if (seenPids.contains(pid)) {
+                break;
+            }
+
+            std::string command = "unknown";
+            std::ifstream commFile(procEntry.path() / "comm");
+            if (std::getline(commFile, command) && !command.empty()) {
+                // Keep parsed command.
+            } else {
+                command = "unknown";
+            }
+
+            users.push_back(fmt::format("{}({})", command, pid));
+            seenPids.insert(pid);
+            break;
+        }
+    }
+
+    return users;
+}
+
+static std::string JoinStrings(const std::vector<std::string>& values, const std::string_view separator) {
+    std::string joined;
+    for (size_t i = 0; i < values.size(); ++i) {
+        joined += values[i];
+        if (i + 1 < values.size()) {
+            joined += separator;
+        }
+    }
+    return joined;
+}
+
+static void ScheduleDeferredRemove(const int videoID) {
+    std::thread([videoID]() {
+        (void)TryRemoveLoopbackDeviceWithRetry(videoID, 150, std::chrono::seconds(2));
+    }).detach();
+}
+
 std::vector<std::string> ListVideoDevices() {
     std::vector<std::string> devices;
     for (const auto& entry : std::filesystem::directory_iterator("/dev")) {
@@ -91,7 +200,7 @@ std::vector<std::string> ListVideoDevices() {
 }
 
 static std::string GetVideoLabel(const std::string& device) {
-    int fd = open(device.c_str(), O_RDONLY);
+    const int fd = open(device.c_str(), O_RDONLY);
     if (fd < 0)
         return {};
 
@@ -160,7 +269,7 @@ extern "C" {
         instance->height = height;
 
         int deviceID = -1;
-        std::string deviceName = fmt::format("{}: {}", reinterpret_cast<long long>(*handle), name);
+        std::string deviceName(name);
 
         {
             constexpr size_t MAX_DEVICE_NAME_LENGTH = 128;
@@ -300,34 +409,39 @@ extern "C" {
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API VCamResult DestroyCam(VCamHandle handle) {
+    VCAMAPI_API VCamResult DestroyCam(const VCamHandle handle) {
         std::lock_guard<std::mutex> lock(g_mutex);
         if (!g_instances.contains(handle)) {
             return VCAM_ERROR_INVALID_PARAM;
         }
 
         const std::shared_ptr<VCamInstance>& instance = g_instances.at(handle);
+        const int videoID = instance->videoID;
         close(instance->v4l2Device);
 
-        {
-            if (RunCommand({
-                "pkexec",
-                "/usr/libexec/v4l2loopback-helper",
-                "remove",
-                std::to_string(instance->videoID)
-            }) != 0) {
-                SetError("Failed to delete v4l2loopback device", handle);
-                return VCAM_ERROR_CAMERA_DESTRUCTION_FAILED;
+        if (!TryRemoveLoopbackDeviceWithRetry(videoID, 10, std::chrono::milliseconds(200))) {
+            const std::vector<std::string> users = FindDeviceUsers(videoID);
+
+            std::string message = fmt::format(
+                "v4l2loopback device /dev/video{} is busy; deferred removal scheduled",
+                videoID
+            );
+
+            if (!users.empty()) {
+                message += fmt::format(" (close camera in: {})", JoinStrings(users, ", "));
             }
+
+            SetError(message, handle);
+            std::cerr << message << '\n';
+            ScheduleDeferredRemove(videoID);
         }
 
-        const int pid = getpid();
         g_instances.erase(handle);
 
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API VCamResult PushCamFrame(VCamHandle handle, const void* data) {
+    VCAMAPI_API VCamResult PushCamFrame(const VCamHandle handle, const void* data) {
         std::lock_guard<std::mutex> lock(g_mutex);
         if (!g_instances.contains(handle)) {
             return VCAM_ERROR_INVALID_PARAM;
@@ -362,7 +476,7 @@ extern "C" {
         return VCAM_SUCCESS;
     }
 
-    VCAMAPI_API const char* VCamGetLastError(VCamHandle handle) {
+    VCAMAPI_API const char* VCamGetLastError(const VCamHandle handle) {
         std::lock_guard<std::mutex> guard(g_mutex);
         if (!g_instances.contains(handle)) {
             return "";
@@ -384,12 +498,7 @@ void StartWatcher(const int videoID, const int fd, const pid_t parentPid) {
     while (true) {
         if (kill(parentPid, 0) == -1) {
             close(fd);
-            (void)RunCommand({
-                "pkexec",
-                "/usr/libexec/v4l2loopback-helper",
-                "remove",
-                std::to_string(videoID)
-            });
+            (void)RemoveLoopbackDevice(videoID);
             _exit(0);
         }
 
