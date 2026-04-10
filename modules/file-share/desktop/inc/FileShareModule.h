@@ -3,6 +3,8 @@
 
 #include <vector>
 #include <memory>
+#include <mutex>
+#include <unordered_set>
 
 #include <BaseModule.h>
 #include <TransferChannel.h>
@@ -26,6 +28,9 @@ public:
     void FetchEntryIcon(const FileEntry& entry, FileIconDensity density) const;
 
 private:
+    bool TryBeginDirectoryRequest(const std::string& path) const;
+    void EndDirectoryRequest(const std::string& path) const;
+
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
     asio::awaitable<std::vector<FileEntry>> FetchDirectoryEntriesAwaitable(std::string path);
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
@@ -34,6 +39,8 @@ private:
     static asio::awaitable<void> FetchEntryIconAwaitable(FileEntry entry, FileIconDensity density);
 
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
+    mutable std::mutex m_directoryRequestMutex;
+    mutable std::unordered_set<std::string> m_inFlightDirectoryRequests;
 
 protected:
     void EnableResponseCallbacks() override;

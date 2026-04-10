@@ -63,6 +63,7 @@ private:
     asio::awaitable<void> CoReceive();
     asio::awaitable<void> CoSendHeartbeat();
     asio::awaitable<void> CoHeartbeatMonitor();
+    void ClearQueuedPackages();
 
     static void SavePairData(const InitialConnectionData& data);
     void SaveCertificate(const InitialConnectionData& data) const;

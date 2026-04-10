@@ -195,6 +195,10 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         co_return;
     }
 
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
 #ifdef ANDROID_DEVICE
     UpdateMainServiceCameraRequest(true);
 #endif
@@ -203,6 +207,10 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 
     asio::steady_timer timer(m_context);
     while (!m_peerModuleEnabled.load()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }

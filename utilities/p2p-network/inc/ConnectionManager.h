@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <Packable.h>
 #include <optional>
+#include <chrono>
 
 #include <QObject>
 #include <PrimaryConnection.h>
@@ -67,8 +68,13 @@ public:
 
         s_instance->m_requestAwaitableMap.InsertOrAssign(requestID, flag);
         s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
-        co_await flag->Wait();
+        const AwaitableFlag::Result waitResult = co_await flag->WaitFor(REQUEST_TIMEOUT);
         s_instance->m_requestAwaitableMap.Erase(requestID);
+
+        if (waitResult != AwaitableFlag::Result::SUCCESS) {
+            s_instance->m_requestPackageMap.Erase(requestID);
+            co_return std::nullopt;
+        }
 
         co_return s_instance->m_requestPackageMap.Pop(requestID);
     }
@@ -93,8 +99,11 @@ private:
     static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid(), bool allowUnpinnedPairing = false);
     static void RunContext();
     static void SetSeekingEndpoint(TCPEndpoint endpoint);
+    static void CancelPendingRequests();
 
     asio::awaitable<void> CoProcessPackages();
+
+    static constexpr std::chrono::seconds REQUEST_TIMEOUT{30};
 
     static ConnectionManager* s_instance;
     static std::mutex         s_mutex;

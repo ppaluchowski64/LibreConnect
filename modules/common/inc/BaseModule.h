@@ -128,11 +128,12 @@ public:
         SetModuleState(ModuleState::Enabling);
         try {
             co_await OnEnable();
-            if (GetModuleState() != ModuleState::Enabling) {
+            const ModuleState currentState = GetModuleState();
+            if (currentState != ModuleState::Enabling) {
                 Debug::LogWarning(
                     "{}: Enable completion ignored - state changed to {}",
                     GetModuleName(),
-                    magic_enum::enum_name(GetModuleState())
+                    magic_enum::enum_name(currentState)
                 );
                 co_return;
             }
@@ -151,7 +152,7 @@ public:
         const std::shared_ptr<BaseModule> instance = shared_from_this();
         const ModuleState state = GetModuleState();
 
-        if (state != ModuleState::Enabled) {
+        if (state != ModuleState::Enabled && state != ModuleState::Enabling) {
             if (disableWarnings) {
                 co_return;
             }
@@ -160,7 +161,12 @@ public:
             co_return;
         }
 
-        Debug::Log("{}: Disable started", GetModuleName());
+        if (state == ModuleState::Enabling) {
+            Debug::Log("{}: Disable started - cancelling enable in progress", GetModuleName());
+        } else {
+            Debug::Log("{}: Disable started", GetModuleName());
+        }
+
         SetModuleState(ModuleState::Disabling);
         try {
             co_await OnDisable();
@@ -196,15 +202,11 @@ public:
             co_return;
         }
 
-        if (state == ModuleState::Enabling) {
-            SetModuleState(ModuleState::Disabling);
-        }
-
         Debug::Log("{}: Shutdown started", GetModuleName());
         DisableResponseCallbacks();
 
-        if (GetModuleState() == ModuleState::Enabled) {
-            co_await DisableAwaitable();
+        if (state == ModuleState::Enabled || state == ModuleState::Enabling) {
+            co_await DisableAwaitable(true);
         }
 
         try {
@@ -241,6 +243,11 @@ protected:
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
     std::atomic<bool> m_peerModuleEnabled = false;
     mutable std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
+
+    bool ShouldAbortEnable() const {
+        const ModuleState state = GetModuleState();
+        return state != ModuleState::Enabling && state != ModuleState::Enabled;
+    }
 
     virtual void EnableResponseCallbacks() = 0;
     virtual void DisableResponseCallbacks() = 0;

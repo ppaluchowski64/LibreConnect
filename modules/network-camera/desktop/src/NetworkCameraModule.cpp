@@ -526,6 +526,10 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 
     {
         const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_REMOTE_KEY, std::vector(m_localKey));
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         if (!response.has_value()) {
             Debug::LogError("No response");
             ProcessError(ModuleFailReason::Timeout);
@@ -545,6 +549,10 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         std::string cameraID = m_cameraSettings.id;
 
         const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM, std::move(cameraID), std::move(cameraFormat));
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         if (!response.has_value()) {
             Debug::LogError("No response");
             ProcessError(ModuleFailReason::Timeout);
@@ -561,11 +569,18 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
 
     asio::steady_timer timer(m_context);
     while (!m_peerModuleEnabled.load()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
 
     co_await StartStream();
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
 
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
 }
