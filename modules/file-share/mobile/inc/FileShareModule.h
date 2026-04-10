@@ -3,11 +3,15 @@
 
 #include <vector>
 #include <memory>
+#include <future>
+#include <mutex>
+#include <unordered_map>
 
 #include <BaseModule.h>
 #include <TransferChannel.h>
 #include <ConnectionManager.h>
 #include <FileIconDensity.h>
+#include <FileSystemManager.h>
 
 class FileShareModule final : public BaseModule {
 public:
@@ -15,11 +19,17 @@ public:
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
 
 private:
+    std::shared_future<DirectoryResult> GetOrCreateDirectoryScanFuture(const std::string& path);
+    void CleanupDirectoryScanFutureIfReady(const std::string& path);
+    void ClearDirectoryScanFutures();
+
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     std::vector<uint8_t> GetEntryIcon(const std::string& file, FileIconDensity density);
 
     std::atomic_size_t m_transferChannelInitializationIndex;
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
+    std::mutex m_directoryScanMutex;
+    std::unordered_map<std::string, std::shared_future<DirectoryResult>> m_directoryScanFutures;
 
 protected:
     void EnableResponseCallbacks() override;

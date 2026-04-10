@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
+#include <cstdlib>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -9,6 +10,50 @@
 #include <unistd.h>
 
 namespace {
+std::string ResolveExecutablePath(const std::string& executable) {
+    if (executable.empty() || executable.find('/') != std::string::npos) {
+        return executable;
+    }
+
+    std::vector<std::string> searchDirs;
+    if (const char* pathEnv = std::getenv("PATH"); pathEnv != nullptr) {
+        const std::string pathValue = pathEnv;
+        std::size_t start = 0;
+        while (start <= pathValue.size()) {
+            const std::size_t end = pathValue.find(':', start);
+            searchDirs.emplace_back(pathValue.substr(start, end - start));
+            if (end == std::string::npos) {
+                break;
+            }
+            start = end + 1;
+        }
+    }
+
+    for (const char* fallbackDir : {
+             "/usr/local/sbin", "/usr/local/bin",
+             "/usr/sbin", "/usr/bin",
+             "/sbin", "/bin"
+         }) {
+        const std::string directory = fallbackDir;
+        if (std::find(searchDirs.begin(), searchDirs.end(), directory) == searchDirs.end()) {
+            searchDirs.push_back(directory);
+        }
+    }
+
+    for (const std::string& directory : searchDirs) {
+        if (directory.empty()) {
+            continue;
+        }
+
+        const std::string candidate = directory + "/" + executable;
+        if (access(candidate.c_str(), X_OK) == 0) {
+            return candidate;
+        }
+    }
+
+    return executable;
+}
+
 int RunCommand(const std::vector<std::string>& args) {
     if (args.empty()) {
         return 1;
@@ -92,5 +137,6 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    args[0] = ResolveExecutablePath(args[0]);
     return RunCommand(args);
 }
