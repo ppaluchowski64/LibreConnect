@@ -378,13 +378,15 @@ object CameraFrameReceiver {
         bitrate: Int
     ): MediaCodec? {
         return try {
-            val codec = MediaCodec.createEncoderByType("video/avc")
-            val format = MediaFormat.createVideoFormat("video/avc", width, height).apply {
+            val pixels = width * height
+            val mimeType = if (pixels > 2073600) MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
+            val codec = MediaCodec.createEncoderByType(mimeType)
+            val format = MediaFormat.createVideoFormat(mimeType, width, height).apply {
                 setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
                 setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, fps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
-                setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+                setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
                 }

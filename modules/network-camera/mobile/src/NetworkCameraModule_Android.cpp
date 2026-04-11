@@ -293,16 +293,21 @@ void NetworkCameraModule::StopMainServiceCameraFrameReceiver() {
 }
 
 int32_t NetworkCameraModule::ComputeTargetBitrate(const int width, const int height, const int fps) {
-    constexpr double kTargetBpp = 0.225;
+    const int64_t pixels = static_cast<int64_t>(std::max(1, width)) * static_cast<int64_t>(std::max(1, height));
+    const int64_t safeFps = std::max(1, fps);
+    double targetBpp = 0.225;
+
+    if (pixels > 2073600) {
+        targetBpp = 0.12;
+    } else if (pixels > 921600) {
+        targetBpp = 0.18;
+    }
+
     constexpr int64_t kMinBitrate = 2'000'000;
-    constexpr int64_t kMaxBitrate = 200'000'000;
+    constexpr int64_t kMaxBitrate = 35'000'000;
 
-    const int64_t pixelsPerSecond =
-        static_cast<int64_t>(std::max(1, width)) *
-        static_cast<int64_t>(std::max(1, height)) *
-        static_cast<int64_t>(std::max(1, fps));
-
-    const int64_t bitrate = std::llround(static_cast<double>(pixelsPerSecond) * kTargetBpp);
+    const int64_t pixelsPerSecond = pixels * safeFps;
+    const int64_t bitrate = std::llround(static_cast<double>(pixelsPerSecond) * targetBpp);
     return static_cast<int32_t>(std::clamp<int64_t>(bitrate, kMinBitrate, kMaxBitrate));
 }
 
