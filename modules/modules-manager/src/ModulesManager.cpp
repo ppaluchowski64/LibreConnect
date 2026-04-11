@@ -51,7 +51,6 @@ ModulesManager::ModulesManager() {
 
 void ModulesManager::Initialize() {
     std::lock_guard<std::mutex> lock(s_mutex);
-    Debug::Log("ModulesManager: Initialize called");
 
     if (s_instance == nullptr) {
         s_instance = new ModulesManager();
