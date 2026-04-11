@@ -172,7 +172,7 @@ int64_t NotificationEmitter::Emit(
     const std::wstring& notificationContent,
     const std::optional<std::filesystem::path>& appIconPath,
     const std::optional<std::filesystem::path>& mainImagePath,
-    std::vector<ButtonAction> buttons) {
+    const std::vector<ButtonAction>& buttons) {
     (void)appIconPath;
     (void)mainImagePath;
 
@@ -219,7 +219,7 @@ int64_t NotificationEmitter::Emit(
         std::vector<std::function<void()>> actionsToStore;
         actionsToStore.reserve(buttons.size());
         for (auto& button : buttons) {
-            actionsToStore.push_back(std::move(button.action));
+            actionsToStore.push_back(button.action);
         }
 
         std::lock_guard lock(g_actionsMutex);

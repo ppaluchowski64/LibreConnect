@@ -6,9 +6,11 @@
 #include <NetworkCameraModule.h>
 #include <FileShareModule.h>
 #include <NotificationSyncModule.h>
+#include <ClipboardSyncModule.h>
 
 #include <QObject>
 #include <QEvent>
+
 
 template<class>
 inline constexpr bool always_false = false;
@@ -27,25 +29,25 @@ public:
 
     template <ModuleType_ type>
     static auto& GetModuleReference() {
-        std::call_once(s_flag, Initialize);
+        Initialize();
 
         if constexpr (std::is_same_v<type, FileShareModule>) {
-            s_instance->m_fileShareModule->Initialize(true);
             return s_instance->m_fileShareModule;
-        }
-        else if constexpr (std::is_same_v<type, NetworkCameraModule>) {
-            s_instance->m_networkCameraModule->Initialize(true);
+        } else if constexpr (std::is_same_v<type, NetworkCameraModule>) {
+#ifndef MACOS_DEVICE
             return s_instance->m_networkCameraModule;
-        }
-        else if constexpr (std::is_same_v<type, NotificationSyncModule>) {
+#else
+            static_assert(always_false<std::shared_ptr<type>>, "NetworkCameraModule have no support for MacOS");
+#endif
+        } else if constexpr (std::is_same_v<type, NotificationSyncModule>) {
 #ifndef IOS_DEVICE
-            s_instance->m_notificationSyncModule->Initialize(true);
             return s_instance->m_notificationSyncModule;
 #else
             static_assert(always_false<std::shared_ptr<type>>, "NotificationSyncModule have no support for IOS");
 #endif
-        }
-        else {
+        } else if constexpr (std::is_same_v<type, ClipboardSyncModule>) {
+            return s_instance->m_clipboardSyncModule;
+        } else {
             static_assert(always_false<std::shared_ptr<type>>, "Unknown module type");
         }
     }
@@ -55,7 +57,6 @@ protected:
 
 private:
     static ModulesManager* s_instance;
-    static std::once_flag s_flag;
     static std::mutex s_mutex;
 
 #ifdef ANDROID_DEVICE
@@ -65,6 +66,7 @@ private:
     std::shared_ptr<FileShareModule> m_fileShareModule;
     std::shared_ptr<NetworkCameraModule> m_networkCameraModule;
     std::shared_ptr<NotificationSyncModule> m_notificationSyncModule;
+    std::shared_ptr<ClipboardSyncModule> m_clipboardSyncModule;
 };
 
 #endif
