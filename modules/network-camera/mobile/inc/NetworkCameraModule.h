@@ -85,6 +85,7 @@ private:
     std::atomic<uint64_t> m_streamGeneration{0};
     std::atomic<uint32_t> m_inFlightSendFrames{0};
     std::atomic<uint32_t> m_droppedFramesBackpressure{0};
+    std::atomic<bool> m_waitForKeyframeAfterDrop{false};
     std::atomic<bool> m_qtPipelineStopped{true};
     QMetaObject::Connection m_videoFrameConnection;
 

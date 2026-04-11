@@ -692,6 +692,13 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
 
         const uint32_t ts = stream->NextTimestamp();
         const bool isKeyPacket = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+        if (m_waitForKeyframeAfterDrop.load(std::memory_order_relaxed) && !isKeyPacket) {
+            av_packet_unref(pkt);
+            continue;
+        }
+        if (isKeyPacket) {
+            m_waitForKeyframeAfterDrop.store(false, std::memory_order_relaxed);
+        }
         const bool shouldSendCodecConfig = (!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty();
         const std::vector<std::vector<uint8_t>> codecConfigSnapshot = shouldSendCodecConfig ? m_h264ParameterSets : std::vector<std::vector<uint8_t>>{};
         if (shouldSendCodecConfig) {

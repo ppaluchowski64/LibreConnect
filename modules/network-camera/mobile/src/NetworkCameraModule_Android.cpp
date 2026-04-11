@@ -398,13 +398,15 @@ int32_t NetworkCameraModule::ComputeTargetBitrate(const int width, const int hei
     double targetBpp = 0.225;
 
     if (pixels > 2073600) {
-        targetBpp = 0.12;
+        // HEVC high-res streams are significantly more sensitive to packet loss/backpressure.
+        // Keep bitrate conservative to reduce RTP drops on typical Wi-Fi links.
+        targetBpp = 0.07;
     } else if (pixels > 921600) {
         targetBpp = 0.18;
     }
 
     constexpr int64_t kMinBitrate = 2'000'000;
-    constexpr int64_t kMaxBitrate = 35'000'000;
+    const int64_t kMaxBitrate = (pixels > 2073600) ? 20'000'000 : 35'000'000;
 
     const int64_t pixelsPerSecond = pixels * safeFps;
     const int64_t bitrate = std::llround(static_cast<double>(pixelsPerSecond) * targetBpp);
@@ -513,6 +515,13 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
     constexpr int32_t kMediaCodecBufferFlagCodecConfig = 2;
     const bool isKeyPacket = (flags & kMediaCodecBufferFlagKeyFrame) != 0;
     const bool isCodecConfigPacket = (flags & kMediaCodecBufferFlagCodecConfig) != 0;
+
+    if (m_waitForKeyframeAfterDrop.load(std::memory_order_relaxed) && !isKeyPacket && !isCodecConfigPacket) {
+        co_return;
+    }
+    if (isKeyPacket) {
+        m_waitForKeyframeAfterDrop.store(false, std::memory_order_relaxed);
+    }
 
     std::vector<CameraUtilitiesLC::NalSpan> nalSpans;
     if (CameraUtilitiesLC::IsAnnexB(accessUnit.data(), accessUnit.size())) {

@@ -53,6 +53,7 @@ bool NetworkCameraModule::TryReserveFrameSlot(const char* sourceTag) {
     uint32_t current = m_inFlightSendFrames.load(std::memory_order_relaxed);
     while (true) {
         if (current >= kMaxQueuedFrameJobs) {
+            m_waitForKeyframeAfterDrop.store(true, std::memory_order_relaxed);
             const uint32_t dropped = m_droppedFramesBackpressure.fetch_add(1, std::memory_order_relaxed) + 1;
             if ((dropped % kBackpressureLogEvery) == 1) {
                 Debug::LogWarning(
@@ -183,6 +184,7 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
 
     m_droppedFramesBackpressure.store(0, std::memory_order_relaxed);
+    m_waitForKeyframeAfterDrop.store(false, std::memory_order_relaxed);
 
 #ifdef ANDROID_DEVICE
     if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
@@ -235,6 +237,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_codecConfigSent = false;
     m_streamCodecId = CodecID::H264;
     m_droppedFramesBackpressure.store(0, std::memory_order_relaxed);
+    m_waitForKeyframeAfterDrop.store(false, std::memory_order_relaxed);
 
 #ifdef ANDROID_DEVICE
     StopStream_Android();
