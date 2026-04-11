@@ -177,8 +177,16 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         co_return;
     }
 
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
         Disable();
+        co_return;
+    }
+
+    if (ShouldAbortEnable()) {
         co_return;
     }
 
