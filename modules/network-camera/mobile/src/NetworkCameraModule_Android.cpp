@@ -16,6 +16,106 @@
 
 static std::mutex g_frameTargetMutex{};
 static std::weak_ptr<NetworkCameraModule> g_frameTarget{};
+static constexpr int64_t kFullHdPixels = 1920 * 1080;
+
+static bool SplitLengthPrefixedNalUnitsWithLength(
+    const uint8_t* data,
+    const size_t size,
+    const uint8_t nalLengthSize,
+    std::vector<CameraUtilitiesLC::NalSpan>& out
+) {
+    if (!data || nalLengthSize < 1 || nalLengthSize > 4) {
+        return false;
+    }
+
+    size_t offset = 0;
+    while (offset + nalLengthSize <= size) {
+        uint32_t nalSize = 0;
+        for (uint8_t i = 0; i < nalLengthSize; ++i) {
+            nalSize = (nalSize << 8) | data[offset + i];
+        }
+        offset += nalLengthSize;
+
+        if (nalSize == 0 || offset + nalSize > size) {
+            return false;
+        }
+
+        out.push_back({data + offset, nalSize});
+        offset += nalSize;
+    }
+
+    return !out.empty() && offset == size;
+}
+
+static bool SplitLengthPrefixedNalUnits(
+    const uint8_t* data,
+    const size_t size,
+    const uint8_t preferredNalLengthSize,
+    std::vector<CameraUtilitiesLC::NalSpan>& out
+) {
+    std::vector<CameraUtilitiesLC::NalSpan> parsed;
+    if (SplitLengthPrefixedNalUnitsWithLength(data, size, preferredNalLengthSize, parsed)) {
+        out = std::move(parsed);
+        return true;
+    }
+
+    constexpr uint8_t candidates[] = {4, 2, 1};
+    for (const uint8_t candidate : candidates) {
+        if (candidate == preferredNalLengthSize) {
+            continue;
+        }
+
+        parsed.clear();
+        if (SplitLengthPrefixedNalUnitsWithLength(data, size, candidate, parsed)) {
+            out = std::move(parsed);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool UpsertHevcParameterSet(
+    std::vector<std::vector<uint8_t>>& parameterSets,
+    const uint8_t* data,
+    const size_t size
+) {
+    if (!data || size < 2) {
+        return false;
+    }
+
+    const uint8_t nalType = static_cast<uint8_t>((data[0] >> 1) & 0x3F);
+    if (nalType < 32 || nalType > 34) {
+        return false;
+    }
+
+    for (auto& existing : parameterSets) {
+        if (existing.size() >= 2) {
+            const uint8_t existingType = static_cast<uint8_t>((existing[0] >> 1) & 0x3F);
+            if (existingType == nalType) {
+                if (existing.size() == size && std::equal(existing.begin(), existing.end(), data)) {
+                    return false;
+                }
+                existing.assign(data, data + size);
+                return true;
+            }
+        }
+    }
+
+    parameterSets.emplace_back(data, data + size);
+    return true;
+}
+
+static bool UpdateHevcParameterSetsFromNalSpans(
+    std::vector<std::vector<uint8_t>>& parameterSets,
+    const std::vector<CameraUtilitiesLC::NalSpan>& nals
+) {
+    bool updated = false;
+    for (const auto& nal : nals) {
+        updated = UpsertHevcParameterSet(parameterSets, nal.data, nal.size) || updated;
+    }
+    return updated;
+}
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeOnCameraEncodedSample(
     JNIEnv* env,
@@ -331,15 +431,24 @@ void NetworkCameraModule::StartStream_Android(const size_t requestID, const std:
     }
 
     const int32_t targetBitrate = ComputeTargetBitrate(requestedWidth, requestedHeight, requestedFps);
+    const int64_t requestedPixels = static_cast<int64_t>(requestedWidth) * static_cast<int64_t>(requestedHeight);
+    m_streamCodecId = (requestedPixels > kFullHdPixels) ? CodecID::H265 : CodecID::H264;
     Debug::Log(
-        "Android MainService hardware encoder params: size={}x{}, fps={}, bitrate={} (auto)",
+        "Android MainService hardware encoder params: size={}x{}, fps={}, bitrate={} (auto), codec={}",
         requestedWidth,
         requestedHeight,
         requestedFps,
-        targetBitrate
+        targetBitrate,
+        (m_streamCodecId == CodecID::H265 ? "H265" : "H264")
     );
 
-    m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, requestedFps);
+    m_videoStream = std::make_shared<SRTP::Stream>(
+        m_context,
+        m_localKey,
+        m_remoteKey,
+        requestedFps,
+        m_streamCodecId == CodecID::H265 ? SRTP::VideoCodec::H265 : SRTP::VideoCodec::H264
+    );
     const auto peerAddr = ConnectionManager::GetPeerAddress();
     const auto peerPort = m_portNumber.load();
     Debug::Log("Binding SRTP to {}:{}", peerAddr.to_string(), peerPort);
@@ -409,20 +518,32 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
     if (CameraUtilitiesLC::IsAnnexB(accessUnit.data(), accessUnit.size())) {
         CameraUtilitiesLC::SplitAnnexB(accessUnit.data(), accessUnit.size(), nalSpans);
     } else {
-        CameraUtilitiesLC::SplitAvccAuto(accessUnit.data(), accessUnit.size(), m_h264LengthSize, nalSpans);
+        if (m_streamCodecId == CodecID::H264) {
+            if (!CameraUtilitiesLC::SplitAvccAuto(accessUnit.data(), accessUnit.size(), m_h264LengthSize, nalSpans)) {
+                SplitLengthPrefixedNalUnits(accessUnit.data(), accessUnit.size(), m_h264LengthSize, nalSpans);
+            }
+        } else {
+            SplitLengthPrefixedNalUnits(accessUnit.data(), accessUnit.size(), m_h264LengthSize, nalSpans);
+        }
     }
 
     if (nalSpans.empty()) {
         nalSpans.push_back({accessUnit.data(), accessUnit.size()});
     }
 
-    const bool inBandUpdated = CameraUtilitiesLC::UpdateH264ParameterSetsFromNalSpans(m_h264ParameterSets, nalSpans);
+    const bool inBandUpdated = (m_streamCodecId == CodecID::H264)
+        ? CameraUtilitiesLC::UpdateH264ParameterSetsFromNalSpans(m_h264ParameterSets, nalSpans)
+        : UpdateHevcParameterSetsFromNalSpans(m_h264ParameterSets, nalSpans);
     if (inBandUpdated) {
-        Debug::Log("Captured H264 parameter sets from MainService in-band NALs (count={})", m_h264ParameterSets.size());
+        Debug::Log(
+            "Captured {} parameter sets from MainService in-band NALs (count={})",
+            m_streamCodecId == CodecID::H265 ? "H265" : "H264",
+            m_h264ParameterSets.size()
+        );
     }
 
     const uint32_t ts = stream->NextTimestamp();
-    const bool shouldSendCodecConfig = (!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty();
+    const bool shouldSendCodecConfig = !isCodecConfigPacket && (!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty();
     const std::vector<std::vector<uint8_t>> codecConfigSnapshot = shouldSendCodecConfig
         ? m_h264ParameterSets
         : std::vector<std::vector<uint8_t>>{};
@@ -447,6 +568,23 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
     }
 
     if (isCodecConfigPacket) {
+        bool sentAllConfig = true;
+        for (size_t i = 0; i < nalSpans.size(); ++i) {
+            if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                sentAllConfig = false;
+                break;
+            }
+            const bool marker = (i + 1 == nalSpans.size());
+            co_await stream->AsyncSendNal(nalSpans[i].data, nalSpans[i].size, ts, marker);
+            if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                sentAllConfig = false;
+                break;
+            }
+        }
+
+        if (sentAllConfig && generation == m_streamGeneration.load()) {
+            m_codecConfigSent = true;
+        }
         co_return;
     }
 

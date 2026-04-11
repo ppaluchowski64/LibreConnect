@@ -5,6 +5,7 @@
 #include <ConnectionManager.h>
 #include <SRTP_Stream.h>
 #include <CameraSpecification.h>
+#include <CameraUtilities.h>
 #include <VirtualCamera.h>
 #include <atomic>
 #include <cstdint>
@@ -45,6 +46,7 @@ private:
 
     AVCodecContext* m_codecContext{nullptr};
     const AVCodec* m_codec{nullptr};
+    CodecID m_activeCodecId{CodecID::H264};
 
     AVFrame* m_frame{nullptr};
     AVFrame* m_frameNv12{nullptr};
@@ -55,6 +57,7 @@ private:
     int m_swsHeight{0};
     int m_swsDstWidth{0};
     int m_swsDstHeight{0};
+    bool m_seenVps{false};
     bool m_seenSps{false};
     bool m_seenPps{false};
     std::atomic<bool> m_waitForIdrAfterLoss{false};
