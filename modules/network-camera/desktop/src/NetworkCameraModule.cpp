@@ -7,6 +7,7 @@
 
 namespace {
     constexpr uint64_t kMaxWaitForIdrAfterLossMs = 2000;
+    constexpr int64_t kFullHdPixels = 1920 * 1080;
 
     uint64_t GetMonotonicTimeMs() {
         return static_cast<uint64_t>(
@@ -104,6 +105,38 @@ namespace {
         return false;
     }
 
+    bool ContainsH265NalType(const std::vector<uint8_t>& frame, const uint8_t nalType) {
+        const size_t size = frame.size();
+        if (size < 6) {
+            return false;
+        }
+
+        size_t pos = 0;
+        while (pos < size) {
+            const size_t start = FindStart(frame.data(), frame.size(), pos);
+            if (start >= size) {
+                break;
+            }
+
+            const size_t scSize = (frame[start + 2] == 0x01) ? 3 : 4;
+            const size_t nalStart = start + scSize;
+            if (nalStart + 1 < size) {
+                const uint8_t type = static_cast<uint8_t>((frame[nalStart] >> 1) & 0x3F);
+                if (type == nalType) {
+                    return true;
+                }
+            }
+
+            pos = nalStart;
+        }
+
+        return false;
+    }
+
+    SRTP::VideoCodec ToSrtpVideoCodec(const CodecID codecId) {
+        return codecId == CodecID::H265 ? SRTP::VideoCodec::H265 : SRTP::VideoCodec::H264;
+    }
+
     ModuleFailReason ToModuleFailReason(const StreamStartFailReason reason) {
         switch (reason) {
             case StreamStartFailReason::IncorrectConfig:
@@ -176,7 +209,8 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     }
 
     const int64_t pixels = static_cast<int64_t>(m_cameraSettings.width) * static_cast<int64_t>(m_cameraSettings.height);
-    const CodecID targetCodecId = (pixels > 2073600) ? CodecID::H265 : CodecID::H264;
+    const CodecID targetCodecId = (pixels > kFullHdPixels) ? CodecID::H265 : CodecID::H264;
+    m_activeCodecId = targetCodecId;
 
     m_codec = GetDecoderCodec(targetCodecId);
     if (!m_codec) {
@@ -207,6 +241,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
 
     m_packet = av_packet_alloc();
     m_frame = av_frame_alloc();
+    m_seenVps = false;
     m_seenSps = false;
     m_seenPps = false;
     m_waitForIdrAfterLoss.store(false);
@@ -223,7 +258,10 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
     }
 
     const uint64_t nowMs = GetMonotonicTimeMs();
-    const bool hasIdr = ContainsH264NalType(frameBuffer, 5);
+    const bool usingH265 = (m_activeCodecId == CodecID::H265);
+    const bool hasIdr = usingH265
+        ? (ContainsH265NalType(frameBuffer, 19) || ContainsH265NalType(frameBuffer, 20) || ContainsH265NalType(frameBuffer, 21))
+        : ContainsH264NalType(frameBuffer, 5);
 
     if (m_waitForIdrAfterLoss.load()) {
         if (!hasIdr) {
@@ -253,9 +291,22 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         }
     }
 
-    m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
-    m_seenPps = m_seenPps || ContainsH264NalType(frameBuffer, 8);
-    if (!m_seenSps || !m_seenPps) {
+    if (usingH265) {
+        m_seenVps = m_seenVps || ContainsH265NalType(frameBuffer, 32);
+        m_seenSps = m_seenSps || ContainsH265NalType(frameBuffer, 33);
+        m_seenPps = m_seenPps || ContainsH265NalType(frameBuffer, 34);
+        if (!m_seenVps || !m_seenSps || !m_seenPps) {
+            return;
+        }
+    } else {
+        m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
+        m_seenPps = m_seenPps || ContainsH264NalType(frameBuffer, 8);
+        if (!m_seenSps || !m_seenPps) {
+            return;
+        }
+    }
+
+    if (frameBuffer.empty()) {
         return;
     }
 
@@ -547,7 +598,15 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
         response.value()->GetValue(m_remoteKey);
     }
 
-    m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, m_cameraSettings.framerate);
+    const int64_t requestedPixels = static_cast<int64_t>(m_cameraSettings.width) * static_cast<int64_t>(m_cameraSettings.height);
+    m_activeCodecId = (requestedPixels > kFullHdPixels) ? CodecID::H265 : CodecID::H264;
+    m_videoStream = std::make_shared<SRTP::Stream>(
+        m_context,
+        m_localKey,
+        m_remoteKey,
+        m_cameraSettings.framerate,
+        ToSrtpVideoCodec(m_activeCodecId)
+    );
     const UDPEndpoint endpoint = m_videoStream->Bind();
     Debug::Log("SRTP local bind port: {}", endpoint.port());
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_PORT_INFO, endpoint.port());
@@ -642,6 +701,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
         m_codecContext = nullptr;
     }
 
+    m_seenVps = false;
     m_seenSps = false;
     m_seenPps = false;
     m_waitForIdrStartMs.store(0);

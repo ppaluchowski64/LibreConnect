@@ -2,6 +2,7 @@
 #define SRTP_STREAM_H
 
 #include <atomic>
+#include <cstdint>
 #include <asio.hpp>
 #include <asio/awaitable.hpp>
 #include <coroutine>
@@ -9,6 +10,11 @@
 #include <AsioCommon.h>
 
 namespace SRTP {
+    enum class VideoCodec : uint8_t {
+        H264 = 0,
+        H265 = 1
+    };
+
     struct Header {
         uint8_t v_p_x_cc;
         uint8_t m_pt;
@@ -20,7 +26,13 @@ namespace SRTP {
     class Stream final {
     public:
         Stream() = delete;
-        Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, uint32_t framerate);
+        Stream(
+            IOContext& context,
+            const std::vector<uint8_t>& localKey,
+            const std::vector<uint8_t>& remoteKey,
+            uint32_t framerate,
+            VideoCodec codec = VideoCodec::H264
+        );
 
         void Bind(const UDPEndpoint& endpoint);
         void Bind(UDPEndpoint&& endpoint);
@@ -66,6 +78,7 @@ namespace SRTP {
 
         std::atomic<bool> m_stopReceiving{false};
         asio::steady_timer m_stopReceivingSignal;
+        VideoCodec m_videoCodec{VideoCodec::H264};
 
 
     };

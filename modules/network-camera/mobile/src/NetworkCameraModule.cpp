@@ -233,6 +233,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_h264ParameterSets.clear();
     m_h264LengthSize = 4;
     m_codecConfigSent = false;
+    m_streamCodecId = CodecID::H264;
     m_droppedFramesBackpressure.store(0, std::memory_order_relaxed);
 
 #ifdef ANDROID_DEVICE

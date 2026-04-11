@@ -33,8 +33,93 @@ namespace SRTP {
         return !ec;
     }
 
-    Stream::Stream(IOContext& context, const std::vector<uint8_t>& localKey, const std::vector<uint8_t>& remoteKey, uint32_t framerate) : m_socket(context), m_context(context),
-        m_sendSession(nullptr), m_recvSession(nullptr), m_localSSRC(0), m_remoteSSRC(0), m_stopReceivingSignal(m_context.get_executor()) {
+    static uint8_t H264NalType(const uint8_t firstByte) {
+        return firstByte & 0x1F;
+    }
+
+    static uint8_t H265NalType(const uint8_t firstByte) {
+        return static_cast<uint8_t>((firstByte >> 1) & 0x3F);
+    }
+
+    static bool BuildChunkFromRtpPayload(
+        const VideoCodec codec,
+        const uint8_t* rtpPayload,
+        const size_t rtpPayloadLen,
+        std::vector<uint8_t>& chunk
+    ) {
+        static constexpr uint8_t kStartCode[4] = {0x00, 0x00, 0x00, 0x01};
+        if (!rtpPayload || rtpPayloadLen == 0) {
+            return false;
+        }
+
+        const uint8_t firstByte = rtpPayload[0];
+        if (codec == VideoCodec::H265) {
+            const uint8_t nalType = H265NalType(firstByte);
+            if (nalType == 49) { // FU
+                if (rtpPayloadLen < 3) {
+                    return false;
+                }
+
+                const uint8_t fuIndicator0 = rtpPayload[0];
+                const uint8_t fuIndicator1 = rtpPayload[1];
+                const uint8_t fuHeader = rtpPayload[2];
+                const bool isStart = (fuHeader & 0x80) != 0;
+                const uint8_t originalNalType = fuHeader & 0x3F;
+
+                if (isStart) {
+                    chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+                    const uint8_t reconstructedHeader0 = static_cast<uint8_t>((fuIndicator0 & 0x81) | (originalNalType << 1));
+                    chunk.push_back(reconstructedHeader0);
+                    chunk.push_back(fuIndicator1);
+                }
+
+                chunk.insert(chunk.end(), rtpPayload + 3, rtpPayload + rtpPayloadLen);
+                return true;
+            }
+
+            chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+            chunk.insert(chunk.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+            return true;
+        }
+
+        const uint8_t nalType = H264NalType(firstByte);
+        if (nalType == 28) { // FU-A
+            if (rtpPayloadLen < 2) {
+                return false;
+            }
+
+            const uint8_t fuHeader = rtpPayload[1];
+            const bool isStart = (fuHeader & 0x80) != 0;
+
+            if (isStart) {
+                chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+                const uint8_t reconstructedNalHeader = static_cast<uint8_t>((firstByte & 0xE0) | (fuHeader & 0x1F));
+                chunk.push_back(reconstructedNalHeader);
+            }
+
+            chunk.insert(chunk.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
+            return true;
+        }
+
+        chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
+        chunk.insert(chunk.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+        return true;
+    }
+
+    Stream::Stream(
+        IOContext& context,
+        const std::vector<uint8_t>& localKey,
+        const std::vector<uint8_t>& remoteKey,
+        uint32_t framerate,
+        const VideoCodec codec
+    ) : m_socket(context),
+        m_context(context),
+        m_sendSession(nullptr),
+        m_recvSession(nullptr),
+        m_localSSRC(0),
+        m_remoteSSRC(0),
+        m_stopReceivingSignal(m_context.get_executor()),
+        m_videoCodec(codec) {
 
         if (framerate == 0) {
             framerate = 30;
@@ -132,33 +217,15 @@ namespace SRTP {
                 expectedSeq = seq;
             }
 
-            const uint8_t firstByte = rtpPayload[0];
-            const uint8_t nalType = firstByte & 0x1F;
             std::vector<uint8_t> chunk;
 
-            if (nalType == 28) {
-                if (rtpPayloadLen < 2) {
-                    m_receiveLossSignal.fetch_add(1);
-                    payload.clear();
-                    pendingPayloads.clear();
-                    frameActive = false;
-                    markerSeen = false;
-                    continue;
-                }
-
-                const uint8_t fuHeader = rtpPayload[1];
-                const bool isStart = (fuHeader & 0x80) != 0;
-
-                if (isStart) {
-                    chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                    uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
-                    chunk.push_back(reconstructedNalHeader);
-                }
-
-                chunk.insert(chunk.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
-            } else {
-                chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                chunk.insert(chunk.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+            if (!BuildChunkFromRtpPayload(m_videoCodec, rtpPayload, rtpPayloadLen, chunk)) {
+                m_receiveLossSignal.fetch_add(1);
+                payload.clear();
+                pendingPayloads.clear();
+                frameActive = false;
+                markerSeen = false;
+                continue;
             }
 
             pendingPayloads.try_emplace(seq, std::move(chunk));
@@ -395,7 +462,7 @@ namespace SRTP {
 
     asio::awaitable<void> Stream::AsyncSendNal(const uint8_t* payload, const size_t size, const uint32_t timestamp, const bool marker) {
         if (size == 0) co_return;
-        std::array<uint8_t, sizeof(Header) + 2 + MAX_PAYLOAD_SIZE + 16> sendBuffer{};
+        std::array<uint8_t, sizeof(Header) + 3 + MAX_PAYLOAD_SIZE + 16> sendBuffer{};
 
         if (size <= MAX_PAYLOAD_SIZE) {
             Header header;
@@ -418,15 +485,67 @@ namespace SRTP {
             co_return;
         }
 
+        if (m_videoCodec == VideoCodec::H265) {
+            if (size < 3) {
+                co_return;
+            }
+
+            const uint8_t nalHeader0 = payload[0];
+            const uint8_t nalHeader1 = payload[1];
+            const uint8_t nalType = H265NalType(nalHeader0);
+            const uint8_t fuIndicator0 = static_cast<uint8_t>((nalHeader0 & 0x81) | (49 << 1));
+            const uint8_t fuIndicator1 = nalHeader1;
+
+            const uint8_t* dataPtr = payload + 2;
+            size_t remaining = size - 2;
+
+            while (remaining > 0) {
+                const size_t fragmentSize = std::min(remaining, MAX_PAYLOAD_SIZE);
+                const bool isFirst = (dataPtr == payload + 2);
+                const bool isLast = (remaining <= MAX_PAYLOAD_SIZE);
+
+                uint8_t fuHeader = nalType;
+                if (isFirst) fuHeader |= 0x80;
+                if (isLast)  fuHeader |= 0x40;
+
+                const bool markerBit = marker && isLast;
+
+                Header header;
+                BuildRtpHeader(&header, timestamp, m_sequence.fetch_add(1), markerBit);
+
+                std::memcpy(sendBuffer.data(), &header, sizeof(Header));
+                sendBuffer[sizeof(Header)] = fuIndicator0;
+                sendBuffer[sizeof(Header) + 1] = fuIndicator1;
+                sendBuffer[sizeof(Header) + 2] = fuHeader;
+                std::memcpy(sendBuffer.data() + sizeof(Header) + 3, dataPtr, fragmentSize);
+
+                int length = sizeof(Header) + 3 + static_cast<int>(fragmentSize);
+                if (srtp_protect(m_sendSession, sendBuffer.data(), &length) != srtp_err_status_ok) {
+                    if ((++g_protectFailCount % 100) == 1) {
+                        Debug::LogWarning("SRTP protect failed (count={})", g_protectFailCount.load());
+                    }
+                    co_return;
+                }
+
+                if (!SendNoThrow(m_socket, sendBuffer.data(), static_cast<size_t>(length))) {
+                    co_return;
+                }
+
+                dataPtr += fragmentSize;
+                remaining -= fragmentSize;
+            }
+            co_return;
+        }
+
         const uint8_t nalHeader = payload[0];
-        const uint8_t fuIndicator = (nalHeader & 0xE0) | 28;
-        const uint8_t nalType = nalHeader & 0x1F;
+        const uint8_t fuIndicator = static_cast<uint8_t>((nalHeader & 0xE0) | 28);
+        const uint8_t nalType = H264NalType(nalHeader);
 
         const uint8_t* dataPtr = payload + 1;
         size_t remaining = size - 1;
 
         while (remaining > 0) {
-            size_t fragmentSize = std::min(remaining, MAX_PAYLOAD_SIZE);
+            const size_t fragmentSize = std::min(remaining, MAX_PAYLOAD_SIZE);
             const bool isFirst = (dataPtr == payload + 1);
             const bool isLast = (remaining <= MAX_PAYLOAD_SIZE);
 
@@ -444,7 +563,7 @@ namespace SRTP {
             sendBuffer[sizeof(Header) + 1] = fuHeader;
             std::memcpy(sendBuffer.data() + sizeof(Header) + 2, dataPtr, fragmentSize);
 
-            int length = sizeof(Header) + 2 + fragmentSize;
+            int length = sizeof(Header) + 2 + static_cast<int>(fragmentSize);
             if (srtp_protect(m_sendSession, sendBuffer.data(), &length) != srtp_err_status_ok) {
                 if ((++g_protectFailCount % 100) == 1) {
                     Debug::LogWarning("SRTP protect failed (count={})", g_protectFailCount.load());
@@ -561,32 +680,14 @@ namespace SRTP {
                 expectedSeq = seq;
             }
 
-            const uint8_t firstByte = rtpPayload[0];
-            const uint8_t nalType = firstByte & 0x1F;
             std::vector<uint8_t> chunk;
 
-            if (nalType == 28) {
-                if (rtpPayloadLen < 2) {
-                    m_receiveLossSignal.fetch_add(1);
-                    payload.clear();
-                    pendingPayloads.clear();
-                    frameActive = false;
-                    continue;
-                }
-
-                const uint8_t fuHeader = rtpPayload[1];
-                const bool isStart = (fuHeader & 0x80) != 0;
-
-                if (isStart) {
-                    chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                    uint8_t reconstructedNalHeader = (firstByte & 0xE0) | (fuHeader & 0x1F);
-                    chunk.push_back(reconstructedNalHeader);
-                }
-
-                chunk.insert(chunk.end(), rtpPayload + 2, rtpPayload + rtpPayloadLen);
-            } else {
-                chunk.insert(chunk.end(), kStartCode, kStartCode + sizeof(kStartCode));
-                chunk.insert(chunk.end(), rtpPayload, rtpPayload + rtpPayloadLen);
+            if (!BuildChunkFromRtpPayload(m_videoCodec, rtpPayload, rtpPayloadLen, chunk)) {
+                m_receiveLossSignal.fetch_add(1);
+                payload.clear();
+                pendingPayloads.clear();
+                frameActive = false;
+                continue;
             }
 
             pendingPayloads.try_emplace(seq, std::move(chunk));

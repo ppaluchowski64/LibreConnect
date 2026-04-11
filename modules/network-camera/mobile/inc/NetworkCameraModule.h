@@ -91,6 +91,7 @@ private:
     std::vector<std::vector<uint8_t>> m_h264ParameterSets;
     uint8_t m_h264LengthSize{4};
     bool m_codecConfigSent{false};
+    CodecID m_streamCodecId{CodecID::H264};
 
 protected:
     void EnableResponseCallbacks() override;
