@@ -20,7 +20,7 @@ public:
         const std::wstring& notificationContent,
         const std::optional<std::filesystem::path>& appIconPath,
         const std::optional<std::filesystem::path>& mainImagePath,
-        std::vector<ButtonAction> buttons
+        const std::vector<ButtonAction>& buttons
     );
 
     static void Remove(int64_t id);

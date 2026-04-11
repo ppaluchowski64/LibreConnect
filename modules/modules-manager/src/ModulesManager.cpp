@@ -9,23 +9,12 @@
 #endif
 
 ModulesManager* ModulesManager::s_instance{nullptr};
-std::once_flag ModulesManager::s_flag{};
 std::mutex ModulesManager::s_mutex{};
 
 bool ModulesManager::event(QEvent* event) {
     if (event->type() == ConnectedEvent::Type) {
         Debug::Log("ModulesManager: ConnectedEvent received, ensuring modules are initialized");
-
-        std::lock_guard<std::mutex> lock(s_mutex);
-        if (s_instance != nullptr) {
-            s_instance->m_fileShareModule->Initialize(true);
-            s_instance->m_networkCameraModule->Initialize(true);
-
-#ifndef IOS_DEVICE
-            s_instance->m_notificationSyncModule->Initialize(true);
-#endif
-        }
-
+        Initialize();
         return true;
     }
 
@@ -42,15 +31,16 @@ ModulesManager::ModulesManager() {
     Debug::Log("ModulesManager: Constructing modules");
 
     m_fileShareModule = std::make_shared<FileShareModule>();
-    m_fileShareModule->Initialize();
 
+#ifndef MACOS_DEVICE
     m_networkCameraModule = std::make_shared<NetworkCameraModule>();
-    m_networkCameraModule->Initialize();
+#endif
 
 #ifndef IOS_DEVICE
     m_notificationSyncModule = std::make_shared<NotificationSyncModule>();
-    m_notificationSyncModule->Initialize();
 #endif
+
+    m_clipboardSyncModule = std::make_shared<ClipboardSyncModule>();
 
 #ifdef ANDROID_DEVICE
     SetMainServiceBackendEnabled(true);
@@ -66,9 +56,19 @@ void ModulesManager::Initialize() {
     if (s_instance == nullptr) {
         s_instance = new ModulesManager();
         Debug::Log("ModulesManager: Instance created");
-    } else {
-        Debug::Log("ModulesManager: Initialize skipped (instance already exists)");
     }
+
+    s_instance->m_fileShareModule->Initialize(true);
+
+#ifndef MACOS_DEVICE
+    s_instance->m_networkCameraModule->Initialize(true);
+#endif
+
+#ifndef IOS_DEVICE
+    s_instance->m_notificationSyncModule->Initialize(true);
+#endif
+
+    s_instance->m_clipboardSyncModule->Initialize(true);
 }
 
 void ModulesManager::Shutdown() {
@@ -77,11 +77,16 @@ void ModulesManager::Shutdown() {
 
     if (s_instance != nullptr) {
         s_instance->m_fileShareModule->Shutdown(true);
+
+#ifndef MACOS_DEVICE
         s_instance->m_networkCameraModule->Shutdown(true);
+#endif
 
 #ifndef IOS_DEVICE
         s_instance->m_notificationSyncModule->Shutdown(true);
 #endif
+
+        s_instance->m_clipboardSyncModule->Shutdown(true);
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }

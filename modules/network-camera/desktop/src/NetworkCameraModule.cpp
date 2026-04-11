@@ -175,7 +175,15 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
         co_return;
     }
 
-    m_codec = GetDecoderCodec(CodecID::H264);
+    const int64_t pixels = static_cast<int64_t>(m_cameraSettings.width) * static_cast<int64_t>(m_cameraSettings.height);
+    const CodecID targetCodecId = (pixels > 2073600) ? CodecID::H265 : CodecID::H264;
+
+    m_codec = GetDecoderCodec(targetCodecId);
+    if (!m_codec) {
+        Debug::LogError("Failed to find FFmpeg decoder for requested codec");
+        ProcessError(ModuleFailReason::InternalError);
+        co_return;
+    }
 
     if (m_codecContext) {
         avcodec_free_context(&m_codecContext);
