@@ -229,11 +229,35 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Disconnecting primary connection. Reason: {}", errorCode.message());
 
+    CancelPendingRequests();
     s_instance->m_primaryConnection->Disconnect(errorCode, true);
 
     std::lock_guard<std::mutex> lock(s_mutex);
     if (s_instance->m_initialConnectionOut != nullptr) {
         s_instance->m_initialConnectionOut->Disconnect();
+    }
+}
+
+void ConnectionManager::CancelPendingRequests() {
+    if (s_instance == nullptr) {
+        return;
+    }
+
+    std::vector<std::shared_ptr<AwaitableFlag>> pendingFlags = s_instance->m_requestAwaitableMap.PopAll();
+    const size_t droppedResponses = s_instance->m_requestPackageMap.PopAll().size();
+
+    for (const std::shared_ptr<AwaitableFlag>& flag : pendingFlags) {
+        if (flag) {
+            flag->Signal();
+        }
+    }
+
+    if (!pendingFlags.empty() || droppedResponses > 0) {
+        Debug::LogWarning(
+            "ConnectionManager: Canceled {} pending requests and dropped {} pending responses",
+            pendingFlags.size(),
+            droppedResponses
+        );
     }
 }
 
@@ -327,7 +351,6 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
     while (true) {
         try {
             co_await receiveFlag->Wait();
-            receiveFlag->Reset();
 
             std::optional<std::unique_ptr<Package<PC_PackageType>>> packageOptional = m_primaryConnection->GetPackage();
             while (packageOptional.has_value()) {
@@ -482,14 +505,12 @@ void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
         });
 
         if (objects.empty()) {
-            Debug::Log("ConnectionManager: SendEvent called but no active listeners registered");
             return;
         }
 
         targets = objects;
     }
 
-    Debug::Log("ConnectionManager: Dispatching event to {} listeners", targets.size());
     for (const auto& obj : targets) {
         if (obj.isNull()) {
             continue;

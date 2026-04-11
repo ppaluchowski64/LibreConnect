@@ -228,6 +228,10 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         co_await previousChannel->Disconnect();
     }
 
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     const std::shared_ptr<NotificationTransferChannel> channel = std::make_shared<NotificationTransferChannel>(ConnectionManager::GetSSLContextServer(), m_context);
     SetChannel(channel);
 
@@ -236,11 +240,19 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
 
     asio::co_spawn(m_context, channel->Seek(flag, port), asio::detached);
     co_await flag.Wait();
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     Debug::Log("Notification channel seek opened local port {}", port);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO, port);
 
     asio::steady_timer timer(m_context.get_executor());
     while (channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         if (GetChannel() != channel) {
             co_return;
         }
@@ -256,11 +268,19 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
     Debug::Log("Notification channel connected");
 
     while (!m_peerModuleEnabled.load()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
 
     co_await FetchNotificationList();
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, true);
 }
 

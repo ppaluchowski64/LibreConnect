@@ -27,9 +27,25 @@ constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
 FileShareModule::FileShareModule() = default;
 
+bool FileShareModule::TryBeginDirectoryRequest(const std::string& path) const {
+    std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
+    const auto [_, inserted] = m_inFlightDirectoryRequests.insert(path);
+    return inserted;
+}
+
+void FileShareModule::EndDirectoryRequest(const std::string& path) const {
+    std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
+    m_inFlightDirectoryRequests.erase(path);
+}
+
 void FileShareModule::FetchDirectoryEntries(const std::string& path) const {
     if (path.empty()) {
         Debug::LogWarning("FileShareModule: Fetch directory entries skipped: empty path");
+        return;
+    }
+
+    if (!TryBeginDirectoryRequest(path)) {
+        Debug::LogWarning("FileShareModule: Fetch directory entries skipped: request already in-flight for {}", path);
         return;
     }
 
@@ -45,6 +61,11 @@ void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
         return;
     }
 
+    if (!TryBeginDirectoryRequest(path)) {
+        Debug::LogWarning("FileShareModule: Fetch directory entries skipped: request already in-flight for {}", path);
+        return;
+    }
+
     Debug::Log("FileShareModule: Fetching directory entries for {}", path);
     asio::co_spawn(m_context, FetchDirectoryEntriesAwaitable(std::move(path)), asio::detached);
 }
@@ -52,6 +73,10 @@ void FileShareModule::FetchDirectoryEntries(const FileEntry& entry) const {
 asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) const {
     const std::shared_ptr<const BaseModule> instance = shared_from_this();
     std::string requestPath = path;
+    const auto guard = std::shared_ptr<void>(nullptr, [this, path](void*) {
+        EndDirectoryRequest(path);
+    });
+    (void)guard;
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
         PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST,
@@ -234,13 +259,6 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     FileEntry entry(path);
-
-    if (!std::filesystem::is_directory(destination)) {
-        Debug::LogError("FileShareModule: Destination should be a directory ({})", destination.string());
-        ProcessError(ModuleFailReason::IncorrectConfig);
-        co_return;
-    }
-
     const bool isDirectory = std::filesystem::is_directory(path);
     size_t totalTransferSize = 0;
 
@@ -467,6 +485,10 @@ void FileShareModule::DisableResponseCallbacks() {
 
 void FileShareModule::OnInitialize() {
     m_peerModuleEnabled.store(false);
+    {
+        std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
+        m_inFlightDirectoryRequests.clear();
+    }
     m_transferChannels.clear();
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
 
@@ -505,6 +527,10 @@ asio::awaitable<void> FileShareModule::OnEnable() {
     asio::steady_timer timer(m_context);
     const auto peerEnableDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!m_peerModuleEnabled.load()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         if (std::chrono::steady_clock::now() >= peerEnableDeadline) {
             throw std::runtime_error("FileShareModule enable timed out waiting for peer module acknowledgement");
         }
@@ -515,6 +541,9 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 
     for (int i = 0; i < m_transferChannels.size(); ++i) {
         co_await ports[i].first->Wait();
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
         ConnectionManager::Send(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, ports[i].second);
     }
 
@@ -547,6 +576,10 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
+    {
+        std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
+        m_inFlightDirectoryRequests.clear();
+    }
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     for (size_t i = 0; i < m_transferChannels.size(); ++i) {
         asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
@@ -557,6 +590,10 @@ asio::awaitable<void> FileShareModule::OnDisable() {
 
 asio::awaitable<void> FileShareModule::OnShutdown() {
     m_peerModuleEnabled.store(false);
+    {
+        std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
+        m_inFlightDirectoryRequests.clear();
+    }
     m_transferChannels.clear();
     co_return;
 }

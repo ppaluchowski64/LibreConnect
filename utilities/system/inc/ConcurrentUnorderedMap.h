@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <mutex>
 #include <optional>
+#include <vector>
 
 template<typename Key, typename Value, typename Hash = std::hash<Key>>
 class ConcurrentUnorderedMap final {
@@ -82,6 +83,20 @@ public:
         }
 
         return std::nullopt;
+    }
+
+    std::vector<Value> PopAll() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+
+        std::vector<Value> values;
+        values.reserve(m_map.size());
+
+        for (auto& entry : m_map) {
+            values.push_back(std::move(entry.second));
+        }
+
+        m_map.clear();
+        return values;
     }
 
     bool Assign(const Key& key, Value&& value) {

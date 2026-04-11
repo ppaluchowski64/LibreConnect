@@ -353,6 +353,42 @@ jobs:
           name: installer-Ubuntu-ARM
           path: out/ubuntu-arm
 
+  package-macos:
+    name: Package Macos
+    runs-on: ubuntu-24.04
+    needs: resolve-build-run
+    steps:
+      - name: Download Macos build artifact
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.resolve-build-run.outputs.run_id }}
+          pattern: '*-build-application-macOS-Latest'
+          path: artifacts/macos
+          merge-multiple: true
+
+      - name: Prepare macOS installer
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DMG_PATH="$(find artifacts/macos -type f -name '*.dmg' | head -n1)"
+          if [[ -z "$DMG_PATH" ]]; then
+            echo "No .dmg found in macOS build artifact." >&2
+            find artifacts/macos -maxdepth 6 -type f | sort
+            exit 1
+          fi
+
+          mkdir -p out/macos
+          cp "$DMG_PATH" "out/macos/LibreConnect-${{ inputs.version }}.dmg"
+
+      - name: Upload macOS installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macOS
+          path: out/macos/*.dmg
+
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-24.04
@@ -361,6 +397,7 @@ jobs:
       - package-ubuntu
       - package-ubuntu-arm
       - package-android
+      - package-macos
     steps:
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
@@ -376,6 +413,7 @@ jobs:
           test -n "$(find release-assets -type f -name '*.msi' -print -quit)"
           test -n "$(find release-assets -type f -name '*.deb' -print -quit)"
           test -n "$(find release-assets -type f -name '*.apk' -print -quit)"
+          test -n "$(find release-assets -type f -name '*.dmg' -print -quit)"
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2
@@ -392,3 +430,4 @@ jobs:
             release-assets/**/*.msi
             release-assets/**/*.deb
             release-assets/**/*.apk
+            release-assets/**/*.dmg

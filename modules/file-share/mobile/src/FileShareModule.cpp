@@ -19,8 +19,43 @@
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
+constexpr size_t DIRECTORY_REQUEST_WAIT_POLL_MS = 5;
 
 FileShareModule::FileShareModule() = default;
+
+std::shared_future<DirectoryResult> FileShareModule::GetOrCreateDirectoryScanFuture(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_directoryScanMutex);
+    const auto it = m_directoryScanFutures.find(path);
+    if (it != m_directoryScanFutures.end()) {
+        return it->second;
+    }
+
+    const std::filesystem::path filesystemPath(path);
+    std::future<DirectoryResult> future = ThreadPool::PostFuture([filesystemPath]() {
+        return FileSystemManager::GetEntries(filesystemPath);
+    });
+
+    std::shared_future<DirectoryResult> sharedFuture = future.share();
+    m_directoryScanFutures.insert_or_assign(path, sharedFuture);
+    return sharedFuture;
+}
+
+void FileShareModule::CleanupDirectoryScanFutureIfReady(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_directoryScanMutex);
+    const auto it = m_directoryScanFutures.find(path);
+    if (it == m_directoryScanFutures.end()) {
+        return;
+    }
+
+    if (it->second.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+        m_directoryScanFutures.erase(it);
+    }
+}
+
+void FileShareModule::ClearDirectoryScanFutures() {
+    std::lock_guard<std::mutex> lock(m_directoryScanMutex);
+    m_directoryScanFutures.clear();
+}
 
 void FileShareModule::PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const {
     asio::co_spawn(m_context, PostEntryAwaitable(path, destination), asio::detached);
@@ -193,14 +228,46 @@ void FileShareModule::EnableResponseCallbacks() {
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [instance, this](PC_Package&& package) mutable {
        Disable(true);
     });
-	ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable {
+	ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
 	    const size_t requestID    = package->GetValue<size_t>();
 	    const std::string pathStr = package->GetValue<std::string>();
         Debug::Log("FileShareModule: Received directory entries request. RequestID: {}, Path: {}", requestID, pathStr);
 
-	    const std::filesystem::path path(pathStr);
-	    auto [entries, success] = FileSystemManager::GetEntries(path);
-	    ConnectionManager::SendRequestResponse(requestID, PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_RESPONSE, std::move(entries));
+        const std::shared_future<DirectoryResult> scanFuture = GetOrCreateDirectoryScanFuture(pathStr);
+
+        asio::steady_timer timer(m_context);
+        while (scanFuture.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+            timer.expires_after(std::chrono::milliseconds(DIRECTORY_REQUEST_WAIT_POLL_MS));
+            co_await timer.async_wait();
+        }
+
+        DirectoryResult result;
+        try {
+            result = scanFuture.get();
+        } catch (const std::exception& exc) {
+            Debug::LogError(
+                "FileShareModule: Directory scan failed with exception. RequestID: {}, Path: {}, Error: {}",
+                requestID,
+                pathStr,
+                exc.what()
+            );
+            ProcessError(ModuleFailReason::InternalError);
+            ConnectionManager::SendRequestResponse(
+                requestID,
+                PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_RESPONSE,
+                std::vector<FileEntry>{}
+            );
+            CleanupDirectoryScanFutureIfReady(pathStr);
+            co_return;
+        }
+
+        CleanupDirectoryScanFutureIfReady(pathStr);
+
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_RESPONSE,
+            std::move(result.entries)
+        );
 	});
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID = package->GetValue<size_t>();
@@ -409,7 +476,7 @@ void FileShareModule::EnableResponseCallbacks() {
 }
 
 void FileShareModule::DisableResponseCallbacks() {
-    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO);
@@ -420,6 +487,7 @@ void FileShareModule::DisableResponseCallbacks() {
 }
 
 void FileShareModule::OnInitialize() {
+    ClearDirectoryScanFutures();
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
     std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextClient();
     for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
@@ -436,11 +504,19 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         co_return;
     }
 
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     m_transferChannelInitializationIndex.store(0);
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
 
     asio::steady_timer timer(m_context);
     while (!m_peerModuleEnabled.load()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
@@ -448,6 +524,7 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
+    ClearDirectoryScanFutures();
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     for (size_t i = 0; i < m_transferChannels.size(); ++i) {
         asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
@@ -458,6 +535,7 @@ asio::awaitable<void> FileShareModule::OnDisable() {
 
 asio::awaitable<void> FileShareModule::OnShutdown() {
     m_peerModuleEnabled.store(false);
+    ClearDirectoryScanFutures();
     m_transferChannels.clear();
     co_return;
 }

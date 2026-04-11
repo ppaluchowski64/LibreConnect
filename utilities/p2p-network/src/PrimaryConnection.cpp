@@ -89,7 +89,17 @@ std::shared_ptr<AwaitableFlag> PrimaryConnection::GetReceiveFlag() const {
 }
 
 IPAddress PrimaryConnection::GetPeerAddress() const {
-    return m_socket->lowest_layer().remote_endpoint().address();
+    if (!m_socket || !m_socket->lowest_layer().is_open()) {
+        return {};
+    }
+
+    std::error_code errorCode;
+    const TCPEndpoint endpoint = m_socket->lowest_layer().remote_endpoint(errorCode);
+    if (errorCode) {
+        return {};
+    }
+
+    return endpoint.address();
 }
 
 bool PrimaryConnection::HasPendingPackages() const {
@@ -179,7 +189,9 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         asio::post(
             m_context,
             [cb = std::move(callback), listenEndpoint]() mutable {
-                cb(listenEndpoint);
+                if (cb) {
+                    cb(listenEndpoint);
+                }
             }
         );
 
@@ -235,7 +247,13 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     Debug::Log("PrimaryConnection: Disconnecting primary connection. Reason: {} (code: {})", errorCode.message(), errorCode.value());
 
     m_connectionState.store(ConnectionState::DISCONNECTING);
+    m_sendFlag.Signal();
+    m_receiveFlag->Signal();
+    ConnectionManager::CancelPendingRequests();
+
     co_await CoCleanupConnection();
+    ClearQueuedPackages();
+    m_heartbeatReceived.store(false);
     m_connectionState.store(ConnectionState::DISCONNECTED);
 
     Debug::Log("PrimaryConnection: Disconnected TLS primary connection successfully.");
@@ -261,7 +279,6 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
 
         while (m_connectionState.load() == ConnectionState::CONNECTED) {
             co_await m_sendFlag.Wait();
-            m_sendFlag.Reset();
 
             std::vector<uint8_t> buffer;
             buffer.resize(PackageHeader::GetSerializedSize());
@@ -425,6 +442,20 @@ void PrimaryConnection::SavePairData(const InitialConnectionData& data) {
     }
 
     Debug::Log("PrimaryConnection: Saved pair data to '{}'", std::filesystem::absolute(targetDataPath).string());
+}
+
+void PrimaryConnection::ClearQueuedPackages() {
+    moodycamel::ConsumerToken outboundToken(m_packageOut);
+    moodycamel::ConsumerToken inboundToken(m_packageIn);
+
+    std::unique_ptr<Package<PC_PackageType>> package;
+    while (m_packageOut.try_dequeue(outboundToken, package)) {
+    }
+
+    while (m_packageIn.try_dequeue(inboundToken, package)) {
+    }
+
+    m_inboundQueuedBytes.store(0);
 }
 
 void PrimaryConnection::SaveCertificate(const InitialConnectionData& data) const {

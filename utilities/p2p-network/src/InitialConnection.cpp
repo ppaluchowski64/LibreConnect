@@ -155,6 +155,7 @@ asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) 
 
     Debug::Log("InitialConnection: Closing socket and cleaning up...");
     m_connectionState = ConnectionState::DISCONNECTING;
+    m_sendFlag.Signal();
 
     if (m_socket.is_open()) {
         std::error_code ec;
@@ -190,7 +191,6 @@ asio::awaitable<void> InitialConnection::CoSend() {
         while (m_connectionState == ConnectionState::CONNECTED) {
             if (m_packagesOut.empty()) {
                 co_await m_sendFlag.Wait();
-                m_sendFlag.Reset();
             }
 
             if (m_connectionState != ConnectionState::CONNECTED) break;

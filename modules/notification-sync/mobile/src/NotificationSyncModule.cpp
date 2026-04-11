@@ -177,8 +177,16 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         co_return;
     }
 
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
         Disable();
+        co_return;
+    }
+
+    if (ShouldAbortEnable()) {
         co_return;
     }
 
@@ -188,10 +196,22 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         );
     }
 
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
+
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
     if (co_await m_connectedFlag.WaitFor(std::chrono::seconds(5)) == AwaitableFlag::Result::TIMEOUT) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         ProcessError(ModuleFailReason::Timeout);
         Disable();
+        co_return;
+    }
+
+    if (ShouldAbortEnable()) {
         co_return;
     }
 
@@ -199,6 +219,10 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
 
     asio::steady_timer timer(m_context.get_executor());
     while (!m_peerModuleEnabled.load()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
