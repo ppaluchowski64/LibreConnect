@@ -62,7 +62,9 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
         )
     elseif (UNIX AND NOT APPLE)
         target_link_libraries(notifications-handler PUBLIC
-            Qt6::DBus
+                Qt6::DBus
+                Qt6::Core
+                Qt6::GuiApplication
         )
     endif ()
 
