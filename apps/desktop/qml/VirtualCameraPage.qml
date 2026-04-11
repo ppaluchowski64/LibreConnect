@@ -98,11 +98,84 @@ Page {
                 }
 
                 ComboBox {
+                    id: cameraCombo
                     width: parent.width
+                    height: 42
                     model: virtualCameraController.cameraDescriptions
                     currentIndex: virtualCameraController.selectedCameraIndex
                     enabled: !virtualCameraController.enabled && !virtualCameraController.busy
                     onActivated: virtualCameraController.selectedCameraIndex = currentIndex
+
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+
+                    contentItem: Text {
+                        leftPadding: 10
+                        rightPadding: cameraCombo.indicator.width + cameraCombo.spacing
+                        text: cameraCombo.displayText
+                        font: cameraCombo.font
+                        color: Theme.textColor
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
+
+                    indicator: Text {
+                        x: cameraCombo.width - width - 10
+                        y: (cameraCombo.height - height) / 2
+                        text: "v"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 13
+                        color: Theme.textColor
+                    }
+
+                    background: Rectangle {
+                        radius: 8
+                        color: Theme.buttonColor
+                        border.color: Theme.panelBorderColor
+                        border.width: 1
+                    }
+
+                    delegate: ItemDelegate {
+                        width: cameraCombo.width
+                        height: 42
+                        highlighted: cameraCombo.highlightedIndex === index
+
+                        contentItem: Text {
+                            text: modelData
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 15
+                            color: Theme.textColor
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+
+                        background: Rectangle {
+                            color: parent.highlighted ? Theme.selectedColor : Theme.panelColor
+                            border.color: Theme.panelBorderColor
+                            border.width: 1
+                        }
+                    }
+
+                    popup: Popup {
+                        y: cameraCombo.height + 4
+                        width: cameraCombo.width
+                        implicitHeight: contentItem.implicitHeight
+                        padding: 1
+
+                        contentItem: ListView {
+                            clip: true
+                            implicitHeight: contentHeight
+                            model: cameraCombo.popup.visible ? cameraCombo.delegateModel : null
+                            currentIndex: cameraCombo.highlightedIndex
+                        }
+
+                        background: Rectangle {
+                            radius: 8
+                            color: Theme.panelColor
+                            border.color: Theme.panelBorderColor
+                            border.width: 1
+                        }
+                    }
                 }
 
                 Text {
@@ -140,7 +213,7 @@ Page {
                                     text: modelData
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 14
-                                    color: root.selectedAspectRatio === modelData ? "#ffffff" : Theme.textColor
+                                    color: root.selectedAspectRatio === modelData ? (Theme.dark ? "#ffffff" : Theme.textColor) : Theme.textColor
                                 }
 
                                 MouseArea {
@@ -197,14 +270,14 @@ Page {
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 15
                                     font.bold: true
-                                    color: virtualCameraController.selectedFormatIndex === modelData.index ? "#ffffff" : Theme.textColor
+                                    color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.dark ? "#ffffff" : Theme.textColor) : Theme.textColor
                                     anchors.horizontalCenter: parent.horizontalCenter
                                 }
                                 Text {
                                     text: modelData.fps + " FPS"
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 12
-                                    color: virtualCameraController.selectedFormatIndex === modelData.index ? "#ffffff" : Theme.mutedTextColor
+                                    color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.dark ? "#ffffff" : Theme.mutedTextColor) : Theme.mutedTextColor
                                     anchors.horizontalCenter: parent.horizontalCenter
                                 }
                             }
