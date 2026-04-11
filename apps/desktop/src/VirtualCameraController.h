@@ -4,6 +4,8 @@
 #include <QTimer>
 #include <QString>
 #include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
 
 #include <CameraSpecification.h>
 
@@ -15,7 +17,7 @@ class VirtualCameraController : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QStringList cameraDescriptions READ cameraDescriptions NOTIFY cameraDescriptionsChanged)
-    Q_PROPERTY(QStringList formatDescriptions READ formatDescriptions NOTIFY formatDescriptionsChanged)
+    Q_PROPERTY(QVariantList formatList READ formatList NOTIFY formatListChanged)
     Q_PROPERTY(int selectedCameraIndex READ selectedCameraIndex WRITE setSelectedCameraIndex NOTIFY selectedCameraIndexChanged)
     Q_PROPERTY(int selectedFormatIndex READ selectedFormatIndex WRITE setSelectedFormatIndex NOTIFY selectedFormatIndexChanged)
 
@@ -26,7 +28,7 @@ public:
     bool busy() const { return m_busy; }
     QString statusMessage() const { return m_statusMessage; }
     QStringList cameraDescriptions() const { return m_cameraDescriptions; }
-    QStringList formatDescriptions() const { return m_formatDescriptions; }
+    QVariantList formatList() const { return m_formatList; }
     int selectedCameraIndex() const { return m_selectedCameraIndex; }
     int selectedFormatIndex() const { return m_selectedFormatIndex; }
 
@@ -41,14 +43,14 @@ signals:
     void busyChanged();
     void statusMessageChanged();
     void cameraDescriptionsChanged();
-    void formatDescriptionsChanged();
+    void formatListChanged();
     void selectedCameraIndexChanged();
     void selectedFormatIndexChanged();
 
 private:
     void refreshState();
     void rebuildCameraDescriptions();
-    void rebuildFormatDescriptions();
+    void rebuildFormatList();
     void setEnabledState(bool enabled);
     void setBusy(bool busy);
     void setStatusMessage(const QString& statusMessage);
@@ -56,7 +58,7 @@ private:
     QTimer m_pollTimer;
     std::vector<CameraSpecification> m_cameraSpecifications;
     QStringList m_cameraDescriptions;
-    QStringList m_formatDescriptions;
+    QVariantList m_formatList;
     bool m_enabled = false;
     bool m_busy = false;
     QString m_statusMessage = QStringLiteral("Waiting for available cameras from the connected device.");

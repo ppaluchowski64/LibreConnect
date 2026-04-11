@@ -8,6 +8,27 @@ Page {
     required property var windowRef
     readonly property string windowTitleSuffix: "Virtual Camera"
 
+    property string selectedAspectRatio: ""
+    property var availableAspectRatios: {
+        var ratios = {}
+        var list = []
+        var formats = virtualCameraController.formatList || []
+        for (var i = 0; i < formats.length; ++i) {
+            var ar = formats[i].aspectRatio
+            if (!ratios[ar]) {
+                ratios[ar] = true
+                list.push(ar)
+            }
+        }
+        return list
+    }
+    
+    onAvailableAspectRatiosChanged: {
+        if (availableAspectRatios.indexOf(selectedAspectRatio) === -1) {
+            selectedAspectRatio = availableAspectRatios.length > 0 ? availableAspectRatios[0] : ""
+        }
+    }
+
     VirtualCameraController {
         id: virtualCameraController
     }
@@ -16,10 +37,21 @@ Page {
         color: Theme.backgroundColor
     }
 
-    Column {
+    Flickable {
         anchors.fill: parent
-        anchors.margins: 28
-        spacing: 20
+        contentHeight: mainColumn.height + 56
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
+
+        Column {
+            id: mainColumn
+            width: parent.width - 56
+            x: 28
+            y: 28
+            spacing: 20
 
         Row {
             spacing: 16
@@ -43,14 +75,17 @@ Page {
 
         Rectangle {
             width: parent.width
-            height: 220
+            height: innerColumn.height + 36
             radius: 12
             color: Theme.panelColor
             border.color: Theme.panelBorderColor
+            clip: true
 
             Column {
-                anchors.fill: parent
-                anchors.margins: 18
+                id: innerColumn
+                width: parent.width - 36
+                x: 18
+                y: 18
                 spacing: 14
 
                 Text {
@@ -70,12 +105,119 @@ Page {
                     onActivated: virtualCameraController.selectedCameraIndex = currentIndex
                 }
 
-                ComboBox {
+                Text {
+                    text: "Aspect Ratio:"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    color: Theme.textColor
+                    visible: root.availableAspectRatios.length > 0
+                }
+
+                Flickable {
                     width: parent.width
-                    model: virtualCameraController.formatDescriptions
-                    currentIndex: virtualCameraController.selectedFormatIndex
-                    enabled: !virtualCameraController.enabled && !virtualCameraController.busy && count > 0
-                    onActivated: virtualCameraController.selectedFormatIndex = currentIndex
+                    height: 36
+                    contentWidth: aspectRow.width
+                    visible: root.availableAspectRatios.length > 0
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Row {
+                        id: aspectRow
+                        spacing: 10
+                        Repeater {
+                            model: root.availableAspectRatios
+                            delegate: Rectangle {
+                                width: arText.implicitWidth + 32
+                                height: 36
+                                radius: 18
+                                color: root.selectedAspectRatio === modelData ? Theme.selectedColor : (arMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor)
+                                border.color: root.selectedAspectRatio === modelData ? Theme.selectedBorderColor : Theme.panelBorderColor
+                                border.width: 1
+
+                                Text {
+                                    id: arText
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 14
+                                    color: root.selectedAspectRatio === modelData ? "#ffffff" : Theme.textColor
+                                }
+
+                                MouseArea {
+                                    id: arMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: !virtualCameraController.enabled && !virtualCameraController.busy
+                                    onClicked: root.selectedAspectRatio = modelData
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Resolution:"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    color: Theme.textColor
+                    visible: root.availableAspectRatios.length > 0
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: 12
+                    visible: root.availableAspectRatios.length > 0
+
+                    Repeater {
+                        model: {
+                            var formats = virtualCameraController.formatList || []
+                            var filtered = []
+                            for (var i = 0; i < formats.length; ++i) {
+                                if (formats[i].aspectRatio === root.selectedAspectRatio) {
+                                    filtered.push(formats[i])
+                                }
+                            }
+                            return filtered
+                        }
+
+                        delegate: Rectangle {
+                            width: 140
+                            height: 64
+                            radius: 8
+                            color: virtualCameraController.selectedFormatIndex === modelData.index ? Theme.selectedColor : (fmtMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor)
+                            border.color: virtualCameraController.selectedFormatIndex === modelData.index ? Theme.selectedBorderColor : Theme.panelBorderColor
+                            border.width: 1
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 4
+
+                                Text {
+                                    text: modelData.label
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 15
+                                    font.bold: true
+                                    color: virtualCameraController.selectedFormatIndex === modelData.index ? "#ffffff" : Theme.textColor
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                }
+                                Text {
+                                    text: modelData.fps + " FPS"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 12
+                                    color: virtualCameraController.selectedFormatIndex === modelData.index ? "#ffffff" : Theme.mutedTextColor
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                }
+                            }
+
+                            MouseArea {
+                                id: fmtMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: !virtualCameraController.enabled && !virtualCameraController.busy
+                                onClicked: virtualCameraController.selectedFormatIndex = modelData.index
+                            }
+                        }
+                    }
                 }
 
                 ThemedButton {
@@ -95,6 +237,7 @@ Page {
             color: Theme.mutedTextColor
             font.family: Theme.fontFamily
             font.pixelSize: 15
+        }
         }
     }
 }
