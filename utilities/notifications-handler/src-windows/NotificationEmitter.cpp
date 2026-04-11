@@ -36,7 +36,7 @@ bool EnsureToastInitialized() {
 
 class NotificationHandler : public WinToastLib::IWinToastHandler {
 public:
-    explicit NotificationHandler(std::vector<NotificationEmitter::ButtonAction>&& buttons) : actions(std::move(buttons)) {}
+    explicit NotificationHandler(std::vector<NotificationEmitter::ButtonAction> buttons) : actions(std::move(buttons)) {}
 
     void toastActivated(const int actionIndex) const override {
         if (actionIndex < 0 || static_cast<size_t>(actionIndex) >= actions.size()) {
@@ -68,7 +68,7 @@ int64_t NotificationEmitter::Emit(
     const std::wstring& notificationContent,
     const std::optional<std::filesystem::path>& appIconPath,
     const std::optional<std::filesystem::path>& mainImagePath,
-    std::vector<ButtonAction> buttons) {
+    const std::vector<ButtonAction>& buttons) {
     std::lock_guard lock(g_toastMutex);
 
     WinToastLib::WinToast* instance = WinToastLib::WinToast::instance();
@@ -97,7 +97,7 @@ int64_t NotificationEmitter::Emit(
         templ.addAction(name);
     }
 
-    const auto handler = new NotificationHandler(std::move(buttons));
+    const auto handler = new NotificationHandler(buttons);
     const int64_t toastID = instance->showToast(templ, handler);
     if (toastID < 0) {
         Debug::LogWarning("NotificationEmitter: WinToast showToast failed with id {}", toastID);
