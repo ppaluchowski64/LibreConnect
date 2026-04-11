@@ -288,18 +288,13 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
 {
     const QString localPath = localPathUrl.toLocalFile().trimmed();
     if (localPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Choose a local file first."));
+        setStatusMessage(QStringLiteral("Choose a local file or folder first."));
         return;
     }
 
     const std::filesystem::path sourcePath = localPath.toStdString();
     if (!std::filesystem::exists(sourcePath)) {
-        setStatusMessage(QStringLiteral("The selected local file does not exist anymore."));
-        return;
-    }
-
-    if (std::filesystem::is_directory(sourcePath)) {
-        setStatusMessage(QStringLiteral("Folder upload is not supported yet. Choose files only."));
+        setStatusMessage(QStringLiteral("The selected local file or folder does not exist anymore."));
         return;
     }
 
@@ -551,7 +546,7 @@ void FileManagerController::startPendingActionIfReady()
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("No local file selected for upload."));
+            setStatusMessage(QStringLiteral("No local file or folder selected for upload."));
             m_uploadBatchActive = false;
             m_uploadBatchTotal = 0;
             m_uploadBatchCompleted = 0;
@@ -572,7 +567,7 @@ void FileManagerController::startPendingActionIfReady()
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("The selected local file no longer exists."));
+            setStatusMessage(QStringLiteral("The selected local file or folder no longer exists."));
             m_uploadBatchActive = false;
             m_uploadBatchTotal = 0;
             m_uploadBatchCompleted = 0;
@@ -721,7 +716,7 @@ void FileManagerController::startNextQueuedUpload()
 void FileManagerController::beginUploadForLocalPath(const QString& localPath)
 {
     const std::filesystem::path sourcePath = localPath.toStdString();
-    if (!std::filesystem::exists(sourcePath) || std::filesystem::is_directory(sourcePath)) {
+    if (!std::filesystem::exists(sourcePath)) {
         ++m_uploadBatchCompleted;
         ++m_uploadBatchFailed;
 
@@ -732,7 +727,7 @@ void FileManagerController::beginUploadForLocalPath(const QString& localPath)
 
         setBusy(false);
         setStatusMessage(m_uploadBatchTotal <= 1
-            ? QStringLiteral("The selected local file does not exist anymore.")
+            ? QStringLiteral("The selected local file or folder does not exist anymore.")
             : QStringLiteral("Uploaded %1 of %2 files (%3 failed).")
                 .arg(m_uploadBatchCompleted - m_uploadBatchFailed)
                 .arg(m_uploadBatchTotal)

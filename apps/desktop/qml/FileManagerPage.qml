@@ -172,6 +172,15 @@ Page {
         onAccepted: root.uploadLocalUrls(selectedFiles)
     }
 
+    FolderDialog {
+        id: uploadFolderDialog
+        title: "Select folder to upload"
+        onAccepted: {
+            if (selectedFolder)
+                fileManagerController.uploadLocalEntry(selectedFolder)
+        }
+    }
+
     Menu {
         id: fileContextMenu
         property var targetPaths: []
@@ -338,9 +347,15 @@ Page {
                         onClicked: uploadDialog.open()
                     }
 
+                    ThemedButton {
+                        text: "Upload Folder"
+                        width: 160
+                        onClicked: uploadFolderDialog.open()
+                    }
+
                     Text {
                         text: fileManagerController.localDownloadDirectory
-                        width: parent.width - 400
+                        width: parent.width - 570
                         wrapMode: Text.WordWrap
                         color: Theme.mutedTextColor
                         font.family: Theme.fontFamily
