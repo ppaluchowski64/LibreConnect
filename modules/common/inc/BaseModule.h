@@ -41,7 +41,8 @@ enum class ModuleType : uint8_t {
     Unknown = 0,              // Invalid state
     NotificationSync,
     NetworkCamera,
-    NetworkFileSystem
+    NetworkFileSystem,
+    ClipboardSync
 };
 
 class ModuleErrorEvent final : public QEvent {
