@@ -433,11 +433,19 @@ void FileShareModule::EnableResponseCallbacks() {
         asio::steady_timer timer(m_context);
 
         while (true) {
-            for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
-                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                if (!channel->IsUsed(true)) {
-                    transferChannelIndex = i;
-                    goto FINISH_CHANNEL_SEARCH;
+            {
+                std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+                for (size_t i = 0; i < m_transferChannels.size(); ++i) {
+                    const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
+                    if (m_reservedIncomingPostChannels.find(i) != m_reservedIncomingPostChannels.end()) {
+                        continue;
+                    }
+
+                    if (!channel->IsUsed(false)) {
+                        transferChannelIndex = static_cast<uint8_t>(i);
+                        m_reservedIncomingPostChannels.insert(i);
+                        goto FINISH_CHANNEL_SEARCH;
+                    }
                 }
             }
 
@@ -447,6 +455,11 @@ void FileShareModule::EnableResponseCallbacks() {
 
         FINISH_CHANNEL_SEARCH:
         std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
+        const auto reservationGuard = std::shared_ptr<void>(nullptr, [this, transferChannelIndex](void*) {
+            std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+            m_reservedIncomingPostChannels.erase(static_cast<size_t>(transferChannelIndex));
+        });
+        (void)reservationGuard;
         Debug::Log("FileShareModule: Selected transfer channel {} for incoming post request {}", transferChannelIndex, requestID);
 
         const auto future = isDirectory ?
@@ -488,6 +501,10 @@ void FileShareModule::OnInitialize() {
     {
         std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
         m_inFlightDirectoryRequests.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+        m_reservedIncomingPostChannels.clear();
     }
     m_transferChannels.clear();
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
@@ -580,6 +597,10 @@ asio::awaitable<void> FileShareModule::OnDisable() {
         std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
         m_inFlightDirectoryRequests.clear();
     }
+    {
+        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+        m_reservedIncomingPostChannels.clear();
+    }
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     for (size_t i = 0; i < m_transferChannels.size(); ++i) {
         asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
@@ -594,6 +615,10 @@ asio::awaitable<void> FileShareModule::OnShutdown() {
         std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
         m_inFlightDirectoryRequests.clear();
     }
+    {
+        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+        m_reservedIncomingPostChannels.clear();
+    }
     m_transferChannels.clear();
     co_return;
 }
@@ -605,4 +630,3 @@ const char* FileShareModule::GetModuleName() const {
 ModuleType FileShareModule::GetModuleType() const {
     return ModuleType::NetworkFileSystem;
 }
-

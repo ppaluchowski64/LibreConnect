@@ -41,6 +41,8 @@ private:
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
     mutable std::mutex m_directoryRequestMutex;
     mutable std::unordered_set<std::string> m_inFlightDirectoryRequests;
+    mutable std::mutex m_incomingPostReservationMutex;
+    mutable std::unordered_set<size_t> m_reservedIncomingPostChannels;
 
 protected:
     void EnableResponseCallbacks() override;
@@ -56,4 +58,3 @@ protected:
 };
 
 #endif //FILE_SHARE_MODULE_H
-

@@ -303,7 +303,7 @@ void FileShareModule::EnableResponseCallbacks() {
         while (true) {
             for (size_t i = 0; i < m_transferChannels.size(); ++i) {
                 const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                if (!channel->IsUsed(true)) {
+                if (!channel->IsUsed(false)) {
                     transferChannelIndex = i;
                     goto FINISH_CHANNEL_SEARCH;
                 }
@@ -362,11 +362,19 @@ void FileShareModule::EnableResponseCallbacks() {
         asio::steady_timer timer(m_context);
 
         while (true) {
-            for (size_t i = 0; i < m_transferChannels.size(); ++i) {
-                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                if (!channel->IsUsed(true)) {
-                    transferChannelIndex = i;
-                    goto FINISH_CHANNEL_SEARCH;
+            {
+                std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+                for (size_t i = 0; i < m_transferChannels.size(); ++i) {
+                    const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
+                    if (m_reservedIncomingPostChannels.find(i) != m_reservedIncomingPostChannels.end()) {
+                        continue;
+                    }
+
+                    if (!channel->IsUsed(false)) {
+                        transferChannelIndex = i;
+                        m_reservedIncomingPostChannels.insert(i);
+                        goto FINISH_CHANNEL_SEARCH;
+                    }
                 }
             }
 
@@ -376,6 +384,11 @@ void FileShareModule::EnableResponseCallbacks() {
 
         FINISH_CHANNEL_SEARCH:
         std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
+        const auto reservationGuard = std::shared_ptr<void>(nullptr, [this, transferChannelIndex](void*) {
+            std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+            m_reservedIncomingPostChannels.erase(transferChannelIndex);
+        });
+        (void)reservationGuard;
         Debug::Log("FileShareModule: Selected transfer channel {} for incoming post request {}", transferChannelIndex, requestID);
 
         const auto future = isDirectory ?
@@ -488,6 +501,10 @@ void FileShareModule::DisableResponseCallbacks() {
 
 void FileShareModule::OnInitialize() {
     ClearDirectoryScanFutures();
+    {
+        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+        m_reservedIncomingPostChannels.clear();
+    }
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
     std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextClient();
     for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
@@ -525,6 +542,10 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
     ClearDirectoryScanFutures();
+    {
+        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+        m_reservedIncomingPostChannels.clear();
+    }
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     for (size_t i = 0; i < m_transferChannels.size(); ++i) {
         asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
@@ -536,6 +557,10 @@ asio::awaitable<void> FileShareModule::OnDisable() {
 asio::awaitable<void> FileShareModule::OnShutdown() {
     m_peerModuleEnabled.store(false);
     ClearDirectoryScanFutures();
+    {
+        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+        m_reservedIncomingPostChannels.clear();
+    }
     m_transferChannels.clear();
     co_return;
 }
@@ -547,4 +572,3 @@ const char* FileShareModule::GetModuleName() const {
 ModuleType FileShareModule::GetModuleType() const {
     return ModuleType::NetworkFileSystem;
 }
-
