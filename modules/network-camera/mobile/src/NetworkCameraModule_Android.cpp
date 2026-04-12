@@ -10,6 +10,7 @@
 #include <QtCore/qcoreapplication_platform.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <tuple>
@@ -17,6 +18,42 @@
 static std::mutex g_frameTargetMutex{};
 static std::weak_ptr<NetworkCameraModule> g_frameTarget{};
 static constexpr int64_t kFullHdPixels = 1920 * 1080;
+static std::mutex g_accessUnitPoolMutex{};
+static std::vector<std::vector<uint8_t>> g_accessUnitPool{};
+static constexpr size_t kMaxAccessUnitPoolSize = 8;
+static constexpr size_t kMaxReusableAccessUnitCapacity = 4 * 1024 * 1024;
+
+static std::vector<uint8_t> AcquireAccessUnitBuffer(const size_t requiredSize) {
+    std::vector<uint8_t> accessUnit;
+    {
+        std::lock_guard<std::mutex> lock(g_accessUnitPoolMutex);
+        if (!g_accessUnitPool.empty()) {
+            accessUnit = std::move(g_accessUnitPool.back());
+            g_accessUnitPool.pop_back();
+        }
+    }
+
+    if (accessUnit.capacity() < requiredSize) {
+        accessUnit.reserve(requiredSize);
+    }
+    accessUnit.resize(requiredSize);
+    return accessUnit;
+}
+
+static void RecycleAccessUnitBuffer(std::vector<uint8_t>&& accessUnit) {
+    if (accessUnit.capacity() == 0 || accessUnit.capacity() > kMaxReusableAccessUnitCapacity) {
+        return;
+    }
+
+    accessUnit.clear();
+
+    std::lock_guard<std::mutex> lock(g_accessUnitPoolMutex);
+    if (g_accessUnitPool.size() >= kMaxAccessUnitPoolSize) {
+        return;
+    }
+
+    g_accessUnitPool.emplace_back(std::move(accessUnit));
+}
 
 static bool SplitLengthPrefixedNalUnitsWithLength(
     const uint8_t* data,
@@ -141,10 +178,8 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
         return;
     }
 
-    std::vector<uint8_t> accessUnit(
-        encodedData,
-        encodedData + static_cast<size_t>(size)
-    );
+    std::vector<uint8_t> accessUnit = AcquireAccessUnitBuffer(static_cast<size_t>(size));
+    std::memcpy(accessUnit.data(), encodedData, static_cast<size_t>(size));
 
     module->OnAndroidEncodedFrame(
         std::move(accessUnit),
@@ -277,14 +312,17 @@ std::vector<CameraSpecification> NetworkCameraModule::FetchCamerasSpecificationF
 
 void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs) {
     if (accessUnit.empty()) {
+        RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
     }
 
     if (!m_streamActive.load() || !m_videoStream) {
+        RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
     }
 
     if (!TryReserveFrameSlot("android-encoded")) {
+        RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
     }
 
@@ -495,6 +533,12 @@ void NetworkCameraModule::StopStream_Android() {
 
 
 asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs, const uint64_t generation) {
+    const auto accessUnitDeleter = [&accessUnit](const int* p) {
+        (void)p;
+        RecycleAccessUnitBuffer(std::move(accessUnit));
+    };
+    std::unique_ptr<int, decltype(accessUnitDeleter)> accessUnitGuard(reinterpret_cast<int*>(1), accessUnitDeleter);
+
     const auto slotDeleter = [this](const int* p) {
         (void)p;
         ReleaseFrameSlot();

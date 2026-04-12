@@ -27,7 +27,6 @@ enum class StreamStartFailReason : uint8_t {
 
 };
 
-//#define IOS_DEVICE
 
 class NetworkCameraModule final : public BaseModule {
 private:

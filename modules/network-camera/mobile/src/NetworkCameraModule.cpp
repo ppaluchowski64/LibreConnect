@@ -12,7 +12,7 @@
 #include <asio.hpp>
 #include <asio/co_spawn.hpp>
 
-constexpr uint32_t kMaxQueuedFrameJobs = 2;
+constexpr uint32_t kMaxQueuedFrameJobs = 8;
 constexpr uint32_t kBackpressureLogEvery = 120;
 
 asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, const std::string cameraID, const CameraFormat requestedFormat) {
@@ -29,7 +29,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream(const size_t requestID, c
         asio::steady_timer timer(m_context);
         int attempts = 0;
         while (m_portNumber.load() == 0) {
-            if (++attempts > 500) { // ~5 seconds at 10ms
+            if (++attempts > 3000) { // ~30 seconds at 10ms
                 Debug::LogError("SRTP port info not received in time");
                 ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_START_STREAM_RESPONSE, StreamStartFailReason::IncorrectConfig);
                 ProcessError(ModuleFailReason::Timeout);
