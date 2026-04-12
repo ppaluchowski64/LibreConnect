@@ -12,6 +12,10 @@
     #include <Windows.h>
 #endif
 
+#ifdef __APPLE__
+    #include <Carbon/Carbon.h>
+#endif
+
 int main() {
     try {
         Keyboard kb;
@@ -33,6 +37,21 @@ int main() {
             kb.PressAndReleaseKey(KEY_L);
             kb.PressAndReleaseKey(KEY_D);
             kb.PressKey(KEY_LEFTSHIFT); kb.PressAndReleaseKey(KEY_1); kb.ReleaseKey(KEY_LEFTSHIFT);
+
+        #elif __APPLE__
+
+            kb.PressKey(kVK_Shift); kb.PressAndReleaseKey(kVK_ANSI_H); kb.ReleaseKey(kVK_Shift);
+            kb.PressAndReleaseKey(kVK_ANSI_E);
+            kb.PressAndReleaseKey(kVK_ANSI_L);
+            kb.PressAndReleaseKey(kVK_ANSI_L);
+            kb.PressAndReleaseKey(kVK_ANSI_O);
+            kb.PressAndReleaseKey(kVK_Space);
+            kb.PressKey(kVK_Shift); kb.PressAndReleaseKey(kVK_ANSI_W); kb.ReleaseKey(kVK_Shift);
+            kb.PressAndReleaseKey(kVK_ANSI_O);
+            kb.PressAndReleaseKey(kVK_ANSI_R);
+            kb.PressAndReleaseKey(kVK_ANSI_L);
+            kb.PressAndReleaseKey(kVK_ANSI_D);
+            kb.PressKey(kVK_Shift); kb.PressAndReleaseKey(kVK_ANSI_1); kb.ReleaseKey(kVK_Shift);
 
         #elif _WIN32
 

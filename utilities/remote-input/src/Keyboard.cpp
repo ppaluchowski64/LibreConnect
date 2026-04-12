@@ -65,6 +65,84 @@
         sendKeyEvent(uinput_fd, keyCode, 0);
     }
 
+#elif __APPLE__
+
+    #include <ApplicationServices/ApplicationServices.h>
+    #include <ThreadPool.h>
+    #include <iostream>
+
+    static CGEventSourceRef source = nullptr;
+
+    Keyboard::Keyboard() :
+        m_eventFlag(ThreadPool::GetContext().get_executor()),
+        m_isRunning(true) {
+
+        source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+
+        if (source)
+            CGEventSourceSetLocalEventsSuppressionInterval(source, 0.0);
+
+        asio::co_spawn(ThreadPool::GetContext(), CoProcessEvents(), asio::detached);
+    }
+
+    Keyboard::~Keyboard() {
+        m_isRunning.store(false);
+        m_eventFlag.Signal();
+
+        if (source) {
+            CFRelease(source);
+            source = nullptr;
+        }
+    }
+
+    void Keyboard::PressKey(int keyCode) {
+        static thread_local moodycamel::ProducerToken producerToken(m_eventQueue);
+        m_eventQueue.enqueue(producerToken, {keyCode, true});
+        m_eventFlag.Signal();
+    }
+
+    void Keyboard::ReleaseKey(int keyCode) {
+        static thread_local moodycamel::ProducerToken producerToken(m_eventQueue);
+        m_eventQueue.enqueue(producerToken, {keyCode, false});
+        m_eventFlag.Signal();
+    }
+
+    asio::awaitable<void> Keyboard::CoProcessEvents() {
+        try {
+            moodycamel::ConsumerToken consumerToken(m_eventQueue);
+            asio::steady_timer timer(ThreadPool::GetContext().get_executor());
+
+            while (m_isRunning.load()) {
+                co_await m_eventFlag.Wait();
+
+                KeyEvent ev{};
+                while (m_isRunning.load() && m_eventQueue.try_dequeue(consumerToken, ev)) {
+                    if (!source) continue;
+
+                    CGEventRef event = CGEventCreateKeyboardEvent(
+                        source,
+                        (CGKeyCode)ev.keyCode,
+                        ev.isPress
+                    );
+
+                    if (event) {
+                        CGEventPost(kCGHIDEventTap, event);
+                        CFRelease(event);
+                    }
+
+                    timer.expires_after(std::chrono::milliseconds(5));
+                    co_await timer.async_wait(asio::use_awaitable);
+                }
+            }
+        } catch (const std::system_error& error) {
+            if (error.code() != asio::error::operation_aborted) {
+                Debug::LogError("Keyboard::CoProcessEvents Asio error: {} (code: {})", error.what(), error.code().value());
+            }
+        } catch (const std::exception& e) {
+            Debug::LogError("Keyboard::CoProcessEvents exception: {}", e.what());
+        }
+    }
+
 #elif _WIN32
 
     #include <Windows.h>
