@@ -443,15 +443,19 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
                     if (!frame.isValid())
                         return;
 
+                    NoteCaptureIngress(0);
+
                     if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                        NoteDropInactive();
                         return;
                     }
 
+                    const int64_t enqueuedAtUs = PerfNowUs();
                     if (!TryReserveFrameSlot("qt")) {
                         return;
                     }
 
-                    asio::co_spawn(m_moduleStrand, SendFrame_IOS(frame), asio::detached);
+                    asio::co_spawn(m_moduleStrand, SendFrame_IOS(frame, enqueuedAtUs), asio::detached);
                 }
             );
         },
@@ -459,8 +463,11 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
     );
 }
 
-asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
+asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame, const int64_t enqueuedAtUs) {
     const uint64_t generation = m_streamGeneration.load();
+    const int64_t workStartUs = PerfNowUs();
+    size_t sentNalCount = 0;
+    uint64_t sendAwaitUs = 0;
 
     const auto slotDeleter = [this](const int* p) {
         (void)p;
@@ -468,6 +475,18 @@ asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
     };
 
     std::unique_ptr<int, decltype(slotDeleter)> slotGuard(reinterpret_cast<int*>(1), slotDeleter);
+    const auto perfDeleter = [this, enqueuedAtUs, workStartUs, &sentNalCount, &sendAwaitUs](const int* p) {
+        (void)p;
+        const int64_t nowUs = PerfNowUs();
+        const uint64_t queueWaitUs = (enqueuedAtUs > 0 && workStartUs > enqueuedAtUs)
+            ? static_cast<uint64_t>(workStartUs - enqueuedAtUs)
+            : 0;
+        const uint64_t workUs = (nowUs > workStartUs)
+            ? static_cast<uint64_t>(nowUs - workStartUs)
+            : 0;
+        NoteFrameProcessed(queueWaitUs, workUs, sendAwaitUs, 0, sentNalCount);
+    };
+    std::unique_ptr<int, decltype(perfDeleter)> perfGuard(reinterpret_cast<int*>(1), perfDeleter);
 
     if (!m_streamActive.load()) {
         co_return;
@@ -602,10 +621,10 @@ asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
 
     frame.unmap();
 
-    co_await EncodeAndSendFrame(avFrame, generation);
+    co_await EncodeAndSendFrame(avFrame, generation, &sentNalCount, &sendAwaitUs);
 }
 
-asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avFrame, const uint64_t generation) {
+asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avFrame, const uint64_t generation, size_t* sentNalCount, uint64_t* sendAwaitUs) {
     if (!avFrame) {
         co_return;
     }
@@ -693,6 +712,7 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
         const uint32_t ts = stream->NextTimestamp();
         const bool isKeyPacket = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
         if (m_waitForKeyframeAfterDrop.load(std::memory_order_relaxed) && !isKeyPacket) {
+            NoteDropAwaitingKeyframe();
             av_packet_unref(pkt);
             continue;
         }
@@ -708,7 +728,15 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
                     sentAllConfig = false;
                     break;
                 }
+                const int64_t sendStartUs = PerfNowUs();
                 co_await stream->AsyncSendNal(nal.data(), nal.size(), ts, false);
+                const int64_t sendEndUs = PerfNowUs();
+                if (sendAwaitUs && sendEndUs > sendStartUs) {
+                    *sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+                }
+                if (sentNalCount) {
+                    ++(*sentNalCount);
+                }
                 if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
                     sentAllConfig = false;
                     break;
@@ -725,7 +753,15 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
                 break;
             }
             const bool marker = (i + 1 == nal_spans.size());
+            const int64_t sendStartUs = PerfNowUs();
             co_await stream->AsyncSendNal(nal_spans[i].data, nal_spans[i].size, ts, marker);
+            const int64_t sendEndUs = PerfNowUs();
+            if (sendAwaitUs && sendEndUs > sendStartUs) {
+                *sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+            }
+            if (sentNalCount) {
+                ++(*sentNalCount);
+            }
             if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
                 break;
             }
