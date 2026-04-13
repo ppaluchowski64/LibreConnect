@@ -128,7 +128,11 @@ BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaul
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
 BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-component-pc Qt6::Core Qt6::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
-BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
+BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
+
+if (NOT APPLE)
+    target_link_libraries(permission-manager PUBLIC Qt6::CorePrivate)
+endif ()
 
 add_subdirectory("utilities/virtual-camera")
 add_subdirectory("utilities/notifications-handler")
