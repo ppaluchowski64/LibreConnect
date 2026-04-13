@@ -66,7 +66,7 @@ asio::awaitable<void> ClipboardSyncModule::OnEnable() {
     }
 
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_ENABLE);
-    ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, true);
+    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_STATE_CHANGE, true);
 
     asio::steady_timer timer(m_context.get_executor());
     while (!ShouldAbortEnable()) {
@@ -82,7 +82,7 @@ asio::awaitable<void> ClipboardSyncModule::OnEnable() {
 asio::awaitable<void> ClipboardSyncModule::OnDisable() {
     TextClipboard::RemoveClipboardUpdateListener();
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_DISABLE);
-    ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, false);
+    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_STATE_CHANGE, false);
     co_return;
 }
 

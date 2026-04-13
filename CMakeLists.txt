@@ -54,7 +54,10 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     find_package(GTest     REQUIRED)
     find_package(benchmark REQUIRED)
 
-    add_library(ffmpeg_headers INTERFACE)
+    add_library(ffmpeg_headers INTERFACE
+            modules/remote-input/desktop/src/RemoteInputModule.cpp
+            modules/remote-input/mobile/inc/RemoteInputModule.h
+            modules/remote-input/mobile/src/RemoteInputModule.cpp)
     target_include_directories(ffmpeg_headers INTERFACE ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 endif()
 
@@ -165,6 +168,11 @@ if (ANDROID OR IOS)
             clipboard
     )
 
+    BuildApplicationModule(remote-input-module modules/remote-input/common modules/remote-input/mobile
+            common-module
+            remote-input
+    )
+
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
             common-module
@@ -190,6 +198,11 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             clipboard
     )
+
+    BuildApplicationModule(remote-input-module modules/remote-input/common modules/remote-input/desktop
+            common-module
+            remote-input
+    )
 endif ()
 
 BuildStaticLibrary(modules-manager modules/modules-manager
@@ -204,6 +217,7 @@ BuildStaticLibrary(modules-manager modules/modules-manager
         file-share-module
         notification-sync-module
         clipboard-sync-module
+        remote-input-module
 )
 
 if (ANDROID)
