@@ -127,6 +127,7 @@ BuildStaticLibrary(system-component-pc utilities/system project_defaults openssl
 BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaults openssl::openssl asio::asio Debug-Log network-component-pc system-component-pc magic_enum::magic_enum concurrentqueue::concurrentqueue nlohmann_json::nlohmann_json Qt6::Core Qt6::Network boost::boost)
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
 BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-component-pc Qt6::Core Qt6::Gui)
+BuildStaticLibrary(remote-input utilities/remote-input project_defaults asio::asio Debug-Log network-component-pc system-component-pc concurrentqueue::concurrentqueue)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
 
@@ -134,6 +135,10 @@ add_subdirectory("utilities/virtual-camera")
 add_subdirectory("utilities/notifications-handler")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager)
+
+if(APPLE AND NOT IOS)
+    target_link_libraries(remote-input PUBLIC "-framework ApplicationServices")
+endif()
 
 if (ANDROID OR IOS)
 
@@ -215,6 +220,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
+    BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
 
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)
