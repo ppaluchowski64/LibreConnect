@@ -13,7 +13,7 @@
 #include <system_error>
 
 namespace {
-    int GetNativeKey(Key key) {
+    constexpr int GetNativeKey(Key key) {
         switch (key) {
             case Key::Unknown: return -1;
 
@@ -148,16 +148,14 @@ namespace {
     }
 }
 
-static CGEventSourceRef source = nullptr;
-
 Keyboard::Keyboard() :
     m_eventFlag(ThreadPool::GetContext().get_executor()),
     m_isRunning(true) {
 
-    source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    m_source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 
-    if (source)
-        CGEventSourceSetLocalEventsSuppressionInterval(source, 0.0);
+    if (m_source)
+        CGEventSourceSetLocalEventsSuppressionInterval(m_source, 0.0);
 
     asio::co_spawn(ThreadPool::GetContext(), CoProcessEvents(), asio::detached);
 }
@@ -166,33 +164,28 @@ Keyboard::~Keyboard() {
     m_isRunning.store(false);
     m_eventFlag.Signal();
 
-    if (source) {
-        CFRelease(source);
-        source = nullptr;
+    if (m_source) {
+        CFRelease(m_source);
+        m_source = nullptr;
     }
 }
 
 void Keyboard::PressKey(Key key) {
-    int nativeCode = GetNativeKey(key);
-    if (nativeCode == -1) return;
+    int nativeKeyCode = GetNativeKey(key);
+    if (nativeKeyCode == -1) return;
 
     static thread_local moodycamel::ProducerToken producerToken(m_eventQueue);
-    m_eventQueue.enqueue(producerToken, {nativeCode, true});
+    m_eventQueue.enqueue(producerToken, {nativeKeyCode, true});
     m_eventFlag.Signal();
 }
 
 void Keyboard::ReleaseKey(Key key) {
-    int nativeCode = GetNativeKey(key);
-    if (nativeCode == -1) return;
+    int nativeKeyCode = GetNativeKey(key);
+    if (nativeKeyCode == -1) return;
 
     static thread_local moodycamel::ProducerToken producerToken(m_eventQueue);
-    m_eventQueue.enqueue(producerToken, {nativeCode, false});
+    m_eventQueue.enqueue(producerToken, {nativeKeyCode, false});
     m_eventFlag.Signal();
-}
-
-void Keyboard::PressAndReleaseKey(Key key) {
-    PressKey(key);
-    ReleaseKey(key);
 }
 
 asio::awaitable<void> Keyboard::CoProcessEvents() {
@@ -205,11 +198,11 @@ asio::awaitable<void> Keyboard::CoProcessEvents() {
 
             KeyEvent ev{};
             while (m_isRunning.load() && m_eventQueue.try_dequeue(consumerToken, ev)) {
-                if (!source) continue;
+                if (!m_source) continue;
 
                 CGEventRef event = CGEventCreateKeyboardEvent(
-                    source,
-                    (CGKeyCode)ev.keyCode,
+                    m_source,
+                    static_cast<CGKeyCode>(ev.keyCode),
                     ev.isPress
                 );
 

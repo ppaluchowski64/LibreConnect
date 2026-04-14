@@ -22,6 +22,12 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
         )
     endif ()
 
+    file(GLOB_RECURSE GLOBAL_SOURCE_FILES
+            src/global/*.cpp
+            src/global/*.cxx
+            src/global/*.cc
+    )
+
     file(GLOB_RECURSE HEADER_FILES
             inc/*.h
             inc/*.hpp
@@ -29,6 +35,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
 
     add_library(remote-input STATIC
             ${SOURCE_FILES}
+            ${GLOBAL_SOURCE_FILES}
             ${HEADER_FILES}
     )
 

@@ -3,7 +3,7 @@
 #include <Windows.h>
 
 namespace {
-    int GetNativeKey(Key key) {
+    constexpr int GetNativeKey(Key key) {
         switch (key) {
             case Key::Unknown: return -1;
 
@@ -142,27 +142,22 @@ Keyboard::Keyboard() = default;
 Keyboard::~Keyboard() = default;
 
 void Keyboard::PressKey(Key key) {
-    int nativeCode = GetNativeKey(key);
-    if (nativeCode == -1) return;
+    int nativeKeyCode = GetNativeKey(key);
+    if (nativeKeyCode == -1) return;
 
     INPUT input{};
     input.type = INPUT_KEYBOARD;
-    input.ki.wVk = nativeCode;
+    input.ki.wVk = nativeKeyCode;
     SendInput(1, &input, sizeof(INPUT));
 }
 
 void Keyboard::ReleaseKey(Key key) {
-    int nativeCode = GetNativeKey(key);
-    if (nativeCode == -1) return;
+    int nativeKeyCode = GetNativeKey(key);
+    if (nativeKeyCode == -1) return;
 
     INPUT input{};
     input.type = INPUT_KEYBOARD;
-    input.ki.wVk = nativeCode;
+    input.ki.wVk = nativeKeyCode;
     input.ki.dwFlags = KEYEVENTF_KEYUP;
     SendInput(1, &input, sizeof(INPUT));
-}
-
-void Keyboard::PressAndReleaseKey(Key key) {
-    PressKey(key);
-    ReleaseKey(key);
 }
