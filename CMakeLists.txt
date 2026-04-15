@@ -54,10 +54,7 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     find_package(GTest     REQUIRED)
     find_package(benchmark REQUIRED)
 
-    add_library(ffmpeg_headers INTERFACE
-            modules/remote-input/desktop/src/RemoteInputModule.cpp
-            modules/remote-input/mobile/inc/RemoteInputModule.h
-            modules/remote-input/mobile/src/RemoteInputModule.cpp)
+    add_library(ffmpeg_headers INTERFACE)
     target_include_directories(ffmpeg_headers INTERFACE ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
 endif()
 
