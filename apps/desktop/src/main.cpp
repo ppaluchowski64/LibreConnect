@@ -14,7 +14,9 @@
 #include "DeviceConnectionController.h"
 #include "NotificationSyncController.h"
 #include "FileManagerController.h"
+#ifndef MACOS_DEVICE
 #include "VirtualCameraController.h"
+#endif
 #include "ThemeController.h"
 
 
@@ -56,7 +58,9 @@ int main(int argc, char *argv[])
     qmlRegisterType<DeviceConnectionController>("LibreConnect.desktop", 1, 0, "DeviceConnectionController");
     qmlRegisterType<NotificationSyncController>("LibreConnect.desktop", 1, 0, "NotificationSyncController");
     qmlRegisterType<FileManagerController>("LibreConnect.desktop", 1, 0, "FileManagerController");
+#ifndef MACOS_DEVICE
     qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
+#endif
 
     QObject::connect(
         &engine,
