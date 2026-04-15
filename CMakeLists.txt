@@ -166,7 +166,7 @@ if (ANDROID OR IOS)
 
     BuildApplicationModule(remote-input-module modules/remote-input/common modules/remote-input/mobile
             common-module
-            remote-input
+            remote-input-types
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
