@@ -18,7 +18,7 @@ public:
     NotificationTransferChannel() = delete;
     NotificationTransferChannel(const NotificationTransferChannel&) = delete;
     NotificationTransferChannel& operator=(const NotificationTransferChannel&) = delete;
-    explicit NotificationTransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context);
+    explicit NotificationTransferChannel(const std::shared_ptr<SSLContext_>& sslContext, IOContext& context);
 
     bool IsUsed() const;
     ConnectionState GetConnectionState() const;
@@ -37,7 +37,7 @@ private:
 
     IOContext& m_context;
     std::unique_ptr<SSLSocket> m_socket;
-    std::shared_ptr<SSLContext> m_sslContext;
+    std::shared_ptr<SSLContext_> m_sslContext;
     std::vector<uint8_t> m_buffer;
     std::atomic<bool> m_used{false};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};

@@ -61,11 +61,11 @@ std::shared_ptr<PrimaryConnection> PrimaryConnection::Create() {
     return std::make_shared<PrimaryConnection>();
 }
 
-void PrimaryConnection::Connect(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data) {
+void PrimaryConnection::Connect(const std::shared_ptr<SSLContext_>& sslContext, const InitialConnectionData& data) {
     asio::co_spawn(m_strand, CoConnect(sslContext, data), asio::detached);
 }
 
-void PrimaryConnection::Seek(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
+void PrimaryConnection::Seek(const std::shared_ptr<SSLContext_>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback) {
     asio::co_spawn(m_strand, CoSeek(sslContext, data, std::move(callback)), asio::detached);
 }
 
@@ -110,7 +110,7 @@ void PrimaryConnection::MarkHeartbeatReceived() {
     m_heartbeatReceived.store(true);
 }
 
-asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext> sslContext, const InitialConnectionData data) {
+asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext_> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
     m_disconnectedEventSent.store(false);
@@ -166,7 +166,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback) {
+asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext_> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;
     m_disconnectedEventSent.store(false);

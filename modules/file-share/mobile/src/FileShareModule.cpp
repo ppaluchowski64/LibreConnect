@@ -506,7 +506,7 @@ void FileShareModule::OnInitialize() {
         m_reservedIncomingPostChannels.clear();
     }
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
-    std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextClient();
+    std::shared_ptr<SSLContext_> sslContext = ConnectionManager::GetSSLContextClient();
     for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
         m_transferChannels.emplace_back(std::make_shared<TransferChannel>());
     }

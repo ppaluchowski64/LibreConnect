@@ -4,7 +4,7 @@
 static constexpr size_t MAX_NOTIFICATION_PACKET_SIZE = 32 * 1024 * 1024;
 static constexpr size_t IO_WAIT_DELAY_MS = 5;
 
-NotificationTransferChannel::NotificationTransferChannel(const std::shared_ptr<SSLContext>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_buffer(1024 * 128) {}
+NotificationTransferChannel::NotificationTransferChannel(const std::shared_ptr<SSLContext_>& sslContext, IOContext& context) : m_context(context), m_socket(nullptr), m_sslContext(sslContext), m_buffer(1024 * 128) {}
 
 asio::awaitable<void> NotificationTransferChannel::WaitForIoSlot(std::atomic<bool>& flag) const {
     asio::steady_timer timer(m_context.get_executor());

@@ -16,7 +16,7 @@ typedef uint32_t PackageSizeInt;
 
 typedef asio::io_context IOContext;
 typedef asio::executor_work_guard<asio::io_context::executor_type> IOWorkGuard;
-typedef asio::ssl::context SSLContext;
+typedef asio::ssl::context SSLContext_;
 typedef asio::ip::tcp::socket TCPSocket;
 typedef asio::ip::tcp::resolver TCPResolver;
 typedef asio::ssl::stream<asio::ip::tcp::socket> SSLSocket;
