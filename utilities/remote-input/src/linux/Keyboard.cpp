@@ -1,12 +1,6 @@
 #include "Keyboard.h"
 
-#include <fcntl.h>
-#include <unistd.h>
-#include <linux/uinput.h>
 #include <linux/input-event-codes.h>
-
-#include <cstring>
-#include <stdexcept>
 
 namespace {
     constexpr int GetNativeKey(Key key) {
@@ -144,61 +138,14 @@ namespace {
     }
 }
 
-Keyboard::Keyboard() {
-    m_uinput_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
-    if (m_uinput_fd < 0)
-        throw std::runtime_error("Cannot create virtual keyboard: /dev/uinput missing or no permissions");
-
-    ioctl(m_uinput_fd, UI_SET_EVBIT, EV_KEY);
-    ioctl(m_uinput_fd, UI_SET_EVBIT, EV_SYN);
-
-    for (int i = 0; i < 256; ++i)
-        ioctl(m_uinput_fd, UI_SET_KEYBIT, i);
-
-    uinput_setup usetup{};
-    usetup.id.bustype = BUS_VIRTUAL;
-    usetup.id.vendor  = 0x1D6B;
-    usetup.id.product = 0x0100;
-    std::strcpy(usetup.name, "libreconnect-keyboard");
-
-    ioctl(m_uinput_fd, UI_DEV_SETUP, &usetup);
-    ioctl(m_uinput_fd, UI_DEV_CREATE);
-
-    if (SendKeyEvent(KEY_RESERVED, 0) < 0)
-        throw std::runtime_error("Virtual keyboard not ready after creation");
-}
-
-Keyboard::~Keyboard() {
-    if (m_uinput_fd != -1) {
-        ioctl(m_uinput_fd, UI_DEV_DESTROY);
-        close(m_uinput_fd);
-        m_uinput_fd = -1;
-    }
-}
-
 void Keyboard::PressKey(Key key) {
     int nativeKeyCode = GetNativeKey(key);
     if (nativeKeyCode == -1) return;
-    (void)SendKeyEvent(nativeKeyCode, 1);
+    EmitNativeKeyPress(nativeKeyCode);
 }
 
 void Keyboard::ReleaseKey(Key key) {
     int nativeKeyCode = GetNativeKey(key);
     if (nativeKeyCode == -1) return;
-    (void)SendKeyEvent(nativeKeyCode, 0);
-}
-
-ssize_t Keyboard::SendKeyEvent(int keyCode, int value) const {
-    input_event ev{};
-    ev.type  = EV_KEY;
-    ev.code  = keyCode;
-    ev.value = value;
-    ssize_t res = write(m_uinput_fd, &ev, sizeof(ev));
-    if (res < 0) return res;
-
-    ev.type  = EV_SYN;
-    ev.code  = SYN_REPORT;
-    ev.value = 0;
-    res = write(m_uinput_fd, &ev, sizeof(ev));
-    return res;
+    EmitNativeKeyRelease(nativeKeyCode);
 }

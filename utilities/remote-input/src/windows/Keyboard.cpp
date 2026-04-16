@@ -138,26 +138,14 @@ namespace {
     }
 }
 
-Keyboard::Keyboard() = default;
-Keyboard::~Keyboard() = default;
-
 void Keyboard::PressKey(Key key) {
     int nativeKeyCode = GetNativeKey(key);
     if (nativeKeyCode == -1) return;
-
-    INPUT input{};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = nativeKeyCode;
-    SendInput(1, &input, sizeof(INPUT));
+    EmitNativeKeyPress(nativeKeyCode);
 }
 
 void Keyboard::ReleaseKey(Key key) {
     int nativeKeyCode = GetNativeKey(key);
     if (nativeKeyCode == -1) return;
-
-    INPUT input{};
-    input.type = INPUT_KEYBOARD;
-    input.ki.wVk = nativeKeyCode;
-    input.ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(1, &input, sizeof(INPUT));
+    EmitNativeKeyRelease(nativeKeyCode);
 }
