@@ -4,7 +4,6 @@
 #include <ThreadPool.h>
 
 #include <ApplicationServices/ApplicationServices.h>
-#include <Carbon/Carbon.h>
 
 #include <asio.hpp>
 #include <concurrentqueue.h>

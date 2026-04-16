@@ -31,7 +31,6 @@ class VirtualInputDevice {
 
         void EmitNativeKeyPress(int nativeKeyCode);
         void EmitNativeKeyRelease(int nativeKeyCode);
-        void EmitNativeKeyPressAndRelease(int nativeKeyCode);
 
     private:
     #ifdef __linux__
