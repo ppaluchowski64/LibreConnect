@@ -1,8 +1,10 @@
+#include "NativeKeyboardMap.h"
+
 #include "InputTypes.h"
 
 #include <Carbon/Carbon.h>
 
-int GetNativeKey(Key key) {
+int GetNativeKeyCode(Key key) {
     switch (key) {
         case Key::A: return kVK_ANSI_A;
         case Key::B: return kVK_ANSI_B;

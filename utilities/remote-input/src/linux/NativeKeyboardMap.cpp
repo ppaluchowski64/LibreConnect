@@ -1,8 +1,10 @@
+#include "NativeKeyboardMap.h"
+
 #include "InputTypes.h"
 
 #include <linux/input-event-codes.h>
 
-int GetNativeKey(Key key) {
+int GetNativeKeyCode(Key key) {
     switch (key) {
         case Key::A: return KEY_A;
         case Key::B: return KEY_B;

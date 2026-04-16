@@ -1,8 +1,10 @@
+#include "NativeMediaMap.h"
+
 #include "InputTypes.h"
 
 #include "linux/input-event-codes.h"
 
-int GetNativeMediaSignal(MediaSignal signal) {
+int GetNativeMediaCode(MediaSignal signal) {
     switch(signal) {
         case MediaSignal::PlayPause: return KEY_PLAYPAUSE;
         case MediaSignal::NextTrack: return KEY_NEXTSONG;

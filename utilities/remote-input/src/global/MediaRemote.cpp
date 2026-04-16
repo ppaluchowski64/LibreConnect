@@ -1,6 +1,10 @@
 #include "MediaRemote.h"
 
-int GetNativeMediaSignal(MediaSignal signal);
+#include "NativeMediaMap.h"
+
+#ifdef __APPLE__
+    void EmitMacMediaSignal(int macCode);
+#endif
 
 MediaRemote::MediaRemote() : VirtualInputDevice("libreconnect-media-remote") {}
 MediaRemote::~MediaRemote() = default;
@@ -30,8 +34,13 @@ void MediaRemote::VolumeMute() {
 }
 
 void MediaRemote::ExecuteSignal(MediaSignal signal) {
-    int nativeKeyCode = GetNativeMediaSignal(signal);
-    if (nativeKeyCode == -1) return;
-    EmitNativeKeyPress(nativeKeyCode);
-    EmitNativeKeyRelease(nativeKeyCode);
+    int nativeCode = GetNativeMediaCode(signal);
+    if (nativeCode == -1) return;
+
+    #ifdef __APPLE__
+        EmitMacMediaSignal(nativeCode);
+    #else
+        EmitNativeKeyPress(nativeCode);
+        EmitNativeKeyRelease(nativeCode);
+    #endif
 }

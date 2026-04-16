@@ -1,8 +1,10 @@
+#include "NativeMediaMap.h"
+
 #include "InputTypes.h"
 
 #include "Windows.h"
 
-int GetNativeMediaSignal(MediaSignal signal) {
+int GetNativeMediaCode(MediaSignal signal) {
     switch(signal) {
         case MediaSignal::PlayPause: return VK_MEDIA_PLAY_PAUSE;
         case MediaSignal::NextTrack: return VK_MEDIA_NEXT_TRACK;

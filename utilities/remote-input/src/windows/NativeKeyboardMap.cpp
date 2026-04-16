@@ -1,8 +1,10 @@
+#include "NativeKeyboardMap.h"
+
 #include "InputTypes.h"
 
 #include <Windows.h>
 
-int GetNativeKey(Key key) {
+int GetNativeKeyCode(Key key) {
     switch (key) {
         case Key::A: return 'A';
         case Key::B: return 'B';
