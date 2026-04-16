@@ -163,7 +163,7 @@ if (ANDROID OR IOS)
 
     BuildApplicationModule(remote-input-module modules/remote-input/common modules/remote-input/mobile
             common-module
-            remote-input
+            remote-input-types
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
@@ -228,6 +228,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
     BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
+    BuildTestProgram(MediaRemoteTest remote-input/MediaRemoteTest.cpp remote-input)
 
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)
