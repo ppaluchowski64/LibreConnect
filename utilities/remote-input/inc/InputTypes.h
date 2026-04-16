@@ -9,9 +9,16 @@ enum class InputEventType : uint8_t {
     PRESS_AND_RELEASE
 };
 
-enum class Key : uint8_t {
-    Unknown = 0,
+enum class MediaSignal : uint8_t {
+    PlayPause,
+    NextTrack,
+    PreviousTrack,
+    VolumeUp,
+    VolumeDown,
+    VolumeMute
+};
 
+enum class Key : uint8_t {
     A, B, C, D, E, F, G, H, I, J, K, L, M,
     N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
 

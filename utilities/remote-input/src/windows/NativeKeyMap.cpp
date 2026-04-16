@@ -1,11 +1,9 @@
-#include "Keyboard.h"
+#include "InputTypes.h"
 
 #include <Windows.h>
 
 int GetNativeKey(Key key) {
     switch (key) {
-        case Key::Unknown: return -1;
-
         case Key::A: return 'A';
         case Key::B: return 'B';
         case Key::C: return 'C';

@@ -1,11 +1,9 @@
-#include "Keyboard.h"
+#include "InputTypes.h"
 
 #include <Carbon/Carbon.h>
 
 int GetNativeKey(Key key) {
     switch (key) {
-        case Key::Unknown: return -1;
-
         case Key::A: return kVK_ANSI_A;
         case Key::B: return kVK_ANSI_B;
         case Key::C: return kVK_ANSI_C;

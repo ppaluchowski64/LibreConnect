@@ -3,7 +3,6 @@
 int GetNativeKey(Key key);
 
 Keyboard::Keyboard() : VirtualInputDevice("libreconnect-keyboard") {}
-
 Keyboard::~Keyboard() = default;
 
 void Keyboard::PressKey(Key key) {
