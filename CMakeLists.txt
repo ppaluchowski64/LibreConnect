@@ -50,12 +50,15 @@ endif()
 if(ANDROID)
     find_package(ffmpeg REQUIRED)
     add_library(ffmpeg_headers ALIAS ffmpeg::ffmpeg)
-elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+elseif (WIN32 OR (UNIX AND NOT APPLE))
     find_package(GTest     REQUIRED)
     find_package(benchmark REQUIRED)
 
     add_library(ffmpeg_headers INTERFACE)
     target_include_directories(ffmpeg_headers INTERFACE ${CMAKE_SOURCE_DIR}/build/ffmpeg/include/)
+elseif (APPLE AND NOT IOS)
+    find_package(GTest     REQUIRED)
+    find_package(benchmark REQUIRED)
 endif()
 
 find_package(OpenSSL          REQUIRED)
@@ -128,10 +131,16 @@ BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaul
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
 BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-component-pc Qt6::Core Qt6::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
-BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
+if (ANDROID)
+    BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
+else ()
+    BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
+endif ()
 
 add_subdirectory("utilities/remote-input")
-add_subdirectory("utilities/virtual-camera")
+if (NOT (APPLE AND NOT IOS))
+    add_subdirectory("utilities/virtual-camera")
+endif ()
 add_subdirectory("utilities/notifications-handler")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager)
@@ -167,14 +176,16 @@ if (ANDROID OR IOS)
     )
 
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
-    BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
-            common-module
-            srtp-stream
-            ffmpeg_headers
-            virtual-camera
-    )
+    if (NOT (APPLE AND NOT IOS))
+        BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
+                common-module
+                srtp-stream
+                ffmpeg_headers
+                virtual-camera
+        )
 
-    LinkFFMPEGLibs(network-camera-module)
+        LinkFFMPEGLibs(network-camera-module)
+    endif ()
 
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/desktop
             common-module
@@ -205,13 +216,15 @@ BuildStaticLibrary(modules-manager modules/modules-manager
         common-module
         Debug-Log
         Qt6::Core
-
-        network-camera-module
         file-share-module
         notification-sync-module
         clipboard-sync-module
         remote-input-module
 )
+
+if (NOT (APPLE AND NOT IOS))
+    target_link_libraries(modules-manager PUBLIC network-camera-module)
+endif ()
 
 if (ANDROID)
     add_subdirectory("apps/mobile")
@@ -223,7 +236,9 @@ if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
     BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
-    BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
+    if (NOT (APPLE AND NOT IOS))
+        BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
+    endif ()
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
@@ -249,10 +264,14 @@ if (ENABLE_TESTS)
     )
 
     add_subdirectory("tests/asio-abstractions-programs/MulticastConnection")
-    add_subdirectory("tests/network-camera-module/utilities-test")
+    if (NOT (APPLE AND NOT IOS))
+        add_subdirectory("tests/network-camera-module/utilities-test")
+    endif ()
     add_subdirectory("tests/test-apps/desktop")
 
-    LinkVirtualCameraLibs(VirtualCameraTest)
+    if (NOT (APPLE AND NOT IOS))
+        LinkVirtualCameraLibs(VirtualCameraTest)
+    endif ()
 endif()
 
 if (ENABLE_MOBILE_TEST_PROGRAMS)

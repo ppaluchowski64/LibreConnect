@@ -15,6 +15,7 @@ Window {
     property string baseWindowTitle: "LibreConnect"
     property string currentWindowTitleSuffix: ""
     property var fileManagerWindow: null
+    readonly property bool isMacOS: Qt.platform.os === "osx"
     title: currentWindowTitleSuffix.length > 0
            ? baseWindowTitle + " - " + currentWindowTitleSuffix
            : baseWindowTitle
@@ -100,6 +101,11 @@ Window {
     }
 
     function showVirtualCamera() {
+        if (isMacOS) {
+            virtualCameraUnsupportedDialog.open()
+            return
+        }
+
         stackView.push("qrc:/LibreConnect/desktop/VirtualCameraPage.qml", {
             windowRef: window
         })
@@ -229,6 +235,22 @@ Window {
                     showInitial()
                 }
             }
+        }
+    }
+
+    Dialog {
+        id: virtualCameraUnsupportedDialog
+        title: "Virtual Camera Unavailable"
+        modal: true
+        standardButtons: Dialog.Ok
+        anchors.centerIn: Overlay.overlay
+
+        contentItem: Text {
+            text: "Virtual Camera is not supported on macOS."
+            color: Theme.textColor
+            font.family: Theme.fontFamily
+            font.pixelSize: 14
+            wrapMode: Text.WordWrap
         }
     }
 

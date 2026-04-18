@@ -3,13 +3,16 @@
 
 #include <BaseModule.h>
 
-#include <NetworkCameraModule.h>
 #include <FileShareModule.h>
 #include <NotificationSyncModule.h>
 #include <ClipboardSyncModule.h>
 
 #include <QObject>
 #include <QEvent>
+
+#ifndef MACOS_DEVICE
+#include <NetworkCameraModule.h>
+#endif
 
 
 template<class>
@@ -33,13 +36,13 @@ public:
 
         if constexpr (std::is_same_v<type, FileShareModule>) {
             return s_instance->m_fileShareModule;
-        } else if constexpr (std::is_same_v<type, NetworkCameraModule>) {
+        }
 #ifndef MACOS_DEVICE
+        else if constexpr (std::is_same_v<type, NetworkCameraModule>) {
             return s_instance->m_networkCameraModule;
-#else
-            static_assert(always_false<std::shared_ptr<type>>, "NetworkCameraModule have no support for MacOS");
+        }
 #endif
-        } else if constexpr (std::is_same_v<type, NotificationSyncModule>) {
+        else if constexpr (std::is_same_v<type, NotificationSyncModule>) {
 #ifndef IOS_DEVICE
             return s_instance->m_notificationSyncModule;
 #else
@@ -64,7 +67,9 @@ private:
 #endif
 
     std::shared_ptr<FileShareModule> m_fileShareModule;
+#ifndef MACOS_DEVICE
     std::shared_ptr<NetworkCameraModule> m_networkCameraModule;
+#endif
     std::shared_ptr<NotificationSyncModule> m_notificationSyncModule;
     std::shared_ptr<ClipboardSyncModule> m_clipboardSyncModule;
 };

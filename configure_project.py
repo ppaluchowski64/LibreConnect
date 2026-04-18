@@ -556,13 +556,15 @@ def prepare_desktop_deps():
         else:
             print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
             sys.exit(1)
-    elif sys.platform.startswith("linux") or platform == "darwin":
+    elif sys.platform.startswith("linux"):
         build_dir = os.path.abspath("build")
         run(["brew", "install", "ffmpeg@7"])
         ffmpeg_path = subprocess.check_output(["brew", "--prefix", "ffmpeg@7"], text=True).strip()
 
         shutil.copytree(f"{ffmpeg_path}/include", "./build/ffmpeg/include", dirs_exist_ok=True)
         shutil.copytree(f"{ffmpeg_path}/lib", "./build/ffmpeg/lib", dirs_exist_ok=True)
+    elif platform == "darwin":
+        print("Skipping FFmpeg setup on macOS (virtual camera is unsupported).")
 
 def run_desktop():
     build_root = Path("build") / "desktop"

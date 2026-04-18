@@ -16,7 +16,9 @@
 #include <FileShareModule.h>
 #include <InitialConnection.h>
 #include <ModulesManager.h>
+#ifndef MACOS_DEVICE
 #include <NetworkCameraModule.h>
+#endif
 #include <NotificationSyncModule.h>
 #include <Scanner.h>
 
@@ -181,7 +183,9 @@ int main(int argc, char* argv[]) {
     LanDeviceScanner::BeginScan();
 
     auto& fileShareModule = ModulesManager::GetModuleReference<FileShareModule>();
+#ifndef MACOS_DEVICE
     auto& cameraModule = ModulesManager::GetModuleReference<NetworkCameraModule>();
+#endif
     auto& notificationModule = ModulesManager::GetModuleReference<NotificationSyncModule>();
 
     std::thread inputThread([&]() {
@@ -337,7 +341,11 @@ int main(int argc, char* argv[]) {
 
             if (cmd == "modules") {
                 PrintLine(state, std::string("FileShare: ") + ModuleStateToString(fileShareModule->GetModuleState()));
+#ifndef MACOS_DEVICE
                 PrintLine(state, std::string("NetworkCamera: ") + ModuleStateToString(cameraModule->GetModuleState()));
+#else
+                PrintLine(state, "NetworkCamera: Unsupported on macOS");
+#endif
                 PrintLine(state, std::string("NotificationSync: ") + ModuleStateToString(notificationModule->GetModuleState()));
                 continue;
             }
@@ -364,12 +372,18 @@ int main(int argc, char* argv[]) {
                 if (target == "file" || target == "files" || target == "file-share") {
                     runAction(fileShareModule, "file-share");
                 } else if (target == "camera") {
+#ifndef MACOS_DEVICE
                     runAction(cameraModule, "network-camera");
+#else
+                    PrintLine(state, "network-camera is unsupported on macOS.");
+#endif
                 } else if (target == "notify" || target == "notification") {
                     runAction(notificationModule, "notification-sync");
                 } else if (target == "all") {
                     runAction(fileShareModule, "file-share");
+#ifndef MACOS_DEVICE
                     runAction(cameraModule, "network-camera");
+#endif
                     runAction(notificationModule, "notification-sync");
                 } else {
                     PrintLine(state, "Unknown module: " + target);
