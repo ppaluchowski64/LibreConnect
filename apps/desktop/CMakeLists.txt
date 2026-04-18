@@ -1,3 +1,12 @@
+if (APPLE AND NOT IOS)
+    set(EXCLUDED_SOURCES_appLibreConnect_desktop
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/VirtualCameraController.cpp
+    )
+    set(EXCLUDED_QML_appLibreConnect_desktop
+            qml/VirtualCameraPage.qml
+    )
+endif()
+
 BuildQTExecutable(appLibreConnect_desktop
         ${CMAKE_CURRENT_SOURCE_DIR}
         LibreConnect.desktop

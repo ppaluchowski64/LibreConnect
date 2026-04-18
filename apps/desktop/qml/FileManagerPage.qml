@@ -12,6 +12,7 @@ Page {
     property var selectedRemotePaths: []
     property int lastInteractedIndex: -1
     property var pathSegments: []
+    property bool dropActive: false
     readonly property int selectedCount: selectedRemotePaths.length
     readonly property string windowTitleSuffix: "File Manager"
     signal requestClose()
@@ -143,6 +144,14 @@ Page {
         return null
     }
 
+    function uploadLocalUrls(urls) {
+        if (!urls || urls.length === 0)
+            return
+
+        for (let i = 0; i < urls.length; ++i)
+            fileManagerController.uploadLocalEntry(urls[i])
+    }
+
     background: Rectangle {
         color: Theme.backgroundColor
     }
@@ -160,10 +169,15 @@ Page {
         id: uploadDialog
         title: "Select files to upload"
         fileMode: FileDialog.OpenFiles
+        onAccepted: root.uploadLocalUrls(selectedFiles)
+    }
+
+    FolderDialog {
+        id: uploadFolderDialog
+        title: "Select folder to upload"
         onAccepted: {
-            for (let i = 0; i < selectedFiles.length; ++i) {
-                fileManagerController.uploadLocalEntry(selectedFiles[i])
-            }
+            if (selectedFolder)
+                fileManagerController.uploadLocalEntry(selectedFolder)
         }
     }
 
@@ -333,9 +347,15 @@ Page {
                         onClicked: uploadDialog.open()
                     }
 
+                    ThemedButton {
+                        text: "Upload Folder"
+                        width: 160
+                        onClicked: uploadFolderDialog.open()
+                    }
+
                     Text {
                         text: fileManagerController.localDownloadDirectory
-                        width: parent.width - 400
+                        width: parent.width - 570
                         wrapMode: Text.WordWrap
                         color: Theme.mutedTextColor
                         font.family: Theme.fontFamily
@@ -385,8 +405,9 @@ Page {
             Layout.fillHeight: true
             Layout.minimumHeight: 180
             radius: 12
-            color: Theme.panelColor
-            border.color: Theme.panelBorderColor
+            color: root.dropActive ? Qt.lighter(Theme.panelColor, 1.08) : Theme.panelColor
+            border.width: root.dropActive ? 2 : 1
+            border.color: root.dropActive ? Theme.selectedBorderColor : Theme.panelBorderColor
 
             ListView {
                 id: entriesView
@@ -486,6 +507,26 @@ Page {
                             }
                         }
                     }
+                }
+            }
+
+            DropArea {
+                anchors.fill: parent
+                onEntered: function(drag) {
+                    if (!drag.hasUrls)
+                        return
+
+                    root.dropActive = true
+                    drag.acceptProposedAction()
+                }
+                onExited: root.dropActive = false
+                onDropped: function(drop) {
+                    root.dropActive = false
+                    if (!drop.hasUrls || drop.urls.length === 0)
+                        return
+
+                    root.uploadLocalUrls(drop.urls)
+                    drop.acceptProposedAction()
                 }
             }
 

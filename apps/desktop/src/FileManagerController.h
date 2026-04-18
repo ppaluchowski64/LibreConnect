@@ -70,6 +70,8 @@ private:
     void startPendingActionIfReady();
     void beginDownloadForPath(const QString& normalizedPath, bool partOfBatch);
     void startNextQueuedDownload();
+    void startNextQueuedUpload();
+    void beginUploadForLocalPath(const QString& localPath);
     void loadDirectory(const QString& remotePath);
     void setCurrentRemotePath(const QString& currentRemotePath);
     void setRemoteEntries(const QVariantList& remoteEntries);
@@ -92,14 +94,19 @@ private:
     QString m_activeEntryName;
     QStringList m_pendingCopyPaths;
     QStringList m_pendingDownloadQueue;
+    QStringList m_pendingUploadQueue;
     QVariantList m_remoteEntries;
     std::unordered_map<std::string, FileEntry> m_entryLookup;
     bool m_busy = false;
     bool m_waitingForModule = false;
     bool m_downloadBatchActive = false;
+    bool m_uploadBatchActive = false;
     int m_downloadBatchTotal = 0;
     int m_downloadBatchCompleted = 0;
     int m_downloadBatchFailed = 0;
+    int m_uploadBatchTotal = 0;
+    int m_uploadBatchCompleted = 0;
+    int m_uploadBatchFailed = 0;
     double m_transferProgress = 0.0;
     PendingAction m_pendingAction = PendingAction::None;
 };

@@ -46,7 +46,7 @@ private:
     asio::awaitable<bool> Receive(std::filesystem::path destination, size_t length);
 
     std::unique_ptr<SSLSocket> m_socket;
-    std::shared_ptr<SSLContext> m_sslContext;
+    std::shared_ptr<SSLContext_> m_sslContext;
     std::vector<uint8_t> m_bufferIn;
     std::vector<uint8_t> m_bufferOut;
     std::atomic<size_t> m_progress{0};

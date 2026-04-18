@@ -288,33 +288,36 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
 {
     const QString localPath = localPathUrl.toLocalFile().trimmed();
     if (localPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Choose a local file first."));
+        setStatusMessage(QStringLiteral("Choose a local file or folder first."));
         return;
     }
 
     const std::filesystem::path sourcePath = localPath.toStdString();
     if (!std::filesystem::exists(sourcePath)) {
-        setStatusMessage(QStringLiteral("The selected local file does not exist anymore."));
+        setStatusMessage(QStringLiteral("The selected local file or folder does not exist anymore."));
         return;
     }
 
-    m_pendingLocalPath = localPath;
-    m_pendingEntryPath.clear();
-    m_activeEntryPath = normalizeRemotePath(localPath);
-    m_activeEntryName = QString::fromStdString(sourcePath.filename().string());
-    m_pendingAction = PendingAction::Upload;
-    setTransferProgress(0.0);
-
-    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
-    if (module->GetModuleState() != ModuleState::Enabled) {
-        m_waitingForModule = true;
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Preparing upload channels..."));
-        module->Enable(true);
+    if (m_pendingUploadQueue.contains(localPath) || m_pendingLocalPath == localPath) {
         return;
     }
 
-    startPendingActionIfReady();
+    if (!m_uploadBatchActive) {
+        m_uploadBatchActive = true;
+        m_uploadBatchTotal = 0;
+        m_uploadBatchCompleted = 0;
+        m_uploadBatchFailed = 0;
+    }
+
+    m_pendingUploadQueue.push_back(localPath);
+    ++m_uploadBatchTotal;
+
+    if (m_pendingAction == PendingAction::Upload) {
+        setStatusMessage(QStringLiteral("Queued %1 for upload.").arg(QString::fromStdString(sourcePath.filename().string())));
+        return;
+    }
+
+    startNextQueuedUpload();
 }
 
 bool FileManagerController::event(QEvent* event)
@@ -400,12 +403,32 @@ bool FileManagerController::event(QEvent* event)
 
         setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
         if (m_pendingAction == PendingAction::Upload) {
-            setBusy(false);
-            setStatusMessage(resultEvent->Success()
-                ? QStringLiteral("Uploaded %1 to %2.").arg(m_activeEntryName, m_currentRemotePath)
-                : QStringLiteral("Failed to upload %1.").arg(m_activeEntryName));
+            ++m_uploadBatchCompleted;
+            if (!resultEvent->Success()) {
+                ++m_uploadBatchFailed;
+            }
+
             if (resultEvent->Success()) {
                 refreshEntries();
+            }
+
+            if (!m_pendingUploadQueue.isEmpty()) {
+                startNextQueuedUpload();
+                return true;
+            }
+
+            setBusy(false);
+            if (m_uploadBatchTotal <= 1) {
+                setStatusMessage(resultEvent->Success()
+                    ? QStringLiteral("Uploaded %1 to %2.").arg(m_activeEntryName, m_currentRemotePath)
+                    : QStringLiteral("Failed to upload %1.").arg(m_activeEntryName));
+            } else {
+                setStatusMessage(m_uploadBatchFailed == 0
+                    ? QStringLiteral("Uploaded %1 files to %2.").arg(m_uploadBatchCompleted).arg(m_currentRemotePath)
+                    : QStringLiteral("Uploaded %1 of %2 files (%3 failed).")
+                        .arg(m_uploadBatchCompleted - m_uploadBatchFailed)
+                        .arg(m_uploadBatchTotal)
+                        .arg(m_uploadBatchFailed));
             }
         } else if (m_pendingAction == PendingAction::Open) {
             setBusy(false);
@@ -449,6 +472,11 @@ bool FileManagerController::event(QEvent* event)
         m_downloadBatchTotal = 0;
         m_downloadBatchCompleted = 0;
         m_downloadBatchFailed = 0;
+        m_pendingUploadQueue.clear();
+        m_uploadBatchActive = false;
+        m_uploadBatchTotal = 0;
+        m_uploadBatchCompleted = 0;
+        m_uploadBatchFailed = 0;
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
         return true;
@@ -510,19 +538,40 @@ void FileManagerController::startPendingActionIfReady()
 
     if (m_pendingAction == PendingAction::Upload) {
         if (m_pendingLocalPath.isEmpty()) {
+            if (!m_pendingUploadQueue.isEmpty()) {
+                startNextQueuedUpload();
+                return;
+            }
+
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("No local file selected for upload."));
+            setStatusMessage(QStringLiteral("No local file or folder selected for upload."));
+            m_uploadBatchActive = false;
+            m_uploadBatchTotal = 0;
+            m_uploadBatchCompleted = 0;
+            m_uploadBatchFailed = 0;
             return;
         }
 
         const std::filesystem::path localPath = m_pendingLocalPath.toStdString();
         if (!std::filesystem::exists(localPath)) {
+            ++m_uploadBatchCompleted;
+            ++m_uploadBatchFailed;
+            if (!m_pendingUploadQueue.isEmpty()) {
+                setStatusMessage(QStringLiteral("Skipped a file that no longer exists. Continuing queued uploads."));
+                startNextQueuedUpload();
+                return;
+            }
+
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("The selected local file no longer exists."));
+            setStatusMessage(QStringLiteral("The selected local file or folder no longer exists."));
+            m_uploadBatchActive = false;
+            m_uploadBatchTotal = 0;
+            m_uploadBatchCompleted = 0;
+            m_uploadBatchFailed = 0;
             return;
         }
 
@@ -651,6 +700,67 @@ void FileManagerController::startNextQueuedDownload()
     const QString nextPath = m_pendingDownloadQueue.front();
     m_pendingDownloadQueue.pop_front();
     beginDownloadForPath(nextPath, true);
+}
+
+void FileManagerController::startNextQueuedUpload()
+{
+    if (m_pendingUploadQueue.isEmpty()) {
+        return;
+    }
+
+    const QString nextPath = m_pendingUploadQueue.front();
+    m_pendingUploadQueue.pop_front();
+    beginUploadForLocalPath(nextPath);
+}
+
+void FileManagerController::beginUploadForLocalPath(const QString& localPath)
+{
+    const std::filesystem::path sourcePath = localPath.toStdString();
+    if (!std::filesystem::exists(sourcePath)) {
+        ++m_uploadBatchCompleted;
+        ++m_uploadBatchFailed;
+
+        if (!m_pendingUploadQueue.isEmpty()) {
+            startNextQueuedUpload();
+            return;
+        }
+
+        setBusy(false);
+        setStatusMessage(m_uploadBatchTotal <= 1
+            ? QStringLiteral("The selected local file or folder does not exist anymore.")
+            : QStringLiteral("Uploaded %1 of %2 files (%3 failed).")
+                .arg(m_uploadBatchCompleted - m_uploadBatchFailed)
+                .arg(m_uploadBatchTotal)
+                .arg(m_uploadBatchFailed));
+        m_pendingAction = PendingAction::None;
+        m_uploadBatchActive = false;
+        m_uploadBatchTotal = 0;
+        m_uploadBatchCompleted = 0;
+        m_uploadBatchFailed = 0;
+        m_pendingUploadQueue.clear();
+        m_pendingLocalPath.clear();
+        m_activeEntryPath.clear();
+        m_activeEntryName.clear();
+        return;
+    }
+
+    m_pendingLocalPath = localPath;
+    m_pendingEntryPath.clear();
+    m_activeEntryPath = normalizeRemotePath(localPath);
+    m_activeEntryName = QString::fromStdString(sourcePath.filename().string());
+    m_pendingAction = PendingAction::Upload;
+    setTransferProgress(0.0);
+
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        m_waitingForModule = true;
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Preparing upload channels..."));
+        module->Enable(true);
+        return;
+    }
+
+    startPendingActionIfReady();
 }
 
 void FileManagerController::loadDirectory(const QString& remotePath)

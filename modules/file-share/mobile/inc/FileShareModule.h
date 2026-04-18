@@ -6,6 +6,7 @@
 #include <future>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <BaseModule.h>
 #include <TransferChannel.h>
@@ -30,6 +31,8 @@ private:
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
     std::mutex m_directoryScanMutex;
     std::unordered_map<std::string, std::shared_future<DirectoryResult>> m_directoryScanFutures;
+    mutable std::mutex m_incomingPostReservationMutex;
+    mutable std::unordered_set<size_t> m_reservedIncomingPostChannels;
 
 protected:
     void EnableResponseCallbacks() override;
@@ -45,4 +48,3 @@ protected:
 };
 
 #endif //FILE_SHARE_MODULE_H
-

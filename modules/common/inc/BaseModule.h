@@ -42,7 +42,8 @@ enum class ModuleType : uint8_t {
     NotificationSync,
     NetworkCamera,
     NetworkFileSystem,
-    ClipboardSync
+    ClipboardSync,
+    RemoteInput
 };
 
 class ModuleErrorEvent final : public QEvent {

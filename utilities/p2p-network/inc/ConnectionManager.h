@@ -79,8 +79,8 @@ public:
         co_return s_instance->m_requestPackageMap.Pop(requestID);
     }
 
-    static std::shared_ptr<SSLContext> GetSSLContextClient();
-    static std::shared_ptr<SSLContext> GetSSLContextServer();
+    static std::shared_ptr<SSLContext_> GetSSLContextClient();
+    static std::shared_ptr<SSLContext_> GetSSLContextServer();
 
 
 private:
@@ -96,7 +96,7 @@ private:
     static void SeekInitialConnection(TCPEndpoint endpoint);
 
     static void Initialize();
-    static std::shared_ptr<SSLContext> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid(), bool allowUnpinnedPairing = false);
+    static std::shared_ptr<SSLContext_> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid(), bool allowUnpinnedPairing = false);
     static void RunContext();
     static void SetSeekingEndpoint(TCPEndpoint endpoint);
     static void CancelPendingRequests();
@@ -110,8 +110,8 @@ private:
     static std::once_flag     s_flag;
 
     IOContext& m_context;
-    std::shared_ptr<SSLContext> m_sslContextClient;
-    std::shared_ptr<SSLContext> m_sslContextServer;
+    std::shared_ptr<SSLContext_> m_sslContextClient;
+    std::shared_ptr<SSLContext_> m_sslContextServer;
 
     std::atomic<size_t> m_currentRequestID{0};
 

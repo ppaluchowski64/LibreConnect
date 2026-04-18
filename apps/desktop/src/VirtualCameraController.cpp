@@ -21,7 +21,7 @@ void VirtualCameraController::setSelectedCameraIndex(const int selectedCameraInd
     m_selectedCameraIndex = selectedCameraIndex;
     emit selectedCameraIndexChanged();
 
-    rebuildFormatDescriptions();
+    rebuildFormatList();
 }
 
 void VirtualCameraController::setSelectedFormatIndex(const int selectedFormatIndex)
@@ -155,7 +155,7 @@ void VirtualCameraController::rebuildCameraDescriptions()
             m_selectedCameraIndex = -1;
             emit selectedCameraIndexChanged();
         }
-        rebuildFormatDescriptions();
+        rebuildFormatList();
         return;
     }
 
@@ -164,32 +164,48 @@ void VirtualCameraController::rebuildCameraDescriptions()
         emit selectedCameraIndexChanged();
     }
 
-    rebuildFormatDescriptions();
+    rebuildFormatList();
 }
 
-void VirtualCameraController::rebuildFormatDescriptions()
+#include <numeric>
+
+static QString getAspectRatio(int w, int h) {
+    if (w == 0 || h == 0) return QStringLiteral("Unknown");
+    double r = static_cast<double>(w) / h;
+    if (std::abs(r - 16.0 / 9.0) < 0.05) return QStringLiteral("16:9");
+    if (std::abs(r - 4.0 / 3.0) < 0.05) return QStringLiteral("4:3");
+    if (std::abs(r - 16.0 / 10.0) < 0.05) return QStringLiteral("16:10");
+    if (std::abs(r - 1.0) < 0.05) return QStringLiteral("1:1");
+    int d = std::gcd(w, h);
+    return QStringLiteral("%1:%2").arg(w / d).arg(h / d);
+}
+
+void VirtualCameraController::rebuildFormatList()
 {
-    QStringList descriptions;
+    QVariantList newList;
 
     if (m_selectedCameraIndex >= 0 && m_selectedCameraIndex < static_cast<int>(m_cameraSpecifications.size())) {
         const std::vector<CameraFormat>& formats = m_cameraSpecifications.at(m_selectedCameraIndex).formats;
-        descriptions.reserve(static_cast<qsizetype>(formats.size()));
+        newList.reserve(static_cast<qsizetype>(formats.size()));
 
-        for (const CameraFormat& format : formats) {
-            descriptions.append(QStringLiteral("%1 x %2 @ %3 fps")
-                .arg(format.width)
-                .arg(format.height)
-                .arg(format.framerate));
+        for (int i = 0; i < static_cast<int>(formats.size()); ++i) {
+            const CameraFormat& format = formats.at(i);
+            QVariantMap map;
+            map.insert(QStringLiteral("index"), i);
+            map.insert(QStringLiteral("width"), format.width);
+            map.insert(QStringLiteral("height"), format.height);
+            map.insert(QStringLiteral("fps"), format.framerate);
+            map.insert(QStringLiteral("aspectRatio"), getAspectRatio(format.width, format.height));
+            map.insert(QStringLiteral("label"), QStringLiteral("%1 \u00D7 %2").arg(format.width).arg(format.height));
+            newList.append(map);
         }
     }
 
-    if (m_formatDescriptions != descriptions) {
-        m_formatDescriptions = descriptions;
-        emit formatDescriptionsChanged();
-    }
+    m_formatList = newList;
+    emit formatListChanged();
 
-    const int newIndex = descriptions.isEmpty() ? -1 : 0;
-    if (m_selectedFormatIndex < 0 || m_selectedFormatIndex >= descriptions.size()) {
+    const int newIndex = newList.isEmpty() ? -1 : 0;
+    if (m_selectedFormatIndex < 0 || m_selectedFormatIndex >= newList.size()) {
         if (m_selectedFormatIndex != newIndex) {
             m_selectedFormatIndex = newIndex;
             emit selectedFormatIndexChanged();
