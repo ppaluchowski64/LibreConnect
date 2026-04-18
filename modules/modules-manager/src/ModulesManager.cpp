@@ -41,6 +41,7 @@ ModulesManager::ModulesManager() {
 #endif
 
     m_clipboardSyncModule = std::make_shared<ClipboardSyncModule>();
+    m_remoteInputModule = std::make_shared<RemoteInputModule>();
 
 #ifdef ANDROID_DEVICE
     SetMainServiceBackendEnabled(true);
