@@ -6,6 +6,7 @@
 #include <FileShareModule.h>
 #include <NotificationSyncModule.h>
 #include <ClipboardSyncModule.h>
+#include <RemoteInputModule.h>
 
 #include <QObject>
 #include <QEvent>
@@ -50,6 +51,8 @@ public:
 #endif
         } else if constexpr (std::is_same_v<type, ClipboardSyncModule>) {
             return s_instance->m_clipboardSyncModule;
+        } else if constexpr (std::is_same_v<type, RemoteInputModule>) {
+            return s_instance->m_remoteInputModule;
         } else {
             static_assert(always_false<std::shared_ptr<type>>, "Unknown module type");
         }
@@ -72,6 +75,7 @@ private:
 #endif
     std::shared_ptr<NotificationSyncModule> m_notificationSyncModule;
     std::shared_ptr<ClipboardSyncModule> m_clipboardSyncModule;
+    std::shared_ptr<RemoteInputModule> m_remoteInputModule;
 };
 
 #endif

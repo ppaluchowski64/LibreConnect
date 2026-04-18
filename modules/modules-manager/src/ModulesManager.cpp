@@ -68,6 +68,7 @@ void ModulesManager::Initialize() {
 #endif
 
     s_instance->m_clipboardSyncModule->Initialize(true);
+    s_instance->m_remoteInputModule->Initialize(true);
 }
 
 void ModulesManager::Shutdown() {
@@ -86,6 +87,7 @@ void ModulesManager::Shutdown() {
 #endif
 
         s_instance->m_clipboardSyncModule->Shutdown(true);
+        s_instance->m_remoteInputModule->Shutdown(true);
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }
