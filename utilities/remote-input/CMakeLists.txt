@@ -62,6 +62,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
         target_link_libraries(remote-input PUBLIC
                 "-framework ApplicationServices"
                 "-framework Carbon"
+                "-framework AppKit"
         )
     endif ()
 
