@@ -10,6 +10,7 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <vector>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -68,6 +69,7 @@ private:
     std::atomic<int64_t> m_decodePacketPts{0};
     std::atomic<bool> m_acceptFrames{false};
     std::atomic<bool> m_receiveFramesRunning{false};
+    std::vector<uint8_t> m_outputFrameBuffer;
 
 protected:
     void EnableResponseCallbacks() override;

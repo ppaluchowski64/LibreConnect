@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 
 extern "C" {
     #include <libavutil/pixdesc.h>
@@ -15,6 +16,7 @@ namespace {
     constexpr uint64_t kMaxWaitForIdrAfterLossMs = 2000;
     constexpr int64_t kFullHdPixels = 1920 * 1080;
     constexpr uint64_t kBusyDecodeDropLogEvery = 30;
+    constexpr uint64_t kReceiveFrameLogEvery = 30;
 
     uint64_t GetMonotonicTimeMs() {
         return static_cast<uint64_t>(
@@ -87,57 +89,62 @@ namespace {
         return size;
     }
 
-    bool ContainsH264NalType(const std::vector<uint8_t>& frame, const uint8_t nalType) {
+    struct NalSummary {
+        bool hasIdr{false};
+        bool hasVps{false};
+        bool hasSps{false};
+        bool hasPps{false};
+    };
+
+    NalSummary AnalyzeNalUnits(const std::vector<uint8_t>& frame, const CodecID codecId) {
+        NalSummary summary;
         const size_t size = frame.size();
         if (size < 5) {
-            return false;
+            return summary;
         }
 
         size_t pos = 0;
         while (pos < size) {
-            const size_t start = FindStart(frame.data(), frame.size(), pos);
+            const size_t start = FindStart(frame.data(), size, pos);
             if (start >= size) {
                 break;
             }
 
             const size_t scSize = (frame[start + 2] == 0x01) ? 3 : 4;
             const size_t nalStart = start + scSize;
-            if (nalStart < size && (frame[nalStart] & 0x1F) == nalType) {
-                return true;
-            }
-
-            pos = nalStart;
-        }
-
-        return false;
-    }
-
-    bool ContainsH265NalType(const std::vector<uint8_t>& frame, const uint8_t nalType) {
-        const size_t size = frame.size();
-        if (size < 6) {
-            return false;
-        }
-
-        size_t pos = 0;
-        while (pos < size) {
-            const size_t start = FindStart(frame.data(), frame.size(), pos);
-            if (start >= size) {
+            if (nalStart >= size) {
                 break;
             }
 
-            const size_t scSize = (frame[start + 2] == 0x01) ? 3 : 4;
-            const size_t nalStart = start + scSize;
-            if (nalStart + 1 < size) {
-                const uint8_t type = static_cast<uint8_t>((frame[nalStart] >> 1) & 0x3F);
-                if (type == nalType) {
-                    return true;
+            if (codecId == CodecID::H265) {
+                if (nalStart + 1 >= size) {
+                    break;
+                }
+
+                const uint8_t nalType = static_cast<uint8_t>((frame[nalStart] >> 1) & 0x3F);
+                summary.hasIdr = summary.hasIdr || nalType == 19 || nalType == 20 || nalType == 21;
+                summary.hasVps = summary.hasVps || nalType == 32;
+                summary.hasSps = summary.hasSps || nalType == 33;
+                summary.hasPps = summary.hasPps || nalType == 34;
+
+                if (summary.hasIdr && summary.hasVps && summary.hasSps && summary.hasPps) {
+                    break;
+                }
+            } else {
+                const uint8_t nalType = static_cast<uint8_t>(frame[nalStart] & 0x1F);
+                summary.hasIdr = summary.hasIdr || nalType == 5;
+                summary.hasSps = summary.hasSps || nalType == 7;
+                summary.hasPps = summary.hasPps || nalType == 8;
+
+                if (summary.hasIdr && summary.hasSps && summary.hasPps) {
+                    break;
                 }
             }
 
             pos = nalStart;
         }
 
-        return false;
+        return summary;
     }
 
     SRTP::VideoCodec ToSrtpVideoCodec(const CodecID codecId) {
@@ -223,6 +230,10 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     const int64_t pixels = static_cast<int64_t>(m_cameraSettings.width) * static_cast<int64_t>(m_cameraSettings.height);
     const CodecID targetCodecId = (pixels > kFullHdPixels) ? CodecID::H265 : CodecID::H264;
     m_activeCodecId = targetCodecId;
+    m_outputFrameBuffer.clear();
+    if (pixels > 0) {
+        m_outputFrameBuffer.reserve(static_cast<size_t>((pixels * 3) / 2));
+    }
 
     m_codec = GetDecoderCodec(targetCodecId);
     if (!m_codec) {
@@ -285,11 +296,14 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         return;
     }
 
+    if (frameBuffer.empty()) {
+        return;
+    }
+
     const uint64_t nowMs = GetMonotonicTimeMs();
     const bool usingH265 = (m_activeCodecId == CodecID::H265);
-    const bool hasIdr = usingH265
-        ? (ContainsH265NalType(frameBuffer, 19) || ContainsH265NalType(frameBuffer, 20) || ContainsH265NalType(frameBuffer, 21))
-        : ContainsH264NalType(frameBuffer, 5);
+    const NalSummary nalSummary = AnalyzeNalUnits(frameBuffer, m_activeCodecId);
+    const bool hasIdr = nalSummary.hasIdr;
 
     if (m_waitForIdrAfterLoss.load()) {
         if (!hasIdr) {
@@ -320,22 +334,18 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
     }
 
     if (usingH265) {
-        m_seenVps = m_seenVps || ContainsH265NalType(frameBuffer, 32);
-        m_seenSps = m_seenSps || ContainsH265NalType(frameBuffer, 33);
-        m_seenPps = m_seenPps || ContainsH265NalType(frameBuffer, 34);
+        m_seenVps = m_seenVps || nalSummary.hasVps;
+        m_seenSps = m_seenSps || nalSummary.hasSps;
+        m_seenPps = m_seenPps || nalSummary.hasPps;
         if (!m_seenVps || !m_seenSps || !m_seenPps) {
             return;
         }
     } else {
-        m_seenSps = m_seenSps || ContainsH264NalType(frameBuffer, 7);
-        m_seenPps = m_seenPps || ContainsH264NalType(frameBuffer, 8);
+        m_seenSps = m_seenSps || nalSummary.hasSps;
+        m_seenPps = m_seenPps || nalSummary.hasPps;
         if (!m_seenSps || !m_seenPps) {
             return;
         }
-    }
-
-    if (frameBuffer.empty()) {
-        return;
     }
 
     av_packet_unref(m_packet);
@@ -510,12 +520,13 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             goto cleanup;
         }
 
-        std::vector<uint8_t> buffer;
-        buffer.resize(static_cast<size_t>(bufferSize));
+        if (m_outputFrameBuffer.size() != static_cast<size_t>(bufferSize)) {
+            m_outputFrameBuffer.resize(static_cast<size_t>(bufferSize));
+        }
 
         const int copyRet = av_image_copy_to_buffer(
-            buffer.data(),
-            buffer.size(),
+            m_outputFrameBuffer.data(),
+            m_outputFrameBuffer.size(),
             srcFrame->data,
             srcFrame->linesize,
             targetFmt,
@@ -530,7 +541,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         }
         ReleaseDecodedFrames();
 
-        m_camera.PushFrame(buffer.data());
+        m_camera.PushFrame(m_outputFrameBuffer.data());
     }
 
 cleanup:
@@ -568,6 +579,15 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
         co_await timer.async_wait(asio::use_awaitable);
     }
 
+    const auto pipelineStart = std::chrono::steady_clock::now();
+    auto lastReceiveAt = pipelineStart;
+    bool hasPreviousReceive = false;
+    uint64_t receivedLogCounter = 0;
+    const int expectedFps = std::max(1, static_cast<int>(m_cameraSettings.framerate));
+    const double expectedFrameIntervalMs = 1000.0 / static_cast<double>(expectedFps);
+    double totalAbsJitterMs = 0.0;
+    uint64_t jitterSampleCount = 0;
+
     while (GetModuleState() == ModuleState::Enabled && m_acceptFrames.load()) {
         const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
         if (!stream) {
@@ -575,6 +595,19 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
         }
 
         co_await stream->AsyncReceive(pipelineState->frameBuffers[receiveBufferIndex]);
+
+        const auto now = std::chrono::steady_clock::now();
+        const auto pipelineElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pipelineStart).count();
+        int64_t receiveDeltaMs = 0;
+        if (hasPreviousReceive) {
+            receiveDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastReceiveAt).count();
+            totalAbsJitterMs += std::abs(static_cast<double>(receiveDeltaMs) - expectedFrameIntervalMs);
+            ++jitterSampleCount;
+        }
+        lastReceiveAt = now;
+        hasPreviousReceive = true;
+        const double avgAbsJitterMs = (jitterSampleCount > 0) ? (totalAbsJitterMs / static_cast<double>(jitterSampleCount)) : 0.0;
+
         if (GetModuleState() != ModuleState::Enabled || !m_acceptFrames.load()) {
             break;
         }
@@ -617,14 +650,15 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
             pipelineState->hasPendingLatest.store(true, std::memory_order_release);
             if ((droppedBusyFrames % kBusyDecodeDropLogEvery) == 1) {
                 Debug::LogWarning(
-                    "NetworkCameraModule: Dropping frame (decoder busy / codec pipeline saturated). dropped_busy={}, stashed_latest={}, received={}, queued_for_decode={}, codec={}, wait_for_idr={}, pending_decoder_flush={}",
+                    "NetworkCameraModule: Dropping frame (decoder busy / codec pipeline saturated). dropped_busy={}, stashed_latest={}, received={}, queued_for_decode={}, codec={}, wait_for_idr={}, pending_decoder_flush={}, avg_abs_jitter={:.2f}ms",
                     droppedBusyFrames,
                     stashedLatestFrames,
                     receivedEncodedFrames,
                     queuedForDecodeFrames,
                     (m_activeCodecId == CodecID::H265 ? "H265" : "H264"),
                     m_waitForIdrAfterLoss.load(),
-                    pendingDecoderFlush
+                    pendingDecoderFlush,
+                    avgAbsJitterMs
                 );
             }
             continue;
@@ -870,6 +904,8 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_waitForIdrStartMs.store(0);
     m_waitForIdrDroppedFrames.store(0);
     m_decodePacketPts.store(0);
+    m_outputFrameBuffer.clear();
+    m_outputFrameBuffer.shrink_to_fit();
 
     co_return;
 }
