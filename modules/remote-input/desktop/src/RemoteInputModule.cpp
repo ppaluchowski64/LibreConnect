@@ -30,6 +30,10 @@ void RemoteInputModule::EnableResponseCallbacks() {
         instance->m_peerModuleEnabled.store(peerEnabled);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_INPUT, [instance](PC_Package&& package) mutable {
+        if (instance->GetModuleState() != ModuleState::Enabled) {
+            return;
+        }
+
         const Key key = package->GetValue<Key>();
         const InputEventType type = package->GetValue<InputEventType>();
 
@@ -47,12 +51,22 @@ void RemoteInputModule::EnableResponseCallbacks() {
             break;
         }
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT, [instance](PC_Package&& package) mutable {
+        if (instance->GetModuleState() != ModuleState::Enabled) {
+            return;
+        }
+
+        const MediaSignal key = package->GetValue<MediaSignal>();
+        instance->m_remote.ExecuteSignal(key);
+    });
 }
 
 void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_INPUT);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT);
 }
 
 void RemoteInputModule::OnInitialize() {}

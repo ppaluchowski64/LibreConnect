@@ -7,6 +7,10 @@ void RemoteInputModule::SendInput(const Key key, const InputEventType type) {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SEND_INPUT, key, type);
 }
 
+void RemoteInputModule::SendMediaInput(const MediaSignal signal) {
+    ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT, signal);
+}
+
 void RemoteInputModule::EnableResponseCallbacks() {
     const std::shared_ptr<RemoteInputModule> instance = std::static_pointer_cast<RemoteInputModule>(shared_from_this());
 
