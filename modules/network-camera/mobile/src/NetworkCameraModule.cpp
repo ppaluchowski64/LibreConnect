@@ -386,15 +386,22 @@ asio::awaitable<void> NetworkCameraModule::OnEnable() {
     ResetPerformanceStats();
 
 #ifdef ANDROID_DEVICE
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Battery);
     if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Battery);
         Debug::LogWarning("NetworkCameraModule: Battery optimization is still enabled; background/screen-off streaming reliability may be reduced");
+    } else {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Battery);
     }
 #endif
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Camera);
     if (!co_await PermissionManager::RequestCameraAccessPermission()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Camera);
         Disable();
         co_return;
     }
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Camera);
 
     if (ShouldAbortEnable()) {
         co_return;

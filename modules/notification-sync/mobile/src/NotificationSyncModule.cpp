@@ -183,28 +183,38 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         context.object<jobject>()
     );
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Notifications);
     if (!co_await PermissionManager::RequestNotificationEmitPermission()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Notifications);
         Disable();
         co_return;
     }
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Notifications);
 
     if (ShouldAbortEnable()) {
         co_return;
     }
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Notifications);
     if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Notifications);
         Disable();
         co_return;
     }
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Notifications);
 
     if (ShouldAbortEnable()) {
         co_return;
     }
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Battery);
     if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Battery);
         Debug::LogWarning(
             "NotificationSyncModule: Battery optimization is still enabled; notification relay reliability may be reduced"
         );
+    } else {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Battery);
     }
 
     if (ShouldAbortEnable()) {
