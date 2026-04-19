@@ -12,9 +12,9 @@ Page {
     property string activeDeviceId: ""
     property string initialFeature: ""
     property string selectedFeature: ""
-    readonly property color destructiveFill: Theme.dark ? "#3A2328" : "#FDECEF"
-    readonly property color destructiveFillHover: Theme.dark ? "#4A2B32" : "#F9DCE3"
-    readonly property color destructiveText: Theme.dark ? "#FF7B8C" : "#B00020"
+    readonly property color destructiveFill: Theme.destructiveFillColor
+    readonly property color destructiveFillHover: Theme.destructiveFillHoverColor
+    readonly property color destructiveText: Theme.dangerColor
     readonly property string windowTitleSuffix: {
         if (selectedFeature === "fileManager")
             return "File Manager"

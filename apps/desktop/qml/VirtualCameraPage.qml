@@ -115,27 +115,33 @@ Page {
 
                         background: Rectangle {
                             radius: 8
-                            color: Theme.buttonColor
+                            color: cameraCombo.hovered
+                                   ? (Theme.dark ? Qt.lighter(Theme.buttonColor, 1.12) : Qt.darker(Theme.buttonColor, 1.05))
+                                   : Theme.buttonColor
                             border.color: Theme.panelBorderColor
                             border.width: 1
                         }
 
                         delegate: ItemDelegate {
+                            id: cameraOptionDelegate
                             width: cameraCombo.width
                             height: 42
+                            hoverEnabled: true
                             highlighted: cameraCombo.highlightedIndex === index
 
                             contentItem: Text {
                                 text: modelData
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 15
-                                color: Theme.textColor
+                                color: (cameraOptionDelegate.highlighted || cameraOptionDelegate.hovered) ? Theme.selectedTextColor : Theme.textColor
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                             }
 
                             background: Rectangle {
-                                color: parent.highlighted ? Theme.selectedColor : Theme.panelColor
+                                color: cameraOptionDelegate.highlighted
+                                       ? Theme.selectedColor
+                                       : (cameraOptionDelegate.hovered ? Theme.buttonColor : Theme.panelColor)
                                 border.color: Theme.panelBorderColor
                                 border.width: 1
                             }
@@ -195,7 +201,7 @@ Page {
                                     text: modelData
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 14
-                                    color: root.selectedAspectRatio === modelData ? (Theme.dark ? "#ffffff" : Theme.textColor) : Theme.textColor
+                                    color: root.selectedAspectRatio === modelData ? (Theme.selectedTextColor) : Theme.textColor
                                 }
 
                                 MouseArea {
@@ -251,14 +257,14 @@ Page {
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 15
                                         font.bold: true
-                                        color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.dark ? "#ffffff" : Theme.textColor) : Theme.textColor
+                                        color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.selectedTextColor) : Theme.textColor
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     Text {
                                         text: modelData.fps + " FPS"
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 12
-                                        color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.dark ? "#ffffff" : Theme.mutedTextColor) : Theme.mutedTextColor
+                                        color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.selectedTextColor) : Theme.mutedTextColor
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                 }

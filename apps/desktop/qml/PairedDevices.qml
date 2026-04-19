@@ -271,7 +271,7 @@ Page {
                                         width: 10
                                         height: 10
                                         radius: 5
-                                        color: rowItem.online ? "#3BB54A" : Theme.subtleTextColor
+                                        color: rowItem.online ? Theme.successColor : Theme.subtleTextColor
                                         anchors.verticalCenter: parent.verticalCenter
                                     }
 
@@ -279,7 +279,7 @@ Page {
                                         text: rowItem.online ? "Online" : "Offline"
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 12
-                                        color: rowItem.online ? "#3BB54A" : Theme.subtleTextColor
+                                        color: rowItem.online ? Theme.successColor : Theme.subtleTextColor
                                     }
                                 }
                             }
