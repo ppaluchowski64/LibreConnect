@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <filesystem>
 
+#include <DebugLog.h>
 #include <ConnectionManager.h>
 #include <FileShareEvents.h>
 #include <FileShareModule.h>
@@ -417,6 +418,22 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
 
 bool FileManagerController::event(QEvent* event)
 {
+    if (event->type() == ModuleErrorEvent::Type) {
+        auto* moduleErrorEvent = static_cast<ModuleErrorEvent*>(event);
+        const QString message = QStringLiteral("%1 module error: %2.")
+            .arg(QString::fromLatin1(ModuleTypeToString(moduleErrorEvent->GetModuleType())))
+            .arg(QString::fromLatin1(ModuleFailReasonToString(moduleErrorEvent->GetError())));
+
+        if (moduleErrorEvent->GetModuleType() == ModuleType::NetworkFileSystem) {
+            setBusy(false);
+            setStatusMessage(message);
+        } else {
+            Debug::LogWarning("FileManagerController received unrelated ModuleErrorEvent: {}", message.toStdString());
+        }
+
+        return true;
+    }
+
     if (event->type() == FetchDirectoryEntriesResultEvent::Type) {
         auto* directoryEvent = static_cast<FetchDirectoryEntriesResultEvent*>(event);
         const QString eventPath = normalizeRemotePath(QString::fromStdString(directoryEvent->GetPath()));

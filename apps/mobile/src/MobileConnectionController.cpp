@@ -119,5 +119,18 @@ bool MobileConnectionController::event(QEvent* e)
         return true;
     }
 
+    if (type == ModuleErrorEvent::Type) {
+        handleModuleErrorEvent(static_cast<ModuleErrorEvent*>(e));
+        return true;
+    }
+
     return QObject::event(e);
+}
+
+void MobileConnectionController::handleModuleErrorEvent(ModuleErrorEvent* ev)
+{
+    const QString message = QStringLiteral("%1 module error: %2.")
+        .arg(QString::fromLatin1(ModuleTypeToString(ev->GetModuleType())))
+        .arg(QString::fromLatin1(ModuleFailReasonToString(ev->GetError())));
+    setError(message);
 }
