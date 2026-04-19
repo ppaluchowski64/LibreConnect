@@ -504,6 +504,7 @@ bool FileManagerController::event(QEvent* event)
             return true;
         }
 
+        const PendingAction completedAction = m_pendingAction;
         auto* resultEvent = static_cast<EntryTransferResultEvent*>(event);
         const QString entryPath = composeRemotePath(resultEvent->GetFileEntry());
         if (!m_activeEntryPath.isEmpty() && entryPath != m_activeEntryPath) {
@@ -580,16 +581,21 @@ bool FileManagerController::event(QEvent* event)
         m_activeEntryPath.clear();
         m_activeEntryName.clear();
         m_pendingCopyPaths.clear();
-        m_pendingDownloadQueue.clear();
-        m_downloadBatchActive = false;
-        m_downloadBatchTotal = 0;
-        m_downloadBatchCompleted = 0;
-        m_downloadBatchFailed = 0;
-        m_pendingUploadQueue.clear();
-        m_uploadBatchActive = false;
-        m_uploadBatchTotal = 0;
-        m_uploadBatchCompleted = 0;
-        m_uploadBatchFailed = 0;
+
+        if (completedAction == PendingAction::Download) {
+            m_pendingDownloadQueue.clear();
+            m_downloadBatchActive = false;
+            m_downloadBatchTotal = 0;
+            m_downloadBatchCompleted = 0;
+            m_downloadBatchFailed = 0;
+        } else if (completedAction == PendingAction::Upload) {
+            m_pendingUploadQueue.clear();
+            m_uploadBatchActive = false;
+            m_uploadBatchTotal = 0;
+            m_uploadBatchCompleted = 0;
+            m_uploadBatchFailed = 0;
+        }
+
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
         startNextQueuedAction();
@@ -663,7 +669,13 @@ void FileManagerController::startNextQueuedAction()
         return;
     }
 
-    if (!m_pendingUploadQueue.isEmpty() && m_uploadBatchActive) {
+    if (!m_pendingUploadQueue.isEmpty()) {
+        if (!m_uploadBatchActive) {
+            m_uploadBatchActive = true;
+            if (m_uploadBatchTotal == 0) {
+                m_uploadBatchTotal = m_pendingUploadQueue.size();
+            }
+        }
         startNextQueuedUpload();
     }
 }
