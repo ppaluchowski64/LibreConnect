@@ -307,9 +307,13 @@ Window {
         modal: true
         standardButtons: Dialog.Ok
         anchors.centerIn: Overlay.overlay
+        contentWidth: 320
+        contentHeight: virtualCameraUnsupportedText.implicitHeight
 
         contentItem: Text {
+            id: virtualCameraUnsupportedText
             text: "Virtual Camera is not supported on macOS."
+            width: virtualCameraUnsupportedDialog.contentWidth
             color: Theme.textColor
             font.family: Theme.fontFamily
             font.pixelSize: 14
