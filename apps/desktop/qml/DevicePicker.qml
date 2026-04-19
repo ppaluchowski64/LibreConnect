@@ -15,6 +15,7 @@ Page {
     }
 
     property bool isConnecting: false
+    property bool connectionAttemptActive: false
 
     background: Rectangle {
         color: Theme.backgroundColor
@@ -25,8 +26,18 @@ Page {
             return
 
         const dev = discovery.deviceAt(deviceListView.currentIndex)
+        windowRef.prepareConnection(dev.deviceId, dev.deviceName, !connectionController.hasPairedDevices)
+        connectionAttemptActive = true
         connectionController.connectTo(dev.ipAddress, dev.port, 0)
         isConnecting = true
+    }
+
+    function endConnectionAttempt(showBackTarget) {
+        isConnecting = false
+        connectionAttemptActive = false
+        if (showBackTarget && allowBackToPairedDevices) {
+            windowRef.showPairedDevices()
+        }
     }
 
     Image {
@@ -238,15 +249,20 @@ Page {
 
         function onConnectedChanged() {
             if (connectionController.connected) {
-                isConnecting = false
+                endConnectionAttempt(false)
                 discovery.cancelScan()
-                windowRef.showHome()
+                return
+            }
+
+            if (connectionAttemptActive || verificationDialog.visible) {
+                endConnectionAttempt(true)
             }
         }
 
         function onLastErrorChanged() {
-            if (connectionController.lastError.length > 0)
-                isConnecting = false
+            if (connectionController.lastError.length > 0) {
+                endConnectionAttempt(true)
+            }
         }
 
         function onPendingChanged() {
@@ -259,6 +275,9 @@ Page {
                 verificationDialog.open()
             } else if (verificationDialog.visible) {
                 verificationDialog.close()
+                if (!connectionController.connected && !connectionController.pending) {
+                    endConnectionAttempt(true)
+                }
             }
         }
     }
@@ -299,9 +318,10 @@ Page {
 
             TextField {
                 id: verificationCodeField
-                placeholderText: "12-digit code"
+                placeholderText: "6-digit code"
                 inputMethodHints: Qt.ImhDigitsOnly
-                maximumLength: 12
+                maximumLength: 6
+                validator: RegularExpressionValidator { regularExpression: /\d{0,6}/ }
                 width: parent.width
                 color: Theme.textColor
                 placeholderTextColor: Theme.subtleTextColor
@@ -311,7 +331,11 @@ Page {
                     border.color: Theme.selectedBorderColor
                     border.width: 1
                 }
-                onAccepted: connectionController.submitVerificationCode(verificationCodeField.text)
+                onAccepted: {
+                    if (verificationCodeField.text.length === 6) {
+                        connectionController.submitVerificationCode(verificationCodeField.text)
+                    }
+                }
             }
 
             Text {
@@ -335,7 +359,7 @@ Page {
 
                 ThemedButton {
                     text: "Submit"
-                    enabled: verificationCodeField.text.length > 0
+                    enabled: verificationCodeField.text.length === 6
                     onClicked: connectionController.submitVerificationCode(verificationCodeField.text)
                 }
 

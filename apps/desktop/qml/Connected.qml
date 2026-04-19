@@ -5,6 +5,8 @@ import LibreConnect.desktop 1.0
 Page {
     id: root
 
+    required property var windowRef
+    property string activeDeviceName: "Connected Device"
     readonly property string windowTitleSuffix: ""
 
     background: Rectangle {
@@ -40,12 +42,23 @@ Page {
         anchors.margins: 32
         rightPadding: logo.width + 24
         spacing: 12
+
         Text {
             text: "Connected!"
             font.family: Theme.fontFamily
             font.pixelSize: 20
             font.bold: true
             color: Theme.textColor
+        }
+
+        Text {
+            text: root.activeDeviceName && root.activeDeviceName.length > 0
+                  ? ("Device: " + root.activeDeviceName)
+                  : "Device connected successfully."
+            font.family: Theme.fontFamily
+            font.pixelSize: 16
+            color: Theme.mutedTextColor
+            wrapMode: Text.WordWrap
         }
 
         Text {
@@ -57,17 +70,14 @@ Page {
     }
 
     ThemedButton {
-        id: homeButton
-        text: "Home"
+        id: continueButton
+        text: "Continue"
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 24
         width: 160
         height: 56
         font.pixelSize: 20
-
-        onClicked: {
-            console.log("Home clicked")
-        }
+        onClicked: windowRef.showHome()
     }
 }

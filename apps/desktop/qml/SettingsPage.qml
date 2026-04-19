@@ -6,7 +6,6 @@ import LibreConnect.desktop 1.0
 Page {
     id: root
 
-    required property var windowRef
     readonly property string windowTitleSuffix: "Settings"
 
     NotificationSyncController {
@@ -29,48 +28,41 @@ Page {
     }
 
     background: Rectangle {
-        color: Theme.backgroundColor
+        color: "transparent"
     }
 
-    Column {
+    ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 28
-        spacing: 22
+        anchors.margins: 18
+        spacing: 16
 
-        Row {
-            spacing: 16
-
-            ThemedButton {
-                text: "Back"
-                width: 100
-                height: 42
-                onClicked: windowRef.goBack()
-            }
-
-            Text {
-                text: "Settings"
-                font.family: Theme.fontFamily
-                font.pixelSize: 30
-                font.bold: true
-                color: Theme.textColor
-                verticalAlignment: Text.AlignVCenter
-            }
+        Text {
+            Layout.fillWidth: true
+            text: "Settings"
+            font.family: Theme.fontFamily
+            font.pixelSize: 30
+            font.bold: true
+            color: Theme.textColor
+            verticalAlignment: Text.AlignVCenter
         }
 
         Rectangle {
-            width: parent.width
-            height: 148
+            id: themeCard
+            Layout.fillWidth: true
+            implicitHeight: themeCardColumn.implicitHeight + 32
+            readonly property bool compactThemeLayout: width < 520
             radius: 12
             color: Theme.panelColor
             border.color: Theme.panelBorderColor
 
-            Row {
+            ColumnLayout {
+                id: themeCardColumn
                 anchors.fill: parent
                 anchors.margins: 18
-                spacing: 16
+                spacing: 12
 
                 Column {
-                    width: parent.width - 220
+                    Layout.fillWidth: true
                     spacing: 8
 
                     Text {
@@ -87,7 +79,7 @@ Page {
                         font.pixelSize: 15
                         wrapMode: Text.WordWrap
                         color: Theme.mutedTextColor
-                        width: parent.width
+                        width: parent.width - 4
                     }
 
                     Text {
@@ -96,42 +88,139 @@ Page {
                         font.pixelSize: 13
                         wrapMode: Text.WordWrap
                         color: Theme.subtleTextColor
-                        width: parent.width
+                        width: parent.width - 4
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    visible: !themeCard.compactThemeLayout
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    ComboBox {
+                        id: themeCombo
+                        Layout.preferredWidth: 180
+                        Layout.minimumWidth: 180
+                        Layout.maximumWidth: 180
+                        Layout.preferredHeight: 42
+                        Layout.minimumHeight: 42
+                        Layout.maximumHeight: 42
+                        model: root.themeModes
+                        textRole: "label"
+                        currentIndex: root.currentThemeIndex()
+                        onActivated: Theme.setMode(root.themeModes[currentIndex].value)
+
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 15
+
+                        contentItem: Text {
+                            leftPadding: 10
+                            rightPadding: themeCombo.indicator.width + themeCombo.spacing
+                            text: themeCombo.displayText
+                            font: themeCombo.font
+                            color: Theme.textColor
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+
+                        indicator: Text {
+                            x: themeCombo.width - width - 10
+                            y: (themeCombo.height - height) / 2
+                            text: "v"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            color: Theme.textColor
+                        }
+
+                        background: Rectangle {
+                            radius: 8
+                            color: Theme.buttonColor
+                            border.color: Theme.panelBorderColor
+                            border.width: 1
+                        }
+
+                        delegate: ItemDelegate {
+                            width: themeCombo.width
+                            height: 42
+                            highlighted: themeCombo.highlightedIndex === index
+
+                            contentItem: Text {
+                                text: modelData.label
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 15
+                                color: Theme.textColor
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+
+                            background: Rectangle {
+                                color: parent.highlighted ? Theme.selectedColor : Theme.panelColor
+                                border.color: Theme.panelBorderColor
+                                border.width: 1
+                            }
+                        }
+
+                        popup: Popup {
+                            y: themeCombo.height + 4
+                            width: themeCombo.width
+                            implicitHeight: contentItem.implicitHeight
+                            padding: 1
+
+                            contentItem: ListView {
+                                clip: true
+                                implicitHeight: contentHeight
+                                model: themeCombo.popup.visible ? themeCombo.delegateModel : null
+                                currentIndex: themeCombo.highlightedIndex
+                                ScrollBar.vertical: ScrollBar {
+                                    policy: ScrollBar.AsNeeded
+                                }
+                            }
+
+                            background: Rectangle {
+                                radius: 8
+                                color: Theme.panelColor
+                                border.color: Theme.panelBorderColor
+                                border.width: 1
+                            }
+                        }
                     }
                 }
 
                 ComboBox {
-                    id: themeCombo
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 180
-                    height: 42
+                    id: themeComboCompact
+                    visible: themeCard.compactThemeLayout
+                    Layout.preferredWidth: 180
+                    Layout.minimumWidth: 180
+                    Layout.maximumWidth: 180
+                    Layout.preferredHeight: 42
+                    Layout.minimumHeight: 42
+                    Layout.maximumHeight: 42
                     model: root.themeModes
                     textRole: "label"
                     currentIndex: root.currentThemeIndex()
                     onActivated: Theme.setMode(root.themeModes[currentIndex].value)
-
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
-
                     contentItem: Text {
                         leftPadding: 10
-                        rightPadding: themeCombo.indicator.width + themeCombo.spacing
-                        text: themeCombo.displayText
-                        font: themeCombo.font
+                        rightPadding: themeComboCompact.indicator.width + themeComboCompact.spacing
+                        text: themeComboCompact.displayText
+                        font: themeComboCompact.font
                         color: Theme.textColor
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
                     }
-
                     indicator: Text {
-                        x: themeCombo.width - width - 10
-                        y: (themeCombo.height - height) / 2
+                        x: themeComboCompact.width - width - 10
+                        y: (themeComboCompact.height - height) / 2
                         text: "v"
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
                         color: Theme.textColor
                     }
-
                     background: Rectangle {
                         radius: 8
                         color: Theme.buttonColor
@@ -140,9 +229,9 @@ Page {
                     }
 
                     delegate: ItemDelegate {
-                        width: themeCombo.width
+                        width: themeComboCompact.width
                         height: 42
-                        highlighted: themeCombo.highlightedIndex === index
+                        highlighted: themeComboCompact.highlightedIndex === index
 
                         contentItem: Text {
                             text: modelData.label
@@ -161,16 +250,16 @@ Page {
                     }
 
                     popup: Popup {
-                        y: themeCombo.height + 4
-                        width: themeCombo.width
+                        y: themeComboCompact.height + 4
+                        width: themeComboCompact.width
                         implicitHeight: contentItem.implicitHeight
                         padding: 1
 
                         contentItem: ListView {
                             clip: true
                             implicitHeight: contentHeight
-                            model: themeCombo.popup.visible ? themeCombo.delegateModel : null
-                            currentIndex: themeCombo.highlightedIndex
+                            model: themeComboCompact.popup.visible ? themeComboCompact.delegateModel : null
+                            currentIndex: themeComboCompact.highlightedIndex
                             ScrollBar.vertical: ScrollBar {
                                 policy: ScrollBar.AsNeeded
                             }
@@ -188,20 +277,21 @@ Page {
         }
 
         Rectangle {
-            width: parent.width
-            height: 132
+            Layout.fillWidth: true
+            implicitHeight: notificationCardColumn.implicitHeight + 32
             radius: 12
             color: Theme.panelColor
             border.color: Theme.panelBorderColor
 
-            Row {
+            ColumnLayout {
+                id: notificationCardColumn
                 anchors.fill: parent
                 anchors.margins: 18
-                spacing: 16
+                spacing: 12
 
-                Column {
-                    width: parent.width - syncToggle.width - 20
-                    spacing: 8
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
 
                     Text {
                         text: "Enable Notification Sync"
@@ -209,26 +299,30 @@ Page {
                         font.pixelSize: 20
                         font.bold: true
                         color: Theme.textColor
+                        Layout.fillWidth: true
                     }
 
-                    Text {
-                        text: notificationSyncController.statusMessage
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 15
-                        wrapMode: Text.WordWrap
-                        color: Theme.mutedTextColor
-                        width: parent.width
+                    Switch {
+                        id: syncToggle
+                        checked: notificationSyncController.enabled
+                        enabled: !notificationSyncController.busy
+                        onClicked: notificationSyncController.setNotificationSyncEnabled(checked)
                     }
                 }
 
-                Switch {
-                    id: syncToggle
-                    anchors.verticalCenter: parent.verticalCenter
-                    checked: notificationSyncController.enabled
-                    enabled: !notificationSyncController.busy
-                    onClicked: notificationSyncController.setNotificationSyncEnabled(checked)
+                Text {
+                    Layout.fillWidth: true
+                    text: notificationSyncController.statusMessage
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
                 }
             }
+        }
+
+        Item {
+            Layout.fillHeight: true
         }
     }
 }

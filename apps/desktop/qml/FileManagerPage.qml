@@ -6,9 +6,9 @@ import LibreConnect.desktop 1.0
 
 Page {
     id: root
+    clip: true
+    readonly property bool compactControls: width < 760
 
-    property var windowRef: null
-    property bool standaloneWindow: false
     property var selectedRemotePaths: []
     property int lastInteractedIndex: -1
     property var pathSegments: []
@@ -16,7 +16,6 @@ Page {
     property bool pathEditMode: false
     readonly property int selectedCount: selectedRemotePaths.length
     readonly property string windowTitleSuffix: "File Manager"
-    signal requestClose()
 
     FileManagerController {
         id: fileManagerController
@@ -155,24 +154,31 @@ Page {
 
     function beginPathEdit() {
         pathEditMode = true
-        pathEditField.text = fileManagerController.currentRemotePath
-        pathEditField.forceActiveFocus()
-        pathEditField.selectAll()
+        pathEditFieldCompact.text = fileManagerController.currentRemotePath
+        pathEditFieldWide.text = fileManagerController.currentRemotePath
+        if (root.compactControls) {
+            pathEditFieldCompact.forceActiveFocus()
+            pathEditFieldCompact.selectAll()
+        } else {
+            pathEditFieldWide.forceActiveFocus()
+            pathEditFieldWide.selectAll()
+        }
     }
 
     function commitPathEdit() {
-        const nextPath = pathEditField.text
+        const nextPath = root.compactControls ? pathEditFieldCompact.text : pathEditFieldWide.text
         pathEditMode = false
         fileManagerController.browseTo(nextPath)
     }
 
     function cancelPathEdit() {
         pathEditMode = false
-        pathEditField.text = fileManagerController.currentRemotePath
+        pathEditFieldCompact.text = fileManagerController.currentRemotePath
+        pathEditFieldWide.text = fileManagerController.currentRemotePath
     }
 
     background: Rectangle {
-        color: Theme.backgroundColor
+        color: "transparent"
     }
 
     FolderDialog {
@@ -232,25 +238,12 @@ Page {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 28
-        spacing: 20
+        anchors.margins: 16
+        spacing: 12
 
         Row {
             Layout.fillWidth: true
             spacing: 16
-
-            ThemedButton {
-                text: standaloneWindow ? "Close" : "Back"
-                width: 100
-                height: 42
-                onClicked: {
-                    if (standaloneWindow) {
-                        requestClose()
-                    } else if (windowRef) {
-                        windowRef.goBack()
-                    }
-                }
-            }
 
             Text {
                 text: "File Manager"
@@ -275,12 +268,13 @@ Page {
                 anchors.margins: 18
                 spacing: 14
 
-                Row {
+                Flow {
                     width: parent.width
                     spacing: 10
+                    visible: root.compactControls
 
                     Rectangle {
-                        width: parent.width - 230
+                        width: parent.width
                         height: 36
                         radius: 6
                         color: Theme.backgroundColor
@@ -288,7 +282,7 @@ Page {
                         border.width: 1
 
                         TextField {
-                            id: pathEditField
+                            id: pathEditFieldCompact
                             anchors.fill: parent
                             anchors.margins: 4
                             visible: root.pathEditMode
@@ -316,15 +310,15 @@ Page {
                                 id: breadcrumbFlickable
                                 height: parent.height
                                 width: Math.min(contentWidth, parent.width - 28 - parent.spacing)
-                                contentWidth: breadcrumbRow.width
-                                contentHeight: breadcrumbRow.height
+                                contentWidth: breadcrumbRowCompact.width
+                                contentHeight: breadcrumbRowCompact.height
                                 clip: true
                                 ScrollBar.horizontal: ScrollBar {
                                     policy: ScrollBar.AsNeeded
                                 }
 
                                 Row {
-                                    id: breadcrumbRow
+                                    id: breadcrumbRowCompact
                                     spacing: 6
 
                                     Repeater {
@@ -345,6 +339,7 @@ Page {
                                                 text: ">"
                                                 font.family: Theme.fontFamily
                                                 color: Theme.subtleTextColor
+                                                anchors.verticalCenter: parent.verticalCenter
                                                 verticalAlignment: Text.AlignVCenter
                                             }
                                         }
@@ -367,31 +362,140 @@ Page {
 
                     ThemedButton {
                         text: "Up"
-                        width: 70
+                        width: 90
                         onClicked: fileManagerController.goUp()
                     }
 
                     ThemedButton {
                         text: "Refresh"
-                        width: 120
+                        width: 130
                         onClicked: fileManagerController.refreshEntries()
                     }
                 }
 
                 Row {
                     width: parent.width
-                    spacing: 12
+                    spacing: 10
+                    visible: !root.compactControls
+
+                    Rectangle {
+                        width: Math.max(160, parent.width - upButton.width - refreshButton.width - (2 * parent.spacing))
+                        height: 36
+                        radius: 6
+                        color: Theme.backgroundColor
+                        border.color: Theme.panelBorderColor
+                        border.width: 1
+
+                        TextField {
+                            id: pathEditFieldWide
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            visible: root.pathEditMode
+                            color: Theme.textColor
+                            placeholderText: "Remote path"
+                            placeholderTextColor: Theme.subtleTextColor
+                            selectedTextColor: Theme.textColor
+                            selectionColor: Theme.selectedColor
+                            background: null
+                            onAccepted: root.commitPathEdit()
+                            onEditingFinished: {
+                                if (!focus && root.pathEditMode)
+                                    root.commitPathEdit()
+                            }
+                            Keys.onEscapePressed: root.cancelPathEdit()
+                        }
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 3
+                            spacing: 8
+                            visible: !root.pathEditMode
+
+                            Flickable {
+                                height: parent.height
+                                width: Math.min(contentWidth, parent.width - 28 - parent.spacing)
+                                contentWidth: breadcrumbRowWide.width
+                                contentHeight: breadcrumbRowWide.height
+                                clip: true
+                                ScrollBar.horizontal: ScrollBar {
+                                    policy: ScrollBar.AsNeeded
+                                }
+
+                                Row {
+                                    id: breadcrumbRowWide
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: root.pathSegments
+
+                                        delegate: Row {
+                                            spacing: 6
+
+                                            ThemedButton {
+                                                text: modelData.label
+                                                height: 30
+                                                width: Math.max(46, contentItem.implicitWidth + 16)
+                                                onClicked: fileManagerController.browseTo(modelData.path)
+                                            }
+
+                                            Text {
+                                                visible: index < root.pathSegments.length - 1
+                                                text: ">"
+                                                font.family: Theme.fontFamily
+                                                color: Theme.subtleTextColor
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Item {
+                                height: parent.height
+                                width: Math.max(28, parent.width - parent.spacing - 56)
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.beginPathEdit()
+                                }
+                            }
+                        }
+                    }
 
                     ThemedButton {
+                        id: upButton
+                        text: "Up"
+                        width: 90
+                        onClicked: fileManagerController.goUp()
+                    }
+
+                    ThemedButton {
+                        id: refreshButton
+                        text: "Refresh"
+                        width: 130
+                        onClicked: fileManagerController.refreshEntries()
+                    }
+                }
+
+                Flow {
+                    width: parent.width
+                    spacing: 12
+                    visible: root.compactControls
+
+                    ThemedButton {
+                        id: chooseDownloadFolderButton
                         text: "Choose Download Folder"
-                        width: 220
+                        width: Math.min(220, parent.width)
                         onClicked: folderDialog.open()
                     }
 
                     Text {
                         text: fileManagerController.localDownloadDirectory
-                        width: parent.width - 240
+                        width: Math.max(120, Math.min(parent.width, parent.width - chooseDownloadFolderButton.width - parent.spacing))
+                        height: chooseDownloadFolderButton.height
                         wrapMode: Text.WordWrap
+                        elide: Text.ElideMiddle
                         color: Theme.mutedTextColor
                         font.family: Theme.fontFamily
                         verticalAlignment: Text.AlignVCenter
@@ -400,7 +504,71 @@ Page {
 
                 Row {
                     width: parent.width
+                    spacing: 12
+                    visible: !root.compactControls
+
+                    ThemedButton {
+                        id: chooseDownloadFolderButtonWide
+                        text: "Choose Download Folder"
+                        width: 220
+                        onClicked: folderDialog.open()
+                    }
+
+                    Text {
+                        text: fileManagerController.localDownloadDirectory
+                        width: Math.max(120, parent.width - chooseDownloadFolderButtonWide.width - parent.spacing)
+                        height: chooseDownloadFolderButtonWide.height
+                        wrapMode: Text.WordWrap
+                        elide: Text.ElideMiddle
+                        color: Theme.mutedTextColor
+                        font.family: Theme.fontFamily
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                Flow {
+                    width: parent.width
                     spacing: 10
+                    visible: root.compactControls
+
+                    ThemedButton {
+                        text: "Copy"
+                        width: 110
+                        enabled: root.selectedCount > 0
+                        onClicked: fileManagerController.copyEntries(root.selectedRemotePaths)
+                    }
+
+                    ThemedButton {
+                        text: "Download"
+                        width: 130
+                        enabled: root.selectedCount > 0
+                        onClicked: fileManagerController.downloadEntries(root.selectedRemotePaths)
+                    }
+
+                    ThemedButton {
+                        text: "Clear"
+                        width: 80
+                        enabled: root.selectedCount > 0
+                        onClicked: root.clearSelection()
+                    }
+
+                    ThemedButton {
+                        text: "Upload Files"
+                        width: 150
+                        onClicked: uploadDialog.open()
+                    }
+
+                    ThemedButton {
+                        text: "Upload Folder"
+                        width: 160
+                        onClicked: uploadFolderDialog.open()
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 10
+                    visible: !root.compactControls
 
                     ThemedButton {
                         text: "Copy"
@@ -446,7 +614,7 @@ Page {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumHeight: 180
+            Layout.minimumHeight: 120
             radius: 12
             color: root.dropActive ? Qt.lighter(Theme.panelColor, 1.08) : Theme.panelColor
             border.width: root.dropActive ? 2 : 1

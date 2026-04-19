@@ -5,7 +5,6 @@ import LibreConnect.desktop 1.0
 Page {
     id: root
 
-    required property var windowRef
     readonly property string windowTitleSuffix: "Virtual Camera"
 
     property string selectedAspectRatio: ""
@@ -34,25 +33,18 @@ Page {
     }
 
     background: Rectangle {
-        color: Theme.backgroundColor
+        color: "transparent"
     }
 
     Column {
         id: mainColumn
         anchors.fill: parent
-        anchors.margins: 28
-        spacing: 20
+        anchors.margins: 16
+        spacing: 12
 
         Row {
             id: headerRow
             spacing: 16
-
-            ThemedButton {
-                text: "Back"
-                width: 100
-                height: 42
-                onClicked: windowRef.goBack()
-            }
 
             Text {
                 text: "Virtual Camera"
@@ -89,15 +81,6 @@ Page {
                     id: innerColumn
                     width: panelFlickable.width
                     spacing: 14
-
-                    Text {
-                        text: "Choose the remote camera and format to expose through the virtual camera."
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 18
-                        wrapMode: Text.WordWrap
-                        color: Theme.textColor
-                        width: parent.width
-                    }
 
                     ComboBox {
                         id: cameraCombo
@@ -191,46 +174,36 @@ Page {
                         visible: root.availableAspectRatios.length > 0
                     }
 
-                    Flickable {
+                    Flow {
                         width: parent.width
-                        height: 36
-                        contentWidth: aspectRow.width
+                        spacing: 10
                         visible: root.availableAspectRatios.length > 0
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.horizontal: ScrollBar {
-                            policy: ScrollBar.AsNeeded
-                        }
 
-                        Row {
-                            id: aspectRow
-                            spacing: 10
-                            Repeater {
-                                model: root.availableAspectRatios
-                                delegate: Rectangle {
-                                    width: arText.implicitWidth + 32
-                                    height: 36
-                                    radius: 18
-                                    color: root.selectedAspectRatio === modelData ? Theme.selectedColor : (arMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor)
-                                    border.color: root.selectedAspectRatio === modelData ? Theme.selectedBorderColor : Theme.panelBorderColor
-                                    border.width: 1
+                        Repeater {
+                            model: root.availableAspectRatios
+                            delegate: Rectangle {
+                                width: arText.implicitWidth + 32
+                                height: 36
+                                radius: 18
+                                color: root.selectedAspectRatio === modelData ? Theme.selectedColor : (arMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor)
+                                border.color: root.selectedAspectRatio === modelData ? Theme.selectedBorderColor : Theme.panelBorderColor
+                                border.width: 1
 
-                                    Text {
-                                        id: arText
-                                        anchors.centerIn: parent
-                                        text: modelData
-                                        font.family: Theme.fontFamily
-                                        font.pixelSize: 14
-                                        color: root.selectedAspectRatio === modelData ? (Theme.dark ? "#ffffff" : Theme.textColor) : Theme.textColor
-                                    }
+                                Text {
+                                    id: arText
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 14
+                                    color: root.selectedAspectRatio === modelData ? (Theme.dark ? "#ffffff" : Theme.textColor) : Theme.textColor
+                                }
 
-                                    MouseArea {
-                                        id: arMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        enabled: !virtualCameraController.enabled && !virtualCameraController.busy
-                                        onClicked: root.selectedAspectRatio = modelData
-                                    }
+                                MouseArea {
+                                    id: arMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    enabled: !virtualCameraController.enabled && !virtualCameraController.busy
+                                    onClicked: root.selectedAspectRatio = modelData
                                 }
                             }
                         }

@@ -2,6 +2,8 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <asio/error.hpp>
 #include <asio/ssl/error.hpp>
+#include <algorithm>
+#include <QRegularExpression>
 
 namespace
 {
@@ -120,12 +122,20 @@ void DeviceConnectionController::submitVerificationCode(const QString& code)
         return;
     }
 
+    const QString trimmedCode = code.trimmed();
+    static const QRegularExpression sixDigitPattern(QStringLiteral("^\\d{6}$"));
+    if (!sixDigitPattern.match(trimmedCode).hasMatch()) {
+        m_verificationError = QStringLiteral("Code must be exactly 6 digits.");
+        emit verificationErrorChanged();
+        return;
+    }
+
     if (!m_verificationError.isEmpty()) {
         m_verificationError.clear();
         emit verificationErrorChanged();
     }
 
-    const std::string response = code.trimmed().toStdString();
+    const std::string response = trimmedCode.toStdString();
     m_verificationEvent->SendAnswer(response);
 }
 
@@ -136,7 +146,27 @@ void DeviceConnectionController::cancelVerification()
     }
 
     m_verificationEvent.reset();
-    // Let the backend handle the rejection response and disconnect.
+    if (m_verificationPending) {
+        m_verificationPending = false;
+        emit verificationPendingChanged();
+    }
+
+    if (m_verificationTriesLeft != 0) {
+        m_verificationTriesLeft = 0;
+        emit verificationTriesLeftChanged();
+    }
+
+    if (!m_verificationError.isEmpty()) {
+        m_verificationError.clear();
+        emit verificationErrorChanged();
+    }
+
+    if (m_pending) {
+        m_pending = false;
+        emit pendingChanged();
+    }
+
+    ConnectionManager::Disconnect();
 }
 
 bool DeviceConnectionController::event(QEvent* e)
@@ -249,6 +279,12 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
 void DeviceConnectionController::handleError(const std::string& message)
 {
     Debug::LogError("DeviceConnectionController error: {}", message);
+
+    if (m_pending) {
+        m_pending = false;
+        emit pendingChanged();
+    }
+
     m_lastError = QString::fromStdString(message);
 
     emit lastErrorChanged();
@@ -257,6 +293,12 @@ void DeviceConnectionController::handleError(const std::string& message)
 void DeviceConnectionController::handleError(const std::string& message, QEvent::Type type)
 {
     Debug::LogError("DeviceConnectionController error from event {}: {}", static_cast<int>(type), message);
+
+    if (m_pending) {
+        m_pending = false;
+        emit pendingChanged();
+    }
+
     m_lastError = QString::fromStdString(message);
 
     emit lastErrorChanged();
@@ -286,7 +328,12 @@ void DeviceConnectionController::handleConnectionPendingEvent(ConnectionPendingE
 
 void DeviceConnectionController::handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev)
 {
-    m_verificationTriesLeft = ev->GetLeftTries();
+    // Ignore stale events after cancel/close.
+    if (!m_verificationPending) {
+        return;
+    }
+
+    m_verificationTriesLeft = std::max(0, ev->GetLeftTries());
     emit verificationTriesLeftChanged();
 
     m_verificationError = QString("Verification failed (%1 tries left)").arg(m_verificationTriesLeft);
