@@ -8,8 +8,8 @@
 class NotificationSyncModule final : public BaseModule {
 private:
     asio::awaitable<void> FetchNotificationList();
-    void ProcessNotificationPacket(NotificationPacket&& packet);
-    void ProcessNotificationButtonAction(int64_t id, std::wstring&& option);
+    void ProcessNotificationPacket(const NotificationPacket& packet);
+    void ProcessNotificationButtonAction(int64_t id, const std::wstring& option);
     std::shared_ptr<NotificationTransferChannel> GetChannel() const;
     void SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel);
     std::shared_ptr<NotificationTransferChannel> TakeChannel();

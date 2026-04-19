@@ -89,13 +89,8 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(debug-log)
 
 if (WIN32)
-    FetchContent_Declare(
-            wintoast
-            GIT_REPOSITORY https://github.com/mohabouje/WinToast.git
-            GIT_TAG master
-    )
-
-    FetchContent_MakeAvailable(wintoast)
+    add_library(WinToast STATIC vendor/WinToast/inc/wintoastlib.h vendor/WinToast/src/wintoastlib.cpp)
+    target_include_directories(WinToast PUBLIC vendor/WinToast/inc/)
 endif ()
 
 qt_standard_project_setup()
