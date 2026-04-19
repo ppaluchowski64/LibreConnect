@@ -198,9 +198,8 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
                 m_captureSession.reset();
                 m_camera.reset();
 
-                if (m_videoStream) {
-                    m_videoStream->Close();
-                    m_videoStream.reset();
+                if (const std::shared_ptr<SRTP::Stream> stream = ClearVideoStream()) {
+                    stream->Close();
                 }
 
                 if (m_codecContext) {
@@ -400,11 +399,17 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
                     Debug::LogWarning("No H264 parameter sets in encoder extradata; relying on in-band SPS/PPS");
                 }
 
-                m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, requestedFormat.framerate);
+                std::shared_ptr<SRTP::Stream> stream = std::make_shared<SRTP::Stream>(
+                    m_context,
+                    m_localKey,
+                    m_remoteKey,
+                    requestedFormat.framerate
+                );
                 const auto peerAddr = ConnectionManager::GetPeerAddress();
                 const auto peerPort = m_portNumber.load();
                 Debug::Log("Binding SRTP to {}:{}", peerAddr.to_string(), peerPort);
-                m_videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
+                stream->Bind(UDPEndpoint(peerAddr, peerPort));
+                SetVideoStream(stream);
 
                 if (m_swsContext) {
                     sws_freeContext(m_swsContext);
@@ -507,7 +512,7 @@ asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame, cons
         co_return;
     }
 
-    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    const std::shared_ptr<SRTP::Stream> stream = GetVideoStream();
     if (!stream) {
         frame.unmap();
         co_return;
@@ -633,7 +638,7 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
         co_return;
     }
 
-    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    const std::shared_ptr<SRTP::Stream> stream = GetVideoStream();
     if (!stream) {
         co_return;
     }

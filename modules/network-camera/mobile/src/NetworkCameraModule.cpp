@@ -266,6 +266,23 @@ void NetworkCameraModule::ReleaseFrameSlot() {
     }
 }
 
+std::shared_ptr<SRTP::Stream> NetworkCameraModule::GetVideoStream() const {
+    std::lock_guard<std::mutex> lock(m_videoStreamMutex);
+    return m_videoStream;
+}
+
+void NetworkCameraModule::SetVideoStream(std::shared_ptr<SRTP::Stream> stream) {
+    std::lock_guard<std::mutex> lock(m_videoStreamMutex);
+    m_videoStream = std::move(stream);
+}
+
+std::shared_ptr<SRTP::Stream> NetworkCameraModule::ClearVideoStream() {
+    std::lock_guard<std::mutex> lock(m_videoStreamMutex);
+    std::shared_ptr<SRTP::Stream> stream = std::move(m_videoStream);
+    m_videoStream.reset();
+    return stream;
+}
+
 void NetworkCameraModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
@@ -409,9 +426,8 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_streamActive.store(false);
     m_streamGeneration.fetch_add(1);
 
-    if (m_videoStream) {
-        m_videoStream->Close();
-        m_videoStream.reset();
+    if (const std::shared_ptr<SRTP::Stream> stream = ClearVideoStream()) {
+        stream->Close();
     }
 
     m_h264ParameterSets.clear();

@@ -286,8 +286,25 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     m_waitForIdrStartMs.store(0);
     m_waitForIdrDroppedFrames.store(0);
     m_decodePacketPts.store(0);
+
+    {
+        std::lock_guard<std::mutex> lock(m_pacerMutex);
+        m_pacerQueue.clear();
+        m_pacerFreeBuffers.clear();
+    }
+    m_pacerRunning.store(true);
+
+    {
+        std::lock_guard<std::mutex> lock(m_encodedMutex);
+        m_encodedQueue.clear();
+    }
+
     m_acceptFrames.store(true);
 
+    m_decodeThread = std::thread([this]() {
+        DecodeFramesLoop();
+    });
+    asio::co_spawn(m_context, FramePacer(), asio::detached);
     asio::co_spawn(m_context, ReceiveFrames(), asio::detached);
 }
 
@@ -520,13 +537,22 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             goto cleanup;
         }
 
-        if (m_outputFrameBuffer.size() != static_cast<size_t>(bufferSize)) {
-            m_outputFrameBuffer.resize(static_cast<size_t>(bufferSize));
+        std::vector<uint8_t> newBuffer;
+        {
+            std::lock_guard<std::mutex> lock(m_pacerMutex);
+            if (!m_pacerFreeBuffers.empty()) {
+                newBuffer = std::move(m_pacerFreeBuffers.back());
+                m_pacerFreeBuffers.pop_back();
+            }
+        }
+
+        if (newBuffer.size() != static_cast<size_t>(bufferSize)) {
+            newBuffer.resize(static_cast<size_t>(bufferSize));
         }
 
         const int copyRet = av_image_copy_to_buffer(
-            m_outputFrameBuffer.data(),
-            m_outputFrameBuffer.size(),
+            newBuffer.data(),
+            newBuffer.size(),
             srcFrame->data,
             srcFrame->linesize,
             targetFmt,
@@ -541,73 +567,76 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
         }
         ReleaseDecodedFrames();
 
-        m_camera.PushFrame(m_outputFrameBuffer.data());
+        {
+            std::lock_guard<std::mutex> lock(m_pacerMutex);
+            if (m_pacerQueue.size() >= 5) {
+                m_pacerFreeBuffers.push_back(std::move(m_pacerQueue.front()));
+                m_pacerQueue.pop_front();
+            }
+            m_pacerQueue.push_back(std::move(newBuffer));
+        }
     }
 
 cleanup:
     av_packet_unref(m_packet);
 }
 
-asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
-    struct ReceivePipelineState {
-        std::array<std::vector<uint8_t>, 2> frameBuffers;
-        std::vector<uint8_t> pendingLatestFrame;
-        std::mutex pendingLatestFrameMutex;
-        std::atomic<bool> hasPendingLatest{false};
-        std::atomic<bool> isProcessing{false};
-    };
-
-    auto pipelineState = std::make_shared<ReceivePipelineState>();
-    for (auto& buffer : pipelineState->frameBuffers) {
-        buffer.reserve(1024 * 1024 * 2); // 2 MiB
-    }
-    pipelineState->pendingLatestFrame.reserve(1024 * 1024 * 2); // 2 MiB
-    size_t receiveBufferIndex = 0;
-    bool pendingDecoderFlush = false;
-    uint64_t receivedEncodedFrames = 0;
-    uint64_t queuedForDecodeFrames = 0;
-    uint64_t droppedBusyFrames = 0;
-    uint64_t stashedLatestFrames = 0;
-
-    m_receiveFramesRunning.store(true);
-
-    Debug::Log("NetworkCameraModule: ReceiveFrames started");
+asio::awaitable<void> NetworkCameraModule::FramePacer() {
     asio::steady_timer timer(m_context);
+    const int targetFps = std::max(1, static_cast<int>(m_cameraSettings.framerate));
+    const auto interval = std::chrono::microseconds(1000000 / targetFps);
+    auto nextWake = std::chrono::steady_clock::now();
 
+    while (m_pacerRunning.load() && m_acceptFrames.load()) {
+        nextWake += interval;
+        timer.expires_at(nextWake);
+        co_await timer.async_wait(asio::use_awaitable);
+
+        if (!m_pacerRunning.load() || !m_acceptFrames.load()) {
+            break;
+        }
+
+        std::vector<uint8_t> frameToPush;
+        {
+            std::lock_guard<std::mutex> lock(m_pacerMutex);
+            if (!m_pacerQueue.empty()) {
+                frameToPush = std::move(m_pacerQueue.front());
+                m_pacerQueue.pop_front();
+            }
+        }
+
+        if (!frameToPush.empty()) {
+            m_camera.PushFrame(frameToPush.data());
+
+            std::lock_guard<std::mutex> lock(m_pacerMutex);
+            if (m_pacerFreeBuffers.size() < 4) {
+                m_pacerFreeBuffers.push_back(std::move(frameToPush));
+            }
+        }
+    }
+
+    m_pacerRunning.store(false);
+}
+
+asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
+    uint64_t receivedEncodedFrames = 0;
+    m_receiveFramesRunning.store(true);
+    Debug::Log("NetworkCameraModule: ReceiveFrames started");
+
+    asio::steady_timer timer(m_context);
     while (GetModuleState() == ModuleState::Enabling) {
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait(asio::use_awaitable);
     }
 
-    const auto pipelineStart = std::chrono::steady_clock::now();
-    auto lastReceiveAt = pipelineStart;
-    bool hasPreviousReceive = false;
-    uint64_t receivedLogCounter = 0;
-    const int expectedFps = std::max(1, static_cast<int>(m_cameraSettings.framerate));
-    const double expectedFrameIntervalMs = 1000.0 / static_cast<double>(expectedFps);
-    double totalAbsJitterMs = 0.0;
-    uint64_t jitterSampleCount = 0;
+    std::vector<uint8_t> frameBuffer;
+    frameBuffer.reserve(1024 * 1024 * 2);
 
     while (GetModuleState() == ModuleState::Enabled && m_acceptFrames.load()) {
         const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
-        if (!stream) {
-            break;
-        }
+        if (!stream) break;
 
-        co_await stream->AsyncReceive(pipelineState->frameBuffers[receiveBufferIndex]);
-
-        const auto now = std::chrono::steady_clock::now();
-        const auto pipelineElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - pipelineStart).count();
-        int64_t receiveDeltaMs = 0;
-        if (hasPreviousReceive) {
-            receiveDeltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastReceiveAt).count();
-            totalAbsJitterMs += std::abs(static_cast<double>(receiveDeltaMs) - expectedFrameIntervalMs);
-            ++jitterSampleCount;
-        }
-        lastReceiveAt = now;
-        hasPreviousReceive = true;
-        const double avgAbsJitterMs = (jitterSampleCount > 0) ? (totalAbsJitterMs / static_cast<double>(jitterSampleCount)) : 0.0;
-
+        co_await stream->AsyncReceive(frameBuffer);
         if (GetModuleState() != ModuleState::Enabled || !m_acceptFrames.load()) {
             break;
         }
@@ -618,97 +647,68 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
                 Debug::LogWarning("RTP loss detected, waiting for next IDR frame");
                 m_waitForIdrStartMs.store(GetMonotonicTimeMs());
                 m_waitForIdrDroppedFrames.store(0);
-                if (pipelineState->isProcessing.load()) {
-                    pendingDecoderFlush = true;
-                } else if (m_codecContext) {
+                if (m_codecContext) {
                     avcodec_flush_buffers(m_codecContext);
                 }
             }
         }
 
-        if (pipelineState->frameBuffers[receiveBufferIndex].empty()) {
+        if (frameBuffer.empty()) {
             continue;
         }
 
         ++receivedEncodedFrames;
 
-        if (pendingDecoderFlush && !pipelineState->isProcessing.load()) {
-            if (m_codecContext) {
-                avcodec_flush_buffers(m_codecContext);
-                Debug::Log("NetworkCameraModule: Flushed decoder buffers after receive-path drop");
+        {
+            std::lock_guard<std::mutex> lock(m_encodedMutex);
+            if (m_encodedQueue.size() >= 30) {
+                m_encodedQueue.clear();
+                
+                bool expected = false;
+                if (m_waitForIdrAfterLoss.compare_exchange_strong(expected, true)) {
+                    Debug::LogWarning("Decoder heavily overloaded. Dropped all pending encoded frames, waiting for IDR");
+                    m_waitForIdrStartMs.store(GetMonotonicTimeMs());
+                    m_waitForIdrDroppedFrames.store(0);
+                    if (m_codecContext) {
+                        avcodec_flush_buffers(m_codecContext);
+                    }
+                }
             }
-            pendingDecoderFlush = false;
+            m_encodedQueue.push_back(frameBuffer);
+            m_encodedCv.notify_one();
         }
-
-        if (pipelineState->isProcessing.exchange(true)) {
-            ++droppedBusyFrames;
-            ++stashedLatestFrames;
-            {
-                std::scoped_lock pendingLock(pipelineState->pendingLatestFrameMutex);
-                pipelineState->pendingLatestFrame = pipelineState->frameBuffers[receiveBufferIndex];
-            }
-            pipelineState->hasPendingLatest.store(true, std::memory_order_release);
-            if ((droppedBusyFrames % kBusyDecodeDropLogEvery) == 1) {
-                Debug::LogWarning(
-                    "NetworkCameraModule: Dropping frame (decoder busy / codec pipeline saturated). dropped_busy={}, stashed_latest={}, received={}, queued_for_decode={}, codec={}, wait_for_idr={}, pending_decoder_flush={}, avg_abs_jitter={:.2f}ms",
-                    droppedBusyFrames,
-                    stashedLatestFrames,
-                    receivedEncodedFrames,
-                    queuedForDecodeFrames,
-                    (m_activeCodecId == CodecID::H265 ? "H265" : "H264"),
-                    m_waitForIdrAfterLoss.load(),
-                    pendingDecoderFlush,
-                    avgAbsJitterMs
-                );
-            }
-            continue;
-        }
-
-        const size_t processBufferIndex = receiveBufferIndex;
-        receiveBufferIndex = (receiveBufferIndex + 1) % pipelineState->frameBuffers.size();
-        ++queuedForDecodeFrames;
-
-        asio::post(m_context, [this, pipelineState, processBufferIndex]() mutable {
-            ProcessEncodedFrame(pipelineState->frameBuffers[processBufferIndex]);
-
-            while (m_acceptFrames.load(std::memory_order_relaxed)) {
-                if (!pipelineState->hasPendingLatest.exchange(false, std::memory_order_acq_rel)) {
-                    break;
-                }
-
-                std::vector<uint8_t> latestFrame;
-                {
-                    std::scoped_lock pendingLock(pipelineState->pendingLatestFrameMutex);
-                    latestFrame.swap(pipelineState->pendingLatestFrame);
-                }
-
-                if (latestFrame.empty()) {
-                    continue;
-                }
-
-                ProcessEncodedFrame(latestFrame);
-            }
-
-            pipelineState->isProcessing.store(false);
-        });
-    }
-
-    while (pipelineState->isProcessing.load()) {
-        timer.expires_after(std::chrono::milliseconds(1));
-        co_await timer.async_wait(asio::use_awaitable);
-    }
-
-    if (droppedBusyFrames > 0) {
-        Debug::LogWarning(
-            "NetworkCameraModule: ReceiveFrames summary: dropped_busy={}, stashed_latest={}, received={}, queued_for_decode={}",
-            droppedBusyFrames,
-            stashedLatestFrames,
-            receivedEncodedFrames,
-            queuedForDecodeFrames
-        );
     }
 
     m_receiveFramesRunning.store(false);
+}
+
+void NetworkCameraModule::DecodeFramesLoop() {
+    while (m_acceptFrames.load()) {
+        std::vector<uint8_t> frameBuffer;
+        {
+            std::unique_lock<std::mutex> lock(m_encodedMutex);
+            m_encodedCv.wait(lock, [this]() {
+                return !m_encodedQueue.empty() || !m_acceptFrames.load();
+            });
+
+            if (!m_acceptFrames.load() && m_encodedQueue.empty()) {
+                break;
+            }
+
+            if (!m_encodedQueue.empty()) {
+                frameBuffer = std::move(m_encodedQueue.front());
+                m_encodedQueue.pop_front();
+            }
+        }
+
+        if (!m_acceptFrames.load()) {
+            break;
+        }
+
+        if (!frameBuffer.empty()) {
+            ProcessEncodedFrame(frameBuffer);
+        }
+    }
 }
 
 asio::awaitable<void> NetworkCameraModule::UpdateCamerasSpecificationList() {
@@ -861,7 +861,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     }
 
     asio::steady_timer stopWait(m_context);
-    for (int i = 0; i < 100 && m_receiveFramesRunning.load(); ++i) {
+    for (int i = 0; i < 100 && (m_receiveFramesRunning.load() || m_pacerRunning.load()); ++i) {
         stopWait.expires_after(std::chrono::milliseconds(10));
         co_await stopWait.async_wait(asio::use_awaitable);
     }
@@ -906,6 +906,21 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_decodePacketPts.store(0);
     m_outputFrameBuffer.clear();
     m_outputFrameBuffer.shrink_to_fit();
+
+    {
+        std::lock_guard<std::mutex> lock(m_pacerMutex);
+        m_pacerQueue.clear();
+        m_pacerFreeBuffers.clear();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(m_encodedMutex);
+        m_encodedQueue.clear();
+    }
+    m_encodedCv.notify_one();
+    if (m_decodeThread.joinable()) {
+        m_decodeThread.join();
+    }
 
     co_return;
 }

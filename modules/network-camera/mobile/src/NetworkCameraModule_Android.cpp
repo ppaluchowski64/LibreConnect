@@ -324,7 +324,7 @@ void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit,
 
     NoteCaptureIngress(accessUnit.size());
 
-    if (!m_streamActive.load() || !m_videoStream) {
+    if (!m_streamActive.load() || !GetVideoStream()) {
         NoteDropInactive();
         RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
@@ -492,7 +492,7 @@ void NetworkCameraModule::StartStream_Android(const size_t requestID, const std:
         (m_streamCodecId == CodecID::H265 ? "H265" : "H264")
     );
 
-    m_videoStream = std::make_shared<SRTP::Stream>(
+    std::shared_ptr<SRTP::Stream> videoStream = std::make_shared<SRTP::Stream>(
         m_context,
         m_localKey,
         m_remoteKey,
@@ -502,7 +502,8 @@ void NetworkCameraModule::StartStream_Android(const size_t requestID, const std:
     const auto peerAddr = ConnectionManager::GetPeerAddress();
     const auto peerPort = m_portNumber.load();
     Debug::Log("Binding SRTP to {}:{}", peerAddr.to_string(), peerPort);
-    m_videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
+    videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
+    SetVideoStream(videoStream);
 
     m_h264ParameterSets.clear();
     m_h264LengthSize = 4;
@@ -579,7 +580,7 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
         co_return;
     }
 
-    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    const std::shared_ptr<SRTP::Stream> stream = GetVideoStream();
     if (!stream) {
         co_return;
     }

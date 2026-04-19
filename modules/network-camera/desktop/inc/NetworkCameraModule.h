@@ -11,6 +11,9 @@
 #include <cstdint>
 #include <mutex>
 #include <vector>
+#include <deque>
+#include <thread>
+#include <condition_variable>
 
 extern "C" {
     #include <libswscale/swscale.h>
@@ -70,6 +73,18 @@ private:
     std::atomic<bool> m_acceptFrames{false};
     std::atomic<bool> m_receiveFramesRunning{false};
     std::vector<uint8_t> m_outputFrameBuffer;
+    
+    void DecodeFramesLoop();
+    std::thread m_decodeThread;
+    std::mutex m_encodedMutex;
+    std::condition_variable m_encodedCv;
+    std::deque<std::vector<uint8_t>> m_encodedQueue;
+
+    asio::awaitable<void> FramePacer();
+    std::mutex m_pacerMutex;
+    std::deque<std::vector<uint8_t>> m_pacerQueue;
+    std::vector<std::vector<uint8_t>> m_pacerFreeBuffers;
+    std::atomic<bool> m_pacerRunning{false};
 
 protected:
     void EnableResponseCallbacks() override;

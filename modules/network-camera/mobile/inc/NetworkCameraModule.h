@@ -9,6 +9,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 #include <QVideoFrame>
@@ -79,11 +80,15 @@ private:
     void NoteFrameQueued(uint32_t queueDepth);
     void NoteFrameProcessed(uint64_t queueWaitUs, uint64_t workUs, uint64_t sendAwaitUs, size_t bytes, size_t sentNalCount);
     void MaybeLogPerformanceStats();
+    std::shared_ptr<SRTP::Stream> GetVideoStream() const;
+    void SetVideoStream(std::shared_ptr<SRTP::Stream> stream);
+    std::shared_ptr<SRTP::Stream> ClearVideoStream();
 
     asio::awaitable<void> StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
     static std::vector<CameraSpecification> FetchCamerasSpecificationForCodec(const AVCodec* codec);
 
     std::shared_ptr<SRTP::Stream> m_videoStream;
+    mutable std::mutex m_videoStreamMutex;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
 
