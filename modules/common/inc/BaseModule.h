@@ -46,6 +46,50 @@ enum class ModuleType : uint8_t {
     RemoteInput
 };
 
+inline const char* ModuleFailReasonToString(const ModuleFailReason reason)
+{
+    switch (reason) {
+    case ModuleFailReason::None:
+        return "No failure";
+    case ModuleFailReason::IncorrectConfig:
+        return "Incorrect configuration";
+    case ModuleFailReason::NotInitialized:
+        return "Not initialized";
+    case ModuleFailReason::InitializationFailed:
+        return "Initialization failed";
+    case ModuleFailReason::UnsupportedPlatform:
+        return "Unsupported platform";
+    case ModuleFailReason::Timeout:
+        return "Timeout";
+    case ModuleFailReason::InvalidState:
+        return "Invalid state";
+    case ModuleFailReason::InternalError:
+        return "Internal error";
+    case ModuleFailReason::Unknown:
+    default:
+        return "Unknown";
+    }
+}
+
+inline const char* ModuleTypeToString(const ModuleType type)
+{
+    switch (type) {
+    case ModuleType::NotificationSync:
+        return "NotificationSync";
+    case ModuleType::NetworkCamera:
+        return "NetworkCamera";
+    case ModuleType::NetworkFileSystem:
+        return "NetworkFileSystem";
+    case ModuleType::ClipboardSync:
+        return "ClipboardSync";
+    case ModuleType::RemoteInput:
+        return "RemoteInput";
+    case ModuleType::Unknown:
+    default:
+        return "Unknown";
+    }
+}
+
 class ModuleErrorEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 300);

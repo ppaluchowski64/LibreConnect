@@ -10,6 +10,7 @@
 #include <ConnectionManager.h>
 #include <Events.h>
 #include <InitialConnection.h>
+#include <BaseModule.h>
 
 class DeviceConnectionController : public QObject
 {
@@ -67,6 +68,7 @@ private:
     void handleConnectionPendingEvent(ConnectionPendingEvent* ev);
     void handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev);
     void handleConnectionVerificationEvent(ConnectionVerificationEvent* ev);
+    void handleModuleErrorEvent(ModuleErrorEvent* ev);
 
     void handleError(const std::string& message);
     void handleError(const std::string& message, QEvent::Type eventType);

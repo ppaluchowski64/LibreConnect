@@ -17,8 +17,6 @@ Window {
 
     FileManagerPage {
         anchors.fill: parent
-        standaloneWindow: true
-        onRequestClose: fileManagerWindow.close()
     }
 
     onClosing: function(close) {

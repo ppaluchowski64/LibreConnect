@@ -24,6 +24,16 @@ bool ModulesManager::event(QEvent* event) {
         return true;
     }
 
+    if (event->type() == ModuleErrorEvent::Type) {
+        const auto* moduleError = static_cast<ModuleErrorEvent*>(event);
+        Debug::LogError(
+            "ModulesManager: ModuleErrorEvent received from {} with reason {}",
+            ModuleTypeToString(moduleError->GetModuleType()),
+            ModuleFailReasonToString(moduleError->GetError())
+        );
+        return true;
+    }
+
     return QObject::event(event);
 }
 

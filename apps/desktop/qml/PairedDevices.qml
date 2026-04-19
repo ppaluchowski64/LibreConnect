@@ -14,6 +14,7 @@ Page {
     property string statusMessage: ""
     property bool removingDevice: false
     property bool isConnecting: false
+    property bool connectionAttemptActive: false
     property var onlineDeviceIds: ({})
 
     DeviceDiscovery {
@@ -95,6 +96,15 @@ Page {
         sortPairedDevices()
     }
 
+    function selectedDeviceName() {
+        for (let i = 0; i < pairedDevices.length; ++i) {
+            const item = pairedDevices[i]
+            if (item.deviceId === selectedDeviceId)
+                return item.deviceName
+        }
+        return "Connected Device"
+    }
+
     function connectSelectedDevice() {
         if (!selectedDeviceId || isConnecting || connectionController.pending || connectionController.connected)
             return
@@ -111,7 +121,9 @@ Page {
         }
 
         statusMessage = ""
+        connectionAttemptActive = true
         isConnecting = true
+        windowRef.prepareConnection(selectedDeviceId, selectedDeviceName(), false)
         connectionController.connectTo(discoveredDevice.ipAddress, discoveredDevice.port, 1)
     }
 
@@ -203,6 +215,9 @@ Page {
                     anchors.fill: parent
                     model: pairedDevices
                     clip: true
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
 
                     delegate: Rectangle {
                         id: rowItem
@@ -339,19 +354,29 @@ Page {
         function onConnectedChanged() {
             if (connectionController.connected) {
                 isConnecting = false
+                connectionAttemptActive = false
                 discovery.cancelScan()
-                windowRef.showHome()
+                return
+            }
+
+            if (connectionAttemptActive) {
+                isConnecting = false
+                connectionAttemptActive = false
             }
         }
 
         function onPendingChanged() {
             isConnecting = connectionController.pending
+            if (!connectionController.pending) {
+                connectionAttemptActive = false
+            }
         }
 
         function onLastErrorChanged() {
             if (connectionController.lastError.length > 0) {
                 statusMessage = connectionController.lastError
                 isConnecting = false
+                connectionAttemptActive = false
             }
         }
 
