@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <QStringList>
+#include <QList>
 
 #include <unordered_map>
 
@@ -67,6 +68,7 @@ private:
     };
 
     void refreshModuleState();
+    void startNextQueuedAction();
     void startPendingActionIfReady();
     void beginDownloadForPath(const QString& normalizedPath, bool partOfBatch);
     void startNextQueuedDownload();
@@ -93,6 +95,8 @@ private:
     QString m_activeEntryPath;
     QString m_activeEntryName;
     QStringList m_pendingCopyPaths;
+    QStringList m_pendingOpenQueue;
+    QList<QStringList> m_pendingCopyQueue;
     QStringList m_pendingDownloadQueue;
     QStringList m_pendingUploadQueue;
     QVariantList m_remoteEntries;

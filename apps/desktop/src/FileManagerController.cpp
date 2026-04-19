@@ -191,6 +191,38 @@ void FileManagerController::downloadEntries(const QStringList& remotePaths)
         return;
     }
 
+    const bool actionInProgress = m_pendingAction != PendingAction::None || m_waitingForModule;
+    if (actionInProgress) {
+        int queuedCount = 0;
+        for (const QString& path : queue) {
+            if (path == m_pendingEntryPath || path == m_activeEntryPath || m_pendingDownloadQueue.contains(path)) {
+                continue;
+            }
+
+            m_pendingDownloadQueue.push_back(path);
+            ++queuedCount;
+        }
+
+        if (queuedCount == 0) {
+            setStatusMessage(QStringLiteral("Those entries are already queued or currently downloading."));
+            return;
+        }
+
+        if (!m_downloadBatchActive) {
+            m_downloadBatchActive = true;
+            m_downloadBatchTotal = m_pendingAction == PendingAction::Download ? (1 + queuedCount) : queuedCount;
+            m_downloadBatchCompleted = 0;
+            m_downloadBatchFailed = 0;
+        } else {
+            m_downloadBatchTotal += queuedCount;
+        }
+
+        setStatusMessage(queuedCount == 1
+            ? QStringLiteral("Queued 1 entry for download.")
+            : QStringLiteral("Queued %1 entries for download.").arg(queuedCount));
+        return;
+    }
+
     if (queue.size() == 1) {
         m_pendingDownloadQueue.clear();
         m_downloadBatchActive = false;
@@ -225,6 +257,20 @@ void FileManagerController::openEntry(const QString& remotePath)
 
     if (lookup->second.GetType().has_value() && lookup->second.GetType().value() == FileType::Directory) {
         setStatusMessage(QStringLiteral("Folders cannot be opened directly."));
+        return;
+    }
+
+    if (m_pendingAction != PendingAction::None || m_waitingForModule) {
+        if (normalizedPath == m_pendingEntryPath
+            || normalizedPath == m_activeEntryPath
+            || m_pendingOpenQueue.contains(normalizedPath)) {
+            setStatusMessage(QStringLiteral("That entry is already queued or currently being opened."));
+            return;
+        }
+
+        m_pendingOpenQueue.push_back(normalizedPath);
+        const QString entryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
+        setStatusMessage(QStringLiteral("Queued %1 to open.").arg(entryName.isEmpty() ? normalizedPath : entryName));
         return;
     }
 
@@ -283,6 +329,29 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
         return;
     }
 
+    if (m_pendingAction != PendingAction::None || m_waitingForModule) {
+        bool duplicateQueueRequest = m_pendingAction == PendingAction::Copy && m_pendingCopyPaths == uniquePaths;
+        if (!duplicateQueueRequest) {
+            for (const QStringList& queuedPaths : m_pendingCopyQueue) {
+                if (queuedPaths == uniquePaths) {
+                    duplicateQueueRequest = true;
+                    break;
+                }
+            }
+        }
+
+        if (duplicateQueueRequest) {
+            setStatusMessage(QStringLiteral("Those entries are already queued for copy."));
+            return;
+        }
+
+        m_pendingCopyQueue.push_back(uniquePaths);
+        setStatusMessage(uniquePaths.size() == 1
+            ? QStringLiteral("Queued 1 entry for copy.")
+            : QStringLiteral("Queued %1 entries for copy.").arg(uniquePaths.size()));
+        return;
+    }
+
     m_pendingCopyPaths = uniquePaths;
     m_pendingEntryPath = uniquePaths.size() == 1 ? uniquePaths.front() : QString();
     m_pendingLocalPath.clear();
@@ -338,7 +407,7 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
     m_pendingUploadQueue.push_back(localPath);
     ++m_uploadBatchTotal;
 
-    if (m_pendingAction == PendingAction::Upload) {
+    if (m_pendingAction != PendingAction::None || m_waitingForModule) {
         setStatusMessage(QStringLiteral("Queued %1 for upload.").arg(QString::fromStdString(sourcePath.filename().string())));
         return;
     }
@@ -385,6 +454,7 @@ bool FileManagerController::event(QEvent* event)
         setStatusMessage(remoteEntries.isEmpty()
             ? QStringLiteral("This folder is empty.")
             : QStringLiteral("Loaded %1 entries.").arg(remoteEntries.size()));
+        startNextQueuedAction();
         return true;
     }
 
@@ -505,6 +575,7 @@ bool FileManagerController::event(QEvent* event)
         m_uploadBatchFailed = 0;
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
+        startNextQueuedAction();
         return true;
     }
 
@@ -527,6 +598,7 @@ bool FileManagerController::event(QEvent* event)
         m_pendingCopyPaths.clear();
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
+        startNextQueuedAction();
         return true;
     }
 
@@ -540,6 +612,43 @@ void FileManagerController::refreshModuleState()
     }
 
     startPendingActionIfReady();
+}
+
+void FileManagerController::startNextQueuedAction()
+{
+    if (m_pendingAction != PendingAction::None || m_waitingForModule) {
+        return;
+    }
+
+    if (!m_pendingDownloadQueue.isEmpty()) {
+        if (!m_downloadBatchActive) {
+            m_downloadBatchActive = true;
+            m_downloadBatchTotal = m_pendingDownloadQueue.size();
+            m_downloadBatchCompleted = 0;
+            m_downloadBatchFailed = 0;
+        }
+
+        startNextQueuedDownload();
+        return;
+    }
+
+    if (!m_pendingOpenQueue.isEmpty()) {
+        const QString nextPath = m_pendingOpenQueue.front();
+        m_pendingOpenQueue.pop_front();
+        openEntry(nextPath);
+        return;
+    }
+
+    if (!m_pendingCopyQueue.isEmpty()) {
+        const QStringList nextPaths = m_pendingCopyQueue.front();
+        m_pendingCopyQueue.pop_front();
+        copyEntries(nextPaths);
+        return;
+    }
+
+    if (!m_pendingUploadQueue.isEmpty() && m_uploadBatchActive) {
+        startNextQueuedUpload();
+    }
 }
 
 void FileManagerController::startPendingActionIfReady()
@@ -577,6 +686,7 @@ void FileManagerController::startPendingActionIfReady()
             m_uploadBatchTotal = 0;
             m_uploadBatchCompleted = 0;
             m_uploadBatchFailed = 0;
+            startNextQueuedAction();
             return;
         }
 
@@ -598,6 +708,7 @@ void FileManagerController::startPendingActionIfReady()
             m_uploadBatchTotal = 0;
             m_uploadBatchCompleted = 0;
             m_uploadBatchFailed = 0;
+            startNextQueuedAction();
             return;
         }
 
@@ -623,6 +734,7 @@ void FileManagerController::startPendingActionIfReady()
             m_pendingAction = PendingAction::None;
             setBusy(false);
             setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+            startNextQueuedAction();
             return;
         }
 
@@ -645,6 +757,7 @@ void FileManagerController::startPendingActionIfReady()
         m_pendingAction = PendingAction::None;
         setBusy(false);
         setStatusMessage(QStringLiteral("The selected entry is no longer available."));
+        startNextQueuedAction();
         return;
     }
 
@@ -690,6 +803,7 @@ void FileManagerController::beginDownloadForPath(const QString& normalizedPath, 
                 m_downloadBatchFailed = 0;
                 m_waitingForModule = false;
                 m_pendingAction = PendingAction::None;
+                startNextQueuedAction();
             }
         } else {
             setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
@@ -767,6 +881,7 @@ void FileManagerController::beginUploadForLocalPath(const QString& localPath)
         m_pendingLocalPath.clear();
         m_activeEntryPath.clear();
         m_activeEntryName.clear();
+        startNextQueuedAction();
         return;
     }
 
