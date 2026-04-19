@@ -9,6 +9,9 @@ enum class PC_PackageType : PackageTypeInt {
     // RESERVED (0 - 9)
     NONE = 0,
     HEARTBEAT = 1,
+    PERMISSION_REQUESTED = 2,
+    PERMISSION_GRANTED = 3,
+    PERMISSION_REJECTED = 4,
 
     // DEVICE PAIRING (10 - 99)
     PAIR_REQUEST = 10,

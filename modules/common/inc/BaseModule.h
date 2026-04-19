@@ -46,6 +46,14 @@ enum class ModuleType : uint8_t {
     RemoteInput
 };
 
+enum class PermissionType : uint16_t {
+    Unknown = 0,
+    Camera,
+    Notifications,
+    FileSystem,
+    Battery
+};
+
 inline const char* ModuleFailReasonToString(const ModuleFailReason reason)
 {
     switch (reason) {
@@ -105,6 +113,51 @@ private:
     ModuleFailReason m_error;
     ModuleType m_moduleType;
 };
+
+class ModuleRequestedPermission final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 301);
+    explicit ModuleRequestedPermission(const PermissionType type) : QEvent(Type), m_permissionType(type) {}
+    PermissionType GetPermissionType() const { return m_permissionType; }
+
+    ModuleRequestedPermission* clone() const override {
+        return new ModuleRequestedPermission(*this);
+    }
+
+private:
+    PermissionType m_permissionType;
+
+};
+
+class ModuleRequestedPermissionRejected final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 302);
+    explicit ModuleRequestedPermissionRejected (const PermissionType type) : QEvent(Type), m_permissionType(type) {}
+    PermissionType GetPermissionType() const { return m_permissionType; }
+
+    ModuleRequestedPermissionRejected * clone() const override {
+        return new ModuleRequestedPermissionRejected(*this);
+    }
+
+private:
+    PermissionType m_permissionType;
+};
+
+
+class ModuleRequestedPermissionGranted final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 303);
+    explicit ModuleRequestedPermissionGranted (const PermissionType type) : QEvent(Type), m_permissionType(type) {}
+    PermissionType GetPermissionType() const { return m_permissionType; }
+
+    ModuleRequestedPermissionGranted * clone() const override {
+        return new ModuleRequestedPermissionGranted(*this);
+    }
+
+private:
+    PermissionType m_permissionType;
+};
+
 
 constexpr const char* APPLICATION_NAME = "LibreConnect";
 

@@ -80,6 +80,24 @@ void ModulesManager::Initialize() {
 
     s_instance->m_clipboardSyncModule->Initialize(true);
     s_instance->m_remoteInputModule->Initialize(true);
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REQUESTED, [](PC_Package&& package) {
+        const PermissionType type = package->GetValue<PermissionType>();
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermission>(type);
+        ConnectionManager::SendEvent(event);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REJECTED, [](PC_Package&& package) {
+        const PermissionType type = package->GetValue<PermissionType>();
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermissionRejected>(type);
+        ConnectionManager::SendEvent(event);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_GRANTED, [](PC_Package&& package) {
+        const PermissionType type = package->GetValue<PermissionType>();
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermissionGranted>(type);
+        ConnectionManager::SendEvent(event);
+    });
 }
 
 void ModulesManager::Shutdown() {
@@ -99,6 +117,10 @@ void ModulesManager::Shutdown() {
 
         s_instance->m_clipboardSyncModule->Shutdown(true);
         s_instance->m_remoteInputModule->Shutdown(true);
+
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REQUESTED);
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REJECTED);
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_GRANTED);
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }
