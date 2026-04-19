@@ -56,6 +56,9 @@ Page {
             anchors.fill: parent
             clip: true
             focus: true
+            ScrollBar.vertical: ScrollBar {
+                policy: ScrollBar.AsNeeded
+            }
 
             model: discovery.model
 

@@ -171,6 +171,9 @@ Page {
                             implicitHeight: contentHeight
                             model: themeCombo.popup.visible ? themeCombo.delegateModel : null
                             currentIndex: themeCombo.highlightedIndex
+                            ScrollBar.vertical: ScrollBar {
+                                policy: ScrollBar.AsNeeded
+                            }
                         }
 
                         background: Rectangle {

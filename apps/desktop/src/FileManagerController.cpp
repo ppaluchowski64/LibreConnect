@@ -70,6 +70,32 @@ QString fileTypeIconSource(const std::optional<FileType>& type)
         return QStringLiteral("qrc:/LibreConnect/desktop/unknown.svg");
     }
 }
+
+QString formatEntrySize(const FileEntry& entry)
+{
+    const std::optional<FileType> type = entry.GetType();
+    if (type.has_value() && type.value() == FileType::Directory) {
+        return QStringLiteral("--");
+    }
+
+    const std::optional<size_t> size = entry.GetSize();
+    if (!size.has_value()) {
+        return QStringLiteral("Unknown");
+    }
+
+    static const char* units[] = { "B", "KB", "MB", "GB", "TB" };
+    constexpr int unitCount = static_cast<int>(sizeof(units) / sizeof(units[0]));
+
+    double value = static_cast<double>(size.value());
+    int unitIndex = 0;
+    while (value >= 1024.0 && unitIndex < unitCount - 1) {
+        value /= 1024.0;
+        ++unitIndex;
+    }
+
+    const int precision = unitIndex == 0 ? 0 : 1;
+    return QStringLiteral("%1 %2").arg(QString::number(value, 'f', precision), QString::fromLatin1(units[unitIndex]));
+}
 }
 
 FileManagerController::FileManagerController(QObject* parent)
@@ -892,6 +918,7 @@ QVariantMap FileManagerController::toVariantMap(const FileEntry& entry)
     item.insert(QStringLiteral("path"), fullPath);
     item.insert(QStringLiteral("isDirectory"), isDirectory);
     item.insert(QStringLiteral("size"), static_cast<qulonglong>(entry.GetSize().value_or(0)));
+    item.insert(QStringLiteral("sizeLabel"), formatEntrySize(entry));
     item.insert(QStringLiteral("typeLabel"), fileTypeLabel(entry.GetType()));
     item.insert(QStringLiteral("iconSource"), fileTypeIconSource(entry.GetType()));
     return item;

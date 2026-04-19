@@ -13,6 +13,7 @@ Page {
     property int lastInteractedIndex: -1
     property var pathSegments: []
     property bool dropActive: false
+    property bool pathEditMode: false
     readonly property int selectedCount: selectedRemotePaths.length
     readonly property string windowTitleSuffix: "File Manager"
     signal requestClose()
@@ -152,6 +153,24 @@ Page {
             fileManagerController.uploadLocalEntry(urls[i])
     }
 
+    function beginPathEdit() {
+        pathEditMode = true
+        pathEditField.text = fileManagerController.currentRemotePath
+        pathEditField.forceActiveFocus()
+        pathEditField.selectAll()
+    }
+
+    function commitPathEdit() {
+        const nextPath = pathEditField.text
+        pathEditMode = false
+        fileManagerController.browseTo(nextPath)
+    }
+
+    function cancelPathEdit() {
+        pathEditMode = false
+        pathEditField.text = fileManagerController.currentRemotePath
+    }
+
     background: Rectangle {
         color: Theme.backgroundColor
     }
@@ -188,19 +207,24 @@ Page {
         property bool singleTargetIsDirectory: false
 
         MenuItem {
-            text: "Open"
-            enabled: fileContextMenu.targetPaths.length === 1 && !fileContextMenu.singleTargetIsDirectory
-            onTriggered: fileManagerController.openEntry(fileContextMenu.targetPath)
+            text: fileContextMenu.singleTargetIsDirectory ? "Open Folder" : "Open"
+            enabled: fileContextMenu.targetPaths.length === 1
+            onTriggered: {
+                if (fileContextMenu.singleTargetIsDirectory)
+                    fileManagerController.browseTo(fileContextMenu.targetPath)
+                else
+                    fileManagerController.openEntry(fileContextMenu.targetPath)
+            }
         }
 
         MenuItem {
-            text: fileContextMenu.targetPaths.length > 1 ? "Copy Selected" : "Copy"
+            text: "Copy"
             enabled: fileContextMenu.targetPaths.length > 0
             onTriggered: fileManagerController.copyEntries(fileContextMenu.targetPaths)
         }
 
         MenuItem {
-            text: fileContextMenu.targetPaths.length > 1 ? "Download Selected" : "Download"
+            text: "Download"
             enabled: fileContextMenu.targetPaths.length > 0
             onTriggered: fileManagerController.downloadEntries(fileContextMenu.targetPaths)
         }
@@ -251,35 +275,94 @@ Page {
                 anchors.margins: 18
                 spacing: 14
 
-                Text {
-                    text: "Browse the connected device and download files or folders locally."
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 18
-                    color: Theme.textColor
-                    wrapMode: Text.WordWrap
-                    width: parent.width
-                }
-
                 Row {
                     width: parent.width
                     spacing: 10
 
-                    TextField {
-                        id: pathField
+                    Rectangle {
                         width: parent.width - 230
-                        text: fileManagerController.currentRemotePath
-                        placeholderText: "Remote path"
-                        color: Theme.textColor
-                        placeholderTextColor: Theme.subtleTextColor
-                        selectedTextColor: Theme.textColor
-                        selectionColor: Theme.selectedColor
-                        background: Rectangle {
-                            radius: 6
-                            color: Theme.backgroundColor
-                            border.color: Theme.panelBorderColor
-                            border.width: 1
+                        height: 36
+                        radius: 6
+                        color: Theme.backgroundColor
+                        border.color: Theme.panelBorderColor
+                        border.width: 1
+
+                        TextField {
+                            id: pathEditField
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            visible: root.pathEditMode
+                            color: Theme.textColor
+                            placeholderText: "Remote path"
+                            placeholderTextColor: Theme.subtleTextColor
+                            selectedTextColor: Theme.textColor
+                            selectionColor: Theme.selectedColor
+                            background: null
+                            onAccepted: root.commitPathEdit()
+                            onEditingFinished: {
+                                if (!focus && root.pathEditMode)
+                                    root.commitPathEdit()
+                            }
+                            Keys.onEscapePressed: root.cancelPathEdit()
                         }
-                        onAccepted: fileManagerController.browseTo(text)
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 3
+                            spacing: 8
+                            visible: !root.pathEditMode
+
+                            Flickable {
+                                id: breadcrumbFlickable
+                                height: parent.height
+                                width: Math.min(contentWidth, parent.width - 28 - parent.spacing)
+                                contentWidth: breadcrumbRow.width
+                                contentHeight: breadcrumbRow.height
+                                clip: true
+                                ScrollBar.horizontal: ScrollBar {
+                                    policy: ScrollBar.AsNeeded
+                                }
+
+                                Row {
+                                    id: breadcrumbRow
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: root.pathSegments
+
+                                        delegate: Row {
+                                            spacing: 6
+
+                                            ThemedButton {
+                                                text: modelData.label
+                                                height: 30
+                                                width: Math.max(46, contentItem.implicitWidth + 16)
+                                                onClicked: fileManagerController.browseTo(modelData.path)
+                                            }
+
+                                            Text {
+                                                visible: index < root.pathSegments.length - 1
+                                                text: ">"
+                                                font.family: Theme.fontFamily
+                                                color: Theme.subtleTextColor
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Item {
+                                id: editArea
+                                height: parent.height
+                                width: Math.max(28, parent.width - breadcrumbFlickable.width - parent.spacing)
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: root.beginPathEdit()
+                                }
+                            }
+                        }
                     }
 
                     ThemedButton {
@@ -295,42 +378,6 @@ Page {
                     }
                 }
 
-                Flickable {
-                    width: parent.width
-                    height: 34
-                    contentWidth: breadcrumbRow.width
-                    contentHeight: breadcrumbRow.height
-                    clip: true
-
-                    Row {
-                        id: breadcrumbRow
-                        spacing: 6
-
-                        Repeater {
-                            model: root.pathSegments
-
-                            delegate: Row {
-                                spacing: 6
-
-                                ThemedButton {
-                                    text: modelData.label
-                                    height: 30
-                                    width: Math.max(46, contentItem.implicitWidth + 16)
-                                    onClicked: fileManagerController.browseTo(modelData.path)
-                                }
-
-                                Text {
-                                    visible: index < root.pathSegments.length - 1
-                                    text: ">"
-                                    font.family: Theme.fontFamily
-                                    color: Theme.subtleTextColor
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                            }
-                        }
-                    }
-                }
-
                 Row {
                     width: parent.width
                     spacing: 12
@@ -339,6 +386,46 @@ Page {
                         text: "Choose Download Folder"
                         width: 220
                         onClicked: folderDialog.open()
+                    }
+
+                    Text {
+                        text: fileManagerController.localDownloadDirectory
+                        width: parent.width - 240
+                        wrapMode: Text.WordWrap
+                        color: Theme.mutedTextColor
+                        font.family: Theme.fontFamily
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 10
+
+                    ThemedButton {
+                        text: "Copy"
+                        width: 110
+                        enabled: root.selectedCount > 0
+                        onClicked: fileManagerController.copyEntries(root.selectedRemotePaths)
+                    }
+
+                    ThemedButton {
+                        text: "Download"
+                        width: 130
+                        enabled: root.selectedCount > 0
+                        onClicked: fileManagerController.downloadEntries(root.selectedRemotePaths)
+                    }
+
+                    ThemedButton {
+                        text: "Clear"
+                        width: 80
+                        enabled: root.selectedCount > 0
+                        onClicked: root.clearSelection()
+                    }
+
+                    Item {
+                        width: Math.max(0, parent.width - (110 + 130 + 80 + 150 + 160 + (5 * parent.spacing)))
+                        height: 1
                     }
 
                     ThemedButton {
@@ -351,50 +438,6 @@ Page {
                         text: "Upload Folder"
                         width: 160
                         onClicked: uploadFolderDialog.open()
-                    }
-
-                    Text {
-                        text: fileManagerController.localDownloadDirectory
-                        width: parent.width - 570
-                        wrapMode: Text.WordWrap
-                        color: Theme.mutedTextColor
-                        font.family: Theme.fontFamily
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: 10
-
-                    Text {
-                        text: root.selectedCount > 0
-                              ? (root.selectedCount + " selected")
-                              : "No selection"
-                        color: Theme.mutedTextColor
-                        font.family: Theme.fontFamily
-                        verticalAlignment: Text.AlignVCenter
-                    }
-
-                    ThemedButton {
-                        text: "Copy Selected"
-                        width: 130
-                        enabled: root.selectedCount > 0
-                        onClicked: fileManagerController.copyEntries(root.selectedRemotePaths)
-                    }
-
-                    ThemedButton {
-                        text: "Download Selected"
-                        width: 160
-                        enabled: root.selectedCount > 0
-                        onClicked: fileManagerController.downloadEntries(root.selectedRemotePaths)
-                    }
-
-                    ThemedButton {
-                        text: "Clear"
-                        width: 80
-                        enabled: root.selectedCount > 0
-                        onClicked: root.clearSelection()
                     }
                 }
             }
@@ -416,6 +459,9 @@ Page {
                 clip: true
                 spacing: 8
                 model: fileManagerController.remoteEntries
+                ScrollBar.vertical: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                }
 
                 delegate: Rectangle {
                     required property int index
@@ -461,7 +507,7 @@ Page {
                             }
 
                             Text {
-                                text: modelData.typeLabel + "  |  " + modelData.path
+                                text: modelData.typeLabel + "  |  " + modelData.sizeLabel
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 12
                                 color: Theme.subtleTextColor
@@ -482,10 +528,8 @@ Page {
                                 fileContextMenu.targetPath = modelData.path
                                 const targetEntry = root.entryByPath(modelData.path)
                                 fileContextMenu.singleTargetIsDirectory = targetEntry && targetEntry.isDirectory
-                                if (fileContextMenu.targetPaths.length !== 1 || (targetEntry && !targetEntry.isDirectory)) {
-                                    const position = mapToItem(root, mouse.x, mouse.y)
-                                    fileContextMenu.popup(position.x, position.y)
-                                }
+                                const position = mapToItem(root, mouse.x, mouse.y)
+                                fileContextMenu.popup(position.x, position.y)
                                 return
                             }
 
@@ -563,13 +607,28 @@ Page {
             visible: fileManagerController.busy || fileManagerController.transferProgress > 0
         }
 
-        Text {
+        RowLayout {
             Layout.fillWidth: true
-            text: fileManagerController.statusMessage
-            wrapMode: Text.WordWrap
-            color: Theme.mutedTextColor
-            font.family: Theme.fontFamily
-            font.pixelSize: 15
+            spacing: 14
+
+            Text {
+                Layout.fillWidth: true
+                text: fileManagerController.statusMessage
+                wrapMode: Text.WordWrap
+                color: Theme.mutedTextColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+            }
+
+            Text {
+                text: root.selectedCount > 0
+                      ? ("Files selected: " + root.selectedCount)
+                      : "Files selected: 0"
+                color: Theme.mutedTextColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                horizontalAlignment: Text.AlignRight
+            }
         }
     }
 

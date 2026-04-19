@@ -203,6 +203,9 @@ Page {
                     anchors.fill: parent
                     model: pairedDevices
                     clip: true
+                    ScrollBar.vertical: ScrollBar {
+                        policy: ScrollBar.AsNeeded
+                    }
 
                     delegate: Rectangle {
                         id: rowItem
