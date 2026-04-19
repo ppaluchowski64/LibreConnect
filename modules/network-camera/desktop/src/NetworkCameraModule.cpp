@@ -345,6 +345,7 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             const uint64_t waitMs = (waitStartMs != 0 && nowMs >= waitStartMs) ? (nowMs - waitStartMs) : 0;
             const uint32_t droppedFrames = m_waitForIdrDroppedFrames.exchange(0);
             Debug::Log("Recovered stream sync on IDR after packet loss ({} ms, {} dropped frames)", waitMs, droppedFrames);
+            avcodec_flush_buffers(m_codecContext);
             m_waitForIdrAfterLoss.store(false);
             m_waitForIdrStartMs.store(0);
         }
@@ -647,9 +648,6 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
                 Debug::LogWarning("RTP loss detected, waiting for next IDR frame");
                 m_waitForIdrStartMs.store(GetMonotonicTimeMs());
                 m_waitForIdrDroppedFrames.store(0);
-                if (m_codecContext) {
-                    avcodec_flush_buffers(m_codecContext);
-                }
             }
         }
 
@@ -848,6 +846,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
     m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, false);
+
     m_acceptFrames.store(false);
     m_waitForIdrAfterLoss.store(false);
     m_waitForIdrStartMs.store(0);
@@ -868,6 +867,16 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
     m_camera.Stop();
     ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_REQUEST_STOP_STREAM);
+
+    {
+        std::lock_guard<std::mutex> lock(m_encodedMutex);
+        m_encodedQueue.clear();
+    }
+    m_encodedCv.notify_all();
+
+    if (m_decodeThread.joinable()) {
+        m_decodeThread.join();
+    }
 
     if (m_packet) {
         av_packet_free(&m_packet);
@@ -901,9 +910,6 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
     m_seenVps = false;
     m_seenSps = false;
     m_seenPps = false;
-    m_waitForIdrStartMs.store(0);
-    m_waitForIdrDroppedFrames.store(0);
-    m_decodePacketPts.store(0);
     m_outputFrameBuffer.clear();
     m_outputFrameBuffer.shrink_to_fit();
 
@@ -911,15 +917,6 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
         std::lock_guard<std::mutex> lock(m_pacerMutex);
         m_pacerQueue.clear();
         m_pacerFreeBuffers.clear();
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(m_encodedMutex);
-        m_encodedQueue.clear();
-    }
-    m_encodedCv.notify_one();
-    if (m_decodeThread.joinable()) {
-        m_decodeThread.join();
     }
 
     co_return;
