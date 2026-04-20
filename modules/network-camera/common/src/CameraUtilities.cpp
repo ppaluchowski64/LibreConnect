@@ -15,24 +15,24 @@ static std::unordered_map<CodecID, std::vector<std::string>> g_encoderPriority =
     {CodecID::H264, {
         "h264_mediacodec",
         "h264_nvenc",
-        "h264_qsv",
         "h264_amf",
+        "h264_qsv",
         "h264_vaapi",
         "h264_videotoolbox",
         "libx264"
     }},
     {CodecID::H265, {
         "hevc_nvenc",
-        "hevc_qsv",
         "hevc_amf",
+        "hevc_qsv",
         "hevc_vaapi",
         "hevc_videotoolbox",
         "libx265"
     }},
     {CodecID::AV1, {
         "av1_nvenc",
-        "av1_qsv",
         "av1_amf",
+        "av1_qsv",
         "av1_vaapi",
         "av1_videotoolbox",
         "libaom-av1",
@@ -43,8 +43,8 @@ static std::unordered_map<CodecID, std::vector<std::string>> g_encoderPriority =
 static std::unordered_map<CodecID, std::vector<std::string>> g_decoderPriority = {
     {CodecID::H264, {
         "h264_cuvid",
-        "h264_qsv",
         "h264_amf",
+        "h264_qsv",
         "h264_vaapi",
         "h264_d3d11va",
         "h264_dxva2",
@@ -52,8 +52,8 @@ static std::unordered_map<CodecID, std::vector<std::string>> g_decoderPriority =
     }},
     {CodecID::H265, {
         "hevc_cuvid",
-        "hevc_qsv",
         "hevc_amf",
+        "hevc_qsv",
         "hevc_vaapi",
         "hevc_d3d11va",
         "hevc_dxva2",
@@ -61,8 +61,8 @@ static std::unordered_map<CodecID, std::vector<std::string>> g_decoderPriority =
     }},
     {CodecID::AV1, {
         "av1_cuvid",
-        "av1_qsv",
         "av1_amf",
+        "av1_qsv",
         "av1_vaapi",
         "av1_d3d11va",
         "av1_dxva2",
