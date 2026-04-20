@@ -9,8 +9,8 @@ class TextClipboard {
         static bool Set(const std::string& text);
         static std::string Get();
         static bool Has();
-        static void AddClipboardUpdateListener(std::function<void()>&& callback) {}; // TODO: implement this function
-        static void RemoveClipboardUpdateListener() {};
+        static void AddClipboardUpdateListener(std::function<void()>&& callback);
+        static void RemoveClipboardUpdateListener();
 
     private:
     #ifdef __linux__

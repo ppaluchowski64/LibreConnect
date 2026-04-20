@@ -9,10 +9,20 @@
 #include <QClipboard>
 #include <QMimeData>
 #include <QString>
+#include <QObject>
+#include <QProcess>
+#include <QThread>
+#include <QMetaObject>
+
+static QMetaObject::Connection clipboardConnection;
+static std::string lastText;
 
 #ifdef __linux__
+    static QProcess* wlpasteProcess = nullptr;
+
     bool TextClipboard::IsWayland() {
         const char* session = std::getenv("XDG_SESSION_TYPE");
+
         if (session && std::strcmp(session, "wayland") == 0)
             return true;
 
@@ -26,72 +36,146 @@
 #endif
 
 bool TextClipboard::Set(const std::string& text) {
-    if (text.empty())
-        return false;
-
-    #ifdef __linux__
-        if (IsWayland() && HasWlClipboard()) {
-            std::string cmd = "wl-copy";
-            FILE* pipe = popen(cmd.c_str(), "w");
-            if (!pipe)
-                return false;
-
-            fwrite(text.c_str(), 1, text.size(), pipe);
-            pclose(pipe);
-            return true;
-        }
-    #endif
-
     if (!QGuiApplication::instance() || text.empty())
         return false;
 
-    QClipboard* const clipboard = QGuiApplication::clipboard();
-    clipboard->setText(QString::fromUtf8(text.c_str()));
+    lastText = text;
+
+    auto setLogic = [text]() {
+        #ifdef __linux__
+            if (IsWayland() && HasWlClipboard()) {
+                if (FILE* pipe = popen("wl-copy", "w")) {
+                    fwrite(text.c_str(), 1, text.size(), pipe);
+                    pclose(pipe);
+                }
+            }
+        #endif
+
+        QClipboard* const clipboard = QGuiApplication::clipboard();
+        clipboard->setText(QString::fromUtf8(text.c_str()));
+    };
+
+    if (QThread::currentThread() != QGuiApplication::instance()->thread())
+        QMetaObject::invokeMethod(QGuiApplication::instance(), setLogic, Qt::BlockingQueuedConnection);
+    else
+        setLogic();
 
     return true;
 }
 
 std::string TextClipboard::Get() {
-    #ifdef __linux__
-        if (IsWayland() && HasWlClipboard()) {
-            std::string result;
-            char buffer[256];
-
-            FILE* pipe = popen("wl-paste -n", "r");
-            if (!pipe)
-                return {};
-
-            while (fgets(buffer, sizeof(buffer), pipe))
-                result += buffer;
-
-            pclose(pipe);
-            return result;
-        }
-    #endif
-
     if (!QGuiApplication::instance())
         return {};
 
-    const QClipboard* const clipboard = QGuiApplication::clipboard();
-    const QString text = clipboard->text();
+    auto getLogic = []() -> std::string {
+        #ifdef __linux__
+            if (IsWayland() && HasWlClipboard()) {
+                std::string result;
+                char buffer[256];
 
-    return text.toStdString();
+                if (FILE* pipe = popen("wl-paste -n", "r")) {
+                    while (fgets(buffer, sizeof(buffer), pipe)) {
+                        result += buffer;
+                    }
+
+                    pclose(pipe);
+                }
+
+                return result;
+            }
+        #endif
+
+        const QClipboard* const clipboard = QGuiApplication::clipboard();
+        return clipboard->text().toStdString();
+    };
+
+    if (QThread::currentThread() != QGuiApplication::instance()->thread()) {
+        std::string result;
+
+        QMetaObject::invokeMethod(QGuiApplication::instance(), [&]() {
+            result = getLogic();
+        }, Qt::BlockingQueuedConnection);
+
+        return result;
+    }
+
+    return getLogic();
 }
 
 bool TextClipboard::Has() {
-    #ifdef __linux__
-        if (IsWayland() && HasWlClipboard()) {
-            return std::system(
-                "/bin/sh -c 'wl-paste -n >/dev/null 2>&1'"
-            ) == 0;
-        }
-    #endif
-
     if (!QGuiApplication::instance())
         return false;
 
-    const QClipboard* const clipboard = QGuiApplication::clipboard();
-    const QMimeData* const mime = clipboard->mimeData();
+    auto hasLogic = []() -> bool {
+        #ifdef __linux__
+            if (IsWayland() && HasWlClipboard())
+                return std::system("/bin/sh -c 'wl-paste -n >/dev/null 2>&1'") == 0;
+        #endif
 
-    return mime->hasText();
+        const QClipboard* const clipboard = QGuiApplication::clipboard();
+        return clipboard->mimeData()->hasText();
+    };
+
+    if (QThread::currentThread() != QGuiApplication::instance()->thread()) {
+        bool result = false;
+
+        QMetaObject::invokeMethod(QGuiApplication::instance(), [&]() {
+            result = hasLogic();
+        }, Qt::BlockingQueuedConnection);
+
+        return result;
+    }
+
+    return hasLogic();
+}
+
+void TextClipboard::AddClipboardUpdateListener(std::function<void()>&& callback) {
+    if (!QGuiApplication::instance() || !callback)
+        return;
+
+    RemoveClipboardUpdateListener();
+
+    auto wrapper = [cb = std::move(callback)]() {
+        if (TextClipboard::Get() == lastText) {
+            return;
+        }
+
+        cb();
+    };
+
+    #ifdef __linux__
+        if (IsWayland() && HasWlClipboard()) {
+            wlpasteProcess = new QProcess();
+
+            QObject::connect(wlpasteProcess, &QProcess::readyReadStandardOutput, [wrapper]() {
+                wlpasteProcess->readAllStandardOutput();
+                wrapper();
+            });
+
+            wlpasteProcess->start("wl-paste", QStringList() << "--watch" << "echo" << "1");
+            return;
+        }
+    #endif
+
+    clipboardConnection = QObject::connect(
+        QGuiApplication::clipboard(),
+        &QClipboard::dataChanged,
+        wrapper
+    );
+}
+
+void TextClipboard::RemoveClipboardUpdateListener() {
+    #ifdef __linux__
+        if (wlpasteProcess) {
+            wlpasteProcess->kill();
+            wlpasteProcess->waitForFinished();
+            delete wlpasteProcess;
+            wlpasteProcess = nullptr;
+        }
+    #endif
+
+    if (clipboardConnection) {
+        QObject::disconnect(clipboardConnection);
+        clipboardConnection = QMetaObject::Connection();
+    }
 }
