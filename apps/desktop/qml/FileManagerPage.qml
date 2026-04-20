@@ -772,11 +772,13 @@ Page {
                         property real pressX: 0
                         property real pressY: 0
                         property bool dragTriggered: false
+                        property bool deferSingleSelection: false
 
                         onPressed: function(mouse) {
                             pressX = mouse.x
                             pressY = mouse.y
                             dragTriggered = false
+                            deferSingleSelection = false
 
                             if (mouse.button === Qt.RightButton) {
                                 root.selectionForContext(modelData.path, index)
@@ -794,7 +796,12 @@ Page {
                             } else if (mouse.modifiers & Qt.ControlModifier) {
                                 root.toggleSelection(modelData.path, index)
                             } else {
-                                root.setSingleSelection(modelData.path, index)
+                                // Keep multi-selection intact while user may be starting a drag.
+                                if (root.isPathSelected(modelData.path) && root.selectedCount > 1) {
+                                    deferSingleSelection = true
+                                } else {
+                                    root.setSingleSelection(modelData.path, index)
+                                }
                             }
                         }
 
@@ -811,6 +818,15 @@ Page {
                             dragTriggered = true
                             root.beginExternalDrag(modelData.path, index)
                         }
+
+                        onReleased: function(mouse) {
+                            if (mouse.button === Qt.LeftButton && deferSingleSelection && !dragTriggered) {
+                                root.setSingleSelection(modelData.path, index)
+                            }
+                            deferSingleSelection = false
+                        }
+
+                        onCanceled: deferSingleSelection = false
 
                         onDoubleClicked: {
                             root.setSingleSelection(modelData.path, index)
