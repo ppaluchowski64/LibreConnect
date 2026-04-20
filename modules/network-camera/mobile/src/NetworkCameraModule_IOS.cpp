@@ -198,9 +198,8 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
                 m_captureSession.reset();
                 m_camera.reset();
 
-                if (m_videoStream) {
-                    m_videoStream->Close();
-                    m_videoStream.reset();
+                if (const std::shared_ptr<SRTP::Stream> stream = ClearVideoStream()) {
+                    stream->Close();
                 }
 
                 if (m_codecContext) {
@@ -400,11 +399,17 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
                     Debug::LogWarning("No H264 parameter sets in encoder extradata; relying on in-band SPS/PPS");
                 }
 
-                m_videoStream = std::make_shared<SRTP::Stream>(m_context, m_localKey, m_remoteKey, requestedFormat.framerate);
+                std::shared_ptr<SRTP::Stream> stream = std::make_shared<SRTP::Stream>(
+                    m_context,
+                    m_localKey,
+                    m_remoteKey,
+                    requestedFormat.framerate
+                );
                 const auto peerAddr = ConnectionManager::GetPeerAddress();
                 const auto peerPort = m_portNumber.load();
                 Debug::Log("Binding SRTP to {}:{}", peerAddr.to_string(), peerPort);
-                m_videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
+                stream->Bind(UDPEndpoint(peerAddr, peerPort));
+                SetVideoStream(stream);
 
                 if (m_swsContext) {
                     sws_freeContext(m_swsContext);
@@ -443,15 +448,19 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
                     if (!frame.isValid())
                         return;
 
+                    NoteCaptureIngress(0);
+
                     if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
+                        NoteDropInactive();
                         return;
                     }
 
+                    const int64_t enqueuedAtUs = PerfNowUs();
                     if (!TryReserveFrameSlot("qt")) {
                         return;
                     }
 
-                    asio::co_spawn(m_moduleStrand, SendFrame_IOS(frame), asio::detached);
+                    asio::co_spawn(m_moduleStrand, SendFrame_IOS(frame, enqueuedAtUs), asio::detached);
                 }
             );
         },
@@ -459,8 +468,11 @@ void NetworkCameraModule::StartStream_IOS(const size_t requestID, const std::str
     );
 }
 
-asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
+asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame, const int64_t enqueuedAtUs) {
     const uint64_t generation = m_streamGeneration.load();
+    const int64_t workStartUs = PerfNowUs();
+    size_t sentNalCount = 0;
+    uint64_t sendAwaitUs = 0;
 
     const auto slotDeleter = [this](const int* p) {
         (void)p;
@@ -468,6 +480,18 @@ asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
     };
 
     std::unique_ptr<int, decltype(slotDeleter)> slotGuard(reinterpret_cast<int*>(1), slotDeleter);
+    const auto perfDeleter = [this, enqueuedAtUs, workStartUs, &sentNalCount, &sendAwaitUs](const int* p) {
+        (void)p;
+        const int64_t nowUs = PerfNowUs();
+        const uint64_t queueWaitUs = (enqueuedAtUs > 0 && workStartUs > enqueuedAtUs)
+            ? static_cast<uint64_t>(workStartUs - enqueuedAtUs)
+            : 0;
+        const uint64_t workUs = (nowUs > workStartUs)
+            ? static_cast<uint64_t>(nowUs - workStartUs)
+            : 0;
+        NoteFrameProcessed(queueWaitUs, workUs, sendAwaitUs, 0, sentNalCount);
+    };
+    std::unique_ptr<int, decltype(perfDeleter)> perfGuard(reinterpret_cast<int*>(1), perfDeleter);
 
     if (!m_streamActive.load()) {
         co_return;
@@ -488,7 +512,7 @@ asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
         co_return;
     }
 
-    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    const std::shared_ptr<SRTP::Stream> stream = GetVideoStream();
     if (!stream) {
         frame.unmap();
         co_return;
@@ -602,10 +626,10 @@ asio::awaitable<void> NetworkCameraModule::SendFrame_IOS(QVideoFrame frame) {
 
     frame.unmap();
 
-    co_await EncodeAndSendFrame(avFrame, generation);
+    co_await EncodeAndSendFrame(avFrame, generation, &sentNalCount, &sendAwaitUs);
 }
 
-asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avFrame, const uint64_t generation) {
+asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avFrame, const uint64_t generation, size_t* sentNalCount, uint64_t* sendAwaitUs) {
     if (!avFrame) {
         co_return;
     }
@@ -614,7 +638,7 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
         co_return;
     }
 
-    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    const std::shared_ptr<SRTP::Stream> stream = GetVideoStream();
     if (!stream) {
         co_return;
     }
@@ -692,6 +716,14 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
 
         const uint32_t ts = stream->NextTimestamp();
         const bool isKeyPacket = (pkt->flags & AV_PKT_FLAG_KEY) != 0;
+        if (m_waitForKeyframeAfterDrop.load(std::memory_order_relaxed) && !isKeyPacket) {
+            NoteDropAwaitingKeyframe();
+            av_packet_unref(pkt);
+            continue;
+        }
+        if (isKeyPacket) {
+            m_waitForKeyframeAfterDrop.store(false, std::memory_order_relaxed);
+        }
         const bool shouldSendCodecConfig = (!m_codecConfigSent || isKeyPacket) && !m_h264ParameterSets.empty();
         const std::vector<std::vector<uint8_t>> codecConfigSnapshot = shouldSendCodecConfig ? m_h264ParameterSets : std::vector<std::vector<uint8_t>>{};
         if (shouldSendCodecConfig) {
@@ -701,7 +733,15 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
                     sentAllConfig = false;
                     break;
                 }
+                const int64_t sendStartUs = PerfNowUs();
                 co_await stream->AsyncSendNal(nal.data(), nal.size(), ts, false);
+                const int64_t sendEndUs = PerfNowUs();
+                if (sendAwaitUs && sendEndUs > sendStartUs) {
+                    *sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+                }
+                if (sentNalCount) {
+                    ++(*sentNalCount);
+                }
                 if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
                     sentAllConfig = false;
                     break;
@@ -718,7 +758,15 @@ asio::awaitable<void> NetworkCameraModule::EncodeAndSendFrame(const AVFrame* avF
                 break;
             }
             const bool marker = (i + 1 == nal_spans.size());
+            const int64_t sendStartUs = PerfNowUs();
             co_await stream->AsyncSendNal(nal_spans[i].data, nal_spans[i].size, ts, marker);
+            const int64_t sendEndUs = PerfNowUs();
+            if (sendAwaitUs && sendEndUs > sendStartUs) {
+                *sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+            }
+            if (sentNalCount) {
+                ++(*sentNalCount);
+            }
             if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
                 break;
             }

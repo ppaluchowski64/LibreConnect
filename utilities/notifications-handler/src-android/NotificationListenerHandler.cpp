@@ -81,6 +81,12 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
     }
 }
 
+void ClearNotificationDatas() {
+    std::lock_guard lock(g_notificationDatasMutex);
+    g_notificationDatas.clear();
+    Debug::Log("NotificationSync: Cleared notification datas");
+}
+
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListener_onNotificationRemovedCPP(
     JNIEnv* env,
     jobject,

@@ -9,7 +9,9 @@
 #include <QJsonObject>
 #include <QtCore/qcoreapplication_platform.h>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <cstring>
 #include <mutex>
 #include <set>
 #include <tuple>
@@ -17,6 +19,42 @@
 static std::mutex g_frameTargetMutex{};
 static std::weak_ptr<NetworkCameraModule> g_frameTarget{};
 static constexpr int64_t kFullHdPixels = 1920 * 1080;
+static std::mutex g_accessUnitPoolMutex{};
+static std::vector<std::vector<uint8_t>> g_accessUnitPool{};
+static constexpr size_t kMaxAccessUnitPoolSize = 8;
+static constexpr size_t kMaxReusableAccessUnitCapacity = 4 * 1024 * 1024;
+
+static std::vector<uint8_t> AcquireAccessUnitBuffer(const size_t requiredSize) {
+    std::vector<uint8_t> accessUnit;
+    {
+        std::lock_guard<std::mutex> lock(g_accessUnitPoolMutex);
+        if (!g_accessUnitPool.empty()) {
+            accessUnit = std::move(g_accessUnitPool.back());
+            g_accessUnitPool.pop_back();
+        }
+    }
+
+    if (accessUnit.capacity() < requiredSize) {
+        accessUnit.reserve(requiredSize);
+    }
+    accessUnit.resize(requiredSize);
+    return accessUnit;
+}
+
+static void RecycleAccessUnitBuffer(std::vector<uint8_t>&& accessUnit) {
+    if (accessUnit.capacity() == 0 || accessUnit.capacity() > kMaxReusableAccessUnitCapacity) {
+        return;
+    }
+
+    accessUnit.clear();
+
+    std::lock_guard<std::mutex> lock(g_accessUnitPoolMutex);
+    if (g_accessUnitPool.size() >= kMaxAccessUnitPoolSize) {
+        return;
+    }
+
+    g_accessUnitPool.emplace_back(std::move(accessUnit));
+}
 
 static bool SplitLengthPrefixedNalUnitsWithLength(
     const uint8_t* data,
@@ -141,15 +179,18 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
         return;
     }
 
-    std::vector<uint8_t> accessUnit(
-        encodedData,
-        encodedData + static_cast<size_t>(size)
-    );
+    const int64_t enqueuedAtUs = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()
+    ).count();
+
+    std::vector<uint8_t> accessUnit = AcquireAccessUnitBuffer(static_cast<size_t>(size));
+    std::memcpy(accessUnit.data(), encodedData, static_cast<size_t>(size));
 
     module->OnAndroidEncodedFrame(
         std::move(accessUnit),
         static_cast<int32_t>(flags),
-        static_cast<int64_t>(ptsUs)
+        static_cast<int64_t>(ptsUs),
+        enqueuedAtUs
     );
 }
 
@@ -275,16 +316,22 @@ std::vector<CameraSpecification> NetworkCameraModule::FetchCamerasSpecificationF
         return output;
 }
 
-void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs) {
+void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs, const int64_t enqueuedAtUs) {
     if (accessUnit.empty()) {
+        RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
     }
 
-    if (!m_streamActive.load() || !m_videoStream) {
+    NoteCaptureIngress(accessUnit.size());
+
+    if (!m_streamActive.load() || !GetVideoStream()) {
+        NoteDropInactive();
+        RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
     }
 
     if (!TryReserveFrameSlot("android-encoded")) {
+        RecycleAccessUnitBuffer(std::move(accessUnit));
         return;
     }
 
@@ -295,7 +342,8 @@ void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit,
             std::move(accessUnit),
             flags,
             ptsUs,
-            generation
+            generation,
+            enqueuedAtUs
         ),
         asio::detached
     );
@@ -398,13 +446,15 @@ int32_t NetworkCameraModule::ComputeTargetBitrate(const int width, const int hei
     double targetBpp = 0.225;
 
     if (pixels > 2073600) {
-        targetBpp = 0.12;
+        // HEVC high-res streams are significantly more sensitive to packet loss/backpressure.
+        // Keep bitrate conservative to reduce RTP drops on typical Wi-Fi links.
+        targetBpp = 0.07;
     } else if (pixels > 921600) {
         targetBpp = 0.18;
     }
 
     constexpr int64_t kMinBitrate = 2'000'000;
-    constexpr int64_t kMaxBitrate = 35'000'000;
+    const int64_t kMaxBitrate = (pixels > 2073600) ? 20'000'000 : 35'000'000;
 
     const int64_t pixelsPerSecond = pixels * safeFps;
     const int64_t bitrate = std::llround(static_cast<double>(pixelsPerSecond) * targetBpp);
@@ -442,7 +492,7 @@ void NetworkCameraModule::StartStream_Android(const size_t requestID, const std:
         (m_streamCodecId == CodecID::H265 ? "H265" : "H264")
     );
 
-    m_videoStream = std::make_shared<SRTP::Stream>(
+    std::shared_ptr<SRTP::Stream> videoStream = std::make_shared<SRTP::Stream>(
         m_context,
         m_localKey,
         m_remoteKey,
@@ -452,7 +502,8 @@ void NetworkCameraModule::StartStream_Android(const size_t requestID, const std:
     const auto peerAddr = ConnectionManager::GetPeerAddress();
     const auto peerPort = m_portNumber.load();
     Debug::Log("Binding SRTP to {}:{}", peerAddr.to_string(), peerPort);
-    m_videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
+    videoStream->Bind(UDPEndpoint(peerAddr, peerPort));
+    SetVideoStream(videoStream);
 
     m_h264ParameterSets.clear();
     m_h264LengthSize = 4;
@@ -492,7 +543,32 @@ void NetworkCameraModule::StopStream_Android() {
 }
 
 
-asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs, const uint64_t generation) {
+asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs, const uint64_t generation, const int64_t enqueuedAtUs) {
+    (void)ptsUs;
+    const int64_t workStartUs = PerfNowUs();
+    const size_t accessUnitSize = accessUnit.size();
+    size_t sentNalCount = 0;
+    uint64_t sendAwaitUs = 0;
+
+    const auto perfDeleter = [this, enqueuedAtUs, workStartUs, accessUnitSize, &sentNalCount, &sendAwaitUs](const int* p) {
+        (void)p;
+        const int64_t nowUs = PerfNowUs();
+        const uint64_t queueWaitUs = (enqueuedAtUs > 0 && workStartUs > enqueuedAtUs)
+            ? static_cast<uint64_t>(workStartUs - enqueuedAtUs)
+            : 0;
+        const uint64_t workUs = (nowUs > workStartUs)
+            ? static_cast<uint64_t>(nowUs - workStartUs)
+            : 0;
+        NoteFrameProcessed(queueWaitUs, workUs, sendAwaitUs, accessUnitSize, sentNalCount);
+    };
+    std::unique_ptr<int, decltype(perfDeleter)> perfGuard(reinterpret_cast<int*>(1), perfDeleter);
+
+    const auto accessUnitDeleter = [&accessUnit](const int* p) {
+        (void)p;
+        RecycleAccessUnitBuffer(std::move(accessUnit));
+    };
+    std::unique_ptr<int, decltype(accessUnitDeleter)> accessUnitGuard(reinterpret_cast<int*>(1), accessUnitDeleter);
+
     const auto slotDeleter = [this](const int* p) {
         (void)p;
         ReleaseFrameSlot();
@@ -504,7 +580,7 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
         co_return;
     }
 
-    const std::shared_ptr<SRTP::Stream> stream = m_videoStream;
+    const std::shared_ptr<SRTP::Stream> stream = GetVideoStream();
     if (!stream) {
         co_return;
     }
@@ -513,6 +589,14 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
     constexpr int32_t kMediaCodecBufferFlagCodecConfig = 2;
     const bool isKeyPacket = (flags & kMediaCodecBufferFlagKeyFrame) != 0;
     const bool isCodecConfigPacket = (flags & kMediaCodecBufferFlagCodecConfig) != 0;
+
+    if (m_waitForKeyframeAfterDrop.load(std::memory_order_relaxed) && !isKeyPacket && !isCodecConfigPacket) {
+        NoteDropAwaitingKeyframe();
+        co_return;
+    }
+    if (isKeyPacket) {
+        m_waitForKeyframeAfterDrop.store(false, std::memory_order_relaxed);
+    }
 
     std::vector<CameraUtilitiesLC::NalSpan> nalSpans;
     if (CameraUtilitiesLC::IsAnnexB(accessUnit.data(), accessUnit.size())) {
@@ -555,7 +639,13 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
                 sentAllConfig = false;
                 break;
             }
+            const int64_t sendStartUs = PerfNowUs();
             co_await stream->AsyncSendNal(nal.data(), nal.size(), ts, false);
+            const int64_t sendEndUs = PerfNowUs();
+            if (sendEndUs > sendStartUs) {
+                sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+            }
+            ++sentNalCount;
             if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
                 sentAllConfig = false;
                 break;
@@ -575,7 +665,13 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
                 break;
             }
             const bool marker = (i + 1 == nalSpans.size());
+            const int64_t sendStartUs = PerfNowUs();
             co_await stream->AsyncSendNal(nalSpans[i].data, nalSpans[i].size, ts, marker);
+            const int64_t sendEndUs = PerfNowUs();
+            if (sendEndUs > sendStartUs) {
+                sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+            }
+            ++sentNalCount;
             if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
                 sentAllConfig = false;
                 break;
@@ -593,7 +689,13 @@ asio::awaitable<void> NetworkCameraModule::SendEncodedFrame(std::vector<uint8_t>
             break;
         }
         const bool marker = (i + 1 == nalSpans.size());
+        const int64_t sendStartUs = PerfNowUs();
         co_await stream->AsyncSendNal(nalSpans[i].data, nalSpans[i].size, ts, marker);
+        const int64_t sendEndUs = PerfNowUs();
+        if (sendEndUs > sendStartUs) {
+            sendAwaitUs += static_cast<uint64_t>(sendEndUs - sendStartUs);
+        }
+        ++sentNalCount;
         if (!m_streamActive.load() || generation != m_streamGeneration.load()) {
             break;
         }

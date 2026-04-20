@@ -7,7 +7,9 @@
 #include <CameraSpecification.h>
 #include <CameraUtilities.h>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 #include <QVideoFrame>
@@ -27,7 +29,6 @@ enum class StreamStartFailReason : uint8_t {
 
 };
 
-//#define IOS_DEVICE
 
 class NetworkCameraModule final : public BaseModule {
 private:
@@ -40,7 +41,7 @@ private:
     static bool IsCameraFormatSupportedByCodec(const AVCodec* codec, int width, int height, int requestedFps);
     static QString QueryMainServiceCameraConfigurationsJson();
 
-    asio::awaitable<void> SendEncodedFrame(std::vector<uint8_t> accessUnit, int32_t flags, int64_t ptsUs, uint64_t generation);
+    asio::awaitable<void> SendEncodedFrame(std::vector<uint8_t> accessUnit, int32_t flags, int64_t ptsUs, uint64_t generation, int64_t enqueuedAtUs);
 
     static void StopStream_Android();
     void StartStream_Android(size_t requestID, const std::string& cameraID, CameraFormat requestedFormat);
@@ -48,12 +49,12 @@ private:
 #endif
 
 #ifdef IOS_DEVICE
-    asio::awaitable<void> EncodeAndSendFrame(const AVFrame* avFrame, uint64_t generation);
+    asio::awaitable<void> EncodeAndSendFrame(const AVFrame* avFrame, uint64_t generation, size_t* sentNalCount, uint64_t* sendAwaitUs);
 
     asio::awaitable<void> StopStream_IOS();
     void StartStream_IOS(size_t requestID, const std::string& cameraID, CameraFormat requestedFormat);
 
-    asio::awaitable<void> SendFrame_IOS(QVideoFrame frame);
+    asio::awaitable<void> SendFrame_IOS(QVideoFrame frame, int64_t enqueuedAtUs);
 
     std::unique_ptr<QMediaCaptureSession> m_captureSession;
     std::unique_ptr<QCamera> m_camera;
@@ -70,11 +71,24 @@ private:
 
     bool TryReserveFrameSlot(const char* sourceTag);
     void ReleaseFrameSlot();
+    static int64_t PerfNowUs();
+    void ResetPerformanceStats();
+    void NoteCaptureIngress(size_t bytes);
+    void NoteDropInactive();
+    void NoteDropBackpressure();
+    void NoteDropAwaitingKeyframe();
+    void NoteFrameQueued(uint32_t queueDepth);
+    void NoteFrameProcessed(uint64_t queueWaitUs, uint64_t workUs, uint64_t sendAwaitUs, size_t bytes, size_t sentNalCount);
+    void MaybeLogPerformanceStats();
+    std::shared_ptr<SRTP::Stream> GetVideoStream() const;
+    void SetVideoStream(std::shared_ptr<SRTP::Stream> stream);
+    std::shared_ptr<SRTP::Stream> ClearVideoStream();
 
     asio::awaitable<void> StartStream(size_t requestID, std::string cameraID, CameraFormat requestedFormat);
     static std::vector<CameraSpecification> FetchCamerasSpecificationForCodec(const AVCodec* codec);
 
     std::shared_ptr<SRTP::Stream> m_videoStream;
+    mutable std::mutex m_videoStreamMutex;
     std::vector<uint8_t> m_localKey;
     std::vector<uint8_t> m_remoteKey;
 
@@ -85,7 +99,24 @@ private:
     std::atomic<uint64_t> m_streamGeneration{0};
     std::atomic<uint32_t> m_inFlightSendFrames{0};
     std::atomic<uint32_t> m_droppedFramesBackpressure{0};
+    std::atomic<bool> m_waitForKeyframeAfterDrop{false};
     std::atomic<bool> m_qtPipelineStopped{true};
+    std::atomic<uint64_t> m_perfIngressFrames{0};
+    std::atomic<uint64_t> m_perfIngressBytes{0};
+    std::atomic<uint64_t> m_perfQueuedFrames{0};
+    std::atomic<uint64_t> m_perfProcessedFrames{0};
+    std::atomic<uint64_t> m_perfProcessedBytes{0};
+    std::atomic<uint64_t> m_perfSentFrames{0};
+    std::atomic<uint64_t> m_perfSentNals{0};
+    std::atomic<uint64_t> m_perfDroppedInactive{0};
+    std::atomic<uint64_t> m_perfDroppedBackpressure{0};
+    std::atomic<uint64_t> m_perfDroppedAwaitingKeyframe{0};
+    std::atomic<uint64_t> m_perfQueueWaitUs{0};
+    std::atomic<uint64_t> m_perfWorkUs{0};
+    std::atomic<uint64_t> m_perfSendAwaitUs{0};
+    std::atomic<uint32_t> m_perfMaxQueueDepth{0};
+    std::atomic<int64_t> m_perfWindowStartUs{0};
+    std::atomic<int64_t> m_perfNextLogUs{0};
     QMetaObject::Connection m_videoFrameConnection;
 
     std::vector<std::vector<uint8_t>> m_h264ParameterSets;
@@ -107,7 +138,7 @@ protected:
 
 #ifdef ANDROID_DEVICE
 public:
-    void OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit, int32_t flags, int64_t ptsUs);
+    void OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit, int32_t flags, int64_t ptsUs, int64_t enqueuedAtUs);
 #endif
 };
 

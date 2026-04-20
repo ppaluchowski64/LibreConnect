@@ -5,6 +5,8 @@
 #include <vector>
 #include <DebugLog.h>
 
+void ClearNotificationDatas();
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP(
     JNIEnv* env,
