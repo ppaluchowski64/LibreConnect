@@ -22,6 +22,7 @@ public:
     void FetchEntry(const FileEntry& entry, const std::string& destination) const;
     // Moving entries with std::move is preferred
     void CopyEntriesToClipboard(std::vector<FileEntry> entries) const;
+    std::vector<std::filesystem::path> PrepareEntriesForExternalDrag(std::vector<FileEntry> entries) const;
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
     void PasteEntryFromClipboard(const std::filesystem::path& destination) const;
     void OpenEntry(const FileEntry& entry) const;
@@ -36,6 +37,7 @@ private:
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;
+    asio::awaitable<std::vector<std::filesystem::path>> PrepareEntriesForExternalDragAwaitable(std::vector<FileEntry> entries) const;
     static asio::awaitable<void> FetchEntryIconAwaitable(FileEntry entry, FileIconDensity density);
 
     std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;

@@ -1,10 +1,15 @@
 #include "FileManagerController.h"
+#include "PlatformVirtualFileDrag.h"
 
-#include <QPointer>
+#include <QGuiApplication>
 #include <QStandardPaths>
+#include <QUrl>
 
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
+#include <memory>
+#include <thread>
 
 #include <DebugLog.h>
 #include <ConnectionManager.h>
@@ -380,6 +385,116 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
     module->CopyEntriesToClipboard(std::move(entries));
 }
 
+void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
+{
+    if (remotePaths.isEmpty()) {
+        setStatusMessage(QStringLiteral("Select one or more files or folders first."));
+        return;
+    }
+
+    if (m_pendingAction != PendingAction::None || m_waitingForModule) {
+        setStatusMessage(QStringLiteral("Finish the current transfer before starting a drag export."));
+        return;
+    }
+
+    std::vector<FileEntry> entries;
+    entries.reserve(static_cast<size_t>(remotePaths.size()));
+
+    QStringList uniquePaths;
+    for (const QString& remotePath : remotePaths) {
+        const QString normalizedPath = normalizeRemotePath(remotePath);
+        if (normalizedPath.isEmpty() || uniquePaths.contains(normalizedPath)) {
+            continue;
+        }
+
+        auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+        if (lookup == m_entryLookup.end()) {
+            continue;
+        }
+
+        uniquePaths.push_back(normalizedPath);
+        entries.push_back(lookup->second);
+    }
+
+    if (entries.empty()) {
+        setStatusMessage(QStringLiteral("The selected entries are no longer available in the current folder."));
+        return;
+    }
+
+    m_pendingAction = PendingAction::DragExport;
+    m_waitingForModule = false;
+    m_pendingEntryPath.clear();
+    m_pendingLocalPath.clear();
+    m_activeEntryPath.clear();
+    m_activeEntryName = uniquePaths.size() == 1
+        ? QString::fromStdString(entries.front().GetName().value_or(std::string()))
+        : QStringLiteral("%1 entries").arg(uniquePaths.size());
+    setBusy(false);
+    setDragExportInProgress(true);
+    setTransferProgress(0.0);
+
+    setStatusMessage(uniquePaths.size() == 1
+        ? QStringLiteral("Drag started. Drop into Explorer to begin export.")
+        : QStringLiteral("Drag started. Drop into Explorer to begin export."));
+
+    QObject* dragSource = QGuiApplication::focusObject();
+    if (!dragSource) {
+        dragSource = this;
+    }
+
+    auto exportedCount = std::make_shared<int>(0);
+    const bool dropped = PlatformVirtualFileDrag::Start(dragSource, [entries = std::move(entries), exportedCount]() mutable -> std::vector<std::filesystem::path> {
+        auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+        if (module->GetModuleState() != ModuleState::Enabled) {
+            module->Enable(true);
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+            while (module->GetModuleState() != ModuleState::Enabled && std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
+        }
+
+        if (module->GetModuleState() != ModuleState::Enabled) {
+            return {};
+        }
+
+        std::vector<std::filesystem::path> preparedPaths = module->PrepareEntriesForExternalDrag(std::move(entries));
+        *exportedCount = static_cast<int>(preparedPaths.size());
+        return preparedPaths;
+    });
+
+    if (!dropped) {
+        setBusy(false);
+        setDragExportInProgress(false);
+        m_pendingAction = PendingAction::None;
+        m_activeEntryName.clear();
+        m_activeEntryPath.clear();
+        setTransferProgress(0.0);
+        setStatusMessage(QStringLiteral("Drag cancelled."));
+        return;
+    }
+
+    if (*exportedCount == 0) {
+        setBusy(false);
+        setDragExportInProgress(false);
+        m_pendingAction = PendingAction::None;
+        m_activeEntryName.clear();
+        m_activeEntryPath.clear();
+        setTransferProgress(0.0);
+        setStatusMessage(QStringLiteral("Unable to prepare files for external drag."));
+        return;
+    }
+
+    setBusy(false);
+    setDragExportInProgress(false);
+    m_pendingAction = PendingAction::None;
+    m_activeEntryName.clear();
+    m_activeEntryPath.clear();
+    setTransferProgress(1.0);
+    setStatusMessage(*exportedCount == 1
+        ? QStringLiteral("Prepared 1 entry for drag export.")
+        : QStringLiteral("Prepared %1 entries for drag export.").arg(*exportedCount));
+}
+
 void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
 {
     const QString localPath = localPathUrl.toLocalFile().trimmed();
@@ -492,10 +607,16 @@ bool FileManagerController::event(QEvent* event)
         const double progress = totalBytes == 0 ? 0.0 : static_cast<double>(transferredBytes) / static_cast<double>(totalBytes);
         setTransferProgress(progress);
         setBusy(true);
-        setStatusMessage(QStringLiteral("%1 %2 (%3%)").arg(
-            operation == TransferOperation::Post ? QStringLiteral("Uploading") : QStringLiteral("Transferring"),
-            m_activeEntryName,
-            QString::number(progress * 100.0, 'f', 0)));
+        if (m_pendingAction == PendingAction::DragExport) {
+            setStatusMessage(QStringLiteral("Preparing %1 for drag export (%2%)").arg(
+                m_activeEntryName,
+                QString::number(progress * 100.0, 'f', 0)));
+        } else {
+            setStatusMessage(QStringLiteral("%1 %2 (%3%)").arg(
+                operation == TransferOperation::Post ? QStringLiteral("Uploading") : QStringLiteral("Transferring"),
+                m_activeEntryName,
+                QString::number(progress * 100.0, 'f', 0)));
+        }
         return true;
     }
 
@@ -511,7 +632,7 @@ bool FileManagerController::event(QEvent* event)
             return true;
         }
 
-        if (m_pendingAction == PendingAction::Copy) {
+        if (m_pendingAction == PendingAction::Copy || m_pendingAction == PendingAction::DragExport) {
             return true;
         }
 
@@ -985,6 +1106,16 @@ void FileManagerController::setBusy(const bool busy)
 
     m_busy = busy;
     emit busyChanged();
+}
+
+void FileManagerController::setDragExportInProgress(const bool dragExportInProgress)
+{
+    if (m_dragExportInProgress == dragExportInProgress) {
+        return;
+    }
+
+    m_dragExportInProgress = dragExportInProgress;
+    emit dragExportInProgressChanged();
 }
 
 void FileManagerController::setTransferProgress(const double transferProgress)

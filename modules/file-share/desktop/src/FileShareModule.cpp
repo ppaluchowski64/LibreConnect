@@ -8,6 +8,7 @@
 #include <QUrl>
 
 #include <chrono>
+#include <future>
 #include <stdexcept>
 
 namespace
@@ -20,6 +21,7 @@ QString PathToQString(const std::filesystem::path& path)
     return QString::fromStdString(path.string());
 #endif
 }
+
 }
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
@@ -244,6 +246,51 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
         const std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), result);
         ConnectionManager::SendEvent(event);
     });
+}
+
+std::vector<std::filesystem::path> FileShareModule::PrepareEntriesForExternalDrag(std::vector<FileEntry> entries) const {
+    if (entries.empty()) {
+        return {};
+    }
+
+    try {
+        return asio::co_spawn(m_context, PrepareEntriesForExternalDragAwaitable(std::move(entries)), asio::use_future).get();
+    } catch (...) {
+        return {};
+    }
+}
+
+asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntriesForExternalDragAwaitable(std::vector<FileEntry> entries) const {
+    std::vector<std::filesystem::path> preparedPaths;
+    if (entries.empty()) {
+        co_return preparedPaths;
+    }
+
+    preparedPaths.reserve(entries.size());
+
+    for (const FileEntry& entry : entries) {
+        const std::string sourcePath = entry.GetPath().value_or(std::string());
+        const std::string name = entry.GetName().value_or(std::string());
+        if (sourcePath.empty() || name.empty()) {
+            continue;
+        }
+
+        const size_t hash = HashString(std::filesystem::path(sourcePath).parent_path().string());
+        std::filesystem::path destinationDirectory = std::filesystem::temp_directory_path() / std::to_string(hash);
+        std::filesystem::create_directories(destinationDirectory);
+        const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::u8path(name);
+
+        try {
+            co_await FetchEntryAwaitable(entry, destinationDirectory.string());
+            if (std::filesystem::exists(expectedPath)) {
+                preparedPaths.push_back(expectedPath);
+            }
+        } catch (...) {
+            // Skip failed entries and continue preparing remaining ones.
+        }
+    }
+
+    co_return preparedPaths;
 }
 
 void FileShareModule::PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const {

@@ -152,6 +152,19 @@ Page {
             fileManagerController.uploadLocalEntry(urls[i])
     }
 
+    function beginExternalDrag(targetPath, index) {
+        if (!targetPath || targetPath.length === 0)
+            return
+
+        if (!root.isPathSelected(targetPath))
+            root.setSingleSelection(targetPath, index)
+
+        const paths = root.selectedRemotePaths.length > 0
+                    ? root.selectedRemotePaths.slice()
+                    : [targetPath]
+        fileManagerController.beginExternalDrag(paths)
+    }
+
     function beginPathEdit() {
         pathEditMode = true
         pathEditFieldCompact.text = fileManagerController.currentRemotePath
@@ -756,8 +769,15 @@ Page {
                     MouseArea {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        property real pressX: 0
+                        property real pressY: 0
+                        property bool dragTriggered: false
 
                         onPressed: function(mouse) {
+                            pressX = mouse.x
+                            pressY = mouse.y
+                            dragTriggered = false
+
                             if (mouse.button === Qt.RightButton) {
                                 root.selectionForContext(modelData.path, index)
                                 fileContextMenu.targetPaths = root.selectedRemotePaths.slice()
@@ -776,6 +796,20 @@ Page {
                             } else {
                                 root.setSingleSelection(modelData.path, index)
                             }
+                        }
+
+                        onPositionChanged: function(mouse) {
+                            if (!(mouse.buttons & Qt.LeftButton) || dragTriggered)
+                                return
+
+                            const dx = mouse.x - pressX
+                            const dy = mouse.y - pressY
+                            const dragDistance = Math.sqrt(dx * dx + dy * dy)
+                            if (dragDistance < Qt.styleHints.startDragDistance)
+                                return
+
+                            dragTriggered = true
+                            root.beginExternalDrag(modelData.path, index)
                         }
 
                         onDoubleClicked: {
@@ -808,7 +842,11 @@ Page {
 
             DropArea {
                 anchors.fill: parent
+                enabled: !fileManagerController.dragExportInProgress
                 onEntered: function(drag) {
+                    if (fileManagerController.dragExportInProgress)
+                        return
+
                     if (!drag.hasUrls)
                         return
 
@@ -818,6 +856,9 @@ Page {
                 onExited: root.dropActive = false
                 onDropped: function(drop) {
                     root.dropActive = false
+                    if (fileManagerController.dragExportInProgress)
+                        return
+
                     if (!drop.hasUrls || drop.urls.length === 0)
                         return
 
