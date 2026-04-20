@@ -213,36 +213,56 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
 static bool CanUseDecoder(const AVCodec* codec) {
     if (!codec) return false;
-    // if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
-    // if (codec->name && std::strstr(codec->name, "cuvid")) return false;
 
     AVCodecContext* ctx = avcodec_alloc_context3(codec);
     if (!ctx) return false;
 
     AVBufferRef* hwDevice = nullptr;
+    bool hw_device_created = false;
+    bool has_hw_configs = false;
+
     for (int i = 0;; i++) {
         const AVCodecHWConfig* hwcfg = avcodec_get_hw_config(codec, i);
         if (!hwcfg) {
             break;
         }
 
+        has_hw_configs = true;
+
         if (hwcfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
             if (av_hwdevice_ctx_create(&hwDevice, hwcfg->device_type, nullptr, nullptr, 0) >= 0) {
                 ctx->hw_device_ctx = av_buffer_ref(hwDevice);
+                hw_device_created = true;
                 break;
             }
         }
     }
 
-    const bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
+    bool is_hw_codec = (codec->capabilities & AV_CODEC_CAP_HARDWARE);
+    if (!is_hw_codec && codec->name) {
+        std::string name = codec->name;
+        if (name.find("qsv") != std::string::npos || 
+            name.find("nvenc") != std::string::npos || 
+            name.find("amf") != std::string::npos || 
+            name.find("vaapi") != std::string::npos ||
+            name.find("d3d11va") != std::string::npos) {
+            is_hw_codec = true;
+        }
+    }
 
+    if (is_hw_codec && !hw_device_created) {
+        avcodec_free_context(&ctx);
+        return false;
+    }
+
+    const bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
     if (hwDevice) {
         av_buffer_unref(&hwDevice);
     }
+    
     avcodec_free_context(&ctx);
     return ok;
 }
-
 
 const AVCodec* GetEncoderCodec(const CodecID codecID) {
     if (!g_encoderPriority.contains(codecID)) return nullptr;
