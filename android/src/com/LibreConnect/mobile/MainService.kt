@@ -15,7 +15,6 @@ import android.os.PowerManager
 import android.Manifest
 import android.annotation.SuppressLint
 import android.util.Log
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -264,14 +263,12 @@ class MainService : Service() {
 
         @Suppress("unused")
         @JvmStatic
-        @ExperimentalCamera2Interop
         fun queryAvailableCameraConfigurations(context: Context): String {
             return CameraFrameReceiver.queryAvailableCameraConfigurations(context)
         }
 
         @Suppress("unused")
         @JvmStatic
-        @ExperimentalCamera2Interop
         fun startCameraFrameReceiver(
             context: Context,
             requestedCameraId: String? = null,

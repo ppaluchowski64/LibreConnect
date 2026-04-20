@@ -2,95 +2,57 @@ package com.LibreConnect.mobile
 
 import android.content.Context
 import android.graphics.ImageFormat
-import android.hardware.camera2.CameraCharacteristics
-import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.*
+import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
-import android.os.Build
-import android.os.Handler
-import android.os.Looper
+import android.os.*
 import android.util.Log
 import android.util.Range
 import android.util.Size
 import android.view.Surface
-import androidx.camera.camera2.interop.Camera2CameraInfo
-import androidx.camera.camera2.interop.Camera2Interop
-import androidx.camera.camera2.interop.ExperimentalCamera2Interop
-import androidx.camera.core.CameraInfo
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.Preview
-import androidx.camera.core.SurfaceRequest
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.LifecycleRegistry
+import android.view.SurfaceHolder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.nio.ByteBuffer
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.FutureTask
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 object CameraFrameReceiver {
     private const val TAG = "CameraFrameReceiver"
-    private const val CAMERA_PROVIDER_TIMEOUT_SECONDS = 5L
-    private const val CAMERA_FRAME_RECEIVER_TIMEOUT_SECONDS = 5L
     private const val CAMERA_FALLBACK_FPS = 30
 
     private val cameraReceiverLock = Any()
-    private var cameraProvider: ProcessCameraProvider? = null
-    private var cameraPreview: Preview? = null
-    private var cameraFrameExecutor: ExecutorService? = null
-    private var cameraLifecycleOwner: CameraLifecycleOwner? = null
+    private var cameraDevice: CameraDevice? = null
+    private var captureSession: CameraCaptureSession? = null
     private var videoEncoder: MediaCodec? = null
     private var videoEncoderInputSurface: Surface? = null
-    private var videoEncoderDrainExecutor: ExecutorService? = null
-    private val videoEncoderRunning = AtomicBoolean(false)
-    private val mainThreadHandler = Handler(Looper.getMainLooper())
+    private var backgroundThread: HandlerThread? = null
+    private var backgroundHandler: Handler? = null
+    private val isRunning = AtomicBoolean(false)
 
-    private inline fun <T> runOnMainThreadBlocking(crossinline block: () -> T): T {
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            return block()
-        }
-
-        val task = FutureTask<T> { block() }
-        mainThreadHandler.post(task)
-        return task.get()
-    }
-
-    @ExperimentalCamera2Interop
     fun queryAvailableCameraConfigurations(context: Context): String {
         return try {
-            val provider = ProcessCameraProvider.getInstance(context.applicationContext)
-                .get(CAMERA_PROVIDER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            val cameraInfos = provider.availableCameraInfos
-            val defaultCameraId = resolveDefaultCameraId(cameraInfos)
+            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
             val cameraArray = JSONArray()
 
-            cameraInfos.forEach { cameraInfo ->
-                val camera2Info = Camera2CameraInfo.from(cameraInfo)
-                val cameraId = camera2Info.cameraId
-                val streamConfigMap = camera2Info.getCameraCharacteristic(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                    ?: return@forEach
-                val outputSizes = streamConfigMap.getOutputSizes(ImageFormat.YUV_420_888).orEmpty()
-                if (outputSizes.isEmpty()) {
-                    return@forEach
-                }
+            cameraManager.cameraIdList.forEach { cameraId ->
+                val chars = cameraManager.getCameraCharacteristics(cameraId)
+                val configMap = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP) ?: return@forEach
+                
+                // Use MediaCodec as a proxy for hardware encoding capabilities
+                val outputSizes = configMap.getOutputSizes(MediaCodec::class.java).orEmpty()
+                if (outputSizes.isEmpty()) return@forEach
 
-                val fpsRanges = camera2Info.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                val fpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
                 val fallbackFps = resolveFallbackFps(fpsRanges)
                 val uniqueFormats = HashSet<String>()
                 val formats = JSONArray()
 
                 outputSizes.forEach { size ->
-                    if (size.width <= 0 || size.height <= 0) {
-                        return@forEach
-                    }
+                    if (size.width <= 0 || size.height <= 0) return@forEach
 
-                    val minFrameDurationNs = streamConfigMap.getOutputMinFrameDuration(ImageFormat.YUV_420_888, size)
+                    val minFrameDurationNs = configMap.getOutputMinFrameDuration(SurfaceHolder::class.java, size)
                     val calculatedFps = if (minFrameDurationNs > 0L) {
                         (1_000_000_000L / minFrameDurationNs).toInt().coerceAtLeast(1)
                     } else {
@@ -98,9 +60,7 @@ object CameraFrameReceiver {
                     }
 
                     val dedupeKey = "${size.width}x${size.height}@$calculatedFps"
-                    if (!uniqueFormats.add(dedupeKey)) {
-                        return@forEach
-                    }
+                    if (!uniqueFormats.add(dedupeKey)) return@forEach
 
                     val formatObject = JSONObject()
                     formatObject.put("width", size.width)
@@ -109,26 +69,23 @@ object CameraFrameReceiver {
                     formats.put(formatObject)
                 }
 
-                if (formats.length() == 0) {
-                    return@forEach
-                }
+                if (formats.length() == 0) return@forEach
 
                 val cameraObject = JSONObject()
                 cameraObject.put("id", cameraId)
-                cameraObject.put("description", resolveCameraDescription(cameraInfo, cameraId))
-                cameraObject.put("isDefault", cameraId == defaultCameraId)
+                cameraObject.put("description", resolveCameraDescription(chars, cameraId))
+                cameraObject.put("isDefault", chars.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK)
                 cameraObject.put("formats", formats)
                 cameraArray.put(cameraObject)
             }
 
             cameraArray.toString()
         } catch (t: Throwable) {
-            Log.e(TAG, "CameraX queryAvailableCameraConfigurations failed", t)
+            Log.e(TAG, "Camera2 queryAvailableCameraConfigurations failed", t)
             "[]"
         }
     }
 
-    @ExperimentalCamera2Interop
     fun start(
         context: Context,
         requestedCameraId: String? = null,
@@ -138,244 +95,146 @@ object CameraFrameReceiver {
         requestedBitrate: Int = 2_000_000,
         onEncodedSample: (ByteBuffer, Int, Int, Long) -> Unit
     ): Boolean {
-        val provider = try {
-            ProcessCameraProvider.getInstance(context.applicationContext)
-                .get(CAMERA_FRAME_RECEIVER_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        } catch (t: Throwable) {
-            Log.e(TAG, "Failed to acquire CameraX provider", t)
-            return false
-        }
+        synchronized(cameraReceiverLock) {
+            stopLocked()
 
-        return runOnMainThreadBlocking {
-            synchronized(cameraReceiverLock) {
-                stopLocked()
+            try {
+                val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                val cameraId = requestedCameraId ?: cameraManager.cameraIdList.firstOrNull {
+                    cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
+                } ?: cameraManager.cameraIdList.firstOrNull() ?: return false
 
-                try {
-                    val targetCameraInfo = resolveTargetCameraInfo(provider.availableCameraInfos, requestedCameraId)
-                    if (targetCameraInfo == null) {
-                        Log.e(TAG, "No matching CameraX camera found")
-                        false
-                    } else {
-                        val width = requestedWidth.coerceAtLeast(320)
-                        val height = requestedHeight.coerceAtLeast(240)
-                        val fps = requestedFps.coerceIn(1, 60)
-                        val bitrate = requestedBitrate.coerceAtLeast(500_000)
+                val width = requestedWidth.coerceAtLeast(320)
+                val height = requestedHeight.coerceAtLeast(240)
+                val fps = requestedFps.coerceIn(1, 60)
+                val bitrate = requestedBitrate.coerceAtLeast(500_000)
 
-                        val encoder = createHardwareEncoder(width, height, fps, bitrate)
-                        if (encoder == null || videoEncoderInputSurface == null) {
-                            Log.e(TAG, "Failed to create hardware H264 encoder")
-                            stopLocked()
-                            return@runOnMainThreadBlocking false
-                        }
+                startBackgroundThread()
 
-                        val selector = CameraSelector.Builder()
-                            .addCameraFilter { infos ->
-                                infos.filter { info ->
-                                    Camera2CameraInfo.from(info).cameraId == Camera2CameraInfo.from(targetCameraInfo).cameraId
-                                }
-                            }
-                            .build()
-
-                        val previewBuilder = Preview.Builder()
-                            .setTargetResolution(Size(width, height))
-
-                        val interop = Camera2Interop.Extender(previewBuilder)
-                        interop.setCaptureRequestOption(
-                            CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                            Range(fps, fps)
-                        )
-                        interop.setCaptureRequestOption(
-                            CaptureRequest.CONTROL_CAPTURE_INTENT,
-                            CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD
-                        )
-                        interop.setCaptureRequestOption(
-                            CaptureRequest.NOISE_REDUCTION_MODE,
-                            CaptureRequest.NOISE_REDUCTION_MODE_FAST
-                        )
-                        interop.setCaptureRequestOption(
-                            CaptureRequest.EDGE_MODE,
-                            CaptureRequest.EDGE_MODE_FAST
-                        )
-
-                        val preview = previewBuilder.build()
-                        val lifecycleOwner = CameraLifecycleOwner().also { it.start() }
-                        val frameExecutor = Executors.newSingleThreadExecutor()
-                        val inputSurface = videoEncoderInputSurface
-                        if (inputSurface == null) {
-                            Log.e(TAG, "Encoder input surface is null")
-                            stopLocked()
-                            return@runOnMainThreadBlocking false
-                        }
-
-                        preview.setSurfaceProvider { request ->
-                            request.provideSurface(inputSurface, frameExecutor) {
-                                if (it.resultCode != SurfaceRequest.Result.RESULT_SURFACE_USED_SUCCESSFULLY) {
-                                    Log.w(TAG, "Camera surface request completed with code=${it.resultCode}")
-                                }
-                            }
-                        }
-
-                        provider.unbindAll()
-                        provider.bindToLifecycle(lifecycleOwner, selector, preview)
-
-                        startEncoderDrainLoop(encoder, onEncodedSample)
-
-                        cameraProvider = provider
-                        cameraPreview = preview
-                        cameraFrameExecutor = frameExecutor
-                        cameraLifecycleOwner = lifecycleOwner
-                        true
-                    }
-                } catch (t: Throwable) {
-                    Log.e(TAG, "Failed to start CameraX frame receiver", t)
+                val encoder = createHardwareEncoder(width, height, fps, bitrate, onEncodedSample)
+                if (encoder == null || videoEncoderInputSurface == null) {
                     stopLocked()
-                    false
+                    return false
                 }
+
+                isRunning.set(true)
+                
+                cameraManager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                    override fun onOpened(camera: CameraDevice) {
+                        synchronized(cameraReceiverLock) {
+                            if (!isRunning.get()) {
+                                camera.close()
+                                return
+                            }
+                            cameraDevice = camera
+                            createCaptureSession(camera, width, height, fps)
+                        }
+                    }
+
+                    override fun onDisconnected(camera: CameraDevice) {
+                        stop()
+                    }
+
+                    override fun onError(camera: CameraDevice, error: Int) {
+                        Log.e(TAG, "CameraDevice error: $error")
+                        stop()
+                    }
+                }, backgroundHandler)
+
+                return true
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to start Camera2 frame receiver", t)
+                stopLocked()
+                return false
             }
         }
     }
 
     fun stop() {
-        runOnMainThreadBlocking {
-            synchronized(cameraReceiverLock) {
-                stopLocked()
-            }
+        synchronized(cameraReceiverLock) {
+            stopLocked()
         }
     }
 
     private fun stopLocked() {
-        videoEncoderRunning.set(false)
-        videoEncoderDrainExecutor?.shutdownNow()
-        videoEncoderDrainExecutor = null
+        isRunning.set(false)
+        
+        try {
+            captureSession?.stopRepeating()
+            captureSession?.close()
+        } catch (_: Throwable) {}
+        captureSession = null
+
+        cameraDevice?.close()
+        cameraDevice = null
 
         try {
             videoEncoder?.stop()
-        } catch (_: Throwable) {
-        }
-        try {
             videoEncoder?.release()
-        } catch (_: Throwable) {
-        }
+        } catch (_: Throwable) {}
         videoEncoder = null
 
-        try {
-            videoEncoderInputSurface?.release()
-        } catch (_: Throwable) {
-        }
+        videoEncoderInputSurface?.release()
         videoEncoderInputSurface = null
 
-        cameraProvider?.let { provider ->
-            cameraPreview?.let { preview ->
-                provider.unbind(preview)
-            }
-        }
-
-        cameraLifecycleOwner?.stop()
-        cameraFrameExecutor?.shutdownNow()
-
-        cameraProvider = null
-        cameraPreview = null
-        cameraFrameExecutor = null
-        cameraLifecycleOwner = null
+        stopBackgroundThread()
     }
 
-    private fun startEncoderDrainLoop(
-        encoder: MediaCodec,
-        onEncodedSample: (ByteBuffer, Int, Int, Long) -> Unit
-    ) {
-        videoEncoderRunning.set(true)
-        val drainExecutor = Executors.newSingleThreadExecutor()
-        videoEncoderDrainExecutor = drainExecutor
+    private fun startBackgroundThread() {
+        backgroundThread = HandlerThread("CameraFrameReceiverThread").apply { start() }
+        backgroundHandler = Handler(backgroundThread!!.looper)
+    }
 
-        drainExecutor.execute {
-            val bufferInfo = MediaCodec.BufferInfo()
-            try {
-                while (videoEncoderRunning.get()) {
-                    val outputIndex = try {
-                        encoder.dequeueOutputBuffer(bufferInfo, 10_000)
-                    } catch (t: Throwable) {
-                        Log.e(TAG, "Encoder dequeueOutputBuffer failed", t)
-                        break
+    private fun stopBackgroundThread() {
+        backgroundThread?.quitSafely()
+        try {
+            backgroundThread?.join()
+        } catch (_: InterruptedException) {}
+        backgroundThread = null
+        backgroundHandler = null
+    }
+
+    private fun createCaptureSession(camera: CameraDevice, width: Int, height: Int, fps: Int) {
+        val surface = videoEncoderInputSurface ?: return
+        
+        val captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+            addTarget(surface)
+            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(fps, fps))
+            set(CaptureRequest.CONTROL_CAPTURE_INTENT, CaptureRequest.CONTROL_CAPTURE_INTENT_VIDEO_RECORD)
+            set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST)
+            set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST)
+        }
+
+        camera.createCaptureSession(listOf(surface), object : CameraCaptureSession.StateCallback() {
+            override fun onConfigured(session: CameraCaptureSession) {
+                synchronized(cameraReceiverLock) {
+                    if (!isRunning.get()) {
+                        session.close()
+                        return
                     }
-
-                    when {
-                        outputIndex >= 0 -> {
-                            if (bufferInfo.size > 0) {
-                                val outputBuffer = encoder.getOutputBuffer(outputIndex)
-                                if (outputBuffer != null) {
-                                    val duplicate = outputBuffer.duplicate()
-                                    duplicate.position(bufferInfo.offset)
-                                    duplicate.limit(bufferInfo.offset + bufferInfo.size)
-                                    val sample = duplicate.slice()
-                                    onEncodedSample(
-                                        sample,
-                                        bufferInfo.size,
-                                        bufferInfo.flags,
-                                        bufferInfo.presentationTimeUs
-                                    )
-                                }
-                            }
-                            encoder.releaseOutputBuffer(outputIndex, false)
-                        }
-
-                        outputIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                            Log.i(TAG, "Encoder output format changed: ${encoder.outputFormat}")
-                        }
-
-                        outputIndex == MediaCodec.INFO_TRY_AGAIN_LATER -> {
-                            // No output available yet.
-                        }
+                    captureSession = session
+                    try {
+                        session.setRepeatingRequest(captureRequestBuilder.build(), null, backgroundHandler)
+                    } catch (e: CameraAccessException) {
+                        Log.e(TAG, "Failed to start repeating request", e)
+                        stop()
                     }
                 }
-            } catch (t: Throwable) {
-                Log.e(TAG, "Encoder drain loop failed", t)
             }
-        }
-    }
 
-    @ExperimentalCamera2Interop
-    private fun resolveDefaultCameraId(cameraInfos: List<CameraInfo>): String? {
-        val preferred = cameraInfos.firstOrNull { it.lensFacing == CameraSelector.LENS_FACING_BACK }
-            ?: cameraInfos.firstOrNull()
-            ?: return null
-        return Camera2CameraInfo.from(preferred).cameraId
-    }
-
-    @ExperimentalCamera2Interop
-    private fun resolveTargetCameraInfo(
-        cameraInfos: List<CameraInfo>,
-        requestedCameraId: String?
-    ): CameraInfo? {
-        if (!requestedCameraId.isNullOrBlank()) {
-            cameraInfos.firstOrNull {
-                Camera2CameraInfo.from(it).cameraId == requestedCameraId
-            }?.let { return it }
-        }
-
-        return cameraInfos.firstOrNull { it.lensFacing == CameraSelector.LENS_FACING_BACK }
-            ?: cameraInfos.firstOrNull()
-    }
-
-    private fun resolveFallbackFps(ranges: Array<Range<Int>>?): Int {
-        val maxFps = ranges?.maxOfOrNull { range -> maxOf(range.lower, range.upper) } ?: CAMERA_FALLBACK_FPS
-        return maxFps.coerceAtLeast(1)
-    }
-
-    private fun resolveCameraDescription(cameraInfo: CameraInfo, cameraId: String): String {
-        val facingLabel = when (cameraInfo.lensFacing) {
-            CameraSelector.LENS_FACING_FRONT -> "Front camera"
-            CameraSelector.LENS_FACING_BACK -> "Back camera"
-            else -> "External camera"
-        }
-
-        return "$facingLabel ($cameraId)"
+            override fun onConfigureFailed(session: CameraCaptureSession) {
+                Log.e(TAG, "CameraCaptureSession configuration failed")
+                stop()
+            }
+        }, backgroundHandler)
     }
 
     private fun createHardwareEncoder(
         width: Int,
         height: Int,
         fps: Int,
-        bitrate: Int
+        bitrate: Int,
+        onEncodedSample: (ByteBuffer, Int, Int, Long) -> Unit
     ): MediaCodec? {
         return try {
             val pixels = width * height
@@ -392,6 +251,32 @@ object CameraFrameReceiver {
                 }
             }
 
+            codec.setCallback(object : MediaCodec.Callback() {
+                override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
+                    // Not used for Surface input
+                }
+
+                override fun onOutputBufferAvailable(codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo) {
+                    if (info.size > 0) {
+                        codec.getOutputBuffer(index)?.let { buffer ->
+                            buffer.position(info.offset)
+                            buffer.limit(info.offset + info.size)
+                            onEncodedSample(buffer, info.size, info.flags, info.presentationTimeUs)
+                        }
+                    }
+                    codec.releaseOutputBuffer(index, false)
+                }
+
+                override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
+                    Log.e(TAG, "MediaCodec error", e)
+                    stop()
+                }
+
+                override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+                    Log.i(TAG, "Encoder output format changed: $format")
+                }
+            }, backgroundHandler)
+
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             videoEncoderInputSurface = codec.createInputSurface()
             codec.start()
@@ -400,37 +285,26 @@ object CameraFrameReceiver {
             codec
         } catch (t: Throwable) {
             Log.e(TAG, "Failed to configure hardware encoder", t)
-            try {
-                videoEncoder?.release()
-            } catch (_: Throwable) {
-            }
+            videoEncoder?.release()
             videoEncoder = null
-            try {
-                videoEncoderInputSurface?.release()
-            } catch (_: Throwable) {
-            }
+            videoEncoderInputSurface?.release()
             videoEncoderInputSurface = null
             null
         }
     }
 
-    private class CameraLifecycleOwner : LifecycleOwner {
-        private val lifecycleRegistry = LifecycleRegistry(this)
+    private fun resolveFallbackFps(ranges: Array<Range<Int>>?): Int {
+        val maxFps = ranges?.maxOfOrNull { range -> maxOf(range.lower, range.upper) } ?: CAMERA_FALLBACK_FPS
+        return maxFps.coerceAtLeast(1)
+    }
 
-        init {
-            lifecycleRegistry.currentState = Lifecycle.State.CREATED
+    private fun resolveCameraDescription(chars: CameraCharacteristics, cameraId: String): String {
+        val facing = chars.get(CameraCharacteristics.LENS_FACING)
+        val facingLabel = when (facing) {
+            CameraCharacteristics.LENS_FACING_FRONT -> "Front camera"
+            CameraCharacteristics.LENS_FACING_BACK -> "Back camera"
+            else -> "External camera"
         }
-
-        override val lifecycle: Lifecycle
-            get() = lifecycleRegistry
-
-        fun start() {
-            lifecycleRegistry.currentState = Lifecycle.State.STARTED
-            lifecycleRegistry.currentState = Lifecycle.State.RESUMED
-        }
-
-        fun stop() {
-            lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
-        }
+        return "$facingLabel ($cameraId)"
     }
 }
