@@ -20,8 +20,10 @@ class FrameGenerator
 	wil::com_ptr_nothrow<IMFTransform> _converter;
 	wil::com_ptr_nothrow<IWICBitmap> _bitmap;
 	wil::com_ptr_nothrow<IMFDXGIDeviceManager> _dxgiManager;
+	wil::com_ptr_nothrow<ID2D1Bitmap> _imageBitmap;
 
 	HRESULT CreateRenderTargetResources(UINT width, UINT height);
+	HRESULT LoadInlineImage(IWICImagingFactory* wicFactory);
 
 public:
 	FrameGenerator() = delete;
