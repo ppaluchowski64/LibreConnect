@@ -68,17 +68,23 @@ void ModulesManager::Initialize() {
         Debug::Log("ModulesManager: Instance created");
     }
 
+    if (s_instance->m_fileShareModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_fileShareModule->Initialize(true);
 
 #ifndef MACOS_DEVICE
+    if (s_instance->m_networkCameraModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_networkCameraModule->Initialize(true);
 #endif
 
 #ifndef IOS_DEVICE
+    if (s_instance->m_notificationSyncModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_notificationSyncModule->Initialize(true);
 #endif
 
+    if (s_instance->m_clipboardSyncModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_clipboardSyncModule->Initialize(true);
+
+    if (s_instance->m_remoteInputModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_remoteInputModule->Initialize(true);
 
     ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REQUESTED, [](PC_Package&& package) {
