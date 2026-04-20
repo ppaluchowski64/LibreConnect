@@ -13,7 +13,7 @@ class TextClipboard {
         static void RemoveClipboardUpdateListener();
 
     private:
-    #ifdef __linux__
+    #if defined(__linux__) && !defined(__ANDROID__)
         static bool IsWayland();
         static bool HasWlClipboard();
     #endif
