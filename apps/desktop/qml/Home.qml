@@ -9,6 +9,7 @@ Page {
     required property var windowRef
     required property var connectionController
     required property var notificationSyncController
+    required property var clipboardSyncController
     required property var permissionStateController
     required property var temporaryStorageController
     property string activeDeviceName: "Connected Device"
@@ -52,6 +53,7 @@ Page {
                 pageUrl = "qrc:/LibreConnect/desktop/SettingsPage.qml"
                 pageProperties = {
                     notificationSyncController: root.notificationSyncController,
+                    clipboardSyncController: root.clipboardSyncController,
                     permissionStateController: root.permissionStateController,
                     temporaryStorageController: root.temporaryStorageController
                 }
@@ -562,6 +564,18 @@ Page {
                                 permissionPromptDialog.permissionMessage = "File access is disabled on the mobile app. Grant file permissions to use File Manager."
                                 permissionPromptDialog.open()
                             }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 58
+
+                        ThemedButton {
+                            text: "Sync Clipboard"
+                            anchors.fill: parent
+                            enabled: !root.clipboardSyncController.busy
+                            onClicked: root.clipboardSyncController.syncClipboard()
                         }
                     }
                 }

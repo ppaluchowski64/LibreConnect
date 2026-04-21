@@ -40,6 +40,10 @@ Window {
         id: notificationSyncController
     }
 
+    ClipboardSyncController {
+        id: clipboardSyncController
+    }
+
     PermissionStateController {
         id: permissionStateController
     }
@@ -134,6 +138,7 @@ Window {
             activeDeviceName: activeDeviceName,
             activeDeviceId: activeDeviceId,
             notificationSyncController: notificationSyncController,
+            clipboardSyncController: clipboardSyncController,
             permissionStateController: permissionStateController,
             temporaryStorageController: temporaryStorageController,
             initialFeature: initialFeature === undefined ? "" : initialFeature
