@@ -128,6 +128,10 @@ BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-compone
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
 
+if (ANDROID)
+    BuildStaticLibrary(sms-handler utilities/sms-handler network-component-pc system-component-pc p2p-network-component-pc project_defaults Qt6::Core Qt6::Gui)
+endif ()
+
 if (NOT APPLE)
     target_link_libraries(permission-manager PUBLIC Qt6::CorePrivate)
 
