@@ -21,6 +21,10 @@ class ThemeController : public QObject
     Q_PROPERTY(QColor subtleTextColor READ subtleTextColor NOTIFY paletteChanged)
     Q_PROPERTY(QColor selectedColor READ selectedColor NOTIFY paletteChanged)
     Q_PROPERTY(QColor selectedBorderColor READ selectedBorderColor NOTIFY paletteChanged)
+    Q_PROPERTY(QColor selectedTextColor READ selectedTextColor NOTIFY paletteChanged)
+    Q_PROPERTY(QColor successColor READ successColor NOTIFY paletteChanged)
+    Q_PROPERTY(QColor destructiveFillColor READ destructiveFillColor NOTIFY paletteChanged)
+    Q_PROPERTY(QColor destructiveFillHoverColor READ destructiveFillHoverColor NOTIFY paletteChanged)
     Q_PROPERTY(QColor dangerColor READ dangerColor CONSTANT)
     Q_PROPERTY(QString fontFamily READ fontFamily CONSTANT)
 
@@ -42,6 +46,10 @@ public:
     QColor subtleTextColor() const;
     QColor selectedColor() const;
     QColor selectedBorderColor() const;
+    QColor selectedTextColor() const;
+    QColor successColor() const;
+    QColor destructiveFillColor() const;
+    QColor destructiveFillHoverColor() const;
 
     QColor dangerColor() const { return QColor(QStringLiteral("#B00020")); }
     QString fontFamily() const { return QStringLiteral("Inter"); }

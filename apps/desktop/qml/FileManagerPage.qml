@@ -152,6 +152,19 @@ Page {
             fileManagerController.uploadLocalEntry(urls[i])
     }
 
+    function beginExternalDrag(targetPath, index) {
+        if (!targetPath || targetPath.length === 0)
+            return
+
+        if (!root.isPathSelected(targetPath))
+            root.setSingleSelection(targetPath, index)
+
+        const paths = root.selectedRemotePaths.length > 0
+                    ? root.selectedRemotePaths.slice()
+                    : [targetPath]
+        fileManagerController.beginExternalDrag(paths)
+    }
+
     function beginPathEdit() {
         pathEditMode = true
         pathEditFieldCompact.text = fileManagerController.currentRemotePath
@@ -211,10 +224,35 @@ Page {
         property var targetPaths: []
         property string targetPath: ""
         property bool singleTargetIsDirectory: false
+        padding: 6
+
+        background: Rectangle {
+            radius: 8
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
 
         MenuItem {
+            id: openMenuItem
             text: fileContextMenu.singleTargetIsDirectory ? "Open Folder" : "Open"
             enabled: fileContextMenu.targetPaths.length === 1
+
+            contentItem: Text {
+                text: openMenuItem.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: openMenuItem.enabled ? Theme.textColor : Theme.subtleTextColor
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            background: Rectangle {
+                radius: 6
+                color: openMenuItem.down
+                       ? Theme.selectedColor
+                       : (openMenuItem.highlighted ? Theme.buttonColor : "transparent")
+            }
+
             onTriggered: {
                 if (fileContextMenu.singleTargetIsDirectory)
                     fileManagerController.browseTo(fileContextMenu.targetPath)
@@ -224,14 +262,48 @@ Page {
         }
 
         MenuItem {
+            id: copyMenuItem
             text: "Copy"
             enabled: fileContextMenu.targetPaths.length > 0
+
+            contentItem: Text {
+                text: copyMenuItem.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: copyMenuItem.enabled ? Theme.textColor : Theme.subtleTextColor
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            background: Rectangle {
+                radius: 6
+                color: copyMenuItem.down
+                       ? Theme.selectedColor
+                       : (copyMenuItem.highlighted ? Theme.buttonColor : "transparent")
+            }
+
             onTriggered: fileManagerController.copyEntries(fileContextMenu.targetPaths)
         }
 
         MenuItem {
+            id: downloadMenuItem
             text: "Download"
             enabled: fileContextMenu.targetPaths.length > 0
+
+            contentItem: Text {
+                text: downloadMenuItem.text
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: downloadMenuItem.enabled ? Theme.textColor : Theme.subtleTextColor
+                verticalAlignment: Text.AlignVCenter
+            }
+
+            background: Rectangle {
+                radius: 6
+                color: downloadMenuItem.down
+                       ? Theme.selectedColor
+                       : (downloadMenuItem.highlighted ? Theme.buttonColor : "transparent")
+            }
+
             onTriggered: fileManagerController.downloadEntries(fileContextMenu.targetPaths)
         }
     }
@@ -623,12 +695,21 @@ Page {
             ListView {
                 id: entriesView
                 anchors.fill: parent
-                anchors.margins: 10
+                anchors.leftMargin: 10
+                anchors.topMargin: 10
+                anchors.bottomMargin: 10
+                anchors.rightMargin: scrollGutter.visible ? 28 : 10
                 clip: true
                 spacing: 8
                 model: fileManagerController.remoteEntries
                 ScrollBar.vertical: ScrollBar {
-                    policy: ScrollBar.AsNeeded
+                    id: entriesScrollBar
+                    parent: scrollGutter
+                    anchors.fill: parent
+                    policy: ScrollBar.AlwaysOn
+                    active: true
+                    opacity: 1.0
+                    visible: scrollGutter.visible
                 }
 
                 delegate: Rectangle {
@@ -688,8 +769,17 @@ Page {
                     MouseArea {
                         anchors.fill: parent
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        property real pressX: 0
+                        property real pressY: 0
+                        property bool dragTriggered: false
+                        property bool deferSingleSelection: false
 
                         onPressed: function(mouse) {
+                            pressX = mouse.x
+                            pressY = mouse.y
+                            dragTriggered = false
+                            deferSingleSelection = false
+
                             if (mouse.button === Qt.RightButton) {
                                 root.selectionForContext(modelData.path, index)
                                 fileContextMenu.targetPaths = root.selectedRemotePaths.slice()
@@ -706,9 +796,37 @@ Page {
                             } else if (mouse.modifiers & Qt.ControlModifier) {
                                 root.toggleSelection(modelData.path, index)
                             } else {
-                                root.setSingleSelection(modelData.path, index)
+                                // Keep multi-selection intact while user may be starting a drag.
+                                if (root.isPathSelected(modelData.path) && root.selectedCount > 1) {
+                                    deferSingleSelection = true
+                                } else {
+                                    root.setSingleSelection(modelData.path, index)
+                                }
                             }
                         }
+
+                        onPositionChanged: function(mouse) {
+                            if (!(mouse.buttons & Qt.LeftButton) || dragTriggered)
+                                return
+
+                            const dx = mouse.x - pressX
+                            const dy = mouse.y - pressY
+                            const dragDistance = Math.sqrt(dx * dx + dy * dy)
+                            if (dragDistance < Qt.styleHints.startDragDistance)
+                                return
+
+                            dragTriggered = true
+                            root.beginExternalDrag(modelData.path, index)
+                        }
+
+                        onReleased: function(mouse) {
+                            if (mouse.button === Qt.LeftButton && deferSingleSelection && !dragTriggered) {
+                                root.setSingleSelection(modelData.path, index)
+                            }
+                            deferSingleSelection = false
+                        }
+
+                        onCanceled: deferSingleSelection = false
 
                         onDoubleClicked: {
                             root.setSingleSelection(modelData.path, index)
@@ -722,9 +840,29 @@ Page {
                 }
             }
 
+            Rectangle {
+                id: scrollGutter
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.right: parent.right
+                anchors.topMargin: 10
+                anchors.bottomMargin: 10
+                anchors.rightMargin: 8
+                width: 14
+                radius: 7
+                color: Theme.backgroundColor
+                border.color: Theme.panelBorderColor
+                border.width: 1
+                visible: entriesView.contentHeight > entriesView.height + 1
+            }
+
             DropArea {
                 anchors.fill: parent
+                enabled: !fileManagerController.dragExportInProgress
                 onEntered: function(drag) {
+                    if (fileManagerController.dragExportInProgress)
+                        return
+
                     if (!drag.hasUrls)
                         return
 
@@ -734,6 +872,9 @@ Page {
                 onExited: root.dropActive = false
                 onDropped: function(drop) {
                     root.dropActive = false
+                    if (fileManagerController.dragExportInProgress)
+                        return
+
                     if (!drop.hasUrls || drop.urls.length === 0)
                         return
 

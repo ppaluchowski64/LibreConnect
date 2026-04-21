@@ -137,27 +137,33 @@ Page {
 
                         background: Rectangle {
                             radius: 8
-                            color: Theme.buttonColor
+                            color: themeCombo.hovered
+                                   ? (Theme.dark ? Qt.lighter(Theme.buttonColor, 1.12) : Qt.darker(Theme.buttonColor, 1.05))
+                                   : Theme.buttonColor
                             border.color: Theme.panelBorderColor
                             border.width: 1
                         }
 
                         delegate: ItemDelegate {
+                            id: themeOptionDelegate
                             width: themeCombo.width
                             height: 42
+                            hoverEnabled: true
                             highlighted: themeCombo.highlightedIndex === index
 
                             contentItem: Text {
                                 text: modelData.label
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 15
-                                color: Theme.textColor
+                                color: (themeOptionDelegate.highlighted || themeOptionDelegate.hovered) ? Theme.selectedTextColor : Theme.textColor
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
                             }
 
                             background: Rectangle {
-                                color: parent.highlighted ? Theme.selectedColor : Theme.panelColor
+                                color: themeOptionDelegate.highlighted
+                                       ? Theme.selectedColor
+                                       : (themeOptionDelegate.hovered ? Theme.buttonColor : Theme.panelColor)
                                 border.color: Theme.panelBorderColor
                                 border.width: 1
                             }
@@ -223,27 +229,33 @@ Page {
                     }
                     background: Rectangle {
                         radius: 8
-                        color: Theme.buttonColor
+                        color: themeComboCompact.hovered
+                               ? (Theme.dark ? Qt.lighter(Theme.buttonColor, 1.12) : Qt.darker(Theme.buttonColor, 1.05))
+                               : Theme.buttonColor
                         border.color: Theme.panelBorderColor
                         border.width: 1
                     }
 
                     delegate: ItemDelegate {
+                        id: themeCompactOptionDelegate
                         width: themeComboCompact.width
                         height: 42
+                        hoverEnabled: true
                         highlighted: themeComboCompact.highlightedIndex === index
 
                         contentItem: Text {
                             text: modelData.label
                             font.family: Theme.fontFamily
                             font.pixelSize: 15
-                            color: Theme.textColor
+                            color: (themeCompactOptionDelegate.highlighted || themeCompactOptionDelegate.hovered) ? Theme.selectedTextColor : Theme.textColor
                             verticalAlignment: Text.AlignVCenter
                             elide: Text.ElideRight
                         }
 
                         background: Rectangle {
-                            color: parent.highlighted ? Theme.selectedColor : Theme.panelColor
+                            color: themeCompactOptionDelegate.highlighted
+                                   ? Theme.selectedColor
+                                   : (themeCompactOptionDelegate.hovered ? Theme.buttonColor : Theme.panelColor)
                             border.color: Theme.panelBorderColor
                             border.width: 1
                         }

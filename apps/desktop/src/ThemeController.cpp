@@ -90,6 +90,26 @@ QColor ThemeController::selectedBorderColor() const
     return dark() ? QColor(QStringLiteral("#78A7E5")) : QColor(QStringLiteral("#7FAEDD"));
 }
 
+QColor ThemeController::selectedTextColor() const
+{
+    return dark() ? QColor(QStringLiteral("#FFFFFF")) : QColor(QStringLiteral("#111111"));
+}
+
+QColor ThemeController::successColor() const
+{
+    return dark() ? QColor(QStringLiteral("#5CD16A")) : QColor(QStringLiteral("#268D38"));
+}
+
+QColor ThemeController::destructiveFillColor() const
+{
+    return dark() ? QColor(QStringLiteral("#3A2328")) : QColor(QStringLiteral("#FDECEF"));
+}
+
+QColor ThemeController::destructiveFillHoverColor() const
+{
+    return dark() ? QColor(QStringLiteral("#4A2B32")) : QColor(QStringLiteral("#F9DCE3"));
+}
+
 bool ThemeController::isSystemDark() const
 {
     return qApp->styleHints()->colorScheme() == Qt::ColorScheme::Dark;
