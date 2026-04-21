@@ -138,6 +138,11 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
             );
         }
 
+        {
+            std::unique_ptr<QEvent> event = std::make_unique<NotificationReceivedEvent>(notificationRecord);
+            ConnectionManager::SendEvent(event);
+        }
+
         *notificationID = NotificationEmitter::Emit(
             boost::nowide::widen(notificationRecord.title),
             boost::nowide::widen(notificationRecord.content),
@@ -145,6 +150,8 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
             notificationRecord.mainImagePath,
             notificationEmitterButtonActions
         );
+
+
 
         std::lock_guard lock(m_notificationsVectorMutex);
         m_notifications[*notificationID] = std::move(notificationRecord);
