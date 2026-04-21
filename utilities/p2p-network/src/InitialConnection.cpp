@@ -121,17 +121,48 @@ std::shared_ptr<InitialConnection> InitialConnection::Create() {
 
 void InitialConnection::Connect(TCPEndpoint&& endpoint, const InitialConnectionMode mode) {
     Debug::Log("InitialConnection: Initiating Connect to {}:{}", endpoint.address().to_string(), endpoint.port());
-    asio::co_spawn(m_strand, CoConnect(std::move(endpoint), mode), asio::detached);
+    const std::weak_ptr<InitialConnection> weakSelf = weak_from_this();
+    const IOContextStrand strand = m_strand;
+    asio::co_spawn(strand, [weakSelf, endpoint = std::move(endpoint), mode]() mutable -> asio::awaitable<void> {
+        const std::shared_ptr<InitialConnection> self = weakSelf.lock();
+        if (!self) {
+            co_return;
+        }
+
+        co_await self->CoConnect(std::move(endpoint), mode);
+    }, asio::detached);
 }
 
 void InitialConnection::Seek(TCPEndpoint&& endpoint, std::function<void(TCPEndpoint endpoint)>&& callback) {
     Debug::Log("InitialConnection: Initiating Seek on {}:{}", endpoint.address().to_string(), endpoint.port());
-    asio::co_spawn(m_strand, CoSeek(std::move(endpoint), std::move(callback)), asio::detached);
+    const std::weak_ptr<InitialConnection> weakSelf = weak_from_this();
+    const IOContextStrand strand = m_strand;
+    asio::co_spawn(
+        strand,
+        [weakSelf, endpoint = std::move(endpoint), callback = std::move(callback)]() mutable -> asio::awaitable<void> {
+            const std::shared_ptr<InitialConnection> self = weakSelf.lock();
+            if (!self) {
+                co_return;
+            }
+
+            co_await self->CoSeek(std::move(endpoint), std::move(callback));
+        },
+        asio::detached
+    );
 }
 
 void InitialConnection::Disconnect(const bool cancelSeeking) {
     Debug::Log("InitialConnection: Disconnect requested (cancelSeeking: {})", cancelSeeking);
-    asio::co_spawn(m_strand, CoDisconnect(cancelSeeking), asio::detached);
+    const std::weak_ptr<InitialConnection> weakSelf = weak_from_this();
+    const IOContextStrand strand = m_strand;
+    asio::co_spawn(strand, [weakSelf, cancelSeeking]() -> asio::awaitable<void> {
+        const std::shared_ptr<InitialConnection> self = weakSelf.lock();
+        if (!self) {
+            co_return;
+        }
+
+        co_await self->CoDisconnect(cancelSeeking);
+    }, asio::detached);
 }
 
 void InitialConnection::TemporaryOwnership(const std::shared_ptr<InitialConnection>& ptr) {
@@ -221,8 +252,6 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
 }
 
 asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) {
-    const std::shared_ptr<InitialConnection> self = shared_from_this();
-
     if (m_connectionState == ConnectionState::DISCONNECTED || m_connectionState == ConnectionState::DISCONNECTING) {
         co_return;
     }
@@ -259,9 +288,9 @@ asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) 
 }
 
 asio::awaitable<void> InitialConnection::CoSend() {
-    try {
-        const std::shared_ptr<InitialConnection> self = shared_from_this();
+    const std::shared_ptr<InitialConnection> self = shared_from_this();
 
+    try {
         while (m_connectionState == ConnectionState::CONNECTED) {
             if (m_packagesOut.empty()) {
                 co_await m_sendFlag.Wait();
@@ -293,13 +322,14 @@ asio::awaitable<void> InitialConnection::CoSend() {
     } catch (std::system_error& error) {
         Debug::Log("InitialConnection: CoSend Error - {}", error.what());
         HandleAsioError(error.code());
-        Disconnect();
+        self->Disconnect();
     }
 }
 
 asio::awaitable<void> InitialConnection::CoReceive() {
+    const std::shared_ptr<InitialConnection> self = shared_from_this();
+
     try {
-        const std::shared_ptr<InitialConnection> self = shared_from_this();
         std::vector<uint8_t> headerBuffer(PackageHeader::GetSerializedSize());
         PackageHeader header{};
 
@@ -457,7 +487,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             ConnectionManager::SendEvent(event);
         }
 
-        Disconnect();
+        self->Disconnect();
     }
 }
 
