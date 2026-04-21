@@ -44,6 +44,10 @@ Window {
         id: permissionStateController
     }
 
+    TemporaryStorageController {
+        id: temporaryStorageController
+    }
+
     function updateWindowTitle() {
         const currentItem = stackView.currentItem
         currentWindowTitleSuffix = currentItem && currentItem.windowTitleSuffix !== undefined
@@ -131,6 +135,7 @@ Window {
             activeDeviceId: activeDeviceId,
             notificationSyncController: notificationSyncController,
             permissionStateController: permissionStateController,
+            temporaryStorageController: temporaryStorageController,
             initialFeature: initialFeature === undefined ? "" : initialFeature
         })
     }

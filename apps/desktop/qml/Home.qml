@@ -10,6 +10,7 @@ Page {
     required property var connectionController
     required property var notificationSyncController
     required property var permissionStateController
+    required property var temporaryStorageController
     property string activeDeviceName: "Connected Device"
     property string activeDeviceId: ""
     property string initialFeature: ""
@@ -51,7 +52,8 @@ Page {
                 pageUrl = "qrc:/LibreConnect/desktop/SettingsPage.qml"
                 pageProperties = {
                     notificationSyncController: root.notificationSyncController,
-                    permissionStateController: root.permissionStateController
+                    permissionStateController: root.permissionStateController,
+                    temporaryStorageController: root.temporaryStorageController
                 }
             }
 
@@ -376,6 +378,33 @@ Page {
                                 spacing: 8
 
                                 Rectangle {
+                                    id: settingsButton
+                                    width: 36
+                                    height: 36
+                                    radius: 10
+                                    color: settingsMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
+                                    border.color: Theme.panelBorderColor
+                                    border.width: 1
+
+                                    Image {
+                                        anchors.centerIn: parent
+                                        width: 22
+                                        height: 22
+                                        sourceSize.width: 22
+                                        sourceSize.height: 22
+                                        fillMode: Image.PreserveAspectFit
+                                        source: Theme.dark ? "settings_dark.svg" : "settings.svg"
+                                    }
+
+                                    MouseArea {
+                                        id: settingsMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onClicked: root.selectFeature("settings")
+                                    }
+                                }
+
+                                Rectangle {
                                     id: moreButton
                                     width: 36
                                     height: 36
@@ -401,32 +430,6 @@ Page {
                                         onClicked: actionsPopup.open()
                                     }
                                 }
-
-                                Rectangle {
-                                    width: 36
-                                    height: 36
-                                    radius: 10
-                                    color: settingsMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
-                                    border.color: Theme.panelBorderColor
-                                    border.width: 1
-
-                                    Image {
-                                        anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
-                                        sourceSize.width: 22
-                                        sourceSize.height: 22
-                                        fillMode: Image.PreserveAspectFit
-                                        source: Theme.dark ? "settings_dark.svg" : "settings.svg"
-                                    }
-
-                                    MouseArea {
-                                        id: settingsMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: root.selectFeature("settings")
-                                    }
-                                }
                             }
                         }
                     }
@@ -441,8 +444,9 @@ Page {
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                     padding: 8
                     onOpened: {
-                        const pt = moreButton.mapToItem(Overlay.overlay, 0, moreButton.height + 8)
-                        x = Math.max(12, Math.min(pt.x - width + moreButton.width, Overlay.overlay.width - width - 12))
+                        const popupWidth = Math.max(actionsPopup.width, actionsPopup.implicitWidth)
+                        const pt = moreButton.mapToItem(Overlay.overlay, moreButton.width - popupWidth, moreButton.height + 8)
+                        x = Math.max(12, Math.min(pt.x, Overlay.overlay.width - popupWidth - 12))
                         y = Math.max(12, pt.y)
                     }
                     background: Rectangle {

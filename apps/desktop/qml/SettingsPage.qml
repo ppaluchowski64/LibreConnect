@@ -9,6 +9,7 @@ Page {
     readonly property string windowTitleSuffix: "Settings"
     required property var notificationSyncController
     required property var permissionStateController
+    required property var temporaryStorageController
 
     property var themeModes: [
         { label: "System", value: "system" },
@@ -117,8 +118,8 @@ Page {
                         }
 
                         indicator: Text {
-                            x: themeCombo.width - width - 10
-                            y: (themeCombo.height - height) / 2
+                            x: Math.round(themeCombo.width - width - 10)
+                            y: Math.round((themeCombo.height - height) / 2)
                             text: "v"
                             font.family: Theme.fontFamily
                             font.pixelSize: 13
@@ -160,8 +161,9 @@ Page {
                         }
 
                         popup: Popup {
-                            y: themeCombo.height + 4
-                            width: themeCombo.width
+                            x: 0
+                            y: Math.round(themeCombo.height + 4)
+                            width: Math.round(themeCombo.width)
                             implicitHeight: contentItem.implicitHeight
                             padding: 1
 
@@ -210,8 +212,8 @@ Page {
                         elide: Text.ElideRight
                     }
                     indicator: Text {
-                        x: themeComboCompact.width - width - 10
-                        y: (themeComboCompact.height - height) / 2
+                        x: Math.round(themeComboCompact.width - width - 10)
+                        y: Math.round((themeComboCompact.height - height) / 2)
                         text: "v"
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
@@ -252,8 +254,9 @@ Page {
                     }
 
                     popup: Popup {
-                        y: themeComboCompact.height + 4
-                        width: themeComboCompact.width
+                        x: 0
+                        y: Math.round(themeComboCompact.height + 4)
+                        width: Math.round(themeComboCompact.width)
                         implicitHeight: contentItem.implicitHeight
                         padding: 1
 
@@ -328,6 +331,64 @@ Page {
                 anchors.fill: parent
                 visible: !permissionStateController.notificationsGranted
                 onClicked: notificationPermissionDialog.open()
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: temporaryStorageCardColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: temporaryStorageCardColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                Text {
+                    text: "Temporary Storage"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 20
+                    font.bold: true
+                    color: Theme.textColor
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: temporaryStorageController.temporaryStoragePath.length > 0
+                          ? ("Location: " + temporaryStorageController.temporaryStoragePath)
+                          : "Location unavailable."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: temporaryStorageController.statusMessage
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    ThemedButton {
+                        text: "Clear Temporary Storage"
+                        width: 220
+                        enabled: temporaryStorageController.temporaryStoragePath.length > 0
+                        onClicked: temporaryStorageController.clearTemporaryStorage()
+                    }
+                }
             }
         }
 

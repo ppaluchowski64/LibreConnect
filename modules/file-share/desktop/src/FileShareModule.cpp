@@ -13,6 +13,12 @@
 
 namespace
 {
+constexpr const char* FILE_SHARE_TEMP_CATEGORY = "file-share";
+constexpr const char* CLIPBOARD_TEMP_CATEGORY = "clipboard";
+constexpr const char* DRAG_TEMP_CATEGORY = "drag";
+constexpr const char* OPEN_TEMP_CATEGORY = "open";
+constexpr const char* ICON_TEMP_CATEGORY = "icons";
+
 QString PathToQString(const std::filesystem::path& path)
 {
 #ifdef _WIN32
@@ -20,6 +26,63 @@ QString PathToQString(const std::filesystem::path& path)
 #else
     return QString::fromStdString(path.string());
 #endif
+}
+
+std::filesystem::path EnsureFileShareTempRoot()
+{
+    return FileSystemManager::GetTemporaryStoragePath(FILE_SHARE_TEMP_CATEGORY);
+}
+
+std::filesystem::path EnsureFileShareTempCategoryPath(const std::string& category)
+{
+    const std::filesystem::path root = EnsureFileShareTempRoot();
+    if (root.empty()) {
+        return {};
+    }
+
+    const std::filesystem::path categoryPath = root / std::filesystem::u8path(category);
+    std::error_code ec;
+    std::filesystem::create_directories(categoryPath, ec);
+    if (ec) {
+        return {};
+    }
+
+    return categoryPath;
+}
+
+std::filesystem::path CreateFileShareTempSessionDirectory(const std::string& category)
+{
+    const std::filesystem::path categoryPath = EnsureFileShareTempCategoryPath(category);
+    if (categoryPath.empty()) {
+        return {};
+    }
+
+    const std::filesystem::path sessionPath = categoryPath /
+        std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
+    std::error_code ec;
+    std::filesystem::create_directories(sessionPath, ec);
+    if (ec) {
+        return {};
+    }
+
+    return sessionPath;
+}
+
+std::filesystem::path CreateHashedSubdirectory(const std::filesystem::path& baseDirectory, const std::string& sourcePath)
+{
+    if (baseDirectory.empty()) {
+        return {};
+    }
+
+    const size_t hash = HashString(std::filesystem::path(sourcePath).parent_path().string());
+    const std::filesystem::path hashedDirectory = baseDirectory / std::to_string(hash);
+    std::error_code ec;
+    std::filesystem::create_directories(hashedDirectory, ec);
+    if (ec) {
+        return {};
+    }
+
+    return hashedDirectory;
 }
 
 }
@@ -219,6 +282,12 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
     asio::post(m_context, [this, entries = std::move(entries)]() {
         std::vector<asio::detail::promise_async_result<void(std::exception_ptr), std::allocator<void>>::return_type> futures;
         std::vector<std::filesystem::path> paths;
+        const std::filesystem::path operationDirectory = CreateFileShareTempSessionDirectory(CLIPBOARD_TEMP_CATEGORY);
+        if (operationDirectory.empty()) {
+            const std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), false);
+            ConnectionManager::SendEvent(event);
+            return;
+        }
 
         futures.reserve(entries.size());
         paths.reserve(entries.size());
@@ -226,12 +295,10 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
         for (const auto& entry : entries) {
             const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
             const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
-
-            // TODO: Add device specific temp
-
-            const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
-            std::filesystem::path destinationDirectory = std::filesystem::temp_directory_path() / std::to_string(hash);
-            std::filesystem::create_directories(destinationDirectory);
+            std::filesystem::path destinationDirectory = CreateHashedSubdirectory(operationDirectory, path);
+            if (destinationDirectory.empty()) {
+                continue;
+            }
             std::filesystem::path entryDestination = destinationDirectory / std::filesystem::u8path(name);
 
             paths.push_back(entryDestination);
@@ -242,7 +309,11 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
             future.get();
         }
 
-        bool result = FileSystemManager::CopyToClipboard(paths);
+        bool result = FileSystemManager::CopyToClipboard(paths, { operationDirectory });
+        if (!result) {
+            std::error_code ec;
+            std::filesystem::remove_all(operationDirectory, ec);
+        }
         const std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), result);
         ConnectionManager::SendEvent(event);
     });
@@ -266,6 +337,11 @@ asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntr
         co_return preparedPaths;
     }
 
+    const std::filesystem::path operationDirectory = CreateFileShareTempSessionDirectory(DRAG_TEMP_CATEGORY);
+    if (operationDirectory.empty()) {
+        co_return preparedPaths;
+    }
+
     preparedPaths.reserve(entries.size());
 
     for (const FileEntry& entry : entries) {
@@ -275,9 +351,10 @@ asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntr
             continue;
         }
 
-        const size_t hash = HashString(std::filesystem::path(sourcePath).parent_path().string());
-        std::filesystem::path destinationDirectory = std::filesystem::temp_directory_path() / std::to_string(hash);
-        std::filesystem::create_directories(destinationDirectory);
+        std::filesystem::path destinationDirectory = CreateHashedSubdirectory(operationDirectory, sourcePath);
+        if (destinationDirectory.empty()) {
+            continue;
+        }
         const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::u8path(name);
 
         try {
@@ -288,6 +365,11 @@ asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntr
         } catch (...) {
             // Skip failed entries and continue preparing remaining ones.
         }
+    }
+
+    if (preparedPaths.empty()) {
+        std::error_code ec;
+        std::filesystem::remove_all(operationDirectory, ec);
     }
 
     co_return preparedPaths;
@@ -390,10 +472,10 @@ void FileShareModule::FetchEntryIcon(const FileEntry& entry, const FileIconDensi
 }
 
 asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry) const {
-    const std::filesystem::path destinationDirectory =
-        std::filesystem::temp_directory_path() /
-        std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
-    std::filesystem::create_directories(destinationDirectory);
+    const std::filesystem::path destinationDirectory = CreateFileShareTempSessionDirectory(OPEN_TEMP_CATEGORY);
+    if (destinationDirectory.empty()) {
+        co_return;
+    }
 
     co_await FetchEntryAwaitable(entry, destinationDirectory.string());
 
@@ -422,11 +504,15 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
 
     const std::vector<uint8_t> iconBuffer = response.value()->GetValue<std::vector<uint8_t>>();
     Debug::Log("FileShareModule: FetchEntryIcon response received. Bytes: {}", iconBuffer.size());
+    const std::filesystem::path iconBaseDirectory = EnsureFileShareTempCategoryPath(ICON_TEMP_CATEGORY);
+    const std::filesystem::path iconDirectory = CreateHashedSubdirectory(iconBaseDirectory, path);
+    if (iconDirectory.empty()) {
+        const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
 
-    // TODO: Add device specific temp
-
-    const size_t hash = HashString(std::filesystem::path(path).parent_path().string());
-    std::filesystem::path entryDestination = std::filesystem::temp_directory_path() / std::to_string(hash) / fmt::format("{}.png", name);
+    std::filesystem::path entryDestination = iconDirectory / fmt::format("{}.png", name);
 
     {
         std::ofstream stream(entryDestination, std::ios::binary);
@@ -564,8 +650,10 @@ void FileShareModule::OnInitialize() {
         );
     }
 
-    const std::filesystem::path applicationDataPath = FileSystemManager::GetAppDataPath(APPLICATION_NAME) / "temp/";
-    std::filesystem::create_directories(applicationDataPath);
+    const std::filesystem::path tempPath = EnsureFileShareTempRoot();
+    if (!tempPath.empty()) {
+        std::filesystem::create_directories(tempPath);
+    }
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {

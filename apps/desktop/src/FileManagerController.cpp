@@ -9,6 +9,7 @@
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <thread>
 
 #include <DebugLog.h>
@@ -16,6 +17,7 @@
 #include <FileShareEvents.h>
 #include <FileShareModule.h>
 #include <FileEntry.h>
+#include <FileSystemManager.h>
 #include <ModulesManager.h>
 
 namespace {
@@ -101,6 +103,118 @@ QString formatEntrySize(const FileEntry& entry)
 
     const int precision = unitIndex == 0 ? 0 : 1;
     return QStringLiteral("%1 %2").arg(QString::number(value, 'f', precision), QString::fromLatin1(units[unitIndex]));
+}
+
+std::filesystem::path NormalizePath(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, ec);
+    if (!ec) {
+        return canonicalPath;
+    }
+
+    return path.lexically_normal();
+}
+
+bool IsPathWithinRoot(const std::filesystem::path& path, const std::filesystem::path& root)
+{
+    if (path.empty() || root.empty()) {
+        return false;
+    }
+
+    const std::filesystem::path normalizedPath = NormalizePath(path);
+    const std::filesystem::path normalizedRoot = NormalizePath(root);
+    const std::filesystem::path relativePath = normalizedPath.lexically_relative(normalizedRoot);
+    if (relativePath.empty()) {
+        return false;
+    }
+
+    const std::string relativeGeneric = relativePath.generic_string();
+    return relativeGeneric != ".." && !relativeGeneric.starts_with("../");
+}
+
+void CleanupEmptyParents(const std::filesystem::path& startPath, const std::filesystem::path& stopRoot)
+{
+    if (startPath.empty() || stopRoot.empty()) {
+        return;
+    }
+
+    const std::filesystem::path normalizedStopRoot = NormalizePath(stopRoot);
+    std::filesystem::path currentPath = NormalizePath(startPath);
+
+    while (!currentPath.empty() && currentPath != normalizedStopRoot) {
+        if (!IsPathWithinRoot(currentPath, normalizedStopRoot)) {
+            break;
+        }
+
+        std::error_code ec;
+        if (!std::filesystem::is_directory(currentPath, ec) || ec) {
+            break;
+        }
+
+        if (!std::filesystem::is_empty(currentPath, ec) || ec) {
+            break;
+        }
+
+        std::filesystem::remove(currentPath, ec);
+        if (ec) {
+            break;
+        }
+
+        currentPath = currentPath.parent_path();
+    }
+}
+
+void CleanupPreparedDragPathsAsync(std::vector<std::filesystem::path> paths, const int initialDelayMs)
+{
+    if (paths.empty()) {
+        return;
+    }
+
+    const std::filesystem::path temporaryRoot = FileSystemManager::GetTemporaryStoragePath();
+    if (temporaryRoot.empty()) {
+        return;
+    }
+
+    std::thread([paths = std::move(paths), temporaryRoot, initialDelayMs]() mutable {
+        if (initialDelayMs > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(initialDelayMs));
+        }
+
+        constexpr int MAX_ATTEMPTS = 120;
+        constexpr auto RETRY_DELAY = std::chrono::seconds(1);
+
+        for (int attempt = 0; attempt < MAX_ATTEMPTS && !paths.empty(); ++attempt) {
+            std::vector<std::filesystem::path> remainingPaths;
+            remainingPaths.reserve(paths.size());
+
+            for (const std::filesystem::path& path : paths) {
+                if (!IsPathWithinRoot(path, temporaryRoot)) {
+                    continue;
+                }
+
+                std::error_code existsError;
+                if (!std::filesystem::exists(path, existsError) || existsError) {
+                    CleanupEmptyParents(path.parent_path(), temporaryRoot);
+                    continue;
+                }
+
+                std::error_code removeError;
+                std::filesystem::remove_all(path, removeError);
+                if (removeError) {
+                    remainingPaths.push_back(path);
+                    continue;
+                }
+
+                CleanupEmptyParents(path.parent_path(), temporaryRoot);
+            }
+
+            paths.swap(remainingPaths);
+            if (!paths.empty()) {
+                std::this_thread::sleep_for(RETRY_DELAY);
+            }
+        }
+    }).detach();
 }
 }
 
@@ -443,7 +557,8 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     }
 
     auto exportedCount = std::make_shared<int>(0);
-    const bool dropped = PlatformVirtualFileDrag::Start(dragSource, [entries = std::move(entries), exportedCount]() mutable -> std::vector<std::filesystem::path> {
+    auto preparedPaths = std::make_shared<std::vector<std::filesystem::path>>();
+    const bool dropped = PlatformVirtualFileDrag::Start(dragSource, [entries = std::move(entries), exportedCount, preparedPaths]() mutable -> std::vector<std::filesystem::path> {
         auto& module = ModulesManager::GetModuleReference<FileShareModule>();
         if (module->GetModuleState() != ModuleState::Enabled) {
             module->Enable(true);
@@ -457,12 +572,14 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
             return {};
         }
 
-        std::vector<std::filesystem::path> preparedPaths = module->PrepareEntriesForExternalDrag(std::move(entries));
-        *exportedCount = static_cast<int>(preparedPaths.size());
-        return preparedPaths;
+        std::vector<std::filesystem::path> resolvedPaths = module->PrepareEntriesForExternalDrag(std::move(entries));
+        *exportedCount = static_cast<int>(resolvedPaths.size());
+        *preparedPaths = resolvedPaths;
+        return resolvedPaths;
     });
 
     if (!dropped) {
+        CleanupPreparedDragPathsAsync(*preparedPaths, 0);
         setBusy(false);
         setDragExportInProgress(false);
         m_pendingAction = PendingAction::None;
@@ -484,6 +601,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
         return;
     }
 
+    CleanupPreparedDragPathsAsync(*preparedPaths, 3000);
     setBusy(false);
     setDragExportInProgress(false);
     m_pendingAction = PendingAction::None;
@@ -491,8 +609,8 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     m_activeEntryPath.clear();
     setTransferProgress(1.0);
     setStatusMessage(*exportedCount == 1
-        ? QStringLiteral("Prepared 1 entry for drag export.")
-        : QStringLiteral("Prepared %1 entries for drag export.").arg(*exportedCount));
+        ? QStringLiteral("Exported 1 entry. Temporary files will be cleaned automatically.")
+        : QStringLiteral("Exported %1 entries. Temporary files will be cleaned automatically.").arg(*exportedCount));
 }
 
 void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)

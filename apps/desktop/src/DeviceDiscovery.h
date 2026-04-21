@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QVariantMap>
 #include <QSet>
+#include <string>
 
 #include "DeviceModel.h"
 #include <Scanner.h>
@@ -89,9 +90,9 @@ private slots:
             d.ipAddress  = QString::fromStdString(dev.deviceAddress);
             d.port       = static_cast<int>(dev.deviceAddressPort);
 
-            d.osName     = QStringLiteral("Unknown");
-            d.osVersion  = QStringLiteral("");
-            d.appVersion = QStringLiteral("");
+            d.osName     = QString::fromStdString(dev.osName.empty() ? std::string("Unknown") : dev.osName);
+            d.osVersion  = QString::fromStdString(dev.osVersion);
+            d.appVersion = QString::fromStdString(dev.appVersion);
 
             addresses.insert(d.ipAddress);
             m_model.upsertByAddress(d);

@@ -219,12 +219,23 @@ Page {
         }
     }
 
-    Menu {
+    Popup {
         id: fileContextMenu
         property var targetPaths: []
         property string targetPath: ""
         property bool singleTargetIsDirectory: false
+        parent: root
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 6
+        width: 220
+
+        function popup(xPos, yPos) {
+            x = Math.max(8, Math.min(xPos, root.width - width - 8))
+            y = Math.max(8, Math.min(yPos, root.height - implicitHeight - 8))
+            open()
+        }
 
         background: Rectangle {
             radius: 8
@@ -233,78 +244,104 @@ Page {
             border.width: 1
         }
 
-        MenuItem {
-            id: openMenuItem
-            text: fileContextMenu.singleTargetIsDirectory ? "Open Folder" : "Open"
-            enabled: fileContextMenu.targetPaths.length === 1
+        contentItem: Column {
+            spacing: 4
 
-            contentItem: Text {
-                text: openMenuItem.text
-                font.family: Theme.fontFamily
-                font.pixelSize: 14
-                color: openMenuItem.enabled ? Theme.textColor : Theme.subtleTextColor
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            background: Rectangle {
+            Rectangle {
+                id: openRow
+                readonly property bool enabledItem: fileContextMenu.targetPaths.length === 1
+                width: parent.width
+                height: 34
                 radius: 6
-                color: openMenuItem.down
-                       ? Theme.selectedColor
-                       : (openMenuItem.highlighted ? Theme.buttonColor : "transparent")
+                color: openMouse.containsMouse && openRow.enabledItem ? Theme.buttonColor : "transparent"
+
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    text: fileContextMenu.singleTargetIsDirectory ? "Open Folder" : "Open"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    color: openRow.enabledItem ? Theme.textColor : Theme.subtleTextColor
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                MouseArea {
+                    id: openMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: openRow.enabledItem
+                    onClicked: {
+                        fileContextMenu.close()
+                        if (fileContextMenu.singleTargetIsDirectory)
+                            fileManagerController.browseTo(fileContextMenu.targetPath)
+                        else
+                            fileManagerController.openEntry(fileContextMenu.targetPath)
+                    }
+                }
             }
 
-            onTriggered: {
-                if (fileContextMenu.singleTargetIsDirectory)
-                    fileManagerController.browseTo(fileContextMenu.targetPath)
-                else
-                    fileManagerController.openEntry(fileContextMenu.targetPath)
-            }
-        }
-
-        MenuItem {
-            id: copyMenuItem
-            text: "Copy"
-            enabled: fileContextMenu.targetPaths.length > 0
-
-            contentItem: Text {
-                text: copyMenuItem.text
-                font.family: Theme.fontFamily
-                font.pixelSize: 14
-                color: copyMenuItem.enabled ? Theme.textColor : Theme.subtleTextColor
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            background: Rectangle {
+            Rectangle {
+                id: copyRow
+                readonly property bool enabledItem: fileContextMenu.targetPaths.length > 0
+                width: parent.width
+                height: 34
                 radius: 6
-                color: copyMenuItem.down
-                       ? Theme.selectedColor
-                       : (copyMenuItem.highlighted ? Theme.buttonColor : "transparent")
+                color: copyMouse.containsMouse && copyRow.enabledItem ? Theme.buttonColor : "transparent"
+
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    text: fileContextMenu.targetPaths.length > 1 ? "Copy Selected" : "Copy"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    color: copyRow.enabledItem ? Theme.textColor : Theme.subtleTextColor
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                MouseArea {
+                    id: copyMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: copyRow.enabledItem
+                    onClicked: {
+                        fileContextMenu.close()
+                        fileManagerController.copyEntries(fileContextMenu.targetPaths)
+                    }
+                }
             }
 
-            onTriggered: fileManagerController.copyEntries(fileContextMenu.targetPaths)
-        }
-
-        MenuItem {
-            id: downloadMenuItem
-            text: "Download"
-            enabled: fileContextMenu.targetPaths.length > 0
-
-            contentItem: Text {
-                text: downloadMenuItem.text
-                font.family: Theme.fontFamily
-                font.pixelSize: 14
-                color: downloadMenuItem.enabled ? Theme.textColor : Theme.subtleTextColor
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            background: Rectangle {
+            Rectangle {
+                id: downloadRow
+                readonly property bool enabledItem: fileContextMenu.targetPaths.length > 0
+                width: parent.width
+                height: 34
                 radius: 6
-                color: downloadMenuItem.down
-                       ? Theme.selectedColor
-                       : (downloadMenuItem.highlighted ? Theme.buttonColor : "transparent")
-            }
+                color: downloadMouse.containsMouse && downloadRow.enabledItem ? Theme.buttonColor : "transparent"
 
-            onTriggered: fileManagerController.downloadEntries(fileContextMenu.targetPaths)
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    text: fileContextMenu.targetPaths.length > 1 ? "Download Selected" : "Download"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    color: downloadRow.enabledItem ? Theme.textColor : Theme.subtleTextColor
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                MouseArea {
+                    id: downloadMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: downloadRow.enabledItem
+                    onClicked: {
+                        fileContextMenu.close()
+                        fileManagerController.downloadEntries(fileContextMenu.targetPaths)
+                    }
+                }
+            }
         }
     }
 
