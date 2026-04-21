@@ -52,6 +52,7 @@ ModulesManager::ModulesManager() {
 
     m_clipboardSyncModule = std::make_shared<ClipboardSyncModule>();
     m_remoteInputModule = std::make_shared<RemoteInputModule>();
+    m_smsBridgeModule = std::make_shared<SmsBridgeModule>();
 
 #ifdef ANDROID_DEVICE
     SetMainServiceBackendEnabled(true);
@@ -86,6 +87,9 @@ void ModulesManager::Initialize() {
 
     if (s_instance->m_remoteInputModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_remoteInputModule->Initialize(true);
+
+    if (s_instance->m_smsBridgeModule->GetModuleState() != ModuleState::Uninitialized) return;
+    s_instance->m_smsBridgeModule->Initialize(true);
 
     ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REQUESTED, [](PC_Package&& package) {
         const PermissionType type = package->GetValue<PermissionType>();
@@ -123,6 +127,7 @@ void ModulesManager::Shutdown() {
 
         s_instance->m_clipboardSyncModule->Shutdown(true);
         s_instance->m_remoteInputModule->Shutdown(true);
+        s_instance->m_smsBridgeModule->Shutdown(true);
 
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REQUESTED);
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REJECTED);

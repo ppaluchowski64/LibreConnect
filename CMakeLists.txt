@@ -175,6 +175,11 @@ if (ANDROID OR IOS)
             remote-input-types
     )
 
+    BuildApplicationModule(sms-bridge-module modules/sms-bridge/common modules/sms-bridge/mobile
+            common-module
+            sms-handler
+    )
+
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     if (NOT (APPLE AND NOT IOS))
         BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
@@ -207,6 +212,10 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             remote-input
     )
+
+    BuildApplicationModule(sms-bridge-module modules/sms-bridge/common modules/sms-bridge/desktop
+            common-module
+    )
 endif ()
 
 BuildStaticLibrary(modules-manager modules/modules-manager
@@ -220,6 +229,7 @@ BuildStaticLibrary(modules-manager modules/modules-manager
         notification-sync-module
         clipboard-sync-module
         remote-input-module
+        sms-bridge-module
 )
 
 if (NOT (APPLE AND NOT IOS))

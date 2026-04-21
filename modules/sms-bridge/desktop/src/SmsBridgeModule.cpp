@@ -1,0 +1,139 @@
+#include <SmsBridgeModule.h>
+#include <SmsBridgeEvents.h>
+
+#include <boost/uuid/uuid_generators.hpp>
+
+constexpr size_t FUTURES_WAIT_DELAY = 10;
+
+uuid SmsBridgeModule::SendSMS(const std::string& target, const std::string& message) const {
+    Debug::Log("SmsBridgeModule: SendSMS requested. Target: {}", target);
+    const uuid messageUUID = boost::uuids::random_generator()();
+    asio::co_spawn(m_context, SendSMSAwaitable(target, message, messageUUID), asio::detached);
+    return messageUUID;
+}
+
+void SmsBridgeModule::GetContactList() const {
+    Debug::Log("SmsBridgeModule: GetContactList requested.");
+    asio::co_spawn(m_context, GetContactListAwaitable(), asio::detached);
+}
+
+void SmsBridgeModule::GetTargetMessages(const std::string& target) const {
+    Debug::Log("SmsBridgeModule: GetTargetMessages requested. Target: {}", target);
+    asio::co_spawn(m_context, GetTargetMessagesAwaitable(target), asio::detached);
+}
+
+asio::awaitable<void> SmsBridgeModule::SendSMSAwaitable(std::string target, std::string message, uuid messageUUID) const {
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::SMS_BRIDGE_MODULE_SEND_SMS_REQUEST, std::string(target), std::string(message));
+    if (!response.has_value()) {
+        Debug::LogError("SmsBridgeModule: SendSMS failed (timeout). Target: {}", target);
+        ProcessError(ModuleFailReason::Timeout);
+        co_return;
+    }
+
+    const bool result = response.value()->GetValue<bool>();
+    Debug::Log("SmsBridgeModule: SendSMS response received. Target: {}, Success: {}", target, result);
+
+    const std::unique_ptr<QEvent> event = std::make_unique<SendSmsResultEvent>(result, messageUUID);
+    ConnectionManager::SendEvent(event);
+}
+
+asio::awaitable<void> SmsBridgeModule::GetContactListAwaitable() const {
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::SMS_BRIDGE_MODULE_FETCH_ALL_CONTACTS_REQUEST);
+    if (!response.has_value()) {
+        Debug::LogError("SmsBridgeModule: GetContactList failed (timeout).");
+        ProcessError(ModuleFailReason::Timeout);
+        co_return;
+    }
+
+    std::vector<std::pair<std::string, std::string>> contacts;
+    response.value()->GetValue(contacts);
+    Debug::Log("SmsBridgeModule: GetContactList response received. Contacts count: {}", contacts.size());
+
+    const std::unique_ptr<QEvent> event = std::make_unique<FetchContactListResultEvent>(contacts);
+    ConnectionManager::SendEvent(event);
+}
+
+asio::awaitable<void> SmsBridgeModule::GetTargetMessagesAwaitable(std::string target) const {
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::SMS_BRIDGE_MODULE_FETCH_ALL_MESSAGES_REQUEST, target);
+    if (!response.has_value()) {
+        Debug::LogError("SmsBridgeModule: GetTargetMessages failed (timeout). Target: {}", target);
+        ProcessError(ModuleFailReason::Timeout);
+        co_return;
+    }
+
+    std::vector<std::string> messages;
+    response.value()->GetValue(messages);
+    Debug::Log("SmsBridgeModule: GetTargetMessages response received. Target: {}, Messages count: {}", target, messages.size());
+
+    const std::unique_ptr<QEvent> event = std::make_unique<FetchMessageListResultEvent>(messages, target);
+    ConnectionManager::SendEvent(event);
+}
+
+void SmsBridgeModule::EnableResponseCallbacks() {
+    const std::shared_ptr<SmsBridgeModule> instance = std::static_pointer_cast<SmsBridgeModule>(shared_from_this());
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE, [instance](PC_Package&& package) mutable {
+        Debug::Log("SmsBridgeModule: Received enable request");
+        if (instance->GetModuleState() == ModuleState::Enabled) {
+            Debug::Log("SmsBridgeModule: Already enabled, sending state confirmation");
+            ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, true);
+            return;
+        }
+        instance->Enable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_DISABLE, [instance](PC_Package&& package) mutable {
+        Debug::Log("SmsBridgeModule: Received disable request");
+        if (instance->GetModuleState() == ModuleState::Disabled) {
+            Debug::Log("SmsBridgeModule: Already disabled, sending state confirmation");
+            ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, false);
+            return;
+        }
+        instance->Disable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, [instance](PC_Package&& package) mutable {
+        const bool peerEnabled = package->GetValue<bool>();
+        Debug::Log("SmsBridgeModule: Peer module state changed: {}", peerEnabled);
+        instance->m_peerModuleEnabled.store(peerEnabled);
+    });
+}
+
+void SmsBridgeModule::DisableResponseCallbacks() {
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED);
+}
+
+void SmsBridgeModule::OnInitialize() {}
+
+asio::awaitable<void> SmsBridgeModule::OnEnable() {
+    ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE);
+    ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, true);
+
+    asio::steady_timer timer(m_context.get_executor());
+    while (!ShouldAbortEnable()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
+
+        timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
+        co_await timer.async_wait();
+    }
+}
+
+asio::awaitable<void> SmsBridgeModule::OnDisable() {
+    ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_DISABLE);
+    ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, false);
+    co_return;
+}
+
+asio::awaitable<void> SmsBridgeModule::OnShutdown() {
+    co_return;
+}
+
+const char* SmsBridgeModule::GetModuleName() const {
+    return "SmsBridgeModule";
+}
+
+ModuleType SmsBridgeModule::GetModuleType() const {
+    return ModuleType::SmsBridge;
+}

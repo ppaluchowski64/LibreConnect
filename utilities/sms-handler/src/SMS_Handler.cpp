@@ -4,23 +4,6 @@
 #include <ConnectionManager.h>
 #include <DebugLog.h>
 
-extern "C" {
-    JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_SmsReceiver_onSmsReceivedCPP(JNIEnv* env, jobject, jstring sender, jstring body, jlong timestamp) {
-        const char* senderChars = sender ? env->GetStringUTFChars(sender, nullptr) : nullptr;
-        const char* bodyChars = body ? env->GetStringUTFChars(body, nullptr) : nullptr;
-
-        std::string senderStr = senderChars ? std::string(senderChars) : std::string();
-        std::string bodyStr = bodyChars ? std::string(bodyChars) : std::string();
-
-        if (senderChars)
-            env->ReleaseStringUTFChars(sender, senderChars);
-        if (bodyChars)
-            env->ReleaseStringUTFChars(body, bodyChars);
-
-        Debug::Log("Received sms:\nsender: {}\nbody: {}\ntimestamp: {}", senderStr, bodyStr, timestamp);
-    }
-}
-
 std::vector<std::pair<std::string, std::string>> SmsUtilsWrapper::GetContactList() {
     std::vector<std::pair<std::string, std::string>> contactsList;
     const QJniObject context = QNativeInterface::QAndroidApplication::context();

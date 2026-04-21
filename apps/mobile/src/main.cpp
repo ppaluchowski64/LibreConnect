@@ -1,10 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QtQml>
-
 #include <ModulesManager.h>
-#include <SMS_Handler.h>
-
 #include "MobileConnectionController.h"
 #include "AndroidAdvertiser.h"
 
