@@ -13,7 +13,10 @@
 #include "DeviceModel.h"
 #include "DeviceConnectionController.h"
 #include "NotificationSyncController.h"
+#include "ClipboardSyncController.h"
+#include "PermissionStateController.h"
 #include "FileManagerController.h"
+#include "TemporaryStorageController.h"
 #ifndef MACOS_DEVICE
 #include "VirtualCameraController.h"
 #endif
@@ -57,7 +60,10 @@ int main(int argc, char *argv[])
     qmlRegisterType<DeviceModel>("LibreConnect.desktop", 1, 0, "DeviceModel");
     qmlRegisterType<DeviceConnectionController>("LibreConnect.desktop", 1, 0, "DeviceConnectionController");
     qmlRegisterType<NotificationSyncController>("LibreConnect.desktop", 1, 0, "NotificationSyncController");
+    qmlRegisterType<ClipboardSyncController>("LibreConnect.desktop", 1, 0, "ClipboardSyncController");
+    qmlRegisterType<PermissionStateController>("LibreConnect.desktop", 1, 0, "PermissionStateController");
     qmlRegisterType<FileManagerController>("LibreConnect.desktop", 1, 0, "FileManagerController");
+    qmlRegisterType<TemporaryStorageController>("LibreConnect.desktop", 1, 0, "TemporaryStorageController");
 #ifndef MACOS_DEVICE
     qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
 #endif

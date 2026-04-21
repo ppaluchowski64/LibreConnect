@@ -105,8 +105,8 @@ Page {
                         }
 
                         indicator: Text {
-                            x: cameraCombo.width - width - 10
-                            y: (cameraCombo.height - height) / 2
+                            x: Math.round(cameraCombo.width - width - 10)
+                            y: Math.round((cameraCombo.height - height) / 2)
                             text: "v"
                             font.family: Theme.fontFamily
                             font.pixelSize: 13
@@ -148,8 +148,9 @@ Page {
                         }
 
                         popup: Popup {
-                            y: cameraCombo.height + 4
-                            width: cameraCombo.width
+                            x: 0
+                            y: Math.round(cameraCombo.height + 4)
+                            width: Math.round(cameraCombo.width)
                             implicitHeight: contentItem.implicitHeight
                             padding: 1
 

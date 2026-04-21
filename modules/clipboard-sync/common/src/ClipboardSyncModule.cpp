@@ -3,6 +3,21 @@
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
+void ClipboardSyncModule::SendLocalClipboardSnapshot() const {
+    if (!TextClipboard::Has()) {
+        return;
+    }
+
+    std::string text = TextClipboard::Get();
+    Debug::Log("ClipboardSyncModule: Sending local clipboard update ({} chars)", text.size());
+    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, std::move(text));
+}
+
+void ClipboardSyncModule::RequestSyncWithPeer() {
+    SendLocalClipboardSnapshot();
+    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_REQUEST_SYNC);
+}
+
 void ClipboardSyncModule::EnableResponseCallbacks() {
     const std::shared_ptr<ClipboardSyncModule> instance = std::static_pointer_cast<ClipboardSyncModule>(shared_from_this());
 
@@ -34,6 +49,11 @@ void ClipboardSyncModule::EnableResponseCallbacks() {
         Debug::Log("ClipboardSyncModule: Received remote clipboard update ({} chars)", text.size());
         TextClipboard::Set(text);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_REQUEST_SYNC, [instance](PC_Package&& package) mutable {
+        (void)package;
+        Debug::Log("ClipboardSyncModule: Received manual sync request");
+        instance->SendLocalClipboardSnapshot();
+    });
 }
 
 void ClipboardSyncModule::DisableResponseCallbacks() {
@@ -41,6 +61,7 @@ void ClipboardSyncModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_STATE_CHANGE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_REQUEST_SYNC);
 }
 
 void ClipboardSyncModule::OnInitialize() {}
@@ -54,13 +75,7 @@ asio::awaitable<void> ClipboardSyncModule::OnEnable() {
                     return;
                 }
 
-                if (!TextClipboard::Has()) {
-                    return;
-                }
-
-                std::string text = TextClipboard::Get();
-                Debug::Log("ClipboardSyncModule: Sending local clipboard update ({} chars)", text.size());
-                ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, std::move(text));
+                shared->SendLocalClipboardSnapshot();
             }
         });
     }

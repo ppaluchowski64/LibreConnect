@@ -79,6 +79,8 @@ private:
     std::string m_challengeResult;
     std::string m_localCertificateFingerprint;
     std::string m_expectedChallengeCode;
+    InitialConnectionMode m_requestedConnectionMode{InitialConnectionMode::CONNECTION_WITHOUT_PAIR};
+    bool m_finalHandshakeCompleted{false};
 
     std::deque<std::unique_ptr<Package<InitialConnectionPackageType>>> m_packagesOut;
     std::shared_ptr<InitialConnection> m_temporaryOwnership;

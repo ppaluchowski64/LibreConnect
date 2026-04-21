@@ -1,26 +1,27 @@
-#include "NotificationSyncController.h"
+#include "MobileNotificationSyncController.h"
 
-#include <ModulesManager.h>
-#include <ConnectionManager.h>
-#include <Events.h>
 #include <QPointer>
 
-NotificationSyncController::NotificationSyncController(QObject* parent)
+#include <ConnectionManager.h>
+#include <Events.h>
+#include <ModulesManager.h>
+
+MobileNotificationSyncController::MobileNotificationSyncController(QObject* parent)
     : QObject(parent)
-    , m_settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"))
+    , m_settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnectMobile"))
 {
     m_requestedEnabled = m_settings.value(QStringLiteral("notificationSync/enabled"), false).toBool();
     m_enableAttemptPending = m_requestedEnabled;
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
 
     m_pollTimer.setInterval(400);
-    connect(&m_pollTimer, &QTimer::timeout, this, &NotificationSyncController::refreshState);
+    connect(&m_pollTimer, &QTimer::timeout, this, &MobileNotificationSyncController::refreshState);
     m_pollTimer.start();
 
     refreshState();
 }
 
-void NotificationSyncController::setNotificationSyncEnabled(const bool enabled)
+void MobileNotificationSyncController::setNotificationSyncEnabled(const bool enabled)
 {
     setRequestedEnabled(enabled, true);
     m_enableAttemptPending = enabled;
@@ -28,91 +29,7 @@ void NotificationSyncController::setNotificationSyncEnabled(const bool enabled)
     refreshState();
 }
 
-void NotificationSyncController::refreshState()
-{
-    auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
-    const ModuleState state = module->GetModuleState();
-
-    if (!m_connected) {
-        setEnabledState(m_requestedEnabled);
-        setBusy(false);
-        setStatusMessage(m_requestedEnabled
-            ? QStringLiteral("Notification sync will start after connecting to the device.")
-            : QStringLiteral("Notification sync is disabled."));
-        return;
-    }
-
-    if (state == ModuleState::Enabling) {
-        setEnabledState(true);
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Starting notification sync..."));
-        return;
-    }
-
-    if (state == ModuleState::Disabling) {
-        setEnabledState(false);
-        setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping notification sync..."));
-        return;
-    }
-
-    if (state == ModuleState::Enabled) {
-        m_enableAttemptPending = false;
-        if (!m_requestedEnabled) {
-            setRequestedEnabled(true, true);
-        }
-
-        if (m_disableAttemptPending) {
-            setEnabledState(false);
-            setBusy(true);
-            setStatusMessage(QStringLiteral("Stopping notification sync..."));
-            module->Disable(true);
-            return;
-        }
-
-        setEnabledState(true);
-        setBusy(false);
-        setStatusMessage(QStringLiteral("Notification sync is enabled on the connected device."));
-        return;
-    }
-
-    if (state == ModuleState::Disabled) {
-        if (m_requestedEnabled && !m_enableAttemptPending && !m_disableAttemptPending) {
-            setRequestedEnabled(false, true);
-        }
-
-        if (m_disableAttemptPending) {
-            m_disableAttemptPending = false;
-            if (m_requestedEnabled) {
-                setRequestedEnabled(false, true);
-            }
-        }
-
-        if (m_requestedEnabled && m_enableAttemptPending) {
-            setEnabledState(true);
-            setBusy(true);
-            setStatusMessage(QStringLiteral("Starting notification sync..."));
-            m_enableAttemptPending = false;
-            module->Enable(true);
-            return;
-        }
-
-        setEnabledState(m_requestedEnabled);
-        setBusy(false);
-        setStatusMessage(m_requestedEnabled
-            ? QStringLiteral("Notification sync is waiting for notification permissions on the connected device.")
-            : QStringLiteral("Notification sync is disabled."));
-        return;
-    }
-
-    setEnabledState(m_requestedEnabled);
-    setBusy(false);
-    setStatusMessage(m_requestedEnabled
-        ? QStringLiteral("Notification sync is waiting for notification permissions on the connected device.")
-        : QStringLiteral("Notification sync is disabled."));
-}
-
-bool NotificationSyncController::event(QEvent* event)
+bool MobileNotificationSyncController::event(QEvent* event)
 {
     if (event->type() == ConnectedEvent::Type) {
         const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
@@ -160,17 +77,91 @@ bool NotificationSyncController::event(QEvent* event)
     return QObject::event(event);
 }
 
-void NotificationSyncController::setBusy(const bool busy)
+void MobileNotificationSyncController::refreshState()
 {
-    if (m_busy == busy) {
+    auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
+    const ModuleState state = module->GetModuleState();
+
+    if (!m_connected) {
+        setEnabledState(m_requestedEnabled);
+        setBusy(false);
+        setStatusMessage(m_requestedEnabled
+            ? QStringLiteral("Notification sync will start after connecting to the desktop device.")
+            : QStringLiteral("Notification sync is disabled."));
         return;
     }
 
-    m_busy = busy;
-    emit busyChanged();
+    if (state == ModuleState::Enabling) {
+        setEnabledState(true);
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Starting notification sync..."));
+        return;
+    }
+
+    if (state == ModuleState::Disabling) {
+        setEnabledState(false);
+        setBusy(true);
+        setStatusMessage(QStringLiteral("Stopping notification sync..."));
+        return;
+    }
+
+    if (state == ModuleState::Enabled) {
+        m_enableAttemptPending = false;
+        if (!m_requestedEnabled) {
+            setRequestedEnabled(true, true);
+        }
+
+        if (m_disableAttemptPending) {
+            setEnabledState(false);
+            setBusy(true);
+            setStatusMessage(QStringLiteral("Stopping notification sync..."));
+            module->Disable(true);
+            return;
+        }
+
+        setEnabledState(true);
+        setBusy(false);
+        setStatusMessage(QStringLiteral("Notification sync is enabled for the connected desktop device."));
+        return;
+    }
+
+    if (state == ModuleState::Disabled) {
+        if (m_requestedEnabled && !m_enableAttemptPending && !m_disableAttemptPending) {
+            setRequestedEnabled(false, true);
+        }
+
+        if (m_disableAttemptPending) {
+            m_disableAttemptPending = false;
+            if (m_requestedEnabled) {
+                setRequestedEnabled(false, true);
+            }
+        }
+
+        if (m_requestedEnabled && m_enableAttemptPending) {
+            setEnabledState(true);
+            setBusy(true);
+            setStatusMessage(QStringLiteral("Starting notification sync..."));
+            m_enableAttemptPending = false;
+            module->Enable(true);
+            return;
+        }
+
+        setEnabledState(m_requestedEnabled);
+        setBusy(false);
+        setStatusMessage(m_requestedEnabled
+            ? QStringLiteral("Notification sync is waiting for notification permissions on this device.")
+            : QStringLiteral("Notification sync is disabled."));
+        return;
+    }
+
+    setEnabledState(m_requestedEnabled);
+    setBusy(false);
+    setStatusMessage(m_requestedEnabled
+        ? QStringLiteral("Notification sync is waiting for notification permissions on this device.")
+        : QStringLiteral("Notification sync is disabled."));
 }
 
-void NotificationSyncController::setEnabledState(const bool enabled)
+void MobileNotificationSyncController::setEnabledState(const bool enabled)
 {
     if (m_enabled == enabled) {
         return;
@@ -180,17 +171,27 @@ void NotificationSyncController::setEnabledState(const bool enabled)
     emit enabledChanged();
 }
 
-void NotificationSyncController::setStatusMessage(const QString& statusMessage)
+void MobileNotificationSyncController::setBusy(const bool busy)
 {
-    if (m_statusMessage == statusMessage) {
+    if (m_busy == busy) {
         return;
     }
 
-    m_statusMessage = statusMessage;
+    m_busy = busy;
+    emit busyChanged();
+}
+
+void MobileNotificationSyncController::setStatusMessage(const QString& message)
+{
+    if (m_statusMessage == message) {
+        return;
+    }
+
+    m_statusMessage = message;
     emit statusMessageChanged();
 }
 
-void NotificationSyncController::setRequestedEnabled(const bool enabled, const bool persist)
+void MobileNotificationSyncController::setRequestedEnabled(const bool enabled, const bool persist)
 {
     if (m_requestedEnabled != enabled) {
         m_requestedEnabled = enabled;

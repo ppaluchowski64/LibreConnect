@@ -106,6 +106,61 @@ bool StartSettingsActivity(const QJniObject& intent) {
     QtAndroidPrivate::startActivity(intent, 0);
     return true;
 }
+
+bool OpenAppPermissionSettings() {
+    const QJniObject action = QJniObject::getStaticObjectField(
+        "android/provider/Settings",
+        "ACTION_APPLICATION_DETAILS_SETTINGS",
+        "Ljava/lang/String;"
+    );
+    if (!action.isValid()) {
+        return false;
+    }
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return false;
+    }
+
+    const QString packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
+    if (packageName.isEmpty()) {
+        return false;
+    }
+
+    const QJniObject packageUri = QJniObject::fromString("package:" + packageName);
+    const QJniObject uri = QJniObject::callStaticObjectMethod(
+        "android/net/Uri",
+        "parse",
+        "(Ljava/lang/String;)Landroid/net/Uri;",
+        packageUri.object<jstring>()
+    );
+
+    const QJniObject intent(
+        "android/content/Intent",
+        "(Ljava/lang/String;Landroid/net/Uri;)V",
+        action.object<jstring>(),
+        uri.object<jobject>()
+    );
+
+    return StartSettingsActivity(intent);
+}
+
+bool ShouldShowPermissionRationale(const QString& permission) {
+    const QJniObject activity = QJniObject::callStaticObjectMethod(
+        "org/qtproject/qt/android/QtNative",
+        "activity",
+        "()Landroid/app/Activity;"
+    );
+    if (!activity.isValid()) {
+        return false;
+    }
+
+    return activity.callMethod<jboolean>(
+        "shouldShowRequestPermissionRationale",
+        "(Ljava/lang/String;)Z",
+        QJniObject::fromString(permission).object<jstring>()
+    );
+}
 #endif
 }
 
@@ -242,6 +297,16 @@ asio::awaitable<bool> PermissionManager::RequestSendSmsPermission() {
     co_return co_await RequestPermission(QString("android.permission.SEND_SMS"));
 }
 
+asio::awaitable<bool> PermissionManager::RequestFileAccessPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30) {
+        co_return true;
+    }
+
+    co_return co_await RequestPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE"));
+}
+
 asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
 
@@ -338,7 +403,60 @@ asio::awaitable<bool> PermissionManager::RequestPermission(QString&& permission)
     }
 
     const QtAndroidPrivate::PermissionResult result = future.result();
-    co_return result == QtAndroidPrivate::PermissionResult::Authorized;
+    if (result == QtAndroidPrivate::PermissionResult::Authorized) {
+        co_return true;
+    }
+
+    if (ShouldShowPermissionRationale(permission)) {
+        co_return false;
+    }
+
+    if (!OpenAppPermissionSettings()) {
+        co_return false;
+    }
+
+    co_await WaitForReturnToApp();
+    const auto finalStatus = QtAndroidPrivate::checkPermission(permission).result();
+    co_return finalStatus == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsNotificationAccessPermissionGranted() {
+    return IsNotificationListenerEnabled();
+}
+
+bool PermissionManager::IsNotificationEmitPermissionGranted() {
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 33) {
+        return true;
+    }
+
+    return QtAndroidPrivate::checkPermission(QString("android.permission.POST_NOTIFICATIONS")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsCameraAccessPermissionGranted() {
+    return QtAndroidPrivate::checkPermission(QString("android.permission.CAMERA")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsFileAccessPermissionGranted() {
+    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30) {
+        return true;
+    }
+
+    return QtAndroidPrivate::checkPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsManagingExternalStoragePermissionGranted() {
+    if (QNativeInterface::QAndroidApplication::sdkVersion() < 30) {
+        return IsFileAccessPermissionGranted();
+    }
+
+    return QJniObject::callStaticMethod<jboolean>("android/os/Environment", "isExternalStorageManager");
+}
+
+bool PermissionManager::IsBatteryOptimizationIgnored() {
+    return IsIgnoringBatteryOptimizations();
 }
 
 bool PermissionManager::IsNotificationListenerEnabled() {

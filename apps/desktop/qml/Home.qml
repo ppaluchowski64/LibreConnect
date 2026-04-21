@@ -8,6 +8,10 @@ Page {
 
     required property var windowRef
     required property var connectionController
+    required property var notificationSyncController
+    required property var clipboardSyncController
+    required property var permissionStateController
+    required property var temporaryStorageController
     property string activeDeviceName: "Connected Device"
     property string activeDeviceId: ""
     property string initialFeature: ""
@@ -39,15 +43,26 @@ Page {
             if (featureStack.depth > 0)
                 featureStack.clear()
         } else {
-            const pageUrl = "qrc:/LibreConnect/desktop/" + (
-                selectedFeature === "fileManager" ? "FileManagerPage.qml"
-                : selectedFeature === "cameras" ? "VirtualCameraPage.qml"
-                : "SettingsPage.qml"
-            )
+            let pageUrl = ""
+            let pageProperties = {}
+            if (selectedFeature === "fileManager") {
+                pageUrl = "qrc:/LibreConnect/desktop/FileManagerPage.qml"
+            } else if (selectedFeature === "cameras") {
+                pageUrl = "qrc:/LibreConnect/desktop/VirtualCameraPage.qml"
+            } else {
+                pageUrl = "qrc:/LibreConnect/desktop/SettingsPage.qml"
+                pageProperties = {
+                    notificationSyncController: root.notificationSyncController,
+                    clipboardSyncController: root.clipboardSyncController,
+                    permissionStateController: root.permissionStateController,
+                    temporaryStorageController: root.temporaryStorageController
+                }
+            }
+
             if (featureStack.depth === 0)
-                featureStack.push(pageUrl)
+                featureStack.push(pageUrl, pageProperties)
             else
-                featureStack.replace(pageUrl)
+                featureStack.replace(pageUrl, pageProperties)
         }
 
         if (windowRef && windowRef.updateWindowTitle !== undefined)
@@ -94,6 +109,7 @@ Page {
             }
 
             Row {
+                anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 10
 
                 ThemedButton {
@@ -172,6 +188,7 @@ Page {
             }
 
             Row {
+                anchors.horizontalCenter: parent.horizontalCenter
                 spacing: 10
 
                 ThemedButton {
@@ -211,6 +228,73 @@ Page {
                             if (removed)
                                 connectionController.disconnect()
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: permissionPromptDialog
+        property int permissionType: 0
+        property string permissionTitle: ""
+        property string permissionMessage: ""
+        title: ""
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        contentWidth: 360
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 14
+            width: permissionPromptDialog.contentWidth
+
+            Text {
+                text: permissionPromptDialog.permissionTitle
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: permissionPromptDialog.permissionMessage
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                ThemedButton {
+                    text: "Cancel"
+                    width: 120
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: permissionPromptDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Prompt on Phone"
+                    width: 170
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: {
+                        root.permissionStateController.requestPermission(permissionPromptDialog.permissionType)
+                        permissionPromptDialog.close()
                     }
                 }
             }
@@ -296,6 +380,33 @@ Page {
                                 spacing: 8
 
                                 Rectangle {
+                                    id: settingsButton
+                                    width: 36
+                                    height: 36
+                                    radius: 10
+                                    color: settingsMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
+                                    border.color: Theme.panelBorderColor
+                                    border.width: 1
+
+                                    Image {
+                                        anchors.centerIn: parent
+                                        width: 22
+                                        height: 22
+                                        sourceSize.width: 22
+                                        sourceSize.height: 22
+                                        fillMode: Image.PreserveAspectFit
+                                        source: Theme.dark ? "settings_dark.svg" : "settings.svg"
+                                    }
+
+                                    MouseArea {
+                                        id: settingsMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onClicked: root.selectFeature("settings")
+                                    }
+                                }
+
+                                Rectangle {
                                     id: moreButton
                                     width: 36
                                     height: 36
@@ -321,32 +432,6 @@ Page {
                                         onClicked: actionsPopup.open()
                                     }
                                 }
-
-                                Rectangle {
-                                    width: 36
-                                    height: 36
-                                    radius: 10
-                                    color: settingsMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
-                                    border.color: Theme.panelBorderColor
-                                    border.width: 1
-
-                                    Image {
-                                        anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
-                                        sourceSize.width: 22
-                                        sourceSize.height: 22
-                                        fillMode: Image.PreserveAspectFit
-                                        source: Theme.dark ? "settings_dark.svg" : "settings.svg"
-                                    }
-
-                                    MouseArea {
-                                        id: settingsMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: root.selectFeature("settings")
-                                    }
-                                }
                             }
                         }
                     }
@@ -361,8 +446,9 @@ Page {
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                     padding: 8
                     onOpened: {
-                        const pt = moreButton.mapToItem(Overlay.overlay, 0, moreButton.height + 8)
-                        x = Math.max(12, Math.min(pt.x - width + moreButton.width, Overlay.overlay.width - width - 12))
+                        const popupWidth = Math.max(actionsPopup.width, actionsPopup.implicitWidth)
+                        const pt = moreButton.mapToItem(Overlay.overlay, moreButton.width - popupWidth, moreButton.height + 8)
+                        x = Math.max(12, Math.min(pt.x, Overlay.overlay.width - popupWidth - 12))
                         y = Math.max(12, pt.y)
                     }
                     background: Rectangle {
@@ -435,18 +521,62 @@ Page {
                     Layout.fillWidth: true
                     spacing: 12
 
-                    ThemedButton {
-                        text: "Cameras"
+                    Item {
                         width: parent.width
                         height: 58
-                        onClicked: windowRef.showVirtualCamera()
+
+                        ThemedButton {
+                            text: "Cameras"
+                            anchors.fill: parent
+                            enabled: root.permissionStateController.cameraGranted
+                            onClicked: windowRef.showVirtualCamera()
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: !root.permissionStateController.cameraGranted
+                            onClicked: {
+                                permissionPromptDialog.permissionType = 1
+                                permissionPromptDialog.permissionTitle = "Camera Permission Required"
+                                permissionPromptDialog.permissionMessage = "Camera access is disabled on the mobile app. Grant camera permission to use the Cameras feature."
+                                permissionPromptDialog.open()
+                            }
+                        }
                     }
 
-                    ThemedButton {
-                        text: "File Manager"
+                    Item {
                         width: parent.width
                         height: 58
-                        onClicked: windowRef.showFileManager()
+
+                        ThemedButton {
+                            text: "File Manager"
+                            anchors.fill: parent
+                            enabled: root.permissionStateController.fileSystemGranted
+                            onClicked: windowRef.showFileManager()
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: !root.permissionStateController.fileSystemGranted
+                            onClicked: {
+                                permissionPromptDialog.permissionType = 3
+                                permissionPromptDialog.permissionTitle = "File Access Required"
+                                permissionPromptDialog.permissionMessage = "File access is disabled on the mobile app. Grant file permissions to use File Manager."
+                                permissionPromptDialog.open()
+                            }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 58
+
+                        ThemedButton {
+                            text: "Sync Clipboard"
+                            anchors.fill: parent
+                            enabled: !root.clipboardSyncController.busy
+                            onClicked: root.clipboardSyncController.syncClipboard()
+                        }
                     }
                 }
 

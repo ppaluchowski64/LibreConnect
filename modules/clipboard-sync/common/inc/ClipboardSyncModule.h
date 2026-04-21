@@ -6,6 +6,9 @@
 
 
 class ClipboardSyncModule : public BaseModule {
+public:
+    void RequestSyncWithPeer();
+
 protected:
     void EnableResponseCallbacks() override;
     void DisableResponseCallbacks() override;
@@ -17,6 +20,9 @@ protected:
 
     const char* GetModuleName() const override;
     ModuleType GetModuleType() const override;
+
+private:
+    void SendLocalClipboardSnapshot() const;
 };
 
 #endif // CLIPBOARDSYNCMODULE_H

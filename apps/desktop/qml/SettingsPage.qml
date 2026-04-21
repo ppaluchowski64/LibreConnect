@@ -7,10 +7,10 @@ Page {
     id: root
 
     readonly property string windowTitleSuffix: "Settings"
-
-    NotificationSyncController {
-        id: notificationSyncController
-    }
+    required property var notificationSyncController
+    required property var clipboardSyncController
+    required property var permissionStateController
+    required property var temporaryStorageController
 
     property var themeModes: [
         { label: "System", value: "system" },
@@ -82,14 +82,6 @@ Page {
                         width: parent.width - 4
                     }
 
-                    Text {
-                        text: "Mobile follows the system color scheme automatically."
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
-                        color: Theme.subtleTextColor
-                        width: parent.width - 4
-                    }
                 }
 
                 RowLayout {
@@ -127,8 +119,8 @@ Page {
                         }
 
                         indicator: Text {
-                            x: themeCombo.width - width - 10
-                            y: (themeCombo.height - height) / 2
+                            x: Math.round(themeCombo.width - width - 10)
+                            y: Math.round((themeCombo.height - height) / 2)
                             text: "v"
                             font.family: Theme.fontFamily
                             font.pixelSize: 13
@@ -170,8 +162,9 @@ Page {
                         }
 
                         popup: Popup {
-                            y: themeCombo.height + 4
-                            width: themeCombo.width
+                            x: 0
+                            y: Math.round(themeCombo.height + 4)
+                            width: Math.round(themeCombo.width)
                             implicitHeight: contentItem.implicitHeight
                             padding: 1
 
@@ -220,8 +213,8 @@ Page {
                         elide: Text.ElideRight
                     }
                     indicator: Text {
-                        x: themeComboCompact.width - width - 10
-                        y: (themeComboCompact.height - height) / 2
+                        x: Math.round(themeComboCompact.width - width - 10)
+                        y: Math.round((themeComboCompact.height - height) / 2)
                         text: "v"
                         font.family: Theme.fontFamily
                         font.pixelSize: 13
@@ -262,8 +255,9 @@ Page {
                     }
 
                     popup: Popup {
-                        y: themeComboCompact.height + 4
-                        width: themeComboCompact.width
+                        x: 0
+                        y: Math.round(themeComboCompact.height + 4)
+                        width: Math.round(themeComboCompact.width)
                         implicitHeight: contentItem.implicitHeight
                         padding: 1
 
@@ -317,14 +311,125 @@ Page {
                     Switch {
                         id: syncToggle
                         checked: notificationSyncController.enabled
-                        enabled: !notificationSyncController.busy
+                        enabled: permissionStateController.notificationsGranted && !notificationSyncController.busy
                         onClicked: notificationSyncController.setNotificationSyncEnabled(checked)
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: notificationSyncController.statusMessage
+                    text: permissionStateController.notificationsGranted
+                          ? notificationSyncController.statusMessage
+                          : "Notification sync is unavailable until notification permissions are granted on the mobile device."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                visible: !permissionStateController.notificationsGranted
+                onClicked: notificationPermissionDialog.open()
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: temporaryStorageCardColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: temporaryStorageCardColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                Text {
+                    text: "Temporary Storage"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 20
+                    font.bold: true
+                    color: Theme.textColor
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: temporaryStorageController.temporaryStoragePath.length > 0
+                          ? ("Location: " + temporaryStorageController.temporaryStoragePath)
+                          : "Location unavailable."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: temporaryStorageController.statusMessage
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    ThemedButton {
+                        text: "Clear Temporary Storage"
+                        width: 220
+                        enabled: temporaryStorageController.temporaryStoragePath.length > 0
+                        onClicked: temporaryStorageController.clearTemporaryStorage()
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: clipboardCardColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: clipboardCardColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+
+                    Text {
+                        text: "Auto Clipboard Sync"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: Theme.textColor
+                        Layout.fillWidth: true
+                    }
+
+                    Switch {
+                        id: clipboardAutoSyncToggle
+                        checked: clipboardSyncController.autoSyncEnabled
+                        enabled: !clipboardSyncController.busy
+                        onClicked: clipboardSyncController.setClipboardAutoSyncEnabled(checked)
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: clipboardSyncController.statusMessage
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
@@ -335,6 +440,70 @@ Page {
 
         Item {
             Layout.fillHeight: true
+        }
+    }
+
+    Dialog {
+        id: notificationPermissionDialog
+        title: ""
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        contentWidth: 360
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 14
+            width: notificationPermissionDialog.contentWidth
+
+            Text {
+                text: "Notification Permission Required"
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: "Grant notification permissions on the mobile app to use notification sync."
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                ThemedButton {
+                    text: "Cancel"
+                    width: 120
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: notificationPermissionDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Prompt on Phone"
+                    width: 170
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: {
+                        permissionStateController.requestPermission(2)
+                        notificationPermissionDialog.close()
+                    }
+                }
+            }
         }
     }
 }

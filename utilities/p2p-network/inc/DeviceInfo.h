@@ -18,6 +18,9 @@ struct DeviceInfoLite {
 
 struct DeviceInfo {
     std::string deviceName;
+    std::string osName;
+    std::string osVersion;
+    std::string appVersion;
     std::string deviceAddress;
     std::uint16_t deviceAddressPort;
     boost::uuids::uuid deviceID;
@@ -32,6 +35,9 @@ struct DeviceInfo {
         SerializeObject(deviceID, buffer, offset);
         SerializeObject(deviceType, buffer, offset);
         SerializeObject(certificateFingerprint, buffer, offset);
+        SerializeObject(osName, buffer, offset);
+        SerializeObject(osVersion, buffer, offset);
+        SerializeObject(appVersion, buffer, offset);
     }
 
     void Deserialize(const std::vector<uint8_t>& buffer, size_t& offset) {
@@ -40,6 +46,21 @@ struct DeviceInfo {
         DeserializeObject(deviceID, buffer, offset);
         DeserializeObject(deviceType, buffer, offset);
         DeserializeObject(certificateFingerprint, buffer, offset);
+        if (offset < buffer.size()) {
+            DeserializeObject(osName, buffer, offset);
+        } else {
+            osName.clear();
+        }
+        if (offset < buffer.size()) {
+            DeserializeObject(osVersion, buffer, offset);
+        } else {
+            osVersion.clear();
+        }
+        if (offset < buffer.size()) {
+            DeserializeObject(appVersion, buffer, offset);
+        } else {
+            appVersion.clear();
+        }
     }
 
     inline size_t GetSerializedSize() const {
@@ -47,7 +68,10 @@ struct DeviceInfo {
             GetObjectSerializedSize(deviceAddressPort) +
             GetObjectSerializedSize(deviceID) +
             GetObjectSerializedSize(deviceType) +
-            GetObjectSerializedSize(certificateFingerprint);
+            GetObjectSerializedSize(certificateFingerprint) +
+            GetObjectSerializedSize(osName) +
+            GetObjectSerializedSize(osVersion) +
+            GetObjectSerializedSize(appVersion);
     }
 };
 

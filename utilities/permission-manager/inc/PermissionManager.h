@@ -11,12 +11,20 @@ public:
     static asio::awaitable<bool> RequestNotificationAccessPermission();
     static asio::awaitable<bool> RequestNotificationEmitPermission();
     static asio::awaitable<bool> RequestCameraAccessPermission();
+    static asio::awaitable<bool> RequestFileAccessPermission();
     static asio::awaitable<bool> RequestManagingExternalStoragePermission();
     static asio::awaitable<bool> RequestReceiveSmsPermission();
     static asio::awaitable<bool> RequestReadContactsPermission();
     static asio::awaitable<bool> RequestReadSmsPermission();
     static asio::awaitable<bool> RequestSendSmsPermission();
     static asio::awaitable<void> WaitForReturnToApp();
+
+    static bool IsNotificationAccessPermissionGranted();
+    static bool IsNotificationEmitPermissionGranted();
+    static bool IsCameraAccessPermissionGranted();
+    static bool IsFileAccessPermissionGranted();
+    static bool IsManagingExternalStoragePermissionGranted();
+    static bool IsBatteryOptimizationIgnored();
 #endif
 
 private:

@@ -7,6 +7,8 @@
 
 #ifdef ANDROID_DEVICE
 #include <sys/system_properties.h>
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
 #endif
 
 DeviceInfo DeviceInfo::GetThisDeviceInfo() {
@@ -22,13 +24,50 @@ DeviceInfo DeviceInfo::GetThisDeviceInfo() {
 
 #ifdef DESKTOP_DEVICE
     device.deviceName = asio::ip::host_name();
+    device.osName = "Desktop";
+    device.osVersion.clear();
+    device.appVersion.clear();
 #elif defined(ANDROID_DEVICE)
     char model[PROP_VALUE_MAX];
     char manufacturer[PROP_VALUE_MAX];
+    char osVersion[PROP_VALUE_MAX];
 
     __system_property_get("ro.product.model", model);
     __system_property_get("ro.product.manufacturer", manufacturer);
+    __system_property_get("ro.build.version.release", osVersion);
     device.deviceName = fmt::format("{} {}", manufacturer, model);
+    device.osName = "Android";
+    device.osVersion = osVersion;
+    device.appVersion.clear();
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        const QJniObject packageManager = context.callObjectMethod(
+            "getPackageManager",
+            "()Landroid/content/pm/PackageManager;"
+        );
+        const QJniObject packageName = context.callObjectMethod(
+            "getPackageName",
+            "()Ljava/lang/String;"
+        );
+        if (packageManager.isValid() && packageName.isValid()) {
+            const QJniObject packageInfo = packageManager.callObjectMethod(
+                "getPackageInfo",
+                "(Ljava/lang/String;I)Landroid/content/pm/PackageInfo;",
+                packageName.object<jstring>(),
+                0
+            );
+            if (packageInfo.isValid()) {
+                const QJniObject versionName = packageInfo.getObjectField(
+                    "versionName",
+                    "Ljava/lang/String;"
+                );
+                if (versionName.isValid()) {
+                    device.appVersion = versionName.toString().toStdString();
+                }
+            }
+        }
+    }
 
 #endif
 

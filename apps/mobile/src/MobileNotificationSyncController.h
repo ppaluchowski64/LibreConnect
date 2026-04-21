@@ -2,11 +2,10 @@
 
 #include <QObject>
 #include <QEvent>
-#include <QTimer>
-#include <QString>
 #include <QSettings>
+#include <QTimer>
 
-class NotificationSyncController : public QObject
+class MobileNotificationSyncController : public QObject
 {
     Q_OBJECT
 
@@ -15,7 +14,7 @@ class NotificationSyncController : public QObject
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
 
 public:
-    explicit NotificationSyncController(QObject* parent = nullptr);
+    explicit MobileNotificationSyncController(QObject* parent = nullptr);
 
     bool enabled() const { return m_enabled; }
     bool busy() const { return m_busy; }
@@ -28,21 +27,23 @@ signals:
     void busyChanged();
     void statusMessageChanged();
 
-private:
+protected:
     bool event(QEvent* event) override;
+
+private:
     void refreshState();
-    void setBusy(bool busy);
     void setEnabledState(bool enabled);
-    void setStatusMessage(const QString& statusMessage);
+    void setBusy(bool busy);
+    void setStatusMessage(const QString& message);
     void setRequestedEnabled(bool enabled, bool persist);
 
     QSettings m_settings;
     QTimer m_pollTimer;
     bool m_connected = false;
-    bool m_enabled = false;
-    bool m_busy = false;
     bool m_requestedEnabled = false;
     bool m_enableAttemptPending = false;
     bool m_disableAttemptPending = false;
+    bool m_enabled = false;
+    bool m_busy = false;
     QString m_statusMessage;
 };

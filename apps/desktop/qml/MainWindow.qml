@@ -36,6 +36,22 @@ Window {
         id: connectionController
     }
 
+    NotificationSyncController {
+        id: notificationSyncController
+    }
+
+    ClipboardSyncController {
+        id: clipboardSyncController
+    }
+
+    PermissionStateController {
+        id: permissionStateController
+    }
+
+    TemporaryStorageController {
+        id: temporaryStorageController
+    }
+
     function updateWindowTitle() {
         const currentItem = stackView.currentItem
         currentWindowTitleSuffix = currentItem && currentItem.windowTitleSuffix !== undefined
@@ -121,6 +137,10 @@ Window {
             connectionController: connectionController,
             activeDeviceName: activeDeviceName,
             activeDeviceId: activeDeviceId,
+            notificationSyncController: notificationSyncController,
+            clipboardSyncController: clipboardSyncController,
+            permissionStateController: permissionStateController,
+            temporaryStorageController: temporaryStorageController,
             initialFeature: initialFeature === undefined ? "" : initialFeature
         })
     }

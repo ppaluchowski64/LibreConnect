@@ -2,12 +2,19 @@
 
 #include <vector>
 #include <cstdlib>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <memory>
+#include <string>
+#include <thread>
 #include <utility>
 
+#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QClipboard>
+#include <QByteArray>
 #include <QMimeData>
 #include <QUrl>
 #include <QMetaObject>
@@ -15,6 +22,9 @@
 
 namespace
 {
+constexpr const char* TEMP_STORAGE_ROOT_FOLDER = "LibreConnect";
+constexpr const char* TEMP_STORAGE_DEDICATED_FOLDER = "temporary-storage";
+
 QString PathToQString(const std::filesystem::path& path)
 {
 #ifdef _WIN32
@@ -58,6 +68,153 @@ auto InvokeOnGuiThreadSync(Fn&& fn) -> decltype(fn())
 
     return result;
 }
+
+std::filesystem::path NormalizePath(const std::filesystem::path& path)
+{
+    std::error_code ec;
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, ec);
+    if (!ec) {
+        return canonicalPath;
+    }
+
+    return path.lexically_normal();
+}
+
+bool IsWithinRoot(const std::filesystem::path& path, const std::filesystem::path& root)
+{
+    const std::filesystem::path normalizedPath = NormalizePath(path);
+    const std::filesystem::path normalizedRoot = NormalizePath(root);
+    const std::filesystem::path relativePath = normalizedPath.lexically_relative(normalizedRoot);
+    if (relativePath.empty()) {
+        return false;
+    }
+
+    const std::string relativeGeneric = relativePath.generic_string();
+    return relativeGeneric != ".." && !relativeGeneric.starts_with("../");
+}
+
+bool IsValidTemporaryStorageRoot(const std::filesystem::path& rootPath)
+{
+    if (rootPath.empty()) {
+        return false;
+    }
+
+    std::filesystem::path tempRoot;
+    try {
+        tempRoot = std::filesystem::temp_directory_path();
+    } catch (const std::filesystem::filesystem_error&) {
+        return false;
+    }
+
+    if (tempRoot.empty()) {
+        return false;
+    }
+
+    const std::filesystem::path normalizedRootPath = NormalizePath(rootPath);
+    if (normalizedRootPath.filename() != TEMP_STORAGE_DEDICATED_FOLDER) {
+        return false;
+    }
+
+    const std::filesystem::path parentPath = normalizedRootPath.parent_path();
+    if (parentPath.filename() != TEMP_STORAGE_ROOT_FOLDER) {
+        return false;
+    }
+
+    return IsWithinRoot(normalizedRootPath, NormalizePath(tempRoot));
+}
+
+void RemoveEmptyParents(const std::filesystem::path& startPath, const std::filesystem::path& stopRoot)
+{
+    const std::filesystem::path normalizedStopRoot = NormalizePath(stopRoot);
+    std::filesystem::path current = NormalizePath(startPath);
+
+    while (!current.empty() && current != normalizedStopRoot) {
+        if (!IsWithinRoot(current, normalizedStopRoot)) {
+            break;
+        }
+
+        std::error_code ec;
+        if (!std::filesystem::is_directory(current, ec) || ec) {
+            break;
+        }
+
+        if (!std::filesystem::is_empty(current, ec) || ec) {
+            break;
+        }
+
+        std::filesystem::remove(current, ec);
+        if (ec) {
+            break;
+        }
+
+        current = current.parent_path();
+    }
+}
+
+void CleanupRootsAsync(std::vector<std::filesystem::path> cleanupRoots)
+{
+    if (cleanupRoots.empty()) {
+        return;
+    }
+
+    const std::filesystem::path dedicatedRoot = FileSystemManager::GetTemporaryStoragePath();
+    if (dedicatedRoot.empty()) {
+        return;
+    }
+
+    std::thread([cleanupRoots = std::move(cleanupRoots), dedicatedRoot]() mutable {
+        constexpr int MAX_ATTEMPTS = 120;
+        constexpr auto RETRY_DELAY = std::chrono::seconds(1);
+
+        for (int attempt = 0; attempt < MAX_ATTEMPTS && !cleanupRoots.empty(); ++attempt) {
+            std::vector<std::filesystem::path> pendingRoots;
+            pendingRoots.reserve(cleanupRoots.size());
+
+            for (const std::filesystem::path& root : cleanupRoots) {
+                if (!IsWithinRoot(root, dedicatedRoot)) {
+                    continue;
+                }
+
+                std::error_code existsError;
+                if (!std::filesystem::exists(root, existsError) || existsError) {
+                    RemoveEmptyParents(root.parent_path(), dedicatedRoot);
+                    continue;
+                }
+
+                std::error_code removeError;
+                std::filesystem::remove_all(root, removeError);
+                if (removeError) {
+                    pendingRoots.push_back(root);
+                    continue;
+                }
+
+                RemoveEmptyParents(root.parent_path(), dedicatedRoot);
+            }
+
+            cleanupRoots.swap(pendingRoots);
+            if (!cleanupRoots.empty()) {
+                std::this_thread::sleep_for(RETRY_DELAY);
+            }
+        }
+    }).detach();
+}
+
+class TemporaryClipboardMimeData final : public QMimeData
+{
+public:
+    explicit TemporaryClipboardMimeData(std::vector<std::filesystem::path> cleanupRoots)
+        : m_cleanupRoots(std::move(cleanupRoots))
+    {
+    }
+
+    ~TemporaryClipboardMimeData() override
+    {
+        CleanupRootsAsync(std::move(m_cleanupRoots));
+    }
+
+private:
+    std::vector<std::filesystem::path> m_cleanupRoots;
+};
 }
 
 std::filesystem::path FileSystemManager::GetAppDataPath(const std::string& appName) {
@@ -96,6 +253,76 @@ std::filesystem::path FileSystemManager::GetAppDataPath(const std::string& appNa
     return appDataPath;
 }
 
+std::filesystem::path FileSystemManager::GetTemporaryStoragePath()
+{
+    std::filesystem::path rootPath;
+
+    try {
+        rootPath = std::filesystem::temp_directory_path() / TEMP_STORAGE_ROOT_FOLDER / TEMP_STORAGE_DEDICATED_FOLDER;
+    } catch (const std::filesystem::filesystem_error&) {
+        return {};
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(rootPath, ec);
+    if (ec) {
+        return {};
+    }
+
+    if (!IsValidTemporaryStorageRoot(rootPath)) {
+        return {};
+    }
+
+    return rootPath;
+}
+
+std::filesystem::path FileSystemManager::GetTemporaryStoragePath(const std::string& category)
+{
+    const std::filesystem::path basePath = GetTemporaryStoragePath();
+    if (basePath.empty() || category.empty()) {
+        return basePath;
+    }
+
+    const std::filesystem::path categoryPath = basePath / std::filesystem::u8path(category);
+    std::error_code ec;
+    std::filesystem::create_directories(categoryPath, ec);
+    if (ec) {
+        return {};
+    }
+
+    return categoryPath;
+}
+
+bool FileSystemManager::ClearTemporaryStorage()
+{
+    const std::filesystem::path rootPath = GetTemporaryStoragePath();
+    if (rootPath.empty()) {
+        return false;
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::exists(rootPath, ec) || ec) {
+        return !ec;
+    }
+
+    for (const auto& entry : std::filesystem::directory_iterator(rootPath, ec)) {
+        if (ec) {
+            return false;
+        }
+
+        if (!IsWithinRoot(entry.path(), rootPath)) {
+            return false;
+        }
+
+        std::filesystem::remove_all(entry.path(), ec);
+        if (ec) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 DirectoryResult FileSystemManager::GetEntries(const std::filesystem::path& dirPath) {
     DirectoryResult result;
 
@@ -113,6 +340,10 @@ DirectoryResult FileSystemManager::GetEntries(const std::filesystem::path& dirPa
 }
 
 bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>& paths) {
+    return CopyToClipboard(paths, {});
+}
+
+bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>& paths, std::vector<std::filesystem::path> cleanupRoots) {
     if (!QGuiApplication::instance() || paths.empty())
         return false;
 
@@ -132,9 +363,21 @@ bool FileSystemManager::CopyToClipboard(const std::vector<std::filesystem::path>
     if (!anyCopied)
         return false;
 
-    return InvokeOnGuiThreadSync([urlList]() mutable {
-        auto mimeData = std::make_unique<QMimeData>();
+    return InvokeOnGuiThreadSync([urlList, hasCleanupRoots = !cleanupRoots.empty(), cleanupRoots = std::move(cleanupRoots)]() mutable {
+        auto mimeData = std::make_unique<TemporaryClipboardMimeData>(std::move(cleanupRoots));
         mimeData->setUrls(urlList);
+#ifdef _WIN32
+        if (hasCleanupRoots && !mimeData->urls().empty()) {
+            const uint32_t moveDropEffect = 2U; // DROPEFFECT_MOVE
+            QByteArray preferredDropEffectData;
+            preferredDropEffectData.resize(static_cast<int>(sizeof(moveDropEffect)));
+            std::memcpy(preferredDropEffectData.data(), &moveDropEffect, sizeof(moveDropEffect));
+            mimeData->setData(
+                QStringLiteral("application/x-qt-windows-mime;value=\"Preferred DropEffect\""),
+                preferredDropEffectData
+            );
+        }
+#endif
 
         QClipboard* const clipboard = QGuiApplication::clipboard();
         if (!clipboard) {
