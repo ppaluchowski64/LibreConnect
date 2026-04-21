@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include <QGuiApplication>
+#include <QTimer>
 
 int main(int argc, char *argv[]) {
     QGuiApplication app(argc, argv);
@@ -29,4 +30,20 @@ int main(int argc, char *argv[]) {
     } else {
         std::cout << "Failed to set text to clipboard\n";
     }
+
+    std::cout << "\n[LISTENER TEST]\n";
+    std::cout << "You have 20 seconds. Copy any text (Ctrl+C) to test the listener...\n\n";
+
+    TextClipboard::AddClipboardUpdateListener([]() {
+        std::cout << "Clipboard updated! Detected new text: " << TextClipboard::Get() << '\n';
+    });
+
+    QTimer::singleShot(20000, &app, &QCoreApplication::quit);
+
+    QGuiApplication::exec();
+
+    TextClipboard::RemoveClipboardUpdateListener();
+    std::cout << "\nTime is up, listener disabled. Test finished.\n";
+
+    return 0;
 }
