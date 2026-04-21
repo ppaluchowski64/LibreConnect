@@ -222,6 +222,26 @@ asio::awaitable<bool> PermissionManager::RequestCameraAccessPermission() {
     co_return co_await RequestPermission(QString("android.permission.CAMERA"));
 }
 
+asio::awaitable<bool> PermissionManager::RequestReceiveSmsPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+    co_return co_await RequestPermission(QString("android.permission.RECEIVE_SMS"));
+}
+
+asio::awaitable<bool> PermissionManager::RequestReadContactsPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+    co_return co_await RequestPermission(QString("android.permission.READ_CONTACTS"));
+}
+
+asio::awaitable<bool> PermissionManager::RequestReadSmsPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+    co_return co_await RequestPermission(QString("android.permission.READ_SMS"));
+}
+
+asio::awaitable<bool> PermissionManager::RequestSendSmsPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+    co_return co_await RequestPermission(QString("android.permission.SEND_SMS"));
+}
+
 asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
 

@@ -43,7 +43,8 @@ enum class ModuleType : uint8_t {
     NetworkCamera,
     NetworkFileSystem,
     ClipboardSync,
-    RemoteInput
+    RemoteInput,
+    SmsBridge
 };
 
 enum class PermissionType : uint16_t {

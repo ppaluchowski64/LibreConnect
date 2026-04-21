@@ -126,10 +126,15 @@ BuildStaticLibrary(p2p-network-component-pc utilities/p2p-network project_defaul
 BuildStaticLibrary(file-system utilities/file-system project_defaults system-component-pc Qt6::Core Qt::Gui)
 BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-component-pc Qt6::Core Qt6::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
+BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
+
 if (ANDROID)
-    BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio Qt6::CorePrivate)
-else ()
-    BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
+    BuildStaticLibrary(sms-handler utilities/sms-handler network-component-pc system-component-pc p2p-network-component-pc project_defaults Qt6::Core Qt6::Gui)
+endif ()
+
+if (NOT APPLE)
+    target_link_libraries(permission-manager PUBLIC Qt6::CorePrivate)
+
 endif ()
 
 add_subdirectory("utilities/remote-input")
@@ -170,6 +175,11 @@ if (ANDROID OR IOS)
             remote-input-types
     )
 
+    BuildApplicationModule(sms-bridge-module modules/sms-bridge/common modules/sms-bridge/mobile
+            common-module
+            sms-handler
+    )
+
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     if (NOT (APPLE AND NOT IOS))
         BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
@@ -202,6 +212,10 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             remote-input
     )
+
+    BuildApplicationModule(sms-bridge-module modules/sms-bridge/common modules/sms-bridge/desktop
+            common-module
+    )
 endif ()
 
 BuildStaticLibrary(modules-manager modules/modules-manager
@@ -215,6 +229,7 @@ BuildStaticLibrary(modules-manager modules/modules-manager
         notification-sync-module
         clipboard-sync-module
         remote-input-module
+        sms-bridge-module
 )
 
 if (NOT (APPLE AND NOT IOS))

@@ -1,11 +1,9 @@
-#ifndef CLIPBOARDSYNCMODULE_H
-#define CLIPBOARDSYNCMODULE_H
+#ifndef SMSBRIDGEMODULE_H
+#define SMSBRIDGEMODULE_H
 
 #include <BaseModule.h>
 
-
-
-class ClipboardSyncModule : public BaseModule {
+class SmsBridgeModule : public BaseModule {
 protected:
     void EnableResponseCallbacks() override;
     void DisableResponseCallbacks() override;
@@ -19,4 +17,5 @@ protected:
     ModuleType GetModuleType() const override;
 };
 
-#endif // CLIPBOARDSYNCMODULE_H
+
+#endif // SMSBRIDGEMODULE_H
