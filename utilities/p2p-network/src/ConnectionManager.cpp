@@ -261,7 +261,7 @@ void ConnectionManager::CancelPendingRequests() {
     }
 }
 
-std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID, const bool allowUnpinnedPairing) {
+std::shared_ptr<SSLContext_> ConnectionManager::CreateSSLContext(const bool isServer, const uuid targetUUID, const bool allowUnpinnedPairing) {
     Debug::Log("ConnectionManager: Creating SSL Context (Role: {}, Target: {})",
                isServer ? "Server" : "Client", boost::uuids::to_string(targetUUID));
 
@@ -274,7 +274,7 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
         CryptographicIdentityManager::GenerateCertificate(privateKeyPath, certificatePath);
     }
 
-    std::shared_ptr<SSLContext> context = std::make_shared<SSLContext>(isServer ? SSLContext::tlsv13_server : SSLContext::tlsv13_client);
+    std::shared_ptr<SSLContext_> context = std::make_shared<SSLContext_>(isServer ? SSLContext_::tlsv13_server : SSLContext_::tlsv13_client);
 
     if (targetUUID != boost::uuids::nil_uuid()) {
         if (std::filesystem::exists(targetCertificatePath)) {
@@ -304,16 +304,16 @@ std::shared_ptr<SSLContext> ConnectionManager::CreateSSLContext(const bool isSer
     }
 
     context->set_options(
-        SSLContext::default_workarounds |
-        SSLContext::no_sslv2 |
-        SSLContext::no_sslv3 |
-        SSLContext::no_tlsv1 |
-        SSLContext::no_tlsv1_1
+        SSLContext_::default_workarounds |
+        SSLContext_::no_sslv2 |
+        SSLContext_::no_sslv3 |
+        SSLContext_::no_tlsv1 |
+        SSLContext_::no_tlsv1_1
     );
 
     try {
         context->use_certificate_chain_file(certificatePath.data());
-        context->use_private_key_file(privateKeyPath.data(), SSLContext::pem);
+        context->use_private_key_file(privateKeyPath.data(), SSLContext_::pem);
     } catch (const std::system_error& e) {
         Debug::LogError("ConnectionManager: Failed to load SSL local certs: {}", e.what());
     }
@@ -473,12 +473,12 @@ IPAddress ConnectionManager::GetPeerAddress() {
     return s_instance->m_primaryConnection->GetPeerAddress();
 }
 
-std::shared_ptr<SSLContext> ConnectionManager::GetSSLContextClient() {
+std::shared_ptr<SSLContext_> ConnectionManager::GetSSLContextClient() {
     std::call_once(s_flag, Initialize);
     return s_instance->m_sslContextClient;
 }
 
-std::shared_ptr<SSLContext> ConnectionManager::GetSSLContextServer() {
+std::shared_ptr<SSLContext_> ConnectionManager::GetSSLContextServer() {
     std::call_once(s_flag, Initialize);
     return s_instance->m_sslContextServer;
 }

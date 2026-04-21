@@ -15,24 +15,24 @@ static std::unordered_map<CodecID, std::vector<std::string>> g_encoderPriority =
     {CodecID::H264, {
         "h264_mediacodec",
         "h264_nvenc",
-        "h264_qsv",
         "h264_amf",
+        "h264_qsv",
         "h264_vaapi",
         "h264_videotoolbox",
         "libx264"
     }},
     {CodecID::H265, {
         "hevc_nvenc",
-        "hevc_qsv",
         "hevc_amf",
+        "hevc_qsv",
         "hevc_vaapi",
         "hevc_videotoolbox",
         "libx265"
     }},
     {CodecID::AV1, {
         "av1_nvenc",
-        "av1_qsv",
         "av1_amf",
+        "av1_qsv",
         "av1_vaapi",
         "av1_videotoolbox",
         "libaom-av1",
@@ -43,32 +43,30 @@ static std::unordered_map<CodecID, std::vector<std::string>> g_encoderPriority =
 static std::unordered_map<CodecID, std::vector<std::string>> g_decoderPriority = {
     {CodecID::H264, {
         "h264_cuvid",
-        "h264_qsv",
         "h264_amf",
+        "h264_qsv",
         "h264_vaapi",
         "h264_d3d11va",
         "h264_dxva2",
-        "h264_videotoolbox",
-        "libx264"
+        "h264_videotoolbox"
     }},
     {CodecID::H265, {
         "hevc_cuvid",
-        "hevc_qsv",
         "hevc_amf",
+        "hevc_qsv",
         "hevc_vaapi",
         "hevc_d3d11va",
         "hevc_dxva2",
-        "hevc_videotoolbox",
-        "libx265"
+        "hevc_videotoolbox"
     }},
     {CodecID::AV1, {
         "av1_cuvid",
-        "av1_qsv",
         "av1_amf",
+        "av1_qsv",
         "av1_vaapi",
-        "av1_videotoolbox",
-        "libaom-av1",
-        "rav1e"
+        "av1_d3d11va",
+        "av1_dxva2",
+        "av1_videotoolbox"
     }}
 };
 std::vector<CameraSpecification> FetchCamerasSpecification() {
@@ -215,17 +213,56 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
 static bool CanUseDecoder(const AVCodec* codec) {
     if (!codec) return false;
-    if (!(codec->capabilities & AV_CODEC_CAP_HARDWARE)) return false;
 
     AVCodecContext* ctx = avcodec_alloc_context3(codec);
     if (!ctx) return false;
 
-    const bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
+    AVBufferRef* hwDevice = nullptr;
+    bool hw_device_created = false;
+    bool has_hw_configs = false;
 
+    for (int i = 0;; i++) {
+        const AVCodecHWConfig* hwcfg = avcodec_get_hw_config(codec, i);
+        if (!hwcfg) {
+            break;
+        }
+
+        has_hw_configs = true;
+
+        if (hwcfg->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) {
+            if (av_hwdevice_ctx_create(&hwDevice, hwcfg->device_type, nullptr, nullptr, 0) >= 0) {
+                ctx->hw_device_ctx = av_buffer_ref(hwDevice);
+                hw_device_created = true;
+                break;
+            }
+        }
+    }
+
+    bool is_hw_codec = (codec->capabilities & AV_CODEC_CAP_HARDWARE);
+    if (!is_hw_codec && codec->name) {
+        std::string name = codec->name;
+        if (name.find("qsv") != std::string::npos || 
+            name.find("nvenc") != std::string::npos || 
+            name.find("amf") != std::string::npos || 
+            name.find("vaapi") != std::string::npos ||
+            name.find("d3d11va") != std::string::npos) {
+            is_hw_codec = true;
+        }
+    }
+
+    if (is_hw_codec && !hw_device_created) {
+        avcodec_free_context(&ctx);
+        return false;
+    }
+
+    const bool ok = (avcodec_open2(ctx, codec, nullptr) == 0);
+    if (hwDevice) {
+        av_buffer_unref(&hwDevice);
+    }
+    
     avcodec_free_context(&ctx);
     return ok;
 }
-
 
 const AVCodec* GetEncoderCodec(const CodecID codecID) {
     if (!g_encoderPriority.contains(codecID)) return nullptr;
@@ -242,18 +279,11 @@ const AVCodec* GetEncoderCodec(const CodecID codecID) {
 const AVCodec* GetDecoderCodec(const CodecID codecID) {
     if (!g_decoderPriority.contains(codecID)) return nullptr;
 
-    // Prefer software decoding for now to keep frames in system memory.
-    // Hardware decoders (e.g., cuvid/d3d11va) often output GPU frames that
-    // require explicit hwframe transfer before sws_scale / CPU access.
-    //
-    // If you want to re-enable HW decoding, restore this block and add
-    // proper hwframe transfer in the desktop decode path:
-    //
-    // for (const auto& codecName : g_decoderPriority.at(codecID)) {
-    //     const AVCodec* codec = avcodec_find_decoder_by_name(codecName.c_str());
-    //     if (!codec) continue;
-    //     if (CanUseDecoder(codec)) return codec;
-    // }
+    for (const auto& codecName : g_decoderPriority.at(codecID)) {
+        const AVCodec* codec = avcodec_find_decoder_by_name(codecName.c_str());
+        if (!codec) continue;
+        if (CanUseDecoder(codec)) return codec;
+    }
 
     return avcodec_find_decoder(static_cast<AVCodecID>(codecID));
 }

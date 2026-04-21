@@ -7,6 +7,7 @@
 
 #include <ConnectionManager.h>
 #include <Events.h>
+#include <BaseModule.h>
 
 class MobileConnectionController : public QObject
 {
@@ -42,6 +43,7 @@ protected:
 private:
     void setError(const QString& e);
     void clearChallenge();
+    void handleModuleErrorEvent(ModuleErrorEvent* ev);
 
 private:
     bool m_connected = false;

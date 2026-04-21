@@ -506,7 +506,7 @@ void FileShareModule::OnInitialize() {
         m_reservedIncomingPostChannels.clear();
     }
     m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
-    std::shared_ptr<SSLContext> sslContext = ConnectionManager::GetSSLContextClient();
+    std::shared_ptr<SSLContext_> sslContext = ConnectionManager::GetSSLContextClient();
     for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
         m_transferChannels.emplace_back(std::make_shared<TransferChannel>());
     }
@@ -515,11 +515,14 @@ void FileShareModule::OnInitialize() {
 asio::awaitable<void> FileShareModule::OnEnable() {
     m_peerModuleEnabled.store(false);
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::FileSystem);
     if (!co_await PermissionManager::RequestManagingExternalStoragePermission()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::FileSystem);
         Debug::LogWarning("FileShareModule: External storage permission denied; disabling module");
         Disable();
         co_return;
     }
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::FileSystem);
 
     if (ShouldAbortEnable()) {
         co_return;

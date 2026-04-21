@@ -8,8 +8,56 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <chrono>
+#include <mutex>
+#include <unordered_map>
 
 typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnectionPackagePtr;
+
+namespace {
+using BanClock = std::chrono::steady_clock;
+constexpr auto CONNECTION_RETRY_BAN_DURATION = std::chrono::minutes(5);
+
+std::mutex g_connectionBanMutex;
+std::unordered_map<std::string, BanClock::time_point> g_connectionBanExpirations;
+
+std::string BuildConnectionBanKey(const DeviceInfo& remoteDeviceInfo) {
+    if (!remoteDeviceInfo.certificateFingerprint.empty()) {
+        return remoteDeviceInfo.certificateFingerprint;
+    }
+
+    return remoteDeviceInfo.deviceAddress;
+}
+
+bool IsConnectionTemporarilyBanned(const std::string& connectionBanKey) {
+    if (connectionBanKey.empty()) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(g_connectionBanMutex);
+    const auto now = BanClock::now();
+    auto it = g_connectionBanExpirations.find(connectionBanKey);
+    if (it == g_connectionBanExpirations.end()) {
+        return false;
+    }
+
+    if (it->second <= now) {
+        g_connectionBanExpirations.erase(it);
+        return false;
+    }
+
+    return true;
+}
+
+void BanConnectionTemporarily(const std::string& connectionBanKey) {
+    if (connectionBanKey.empty()) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_connectionBanMutex);
+    g_connectionBanExpirations[connectionBanKey] = BanClock::now() + CONNECTION_RETRY_BAN_DURATION;
+}
+}
 
 std::string InitialConnection::ComputePairingCode(const std::string& localFingerprint, const std::string& remoteFingerprint) {
     if (localFingerprint.empty() || remoteFingerprint.empty()) {
@@ -35,10 +83,10 @@ std::string InitialConnection::ComputePairingCode(const std::string& localFinger
         value = (value << 8) | static_cast<uint64_t>(digest[i]);
     }
 
-    value %= 1000000000000ULL;
+    value %= 1000000ULL;
 
     std::ostringstream oss;
-    oss << std::setw(12) << std::setfill('0') << value;
+    oss << std::setw(6) << std::setfill('0') << value;
     return oss.str();
 }
 
@@ -254,8 +302,17 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FC)) {
                 package->GetValue(data);
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
+                const std::string connectionBanKey = BuildConnectionBanKey(data.deviceInfo);
 
                 Debug::Log("InitialConnection: Handshake step 1 - Received DEVICE_DATA_FC from {}", data.deviceInfo.deviceName);
+                if (IsConnectionTemporarilyBanned(connectionBanKey)) {
+                    Debug::LogWarning(
+                        "InitialConnection: Rejecting connection from {} due to active verification cooldown",
+                        data.deviceInfo.deviceName
+                    );
+                    Disconnect();
+                    continue;
+                }
 
                 if (data.initialConnectionMode != InitialConnectionMode::CONNECT_WITH_PAIR) {
                     std::string pairingCode{};
@@ -292,12 +349,24 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 Debug::Log("InitialConnection: Received Challenge Response. Tries left: {}", m_challengeLeftTries);
 
                 if (response != m_challengeResult) {
-                    m_challengeLeftTries--;
+                    if (m_challengeLeftTries > 0) {
+                        m_challengeLeftTries--;
+                    }
                     Debug::Log("InitialConnection: Challenge Mismatch! Tries remaining: {}", m_challengeLeftTries);
 
                     InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER, m_challengeLeftTries);
                     m_packagesOut.emplace_back(std::move(out));
                     m_sendFlag.Signal();
+
+                    if (m_challengeLeftTries <= 0) {
+                        const std::string connectionBanKey = BuildConnectionBanKey(data.deviceInfo);
+                        BanConnectionTemporarily(connectionBanKey);
+                        Debug::LogWarning(
+                            "InitialConnection: Verification attempts exhausted for {}. Applying 5 minute cooldown.",
+                            data.deviceInfo.deviceName
+                        );
+                        Disconnect();
+                    }
                     continue;
                 }
 

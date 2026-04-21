@@ -24,6 +24,16 @@ bool ModulesManager::event(QEvent* event) {
         return true;
     }
 
+    if (event->type() == ModuleErrorEvent::Type) {
+        const auto* moduleError = static_cast<ModuleErrorEvent*>(event);
+        Debug::LogError(
+            "ModulesManager: ModuleErrorEvent received from {} with reason {}",
+            ModuleTypeToString(moduleError->GetModuleType()),
+            ModuleFailReasonToString(moduleError->GetError())
+        );
+        return true;
+    }
+
     return QObject::event(event);
 }
 
@@ -41,6 +51,7 @@ ModulesManager::ModulesManager() {
 #endif
 
     m_clipboardSyncModule = std::make_shared<ClipboardSyncModule>();
+    m_remoteInputModule = std::make_shared<RemoteInputModule>();
 
 #ifdef ANDROID_DEVICE
     SetMainServiceBackendEnabled(true);
@@ -57,17 +68,42 @@ void ModulesManager::Initialize() {
         Debug::Log("ModulesManager: Instance created");
     }
 
+    if (s_instance->m_fileShareModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_fileShareModule->Initialize(true);
 
 #ifndef MACOS_DEVICE
+    if (s_instance->m_networkCameraModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_networkCameraModule->Initialize(true);
 #endif
 
 #ifndef IOS_DEVICE
+    if (s_instance->m_notificationSyncModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_notificationSyncModule->Initialize(true);
 #endif
 
+    if (s_instance->m_clipboardSyncModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_clipboardSyncModule->Initialize(true);
+
+    if (s_instance->m_remoteInputModule->GetModuleState() != ModuleState::Uninitialized) return;
+    s_instance->m_remoteInputModule->Initialize(true);
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REQUESTED, [](PC_Package&& package) {
+        const PermissionType type = package->GetValue<PermissionType>();
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermission>(type);
+        ConnectionManager::SendEvent(event);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REJECTED, [](PC_Package&& package) {
+        const PermissionType type = package->GetValue<PermissionType>();
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermissionRejected>(type);
+        ConnectionManager::SendEvent(event);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_GRANTED, [](PC_Package&& package) {
+        const PermissionType type = package->GetValue<PermissionType>();
+        const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermissionGranted>(type);
+        ConnectionManager::SendEvent(event);
+    });
 }
 
 void ModulesManager::Shutdown() {
@@ -86,6 +122,11 @@ void ModulesManager::Shutdown() {
 #endif
 
         s_instance->m_clipboardSyncModule->Shutdown(true);
+        s_instance->m_remoteInputModule->Shutdown(true);
+
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REQUESTED);
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REJECTED);
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_GRANTED);
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }

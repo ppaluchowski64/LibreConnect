@@ -116,6 +116,28 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
             ${RootPath}/res/*.otf
     )
 
+    set(EXCLUDED_SOURCES_VAR "EXCLUDED_SOURCES_${ExecutableName}")
+    if (DEFINED ${EXCLUDED_SOURCES_VAR})
+        foreach(EXCLUDED_SOURCE ${${EXCLUDED_SOURCES_VAR}})
+            list(REMOVE_ITEM SOURCE_FILES "${EXCLUDED_SOURCE}")
+            list(REMOVE_ITEM HEADER_FILES "${EXCLUDED_SOURCE}")
+        endforeach()
+    endif()
+
+    set(EXCLUDED_QML_VAR "EXCLUDED_QML_${ExecutableName}")
+    if (DEFINED ${EXCLUDED_QML_VAR})
+        foreach(EXCLUDED_QML_FILE ${${EXCLUDED_QML_VAR}})
+            list(REMOVE_ITEM QML_FILES "${EXCLUDED_QML_FILE}")
+        endforeach()
+    endif()
+
+    set(EXCLUDED_RESOURCES_VAR "EXCLUDED_RESOURCES_${ExecutableName}")
+    if (DEFINED ${EXCLUDED_RESOURCES_VAR})
+        foreach(EXCLUDED_RESOURCE ${${EXCLUDED_RESOURCES_VAR}})
+            list(REMOVE_ITEM RESOURCES "${EXCLUDED_RESOURCE}")
+        endforeach()
+    endif()
+
     qt_add_executable(${ExecutableName}
             ${SOURCE_FILES}
             ${HEADER_FILES}

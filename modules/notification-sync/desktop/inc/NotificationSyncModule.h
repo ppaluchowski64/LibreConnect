@@ -5,11 +5,26 @@
 #include <NotificationData.h>
 #include <NotificationTransferChannel.h>
 
+class NotificationReceivedEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 301);
+    explicit NotificationReceivedEvent(const NotificationRecord& record) : QEvent(Type), m_record(record) {}
+    const NotificationRecord& GetNotification() const { return m_record; }
+
+    NotificationReceivedEvent* clone() const override {
+        return new NotificationReceivedEvent(*this);
+    }
+
+private:
+    NotificationRecord m_record;
+
+};
+
 class NotificationSyncModule final : public BaseModule {
 private:
     asio::awaitable<void> FetchNotificationList();
-    void ProcessNotificationPacket(NotificationPacket&& packet);
-    void ProcessNotificationButtonAction(int64_t id, std::wstring&& option);
+    void ProcessNotificationPacket(const NotificationPacket& packet);
+    void ProcessNotificationButtonAction(int64_t id, const std::wstring& option);
     std::shared_ptr<NotificationTransferChannel> GetChannel() const;
     void SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel);
     std::shared_ptr<NotificationTransferChannel> TakeChannel();

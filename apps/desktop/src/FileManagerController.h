@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <QStringList>
+#include <QList>
 
 #include <unordered_map>
 
@@ -21,6 +22,7 @@ class FileManagerController : public QObject
     Q_PROPERTY(QString localDownloadDirectory READ localDownloadDirectory NOTIFY localDownloadDirectoryChanged)
     Q_PROPERTY(QVariantList remoteEntries READ remoteEntries NOTIFY remoteEntriesChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool dragExportInProgress READ dragExportInProgress NOTIFY dragExportInProgressChanged)
     Q_PROPERTY(double transferProgress READ transferProgress NOTIFY transferProgressChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
 
@@ -31,6 +33,7 @@ public:
     QString localDownloadDirectory() const { return m_localDownloadDirectory; }
     QVariantList remoteEntries() const { return m_remoteEntries; }
     bool busy() const { return m_busy; }
+    bool dragExportInProgress() const { return m_dragExportInProgress; }
     double transferProgress() const { return m_transferProgress; }
     QString statusMessage() const { return m_statusMessage; }
 
@@ -43,6 +46,7 @@ public:
     Q_INVOKABLE void openEntry(const QString& remotePath);
     Q_INVOKABLE void copyEntry(const QString& remotePath);
     Q_INVOKABLE void copyEntries(const QStringList& remotePaths);
+    Q_INVOKABLE void beginExternalDrag(const QStringList& remotePaths);
     Q_INVOKABLE void uploadLocalEntry(const QUrl& localPathUrl);
 
 protected:
@@ -53,6 +57,7 @@ signals:
     void localDownloadDirectoryChanged();
     void remoteEntriesChanged();
     void busyChanged();
+    void dragExportInProgressChanged();
     void transferProgressChanged();
     void statusMessageChanged();
 
@@ -63,10 +68,12 @@ private:
         Download,
         Open,
         Copy,
-        Upload
+        Upload,
+        DragExport
     };
 
     void refreshModuleState();
+    void startNextQueuedAction();
     void startPendingActionIfReady();
     void beginDownloadForPath(const QString& normalizedPath, bool partOfBatch);
     void startNextQueuedDownload();
@@ -76,6 +83,7 @@ private:
     void setCurrentRemotePath(const QString& currentRemotePath);
     void setRemoteEntries(const QVariantList& remoteEntries);
     void setBusy(bool busy);
+    void setDragExportInProgress(bool dragExportInProgress);
     void setTransferProgress(double transferProgress);
     void setStatusMessage(const QString& statusMessage);
     static QString normalizeRemotePath(const QString& path);
@@ -93,6 +101,8 @@ private:
     QString m_activeEntryPath;
     QString m_activeEntryName;
     QStringList m_pendingCopyPaths;
+    QStringList m_pendingOpenQueue;
+    QList<QStringList> m_pendingCopyQueue;
     QStringList m_pendingDownloadQueue;
     QStringList m_pendingUploadQueue;
     QVariantList m_remoteEntries;
@@ -101,6 +111,7 @@ private:
     bool m_waitingForModule = false;
     bool m_downloadBatchActive = false;
     bool m_uploadBatchActive = false;
+    bool m_dragExportInProgress = false;
     int m_downloadBatchTotal = 0;
     int m_downloadBatchCompleted = 0;
     int m_downloadBatchFailed = 0;

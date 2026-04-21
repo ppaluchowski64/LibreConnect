@@ -64,7 +64,7 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
             break;
         }
 
-        instance->ProcessNotificationPacket(std::move(notification.value()));
+        instance->ProcessNotificationPacket(notification.value());
         processedNotifications++;
     }
 
@@ -75,7 +75,7 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
     }
 }
 
-void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& packet) {
+void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket& packet) {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
 
     Debug::Log("Processing notification packet");
@@ -130,12 +130,17 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
 
             notificationEmitterButtonActions.emplace_back(
                 buttonWString,
-                [weakInstance, notificationID, buttonWString]() mutable {
+                [weakInstance, notificationID, buttonWString]() {
                     if (const std::shared_ptr<NotificationSyncModule> module = weakInstance.lock()) {
-                        module->ProcessNotificationButtonAction(*notificationID, std::move(buttonWString));
+                        module->ProcessNotificationButtonAction(*notificationID, buttonWString);
                     }
                 }
             );
+        }
+
+        {
+            std::unique_ptr<QEvent> event = std::make_unique<NotificationReceivedEvent>(notificationRecord);
+            ConnectionManager::SendEvent(event);
         }
 
         *notificationID = NotificationEmitter::Emit(
@@ -145,6 +150,8 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
             notificationRecord.mainImagePath,
             notificationEmitterButtonActions
         );
+
+
 
         std::lock_guard lock(m_notificationsVectorMutex);
         m_notifications[*notificationID] = std::move(notificationRecord);
@@ -158,9 +165,15 @@ void NotificationSyncModule::ProcessNotificationPacket(NotificationPacket&& pack
     }
 }
 
-void NotificationSyncModule::ProcessNotificationButtonAction(const int64_t id, std::wstring&& option) {
+void NotificationSyncModule::ProcessNotificationButtonAction(const int64_t id, const std::wstring& option) {
     std::lock_guard lock(m_notificationsVectorMutex);
     if (m_notifications.contains(id)) {
+        const std::shared_ptr<NotificationTransferChannel> channel = GetChannel();
+        if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogWarning("Notification action ignored: Phone is disconnected.");
+            return;
+        }
+
         Debug::Log("Notification button action pressed. NotificationID: {}", id);
         ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_BUTTON_ACTION_PRESSED, std::string(m_notifications.at(id).key), boost::nowide::narrow(option));
     } else {
@@ -187,7 +200,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         }
 
         Debug::Log("Received notification packet. Key: {}, Title: {}", notification->key, notification->title);
-        instance->ProcessNotificationPacket(std::move(notification.value()));
+        instance->ProcessNotificationPacket(notification.value());
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE, [instance](PC_Package&& package) {

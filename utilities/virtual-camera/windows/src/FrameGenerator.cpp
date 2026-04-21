@@ -32,6 +32,7 @@ HRESULT FrameGenerator::EnsureRenderTarget(UINT width, UINT height)
 		RETURN_IF_FAILED(d2d1Factory->CreateWicBitmapRenderTarget(_bitmap.get(), props, &_renderTarget));
 
 		RETURN_IF_FAILED(CreateRenderTargetResources(width, height));
+		RETURN_IF_FAILED(LoadInlineImage(wicFactory.get()));
 	}
 
 	_prevTime = MFGetSystemTime();
@@ -127,6 +128,42 @@ HRESULT FrameGenerator::CreateRenderTargetResources(UINT width, UINT height)
 	return S_OK;
 }
 
+HRESULT FrameGenerator::LoadInlineImage(IWICImagingFactory* wicFactory) {
+	RETURN_HR_IF_NULL(E_POINTER, _renderTarget.get());
+	RETURN_HR_IF_NULL(E_POINTER, wicFactory);
+
+	wil::com_ptr_nothrow<IWICStream> stream;
+	RETURN_IF_FAILED(wicFactory->CreateStream(&stream));
+	RETURN_IF_FAILED(stream->InitializeFromMemory(const_cast<BYTE*>(INLINED_DEFAULT_CAMERA_FRAME), sizeof(INLINED_DEFAULT_CAMERA_FRAME)));
+
+	wil::com_ptr_nothrow<IWICBitmapDecoder> decoder;
+	RETURN_IF_FAILED(wicFactory->CreateDecoderFromStream(
+		stream.get(),
+		nullptr,
+		WICDecodeMetadataCacheOnLoad,
+		&decoder));
+
+	wil::com_ptr_nothrow<IWICBitmapFrameDecode> frame;
+	RETURN_IF_FAILED(decoder->GetFrame(0, &frame));
+
+	wil::com_ptr_nothrow<IWICFormatConverter> converter;
+	RETURN_IF_FAILED(wicFactory->CreateFormatConverter(&converter));
+	RETURN_IF_FAILED(converter->Initialize(
+		frame.get(),
+		GUID_WICPixelFormat32bppPBGRA,
+		WICBitmapDitherTypeNone,
+		nullptr,
+		0.0f,
+		WICBitmapPaletteTypeMedianCut));
+
+	RETURN_IF_FAILED(_renderTarget->CreateBitmapFromWicBitmap(
+		converter.get(),
+		nullptr,
+		&_imageBitmap));
+
+	return S_OK;
+}
+
 HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** outSample)
 {
 	WINTRACE(L"FrameGenerator::Generate - No external frame available, using internal generator");
@@ -137,7 +174,14 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** 
 	if (_renderTarget)
 	{
 		_renderTarget->BeginDraw();
-		_renderTarget->Clear(D2D1::ColorF(0.0f, 0.5f, 0.5f, 1.0f));
+		_renderTarget->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f));
+		if (_imageBitmap)
+		{
+			const D2D1_SIZE_F renderSize = _renderTarget->GetSize();
+			const D2D1_RECT_F destRect = D2D1::RectF(0.0f, 0.0f, renderSize.width, renderSize.height);
+			_renderTarget->DrawBitmap(_imageBitmap.get(), destRect);
+		}
+
 		RETURN_IF_FAILED(_renderTarget->EndDraw());
 	}
 

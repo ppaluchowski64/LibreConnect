@@ -13,6 +13,8 @@ import java.io.File
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.scale
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.provider.Settings
@@ -30,6 +32,44 @@ class NotificationListener : NotificationListenerService() {
     companion object {
         @Volatile
         private var nativeLoaded = false
+
+        @Volatile
+        private var instance: NotificationListener? = null
+
+        @JvmStatic
+        fun requestSync(context: Context) {
+            if (instance == null) {
+                val pm = context.packageManager
+                val component = ComponentName(context, NotificationListener::class.java)
+
+                pm.setComponentEnabledSetting(
+                    component,
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                    PackageManager.DONT_KILL_APP
+                )
+
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    try {
+                        pm.setComponentEnabledSetting(
+                            component,
+                            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+                            PackageManager.DONT_KILL_APP
+                        )
+
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                            android.service.notification.NotificationListenerService.requestRebind(component)
+                        }
+
+                        Log.i("NotificationListener", "Successfully kicked the listener service back awake.")
+
+                    } catch (e: Exception) {
+                        Log.e("NotificationListener", "Failed to restart service", e)
+                    }
+                }, 500)
+            } else {
+                instance?.syncActiveNotificationsToCpp(force = true)
+            }
+        }
 
         private fun ensureNativeLoaded(service: NotificationListenerService): Boolean {
             if (nativeLoaded) return true
@@ -71,6 +111,18 @@ class NotificationListener : NotificationListenerService() {
                 return false
             }
         }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+        Log.i(tag, "Notification listener created.")
+    }
+
+    override fun onDestroy() {
+        instance = null
+        super.onDestroy()
+        Log.i(tag, "Notification listener destroyed.")
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {

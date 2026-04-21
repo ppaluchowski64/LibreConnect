@@ -42,8 +42,61 @@ enum class ModuleType : uint8_t {
     NotificationSync,
     NetworkCamera,
     NetworkFileSystem,
-    ClipboardSync
+    ClipboardSync,
+    RemoteInput
 };
+
+enum class PermissionType : uint16_t {
+    Unknown = 0,
+    Camera,
+    Notifications,
+    FileSystem,
+    Battery
+};
+
+inline const char* ModuleFailReasonToString(const ModuleFailReason reason)
+{
+    switch (reason) {
+    case ModuleFailReason::None:
+        return "No failure";
+    case ModuleFailReason::IncorrectConfig:
+        return "Incorrect configuration";
+    case ModuleFailReason::NotInitialized:
+        return "Not initialized";
+    case ModuleFailReason::InitializationFailed:
+        return "Initialization failed";
+    case ModuleFailReason::UnsupportedPlatform:
+        return "Unsupported platform";
+    case ModuleFailReason::Timeout:
+        return "Timeout";
+    case ModuleFailReason::InvalidState:
+        return "Invalid state";
+    case ModuleFailReason::InternalError:
+        return "Internal error";
+    case ModuleFailReason::Unknown:
+    default:
+        return "Unknown";
+    }
+}
+
+inline const char* ModuleTypeToString(const ModuleType type)
+{
+    switch (type) {
+    case ModuleType::NotificationSync:
+        return "NotificationSync";
+    case ModuleType::NetworkCamera:
+        return "NetworkCamera";
+    case ModuleType::NetworkFileSystem:
+        return "NetworkFileSystem";
+    case ModuleType::ClipboardSync:
+        return "ClipboardSync";
+    case ModuleType::RemoteInput:
+        return "RemoteInput";
+    case ModuleType::Unknown:
+    default:
+        return "Unknown";
+    }
+}
 
 class ModuleErrorEvent final : public QEvent {
 public:
@@ -60,6 +113,51 @@ private:
     ModuleFailReason m_error;
     ModuleType m_moduleType;
 };
+
+class ModuleRequestedPermission final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 301);
+    explicit ModuleRequestedPermission(const PermissionType type) : QEvent(Type), m_permissionType(type) {}
+    PermissionType GetPermissionType() const { return m_permissionType; }
+
+    ModuleRequestedPermission* clone() const override {
+        return new ModuleRequestedPermission(*this);
+    }
+
+private:
+    PermissionType m_permissionType;
+
+};
+
+class ModuleRequestedPermissionRejected final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 302);
+    explicit ModuleRequestedPermissionRejected (const PermissionType type) : QEvent(Type), m_permissionType(type) {}
+    PermissionType GetPermissionType() const { return m_permissionType; }
+
+    ModuleRequestedPermissionRejected * clone() const override {
+        return new ModuleRequestedPermissionRejected(*this);
+    }
+
+private:
+    PermissionType m_permissionType;
+};
+
+
+class ModuleRequestedPermissionGranted final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 303);
+    explicit ModuleRequestedPermissionGranted (const PermissionType type) : QEvent(Type), m_permissionType(type) {}
+    PermissionType GetPermissionType() const { return m_permissionType; }
+
+    ModuleRequestedPermissionGranted * clone() const override {
+        return new ModuleRequestedPermissionGranted(*this);
+    }
+
+private:
+    PermissionType m_permissionType;
+};
+
 
 constexpr const char* APPLICATION_NAME = "LibreConnect";
 

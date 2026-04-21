@@ -23,8 +23,8 @@ public:
 
     static std::shared_ptr<PrimaryConnection> Create();
 
-    void Connect(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data);
-    void Seek(const std::shared_ptr<SSLContext>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback);
+    void Connect(const std::shared_ptr<SSLContext_>& sslContext, const InitialConnectionData& data);
+    void Seek(const std::shared_ptr<SSLContext_>& sslContext, const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback);
 
     void Disconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
 
@@ -54,8 +54,8 @@ public:
 
 
 private:
-    asio::awaitable<void> CoConnect(std::shared_ptr<SSLContext> sslContext, InitialConnectionData data);
-    asio::awaitable<void> CoSeek(std::shared_ptr<SSLContext> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback);
+    asio::awaitable<void> CoConnect(std::shared_ptr<SSLContext_> sslContext, InitialConnectionData data);
+    asio::awaitable<void> CoSeek(std::shared_ptr<SSLContext_> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback);
 
     asio::awaitable<void> CoCleanupConnection();
     asio::awaitable<void> CoDisconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
@@ -71,7 +71,7 @@ private:
     IOContext& m_context;
     IOContextStrand m_strand;
 
-    std::shared_ptr<SSLContext> m_sslContext;
+    std::shared_ptr<SSLContext_> m_sslContext;
     std::unique_ptr<SSLSocket> m_socket;
 
     AwaitableFlag m_sendFlag;

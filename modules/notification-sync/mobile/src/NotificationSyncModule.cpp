@@ -2,6 +2,7 @@
 #include <NotificationListenerHandler.h>
 #include <ConnectionManager.h>
 #include <PermissionManager.h>
+#include <QtCore/private/qandroidextras_p.h>
 #include <utility>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
@@ -27,7 +28,8 @@ std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::TakeChannel
 }
 
 asio::awaitable<void> NotificationSyncModule::SendNewNotification(const std::string key) const {
-    if (GetModuleState() != ModuleState::Enabled) {
+    const ModuleState state = GetModuleState();
+    if (state != ModuleState::Enabled && state != ModuleState::Enabling) {
         co_return;
     }
 
@@ -158,8 +160,11 @@ void NotificationSyncModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE);
 }
 
-void NotificationSyncModule::OnInitialize() {
+void NotificationSyncModule::OnInitialize() {}
+
+asio::awaitable<void> NotificationSyncModule::OnEnable() {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
+    m_peerModuleEnabled.store(false);
 
     {
         std::lock_guard lock(g_notificationCallbackMutex);
@@ -167,33 +172,49 @@ void NotificationSyncModule::OnInitialize() {
             asio::co_spawn(instance->m_context, instance->SendNewNotification(key), asio::detached);
         };
     }
-}
 
-asio::awaitable<void> NotificationSyncModule::OnEnable() {
-    m_peerModuleEnabled.store(false);
+    ClearNotificationDatas();
 
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "com/LibreConnect/mobile/NotificationListener",
+        "requestSync",
+        "(Landroid/content/Context;)V",
+        context.object<jobject>()
+    );
+
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Notifications);
     if (!co_await PermissionManager::RequestNotificationEmitPermission()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Notifications);
         Disable();
         co_return;
     }
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Notifications);
 
     if (ShouldAbortEnable()) {
         co_return;
     }
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Notifications);
     if (!co_await PermissionManager::RequestNotificationAccessPermission()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Notifications);
         Disable();
         co_return;
     }
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Notifications);
 
     if (ShouldAbortEnable()) {
         co_return;
     }
 
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Battery);
     if (!co_await PermissionManager::RequestDisablingBatteryOptimizations()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Battery);
         Debug::LogWarning(
             "NotificationSyncModule: Battery optimization is still enabled; notification relay reliability may be reduced"
         );
+    } else {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Battery);
     }
 
     if (ShouldAbortEnable()) {
@@ -229,6 +250,13 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
 }
 
 asio::awaitable<void> NotificationSyncModule::OnDisable() {
+    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
+
+    {
+        std::lock_guard lock(g_notificationCallbackMutex);
+        g_notificationCallback = {};
+    }
+
     m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, false);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
@@ -237,6 +265,7 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
     if (const std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
         co_await channel->Disconnect();
     }
+
 }
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {

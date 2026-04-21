@@ -10,12 +10,17 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
+#include <vector>
+#include <deque>
+#include <thread>
+#include <condition_variable>
 
 extern "C" {
     #include <libswscale/swscale.h>
     #include <libavcodec/avcodec.h>
     #include <libavformat/avformat.h>
     #include <libavutil/imgutils.h>
+    #include <libavutil/hwcontext.h>
 }
 
 enum class StreamStartFailReason : uint8_t {
@@ -49,6 +54,7 @@ private:
     CodecID m_activeCodecId{CodecID::H264};
 
     AVFrame* m_frame{nullptr};
+    AVFrame* m_hwTransferFrame{nullptr};
     AVFrame* m_frameNv12{nullptr};
     AVPacket* m_packet{nullptr};
     SwsContext* m_swsContext{nullptr};
@@ -63,8 +69,22 @@ private:
     std::atomic<bool> m_waitForIdrAfterLoss{false};
     std::atomic<uint64_t> m_waitForIdrStartMs{0};
     std::atomic<uint32_t> m_waitForIdrDroppedFrames{0};
+    std::atomic<int64_t> m_decodePacketPts{0};
     std::atomic<bool> m_acceptFrames{false};
     std::atomic<bool> m_receiveFramesRunning{false};
+    std::vector<uint8_t> m_outputFrameBuffer;
+    
+    void DecodeFramesLoop();
+    std::thread m_decodeThread;
+    std::mutex m_encodedMutex;
+    std::condition_variable m_encodedCv;
+    std::deque<std::vector<uint8_t>> m_encodedQueue;
+
+    asio::awaitable<void> FramePacer();
+    std::mutex m_pacerMutex;
+    std::deque<std::vector<uint8_t>> m_pacerQueue;
+    std::vector<std::vector<uint8_t>> m_pacerFreeBuffers;
+    std::atomic<bool> m_pacerRunning{false};
 
 protected:
     void EnableResponseCallbacks() override;
