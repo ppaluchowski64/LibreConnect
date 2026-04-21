@@ -3,6 +3,7 @@
 #include <asio/error.hpp>
 #include <asio/ssl/error.hpp>
 #include <algorithm>
+#include <cctype>
 #include <QRegularExpression>
 
 namespace
@@ -41,6 +42,23 @@ bool IsBenignDisconnectError(const std::error_code& errorCode)
            errorCode == asio::error::connection_aborted ||
            errorCode == asio::error::shut_down ||
            errorCode == asio::ssl::error::stream_truncated;
+}
+
+bool IsPendingHandshakeClosureError(const std::error_code& errorCode)
+{
+    return errorCode == asio::error::eof ||
+           errorCode == asio::error::connection_reset ||
+           errorCode == asio::error::connection_aborted ||
+           errorCode == asio::error::shut_down ||
+           errorCode == asio::ssl::error::stream_truncated;
+}
+
+std::string CapitalizeErrorMessage(std::string message)
+{
+    if (!message.empty()) {
+        message[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(message[0])));
+    }
+    return message;
 }
 }
 
@@ -271,8 +289,18 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
 
     m_verificationEvent.reset();
 
+    if (pendingChangedValue &&
+        !connectedChangedValue &&
+        IsPendingHandshakeClosureError(ev->GetErrorCode())) {
+        handleError(
+            "Connection was closed by the remote device. If this was a paired-mode connect, verify that both devices are still paired.",
+            ev->type()
+        );
+        return;
+    }
+
     if (!IsBenignDisconnectError(ev->GetErrorCode())) {
-        handleError(ev->GetErrorCode().message(), ev->type());
+        handleError(CapitalizeErrorMessage(ev->GetErrorCode().message()), ev->type());
     }
 }
 
@@ -310,7 +338,7 @@ void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
         return;
     }
 
-    handleError(ev->GetErrorCode().message(), ev->type());
+    handleError(CapitalizeErrorMessage(ev->GetErrorCode().message()), ev->type());
 }
 
 void DeviceConnectionController::handleConnectionPendingEvent(ConnectionPendingEvent* ev)

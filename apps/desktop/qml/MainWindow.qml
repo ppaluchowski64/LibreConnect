@@ -36,6 +36,14 @@ Window {
         id: connectionController
     }
 
+    NotificationSyncController {
+        id: notificationSyncController
+    }
+
+    PermissionStateController {
+        id: permissionStateController
+    }
+
     function updateWindowTitle() {
         const currentItem = stackView.currentItem
         currentWindowTitleSuffix = currentItem && currentItem.windowTitleSuffix !== undefined
@@ -121,6 +129,8 @@ Window {
             connectionController: connectionController,
             activeDeviceName: activeDeviceName,
             activeDeviceId: activeDeviceId,
+            notificationSyncController: notificationSyncController,
+            permissionStateController: permissionStateController,
             initialFeature: initialFeature === undefined ? "" : initialFeature
         })
     }

@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -183,69 +184,61 @@ class NotificationListener : NotificationListenerService() {
     }
 
     private fun dispatchNotificationPosted(sbn: StatusBarNotification) {
-        val key: String = sbn.key
-        trackedNotificationKeys.add(key)
+        try {
+            val key: String = sbn.key
+            trackedNotificationKeys.add(key)
 
-        val notification = sbn.notification
-        val extras = notification.extras
+            val notification = sbn.notification
+            val extras = notification.extras
 
-        val title: String? = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-        val content: String? = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
-        val timestamp: Long = sbn.postTime
-        val largeIcon = notification.getLargeIcon()
-        var mainImageBytes: ByteArray? = null
+            val title: String? = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+            val content: String? = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+            val timestamp: Long = sbn.postTime
+            val largeIcon = notification.getLargeIcon()
+            var mainImageBytes: ByteArray? = null
 
-        val bigPicture = if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            extras.getParcelable(Notification.EXTRA_PICTURE_ICON, android.graphics.drawable.Icon::class.java)
-        } else {
-            extras.getParcelable(Notification.EXTRA_PICTURE) as? Bitmap
-        }
-
-        if (bigPicture != null) {
-            val bitmap: Bitmap? = if (bigPicture is android.graphics.drawable.Icon) {
-                val drawable = bigPicture.loadDrawable(applicationContext)
-                drawable?.let { drawableToBitmap(it) }
+            val bigPicture = if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                extras.getParcelable(Notification.EXTRA_PICTURE_ICON, Icon::class.java)
             } else {
-                bigPicture as Bitmap
+                extras.getParcelable(Notification.EXTRA_PICTURE) as? Bitmap
             }
 
-            if (bitmap != null) {
-                mainImageBytes = if (bitmap.width > 1024) {
-                    val aspectRatio = bitmap.height.toDouble() / bitmap.width.toDouble()
-                    val scaledBitmap = bitmap.scale(1024, (1024 * aspectRatio).toInt())
-                    bitmapToByteArray(scaledBitmap)
-                } else {
-                    bitmapToByteArray(bitmap)
+            if (bigPicture != null) {
+                val bitmap: Bitmap? = when (bigPicture) {
+                    is Icon -> bitmapFromIcon(bigPicture, key, "big picture")
+                    is Bitmap -> bigPicture
+                    else -> null
+                }
+
+                if (bitmap != null) {
+                    mainImageBytes = if (bitmap.width > 1024) {
+                        val aspectRatio = bitmap.height.toDouble() / bitmap.width.toDouble()
+                        val scaledBitmap = bitmap.scale(1024, (1024 * aspectRatio).toInt())
+                        bitmapToByteArray(scaledBitmap)
+                    } else {
+                        bitmapToByteArray(bitmap)
+                    }
                 }
             }
-        }
 
-        val iconBytes: ByteArray? = if (largeIcon != null) {
-            val drawable = largeIcon.loadDrawable(applicationContext)
-            drawable?.let {
-                val bitmap = drawableToBitmap(it)
-                bitmapToByteArray(bitmap)
+            val iconBitmap = bitmapFromIcon(largeIcon, key, "large")
+                ?: bitmapFromIcon(notification.smallIcon, key, "small")
+            val iconBytes: ByteArray? = iconBitmap?.let { bitmapToByteArray(it) }
+
+            try {
+                onNotificationReceivedCPP(
+                    key,
+                    title,
+                    content,
+                    timestamp,
+                    iconBytes,
+                    mainImageBytes
+                )
+            } catch (e: UnsatisfiedLinkError) {
+                Log.e(tag, "JNI method onNotificationReceivedCPP is missing or failed.", e)
             }
-
-        } else {
-            val smallIconDrawable = notification.smallIcon?.loadDrawable(applicationContext)
-            smallIconDrawable?.let {
-                val bitmap = drawableToBitmap(it)
-                bitmapToByteArray(bitmap)
-            }
-        }
-
-        try {
-            onNotificationReceivedCPP(
-                key,
-                title,
-                content,
-                timestamp,
-                iconBytes,
-                mainImageBytes
-            )
-        } catch (e: UnsatisfiedLinkError) {
-            Log.e(tag, "JNI method onNotificationReceivedCPP is missing or failed.", e)
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to dispatch posted notification.", e)
         }
     }
 
@@ -281,6 +274,45 @@ class NotificationListener : NotificationListenerService() {
         drawable.draw(canvas)
 
         return bitmap
+    }
+
+    private fun bitmapFromIcon(icon: Icon?, key: String, source: String): Bitmap? {
+        if (icon == null) {
+            return null
+        }
+
+        if (!canResolveIconPackage(icon, key, source)) {
+            return null
+        }
+
+        return try {
+            icon.loadDrawable(applicationContext)?.let { drawableToBitmap(it) }
+        } catch (e: Exception) {
+            Log.w(tag, "Failed to load $source icon for key=$key", e)
+            null
+        }
+    }
+
+    private fun canResolveIconPackage(icon: Icon, key: String, source: String): Boolean {
+        if (icon.type != Icon.TYPE_RESOURCE) {
+            return true
+        }
+
+        val pkg = icon.resPackage
+        if (pkg.isNullOrEmpty() || pkg == packageName || pkg == "android") {
+            return true
+        }
+
+        return try {
+            packageManager.getApplicationInfo(pkg, 0)
+            true
+        } catch (e: PackageManager.NameNotFoundException) {
+            Log.w(tag, "Skipping $source icon for key=$key. Package not visible: $pkg")
+            false
+        } catch (e: SecurityException) {
+            Log.w(tag, "Skipping $source icon for key=$key due to package visibility restrictions: $pkg")
+            false
+        }
     }
 
     private fun bitmapToByteArray(bitmap: Bitmap): ByteArray {

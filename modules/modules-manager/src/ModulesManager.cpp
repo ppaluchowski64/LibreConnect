@@ -6,6 +6,7 @@
 
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
+#include <PermissionManager.h>
 #endif
 
 ModulesManager* ModulesManager::s_instance{nullptr};
@@ -104,6 +105,50 @@ void ModulesManager::Initialize() {
         const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermissionGranted>(type);
         ConnectionManager::SendEvent(event);
     });
+
+#ifdef ANDROID_DEVICE
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::PERMISSION_REQUEST, [](PC_Package&& package) -> asio::awaitable<void> {
+        const PermissionType type = package->GetValue<PermissionType>();
+        bool granted = false;
+
+        switch (type) {
+        case PermissionType::Camera:
+            granted = co_await PermissionManager::RequestCameraAccessPermission();
+            break;
+        case PermissionType::Notifications:
+            granted = co_await PermissionManager::RequestNotificationEmitPermission();
+            if (granted) {
+                granted = co_await PermissionManager::RequestNotificationAccessPermission();
+            }
+            break;
+        case PermissionType::FileSystem:
+            granted = co_await PermissionManager::RequestManagingExternalStoragePermission();
+            break;
+        case PermissionType::Battery:
+            granted = co_await PermissionManager::RequestDisablingBatteryOptimizations();
+            break;
+        case PermissionType::Unknown:
+        default:
+            granted = false;
+            break;
+        }
+
+        ConnectionManager::Send(
+            granted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
+            type
+        );
+
+        std::unique_ptr<QEvent> event;
+        if (granted) {
+            event = std::make_unique<ModuleRequestedPermissionGranted>(type);
+        } else {
+            event = std::make_unique<ModuleRequestedPermissionRejected>(type);
+        }
+        ConnectionManager::SendEvent(event);
+
+        co_return;
+    });
+#endif
 }
 
 void ModulesManager::Shutdown() {
@@ -127,6 +172,9 @@ void ModulesManager::Shutdown() {
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REQUESTED);
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REJECTED);
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_GRANTED);
+#ifdef ANDROID_DEVICE
+        ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::PERMISSION_REQUEST);
+#endif
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }

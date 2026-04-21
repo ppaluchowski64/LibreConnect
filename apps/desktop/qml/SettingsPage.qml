@@ -7,10 +7,8 @@ Page {
     id: root
 
     readonly property string windowTitleSuffix: "Settings"
-
-    NotificationSyncController {
-        id: notificationSyncController
-    }
+    required property var notificationSyncController
+    required property var permissionStateController
 
     property var themeModes: [
         { label: "System", value: "system" },
@@ -82,14 +80,6 @@ Page {
                         width: parent.width - 4
                     }
 
-                    Text {
-                        text: "Mobile follows the system color scheme automatically."
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
-                        color: Theme.subtleTextColor
-                        width: parent.width - 4
-                    }
                 }
 
                 RowLayout {
@@ -317,24 +307,96 @@ Page {
                     Switch {
                         id: syncToggle
                         checked: notificationSyncController.enabled
-                        enabled: !notificationSyncController.busy
+                        enabled: permissionStateController.notificationsGranted && !notificationSyncController.busy
                         onClicked: notificationSyncController.setNotificationSyncEnabled(checked)
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: notificationSyncController.statusMessage
+                    text: permissionStateController.notificationsGranted
+                          ? notificationSyncController.statusMessage
+                          : "Notification sync is unavailable until notification permissions are granted on the mobile device."
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
                     color: Theme.mutedTextColor
                 }
             }
+
+            MouseArea {
+                anchors.fill: parent
+                visible: !permissionStateController.notificationsGranted
+                onClicked: notificationPermissionDialog.open()
+            }
         }
 
         Item {
             Layout.fillHeight: true
+        }
+    }
+
+    Dialog {
+        id: notificationPermissionDialog
+        title: ""
+        modal: true
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        contentWidth: 360
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 14
+            width: notificationPermissionDialog.contentWidth
+
+            Text {
+                text: "Notification Permission Required"
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: "Grant notification permissions on the mobile app to use notification sync."
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                ThemedButton {
+                    text: "Cancel"
+                    width: 120
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: notificationPermissionDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Prompt on Phone"
+                    width: 170
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: {
+                        permissionStateController.requestPermission(2)
+                        notificationPermissionDialog.close()
+                    }
+                }
+            }
         }
     }
 }

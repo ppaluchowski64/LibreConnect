@@ -11,6 +11,8 @@
 #include <chrono>
 #include <mutex>
 #include <unordered_map>
+#include <filesystem>
+#include <boost/uuid/uuid_io.hpp>
 
 typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnectionPackagePtr;
 
@@ -56,6 +58,26 @@ void BanConnectionTemporarily(const std::string& connectionBanKey) {
 
     std::lock_guard<std::mutex> lock(g_connectionBanMutex);
     g_connectionBanExpirations[connectionBanKey] = BanClock::now() + CONNECTION_RETRY_BAN_DURATION;
+}
+
+bool IsPairedDeviceKnown(const DeviceInfo& remoteDeviceInfo) {
+    const std::filesystem::path devicePath = std::filesystem::path("certs")
+        / boost::uuids::to_string(remoteDeviceInfo.deviceID);
+    const std::filesystem::path certPath = devicePath / "cert.key";
+    const std::filesystem::path dataPath = devicePath / "data.JSON";
+
+    std::error_code ec;
+    const bool certExists = std::filesystem::exists(certPath, ec);
+    if (ec) {
+        return false;
+    }
+
+    const bool dataExists = std::filesystem::exists(dataPath, ec);
+    if (ec) {
+        return false;
+    }
+
+    return certExists && dataExists;
 }
 }
 
@@ -121,6 +143,8 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
     m_connectionState = ConnectionState::CONNECTING;
     m_localCertificateFingerprint = DeviceInfo::GetThisDeviceInfo().certificateFingerprint;
     m_expectedChallengeCode.clear();
+    m_requestedConnectionMode = mode;
+    m_finalHandshakeCompleted = false;
 
     try {
         m_socket = TCPSocket(m_context, endpoint.protocol());
@@ -158,6 +182,8 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
     m_connectionState = ConnectionState::CONNECTING;
     m_localCertificateFingerprint = DeviceInfo::GetThisDeviceInfo().certificateFingerprint;
     m_expectedChallengeCode.clear();
+    m_requestedConnectionMode = InitialConnectionMode::CONNECTION_WITHOUT_PAIR;
+    m_finalHandshakeCompleted = false;
 
     try {
         m_socket = TCPSocket(m_context);
@@ -314,32 +340,42 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                     continue;
                 }
 
-                if (data.initialConnectionMode != InitialConnectionMode::CONNECT_WITH_PAIR) {
-                    std::string pairingCode{};
-                    if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
-                        pairingCode = ComputePairingCode(
-                            m_localCertificateFingerprint,
-                            data.deviceInfo.certificateFingerprint
-                        );
-                    }
-
-                    std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, std::move(pairingCode), [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
-                        try {
-                            asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
-                        } catch (const std::exception& ex) {
-                            Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
-                        }
-                    });
-
+                if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
+                    !IsPairedDeviceKnown(data.deviceInfo)) {
+                    const std::error_code pairError = std::make_error_code(std::errc::permission_denied);
+                    Debug::LogWarning(
+                        "InitialConnection: CONNECT_WITH_PAIR rejected for unpaired device {} ({})",
+                        data.deviceInfo.deviceName,
+                        boost::uuids::to_string(data.deviceInfo.deviceID)
+                    );
+                    const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(pairError);
                     ConnectionManager::SendEvent(event);
-                } else {
-                    asio::co_spawn(m_strand, CoProcessConnectionPendingCallback(true, data, ""), asio::detached);
+                    throw std::system_error(pairError, "CONNECT_WITH_PAIR rejected because peer is not paired");
                 }
+
+                std::string pairingCode{};
+                if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
+                    pairingCode = ComputePairingCode(
+                        m_localCertificateFingerprint,
+                        data.deviceInfo.certificateFingerprint
+                    );
+                }
+
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, std::move(pairingCode), [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
+                    try {
+                        asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
+                    } catch (const std::exception& ex) {
+                        Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
+                    }
+                });
+
+                ConnectionManager::SendEvent(event);
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FS)) {
                 // Client side receiving final confirmation
                 data = package->GetValue<InitialConnectionData>();
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
+                m_finalHandshakeCompleted = true;
 
                 Debug::Log("InitialConnection: Handshake step 2 - Received DEVICE_DATA_FS ({}:{}). Transitioning to Primary.", data.deviceInfo.deviceAddress, data.deviceInfo.deviceAddressPort);
                 ConnectionManager::ConnectPrimary(data);
@@ -408,6 +444,19 @@ asio::awaitable<void> InitialConnection::CoReceive() {
     } catch (std::system_error& error) {
         Debug::Log("InitialConnection: CoReceive Error - {}", error.what());
         HandleAsioError(error.code());
+
+        if (!m_finalHandshakeCompleted &&
+            m_requestedConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
+            (error.code() == asio::error::eof ||
+             error.code() == asio::error::connection_reset ||
+             error.code() == asio::error::connection_aborted ||
+             error.code() == asio::error::shut_down ||
+             error.code() == asio::ssl::error::stream_truncated)) {
+            const std::error_code pairError = std::make_error_code(std::errc::permission_denied);
+            const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(pairError);
+            ConnectionManager::SendEvent(event);
+        }
+
         Disconnect();
     }
 }

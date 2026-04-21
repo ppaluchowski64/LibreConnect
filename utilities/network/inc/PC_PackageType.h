@@ -12,6 +12,7 @@ enum class PC_PackageType : PackageTypeInt {
     PERMISSION_REQUESTED = 2,
     PERMISSION_GRANTED = 3,
     PERMISSION_REJECTED = 4,
+    PERMISSION_REQUEST = 5,
 
     // DEVICE PAIRING (10 - 99)
     PAIR_REQUEST = 10,

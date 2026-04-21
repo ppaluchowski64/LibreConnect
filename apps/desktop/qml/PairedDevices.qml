@@ -16,6 +16,7 @@ Page {
     property bool isConnecting: false
     property bool connectionAttemptActive: false
     property var onlineDeviceIds: ({})
+    readonly property int connectAttemptTimeoutMs: 12000
 
     DeviceDiscovery {
         id: discovery
@@ -123,6 +124,7 @@ Page {
         statusMessage = ""
         connectionAttemptActive = true
         isConnecting = true
+        connectAttemptTimer.restart()
         windowRef.prepareConnection(selectedDeviceId, selectedDeviceName(), false)
         connectionController.connectTo(discoveredDevice.ipAddress, discoveredDevice.port, 1)
     }
@@ -353,6 +355,7 @@ Page {
 
         function onConnectedChanged() {
             if (connectionController.connected) {
+                connectAttemptTimer.stop()
                 isConnecting = false
                 connectionAttemptActive = false
                 discovery.cancelScan()
@@ -360,6 +363,7 @@ Page {
             }
 
             if (connectionAttemptActive) {
+                connectAttemptTimer.stop()
                 isConnecting = false
                 connectionAttemptActive = false
             }
@@ -368,12 +372,14 @@ Page {
         function onPendingChanged() {
             isConnecting = connectionController.pending
             if (!connectionController.pending) {
+                connectAttemptTimer.stop()
                 connectionAttemptActive = false
             }
         }
 
         function onLastErrorChanged() {
             if (connectionController.lastError.length > 0) {
+                connectAttemptTimer.stop()
                 statusMessage = connectionController.lastError
                 isConnecting = false
                 connectionAttemptActive = false
@@ -382,6 +388,20 @@ Page {
 
         function onPairedDevicesChanged() {
             reloadPairedDevices()
+        }
+    }
+
+    Timer {
+        id: connectAttemptTimer
+        interval: root.connectAttemptTimeoutMs
+        repeat: false
+        onTriggered: {
+            if (root.connectionAttemptActive || root.isConnecting || connectionController.pending) {
+                connectionController.disconnect()
+                root.isConnecting = false
+                root.connectionAttemptActive = false
+                root.statusMessage = "Connection timed out before handshake completed. Verify both devices are paired and try again."
+            }
         }
     }
 
