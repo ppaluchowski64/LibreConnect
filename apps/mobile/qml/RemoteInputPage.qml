@@ -133,17 +133,18 @@ Page {
                     border.color: Theme.panelBorderColor
 
                     Image {
+                        id: coverImage
                         anchors.fill: parent
                         anchors.margins: 2
                         source: remoteInputController.coverImageSource
                         fillMode: Image.PreserveAspectFit
                         cache: false
-                        visible: source.length > 0
+                        visible: status === Image.Ready
                     }
 
                     Text {
                         anchors.centerIn: parent
-                        visible: remoteInputController.coverImageSource.length === 0
+                        visible: coverImage.status !== Image.Ready
                         text: "Cover"
                         color: Theme.mutedTextColor
                         font.pixelSize: 15

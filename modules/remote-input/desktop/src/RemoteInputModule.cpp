@@ -16,7 +16,7 @@
 
 namespace {
 constexpr size_t FUTURES_WAIT_DELAY = 10;
-constexpr size_t MAX_MEDIA_COVER_BYTES = 120 * 1024;
+constexpr size_t MAX_MEDIA_COVER_BYTES = 512 * 1024;
 
 bool IsInputDeliveryState(const ModuleState state) {
     return state == ModuleState::Enabled || state == ModuleState::Enabling;

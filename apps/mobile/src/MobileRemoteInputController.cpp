@@ -2,9 +2,16 @@
 
 #include <algorithm>
 
+#include <QBuffer>
+#include <QDateTime>
 #include <QPointer>
 #include <QChar>
+#include <QDir>
+#include <QFile>
+#include <QImageReader>
+#include <QStandardPaths>
 #include <Qt>
+#include <QUrl>
 
 #include <ConnectionManager.h>
 #include <Events.h>
@@ -19,6 +26,83 @@
 
 namespace {
 constexpr int INVALID_KEY = -1;
+
+QString MimeTypeFromImageBytes(const QByteArray& bytes)
+{
+    if (bytes.isEmpty()) {
+        return QString();
+    }
+
+    QBuffer buffer;
+    buffer.setData(bytes);
+    if (!buffer.open(QIODevice::ReadOnly)) {
+        return QStringLiteral("image/jpeg");
+    }
+
+    const QByteArray format = QImageReader::imageFormat(&buffer).toLower();
+    if (format.isEmpty()) {
+        return QStringLiteral("image/jpeg");
+    }
+
+    if (format == "jpg") {
+        return QStringLiteral("image/jpeg");
+    }
+
+    return QStringLiteral("image/%1").arg(QString::fromLatin1(format));
+}
+
+QString ImageExtensionFromBytes(const QByteArray& bytes)
+{
+    if (bytes.isEmpty()) {
+        return QStringLiteral("jpg");
+    }
+
+    QBuffer buffer;
+    buffer.setData(bytes);
+    if (!buffer.open(QIODevice::ReadOnly)) {
+        return QStringLiteral("jpg");
+    }
+
+    const QByteArray format = QImageReader::imageFormat(&buffer).toLower();
+    if (format.isEmpty()) {
+        return QStringLiteral("jpg");
+    }
+
+    if (format == "jpeg" || format == "jpg") {
+        return QStringLiteral("jpg");
+    }
+
+    return QString::fromLatin1(format);
+}
+
+QString BuildCoverImageSource(const QByteArray& coverBytes)
+{
+    if (coverBytes.isEmpty()) {
+        return QString();
+    }
+
+    const QString tempRoot = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    if (!tempRoot.isEmpty()) {
+        QDir tempDir(tempRoot);
+        if (tempDir.exists() || tempDir.mkpath(QStringLiteral("."))) {
+            const QString extension = ImageExtensionFromBytes(coverBytes);
+            const QString filePath = tempDir.filePath(QStringLiteral("libreconnect_remote_cover.%1").arg(extension));
+
+            QFile file(filePath);
+            if (file.open(QIODevice::WriteOnly | QIODevice::Truncate) && file.write(coverBytes) == coverBytes.size()) {
+                file.close();
+                return QStringLiteral("%1?rev=%2")
+                    .arg(
+                        QUrl::fromLocalFile(filePath).toString(),
+                        QString::number(QDateTime::currentMSecsSinceEpoch())
+                    );
+            }
+        }
+    }
+
+    const QString mimeType = MimeTypeFromImageBytes(coverBytes);
+    return QStringLiteral("data:%1;base64,%2").arg(mimeType, QString::fromLatin1(coverBytes.toBase64()));
+}
 }
 
 MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
@@ -174,7 +258,7 @@ void MobileRemoteInputController::setNowPlayingInfo(
         ? m_coverImageSource
         : (coverArray.isEmpty()
             ? QString()
-            : QStringLiteral("data:image/jpeg;base64,%1").arg(QString::fromLatin1(coverArray.toBase64())));
+            : BuildCoverImageSource(coverArray));
 
     const bool changed = m_trackTitle != title ||
                          m_trackArtist != artist ||
