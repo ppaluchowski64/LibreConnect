@@ -131,6 +131,9 @@ void ModulesManager::Initialize() {
         case PermissionType::Battery:
             granted = co_await PermissionManager::RequestDisablingBatteryOptimizations();
             break;
+        case PermissionType::Accessibility:
+            granted = false;
+            break;
         case PermissionType::Unknown:
         default:
             granted = false;

@@ -44,6 +44,10 @@ Window {
         id: clipboardSyncController
     }
 
+    SmsBridgeController {
+        id: smsBridgeController
+    }
+
     PermissionStateController {
         id: permissionStateController
     }
@@ -139,6 +143,7 @@ Window {
             activeDeviceId: activeDeviceId,
             notificationSyncController: notificationSyncController,
             clipboardSyncController: clipboardSyncController,
+            smsBridgeController: smsBridgeController,
             permissionStateController: permissionStateController,
             temporaryStorageController: temporaryStorageController,
             initialFeature: initialFeature === undefined ? "" : initialFeature
@@ -178,6 +183,10 @@ Window {
         }
 
         showFeature("cameras")
+    }
+
+    function showMessages() {
+        showFeature("messages")
     }
 
     function goBack() {

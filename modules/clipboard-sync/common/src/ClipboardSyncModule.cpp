@@ -1,14 +1,44 @@
 #include <ClipboardSyncModule.h>
 #include <TextClipboard.h>
 
+#include <algorithm>
+#include <chrono>
+
+namespace {
+constexpr auto REMOTE_ECHO_SUPPRESSION_WINDOW = std::chrono::milliseconds(1500);
+}
+
+std::string ClipboardSyncModule::NormalizeClipboardText(std::string text) {
+    text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+    return text;
+}
+
 void ClipboardSyncModule::SendLocalClipboardSnapshot() const {
     const std::string text = TextClipboard::Get();
     if (text.empty()) {
         return;
     }
 
+    const std::string normalized = NormalizeClipboardText(text);
+    const auto now = std::chrono::steady_clock::now();
+
+    {
+        std::lock_guard lock(m_clipboardStateMutex);
+        if (normalized == m_lastLocalClipboardSent) {
+            return;
+        }
+
+        if (normalized == m_lastRemoteClipboardApplied &&
+            (now - m_lastRemoteClipboardAppliedAt) <= REMOTE_ECHO_SUPPRESSION_WINDOW) {
+            m_lastLocalClipboardSent = normalized;
+            return;
+        }
+
+        m_lastLocalClipboardSent = normalized;
+    }
+
     Debug::Log("ClipboardSyncModule: Sending local clipboard update ({} chars)", text.size());
-    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, std::move(text));
+    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, text);
 }
 
 void ClipboardSyncModule::RequestSyncWithPeer() {
@@ -44,6 +74,16 @@ void ClipboardSyncModule::EnableResponseCallbacks() {
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, [instance](PC_Package&& package) mutable {
         const std::string text = package->GetValue<std::string>();
+        const std::string normalized = NormalizeClipboardText(text);
+        const auto now = std::chrono::steady_clock::now();
+
+        {
+            std::lock_guard lock(instance->m_clipboardStateMutex);
+            instance->m_lastRemoteClipboardApplied = normalized;
+            instance->m_lastRemoteClipboardAppliedAt = now;
+            instance->m_lastLocalClipboardSent = normalized;
+        }
+
         Debug::Log("ClipboardSyncModule: Received remote clipboard update ({} chars)", text.size());
         TextClipboard::Set(text);
     });
@@ -66,6 +106,12 @@ void ClipboardSyncModule::OnInitialize() {}
 
 asio::awaitable<void> ClipboardSyncModule::OnEnable() {
     m_peerModuleEnabled.store(false);
+    {
+        std::lock_guard lock(m_clipboardStateMutex);
+        m_lastLocalClipboardSent.clear();
+        m_lastRemoteClipboardApplied.clear();
+        m_lastRemoteClipboardAppliedAt = std::chrono::steady_clock::time_point{};
+    }
 
     {
         std::weak_ptr weakPtr = std::dynamic_pointer_cast<ClipboardSyncModule>(shared_from_this());

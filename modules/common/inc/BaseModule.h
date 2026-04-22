@@ -52,7 +52,8 @@ enum class PermissionType : uint16_t {
     Camera,
     Notifications,
     FileSystem,
-    Battery
+    Battery,
+    Accessibility
 };
 
 inline const char* ModuleFailReasonToString(const ModuleFailReason reason)
@@ -93,6 +94,8 @@ inline const char* ModuleTypeToString(const ModuleType type)
         return "ClipboardSync";
     case ModuleType::RemoteInput:
         return "RemoteInput";
+    case ModuleType::SmsBridge:
+        return "SmsBridge";
     case ModuleType::Unknown:
     default:
         return "Unknown";

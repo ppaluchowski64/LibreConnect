@@ -25,6 +25,10 @@ public:
     static bool IsFileAccessPermissionGranted();
     static bool IsManagingExternalStoragePermissionGranted();
     static bool IsBatteryOptimizationIgnored();
+    static bool IsReceiveSmsPermissionGranted();
+    static bool IsReadContactsPermissionGranted();
+    static bool IsReadSmsPermissionGranted();
+    static bool IsSendSmsPermissionGranted();
 #endif
 
 private:

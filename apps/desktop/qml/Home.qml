@@ -10,6 +10,7 @@ Page {
     required property var connectionController
     required property var notificationSyncController
     required property var clipboardSyncController
+    required property var smsBridgeController
     required property var permissionStateController
     required property var temporaryStorageController
     property string activeDeviceName: "Connected Device"
@@ -24,6 +25,8 @@ Page {
             return "File Manager"
         if (selectedFeature === "cameras")
             return "Virtual Camera"
+        if (selectedFeature === "messages")
+            return "Messages"
         if (selectedFeature === "settings")
             return "Settings"
         return ""
@@ -49,6 +52,11 @@ Page {
                 pageUrl = "qrc:/LibreConnect/desktop/FileManagerPage.qml"
             } else if (selectedFeature === "cameras") {
                 pageUrl = "qrc:/LibreConnect/desktop/VirtualCameraPage.qml"
+            } else if (selectedFeature === "messages") {
+                pageUrl = "qrc:/LibreConnect/desktop/MessagesPage.qml"
+                pageProperties = {
+                    smsBridgeController: root.smsBridgeController
+                }
             } else {
                 pageUrl = "qrc:/LibreConnect/desktop/SettingsPage.qml"
                 pageProperties = {
@@ -564,6 +572,17 @@ Page {
                                 permissionPromptDialog.permissionMessage = "File access is disabled on the mobile app. Grant file permissions to use File Manager."
                                 permissionPromptDialog.open()
                             }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 58
+
+                        ThemedButton {
+                            text: "Messages"
+                            anchors.fill: parent
+                            onClicked: root.selectFeature("messages")
                         }
                     }
 

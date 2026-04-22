@@ -102,6 +102,12 @@
         />
 
         <receiver
+                android:name=".RemoteInputMediaActionReceiver"
+                android:label="LibreConnect Remote Input Receiver"
+                android:exported="false"
+        />
+
+        <receiver
                 android:name=".BootReceiver"
                 android:exported="true">
             <intent-filter>

@@ -8,6 +8,7 @@
 #include "MobileThemeController.h"
 #include "MobileNotificationSyncController.h"
 #include "MobileClipboardSyncController.h"
+#include "MobileRemoteInputController.h"
 
 int main(int argc, char *argv[])
 {
@@ -32,6 +33,10 @@ int main(int argc, char *argv[])
 
     qmlRegisterType<MobileClipboardSyncController>(
         "LibreConnect.mobile", 1, 0, "MobileClipboardSyncController"
+    );
+
+    qmlRegisterType<MobileRemoteInputController>(
+        "LibreConnect.mobile", 1, 0, "MobileRemoteInputController"
     );
 
     QQmlApplicationEngine engine;

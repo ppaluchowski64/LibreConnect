@@ -459,6 +459,26 @@ bool PermissionManager::IsBatteryOptimizationIgnored() {
     return IsIgnoringBatteryOptimizations();
 }
 
+bool PermissionManager::IsReceiveSmsPermissionGranted() {
+    return QtAndroidPrivate::checkPermission(QString("android.permission.RECEIVE_SMS")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsReadContactsPermissionGranted() {
+    return QtAndroidPrivate::checkPermission(QString("android.permission.READ_CONTACTS")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsReadSmsPermissionGranted() {
+    return QtAndroidPrivate::checkPermission(QString("android.permission.READ_SMS")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
+bool PermissionManager::IsSendSmsPermissionGranted() {
+    return QtAndroidPrivate::checkPermission(QString("android.permission.SEND_SMS")).result()
+        == QtAndroidPrivate::PermissionResult::Authorized;
+}
+
 bool PermissionManager::IsNotificationListenerEnabled() {
     const QJniObject context = QNativeInterface::QAndroidApplication::context();
     if (!context.isValid()) return false;

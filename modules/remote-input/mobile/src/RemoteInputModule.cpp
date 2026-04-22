@@ -1,5 +1,8 @@
 #include <RemoteInputModule.h>
 #include <ConnectionManager.h>
+#include <RemoteInputEvents.h>
+
+#include <memory>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
@@ -9,6 +12,10 @@ void RemoteInputModule::SendInput(const Key key, const InputEventType type) {
 
 void RemoteInputModule::SendMediaInput(const MediaSignal signal) {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT, signal);
+}
+
+void RemoteInputModule::RequestMediaInfo() {
+    ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_REQUEST_MEDIA_INFO);
 }
 
 void RemoteInputModule::EnableResponseCallbacks() {
@@ -32,10 +39,27 @@ void RemoteInputModule::EnableResponseCallbacks() {
         }
         instance->Disable(true);
     });
-    ConnectionManager::AddResponseHandler(PC_PackageType::CLIPBOARD_SYNC_MODULE_STATE_CHANGE, [instance](PC_Package&& package) mutable {
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, [instance](PC_Package&& package) mutable {
         const bool peerEnabled = package->GetValue<bool>();
         Debug::Log("RemoteInputModule: Peer module state changed: {}", peerEnabled);
         instance->m_peerModuleEnabled.store(peerEnabled);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE, [instance](PC_Package&& package) mutable {
+        (void)instance;
+        const std::string title = package->GetValue<std::string>();
+        const std::string artist = package->GetValue<std::string>();
+        const std::string collection = package->GetValue<std::string>();
+        const std::string elapsed = package->GetValue<std::string>();
+        const bool playing = package->GetValue<bool>();
+
+        const std::unique_ptr<QEvent> event = std::make_unique<RemoteMediaInfoEvent>(
+            title,
+            artist,
+            collection,
+            elapsed,
+            playing
+        );
+        ConnectionManager::SendEvent(event);
     });
 }
 
@@ -43,6 +67,7 @@ void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE);
 }
 
 void RemoteInputModule::OnInitialize() {}
@@ -60,6 +85,8 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
         timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
         co_await timer.async_wait();
     }
+
+    co_return;
 }
 
 asio::awaitable<void> RemoteInputModule::OnDisable() {

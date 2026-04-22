@@ -171,6 +171,10 @@ class NotificationListener : NotificationListenerService() {
             val currentKeys = mutableSetOf<String>()
 
             currentNotifications.forEach { sbn ->
+                if (shouldIgnoreNotification(sbn)) {
+                    return@forEach
+                }
+
                 currentKeys.add(sbn.key)
                 dispatchNotificationPosted(sbn)
             }
@@ -185,6 +189,11 @@ class NotificationListener : NotificationListenerService() {
 
     private fun dispatchNotificationPosted(sbn: StatusBarNotification) {
         try {
+            if (shouldIgnoreNotification(sbn)) {
+                trackedNotificationKeys.remove(sbn.key)
+                return
+            }
+
             val key: String = sbn.key
             trackedNotificationKeys.add(key)
 
@@ -248,6 +257,11 @@ class NotificationListener : NotificationListenerService() {
             return
         }
 
+        if (shouldIgnoreNotification(sbn)) {
+            trackedNotificationKeys.remove(sbn.key)
+            return
+        }
+
         val key = sbn.key
         trackedNotificationKeys.remove(key)
 
@@ -258,6 +272,10 @@ class NotificationListener : NotificationListenerService() {
         } catch (e: UnsatisfiedLinkError) {
             Log.e(tag, "JNI method onNotificationRemovedCPP is missing or failed.", e)
         }
+    }
+
+    private fun shouldIgnoreNotification(sbn: StatusBarNotification): Boolean {
+        return sbn.packageName == packageName
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {

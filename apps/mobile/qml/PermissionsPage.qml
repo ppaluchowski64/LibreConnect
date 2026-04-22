@@ -14,6 +14,10 @@ Page {
         && page.conn.filePermissionGranted
         && page.conn.allFilesPermissionGranted
         && page.conn.batteryPermissionGranted
+        && page.conn.smsReceivePermissionGranted
+        && page.conn.smsReadPermissionGranted
+        && page.conn.smsSendPermissionGranted
+        && page.conn.contactsPermissionGranted
 
     background: Rectangle {
         color: Theme.backgroundColor
@@ -40,7 +44,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Grant permissions for camera, notifications, and files. You can skip and grant them later."
+                text: "Grant permissions for camera, notifications, files, and SMS features. You can skip and grant them later."
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -140,6 +144,66 @@ Page {
                             text: page.conn.batteryPermissionGranted ? "Granted" : "Grant"
                             enabled: !page.conn.batteryPermissionGranted && !page.conn.permissionsBusy
                             onClicked: page.conn.requestBatteryPermission()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: "SMS Receive"
+                            color: Theme.textColor
+                            font.pixelSize: 15
+                        }
+                        Button {
+                            text: page.conn.smsReceivePermissionGranted ? "Granted" : "Grant"
+                            enabled: !page.conn.smsReceivePermissionGranted && !page.conn.permissionsBusy
+                            onClicked: page.conn.requestSmsReceivePermission()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: "SMS Read"
+                            color: Theme.textColor
+                            font.pixelSize: 15
+                        }
+                        Button {
+                            text: page.conn.smsReadPermissionGranted ? "Granted" : "Grant"
+                            enabled: !page.conn.smsReadPermissionGranted && !page.conn.permissionsBusy
+                            onClicked: page.conn.requestSmsReadPermission()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: "SMS Send"
+                            color: Theme.textColor
+                            font.pixelSize: 15
+                        }
+                        Button {
+                            text: page.conn.smsSendPermissionGranted ? "Granted" : "Grant"
+                            enabled: !page.conn.smsSendPermissionGranted && !page.conn.permissionsBusy
+                            onClicked: page.conn.requestSmsSendPermission()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Contacts (for SMS names)"
+                            color: Theme.textColor
+                            font.pixelSize: 15
+                        }
+                        Button {
+                            text: page.conn.contactsPermissionGranted ? "Granted" : "Grant"
+                            enabled: !page.conn.contactsPermissionGranted && !page.conn.permissionsBusy
+                            onClicked: page.conn.requestContactsPermission()
                         }
                     }
                 }

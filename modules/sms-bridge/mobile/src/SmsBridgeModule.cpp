@@ -2,6 +2,12 @@
 #include <SmsBridgeEvents.h>
 #include <SMS_Handler.h>
 
+#include <cstdint>
+
+#ifdef ANDROID_DEVICE
+#include <PermissionManager.h>
+#endif
+
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
 extern "C" {
@@ -18,7 +24,7 @@ extern "C" {
             env->ReleaseStringUTFChars(body, bodyChars);
 
         Debug::Log("SmsBridgeModule: New SMS received from: {}", senderStr);
-        ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_NEW_SMS_RECEIVED, senderStr, bodyStr);
+        ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_NEW_SMS_RECEIVED, senderStr, bodyStr, static_cast<int64_t>(timestamp));
     }
 }
 
@@ -84,6 +90,13 @@ void SmsBridgeModule::DisableResponseCallbacks() {
 void SmsBridgeModule::OnInitialize() {}
 
 asio::awaitable<void> SmsBridgeModule::OnEnable() {
+#ifdef ANDROID_DEVICE
+    co_await PermissionManager::RequestReceiveSmsPermission();
+    co_await PermissionManager::RequestReadContactsPermission();
+    co_await PermissionManager::RequestReadSmsPermission();
+    co_await PermissionManager::RequestSendSmsPermission();
+#endif
+
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, true);
 
@@ -96,6 +109,8 @@ asio::awaitable<void> SmsBridgeModule::OnEnable() {
         timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
         co_await timer.async_wait();
     }
+
+    co_return;
 }
 
 asio::awaitable<void> SmsBridgeModule::OnDisable() {

@@ -32,6 +32,10 @@ class MobileConnectionController : public QObject
     Q_PROPERTY(bool filePermissionGranted READ filePermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool allFilesPermissionGranted READ allFilesPermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool batteryPermissionGranted READ batteryPermissionGranted NOTIFY permissionsStateChanged)
+    Q_PROPERTY(bool smsReceivePermissionGranted READ smsReceivePermissionGranted NOTIFY permissionsStateChanged)
+    Q_PROPERTY(bool smsReadPermissionGranted READ smsReadPermissionGranted NOTIFY permissionsStateChanged)
+    Q_PROPERTY(bool smsSendPermissionGranted READ smsSendPermissionGranted NOTIFY permissionsStateChanged)
+    Q_PROPERTY(bool contactsPermissionGranted READ contactsPermissionGranted NOTIFY permissionsStateChanged)
 
 public:
     explicit MobileConnectionController(QObject* parent = nullptr);
@@ -53,6 +57,10 @@ public:
     bool filePermissionGranted() const { return m_filePermissionGranted; }
     bool allFilesPermissionGranted() const { return m_allFilesPermissionGranted; }
     bool batteryPermissionGranted() const { return m_batteryPermissionGranted; }
+    bool smsReceivePermissionGranted() const { return m_smsReceivePermissionGranted; }
+    bool smsReadPermissionGranted() const { return m_smsReadPermissionGranted; }
+    bool smsSendPermissionGranted() const { return m_smsSendPermissionGranted; }
+    bool contactsPermissionGranted() const { return m_contactsPermissionGranted; }
 
     Q_INVOKABLE void disconnect();
     Q_INVOKABLE void refreshPairedDevices();
@@ -67,6 +75,11 @@ public:
     Q_INVOKABLE void requestFilePermission();
     Q_INVOKABLE void requestAllFilesPermission();
     Q_INVOKABLE void requestBatteryPermission();
+    Q_INVOKABLE void requestSmsPermissions();
+    Q_INVOKABLE void requestSmsReceivePermission();
+    Q_INVOKABLE void requestSmsReadPermission();
+    Q_INVOKABLE void requestSmsSendPermission();
+    Q_INVOKABLE void requestContactsPermission();
     Q_INVOKABLE void requestAllPermissions();
     Q_INVOKABLE void completePermissionsOnboarding();
 
@@ -94,6 +107,11 @@ private:
         FileAccess,
         AllFilesAccess,
         Battery,
+        Sms,
+        SmsReceive,
+        SmsRead,
+        SmsSend,
+        Contacts,
         All
     };
 
@@ -112,7 +130,11 @@ private:
         bool notificationListenerGranted,
         bool fileGranted,
         bool allFilesGranted,
-        bool batteryGranted
+        bool batteryGranted,
+        bool smsReceiveGranted,
+        bool smsReadGranted,
+        bool smsSendGranted,
+        bool contactsGranted
     );
     bool notificationsPermissionGranted() const;
     QString activePeerDeviceId() const;
@@ -136,5 +158,9 @@ private:
     bool m_filePermissionGranted = false;
     bool m_allFilesPermissionGranted = false;
     bool m_batteryPermissionGranted = false;
+    bool m_smsReceivePermissionGranted = false;
+    bool m_smsReadPermissionGranted = false;
+    bool m_smsSendPermissionGranted = false;
+    bool m_contactsPermissionGranted = false;
     QSettings m_settings;
 };

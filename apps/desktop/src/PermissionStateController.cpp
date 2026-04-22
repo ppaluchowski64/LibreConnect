@@ -20,6 +20,8 @@ bool PermissionStateController::isGranted(const int permissionType) const
         return m_fileSystemGranted;
     case PermissionType::Battery:
         return m_batteryGranted;
+    case PermissionType::Accessibility:
+        return false;
     case PermissionType::Unknown:
     default:
         return false;
@@ -123,6 +125,8 @@ void PermissionStateController::setPermissionState(const PermissionType permissi
             changed = true;
         }
         break;
+    case PermissionType::Accessibility:
+        break;
     case PermissionType::Unknown:
     default:
         break;
@@ -132,4 +136,3 @@ void PermissionStateController::setPermissionState(const PermissionType permissi
         emit permissionStateChanged();
     }
 }
-

@@ -26,6 +26,8 @@ ApplicationWindow {
     readonly property url permissionsPageUrl: Qt.resolvedUrl("PermissionsPage.qml")
     readonly property url homePageUrl: Qt.resolvedUrl("ConnectedHomePage.qml")
     readonly property url settingsPageUrl: Qt.resolvedUrl("SettingsPage.qml")
+    readonly property url remoteInputPageUrl: Qt.resolvedUrl("RemoteInputPage.qml")
+    readonly property url remoteKeyboardPageUrl: Qt.resolvedUrl("RemoteKeyboardPage.qml")
 
     function showRootPage(pageUrl, properties) {
         stackView.clear()
@@ -50,6 +52,9 @@ ApplicationWindow {
         showRootPage(homePageUrl, {
             conn: conn,
             clipboardSyncController: clipboardSyncController,
+            remoteInputController: remoteInputController,
+            showRemoteInputCallback: function() { root.showRemoteInputPage() },
+            showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
             showSettingsCallback: function() { root.showSettingsPage() }
         })
     }
@@ -58,6 +63,9 @@ ApplicationWindow {
         stackView.replace(homePageUrl, {
             conn: conn,
             clipboardSyncController: clipboardSyncController,
+            remoteInputController: remoteInputController,
+            showRemoteInputCallback: function() { root.showRemoteInputPage() },
+            showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
             showSettingsCallback: function() { root.showSettingsPage() }
         })
     }
@@ -76,6 +84,22 @@ ApplicationWindow {
             notificationSyncController: notificationSyncController,
             clipboardSyncController: clipboardSyncController,
             themeModes: themeModes,
+            goBackCallback: function() { root.popPage() }
+        })
+    }
+
+    function showRemoteInputPage() {
+        stackView.push(remoteInputPageUrl, {
+            conn: conn,
+            remoteInputController: remoteInputController,
+            goBackCallback: function() { root.popPage() }
+        })
+    }
+
+    function showRemoteKeyboardPage() {
+        stackView.push(remoteKeyboardPageUrl, {
+            conn: conn,
+            remoteInputController: remoteInputController,
             goBackCallback: function() { root.popPage() }
         })
     }
@@ -113,6 +137,10 @@ ApplicationWindow {
 
     MobileClipboardSyncController {
         id: clipboardSyncController
+    }
+
+    MobileRemoteInputController {
+        id: remoteInputController
     }
 
     StackView {

@@ -2,8 +2,10 @@
 #define SMSBRIDGEEVENTS_H
 
 #include <QEvent>
+#include <cstdint>
 #include <string>
 #include <vector>
+#include <utility>
 
 constexpr static int SmsBridgeEventBase = QEvent::User + 500;
 
@@ -56,6 +58,29 @@ private:
     bool m_success;
     uuid m_messageUUID;
 
+};
+
+class NewSmsReceivedEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(SmsBridgeEventBase+3);
+    explicit NewSmsReceivedEvent(std::string sender, std::string body, const int64_t timestamp)
+        : QEvent(Type)
+        , m_sender(std::move(sender))
+        , m_body(std::move(body))
+        , m_timestamp(timestamp) {}
+
+    const std::string& GetSender() const { return m_sender; }
+    const std::string& GetBody() const { return m_body; }
+    int64_t GetTimestamp() const { return m_timestamp; }
+
+    NewSmsReceivedEvent* clone() const override {
+        return new NewSmsReceivedEvent(*this);
+    }
+
+private:
+    std::string m_sender;
+    std::string m_body;
+    int64_t m_timestamp = 0;
 };
 
 #endif // SMSBRIDGEEVENTS_H

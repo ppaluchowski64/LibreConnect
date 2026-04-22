@@ -3,6 +3,8 @@
 
 #include <boost/uuid/uuid_generators.hpp>
 
+#include <cstdint>
+
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
 uuid SmsBridgeModule::SendSMS(const std::string& target, const std::string& message) const {
@@ -95,12 +97,22 @@ void SmsBridgeModule::EnableResponseCallbacks() {
         Debug::Log("SmsBridgeModule: Peer module state changed: {}", peerEnabled);
         instance->m_peerModuleEnabled.store(peerEnabled);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_NEW_SMS_RECEIVED, [instance](PC_Package&& package) mutable {
+        (void)instance;
+        const std::string sender = package->GetValue<std::string>();
+        const std::string body = package->GetValue<std::string>();
+        const int64_t timestamp = package->GetValue<int64_t>();
+        Debug::Log("SmsBridgeModule: New SMS received from {}", sender);
+        const std::unique_ptr<QEvent> event = std::make_unique<NewSmsReceivedEvent>(sender, body, timestamp);
+        ConnectionManager::SendEvent(event);
+    });
 }
 
 void SmsBridgeModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_NEW_SMS_RECEIVED);
 }
 
 void SmsBridgeModule::OnInitialize() {}
@@ -118,6 +130,8 @@ asio::awaitable<void> SmsBridgeModule::OnEnable() {
         timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
         co_await timer.async_wait();
     }
+
+    co_return;
 }
 
 asio::awaitable<void> SmsBridgeModule::OnDisable() {

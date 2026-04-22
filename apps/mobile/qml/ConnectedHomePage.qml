@@ -7,6 +7,9 @@ Page {
 
     required property var conn
     required property var clipboardSyncController
+    required property var remoteInputController
+    required property var showRemoteInputCallback
+    required property var showRemoteKeyboardCallback
     required property var showSettingsCallback
 
     readonly property int menuWidth: 190
@@ -258,7 +261,14 @@ Page {
             Layout.fillWidth: true
             text: "Remote Control"
             onClicked: {
+                page.showRemoteInputCallback()
             }
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Remote Keyboard"
+            onClicked: page.showRemoteKeyboardCallback()
         }
 
         Button {

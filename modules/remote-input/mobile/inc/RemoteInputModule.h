@@ -8,6 +8,7 @@ class RemoteInputModule : public BaseModule {
 public:
     static void SendInput(Key key, InputEventType type);
     static void SendMediaInput(MediaSignal signal);
+    static void RequestMediaInfo();
 
 protected:
     void EnableResponseCallbacks() override;

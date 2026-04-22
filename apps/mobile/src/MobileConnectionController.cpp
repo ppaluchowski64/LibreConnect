@@ -191,6 +191,31 @@ void MobileConnectionController::requestBatteryPermission()
     runPermissionRequest(PermissionRequest::Battery);
 }
 
+void MobileConnectionController::requestSmsPermissions()
+{
+    runPermissionRequest(PermissionRequest::Sms);
+}
+
+void MobileConnectionController::requestSmsReceivePermission()
+{
+    runPermissionRequest(PermissionRequest::SmsReceive);
+}
+
+void MobileConnectionController::requestSmsReadPermission()
+{
+    runPermissionRequest(PermissionRequest::SmsRead);
+}
+
+void MobileConnectionController::requestSmsSendPermission()
+{
+    runPermissionRequest(PermissionRequest::SmsSend);
+}
+
+void MobileConnectionController::requestContactsPermission()
+{
+    runPermissionRequest(PermissionRequest::Contacts);
+}
+
 void MobileConnectionController::requestAllPermissions()
 {
     runPermissionRequest(PermissionRequest::All);
@@ -262,10 +287,14 @@ void MobileConnectionController::updatePermissionsFromSystem()
         PermissionManager::IsNotificationAccessPermissionGranted(),
         PermissionManager::IsFileAccessPermissionGranted(),
         PermissionManager::IsManagingExternalStoragePermissionGranted(),
-        PermissionManager::IsBatteryOptimizationIgnored()
+        PermissionManager::IsBatteryOptimizationIgnored(),
+        PermissionManager::IsReceiveSmsPermissionGranted(),
+        PermissionManager::IsReadSmsPermissionGranted(),
+        PermissionManager::IsSendSmsPermissionGranted(),
+        PermissionManager::IsReadContactsPermissionGranted()
     );
 #else
-    setPermissionSnapshot(true, true, true, true, true, true);
+    setPermissionSnapshot(true, true, true, true, true, true, true, true, true, true);
 #endif
 }
 
@@ -287,6 +316,14 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         auto requestNotifications = []() -> asio::awaitable<void> {
             co_await PermissionManager::RequestNotificationEmitPermission();
             co_await PermissionManager::RequestNotificationAccessPermission();
+            co_return;
+        };
+
+        auto requestSms = []() -> asio::awaitable<void> {
+            co_await PermissionManager::RequestReceiveSmsPermission();
+            co_await PermissionManager::RequestReadSmsPermission();
+            co_await PermissionManager::RequestSendSmsPermission();
+            co_await PermissionManager::RequestReadContactsPermission();
             co_return;
         };
 
@@ -312,12 +349,28 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         case PermissionRequest::Battery:
             co_await PermissionManager::RequestDisablingBatteryOptimizations();
             break;
+        case PermissionRequest::Sms:
+            co_await requestSms();
+            break;
+        case PermissionRequest::SmsReceive:
+            co_await PermissionManager::RequestReceiveSmsPermission();
+            break;
+        case PermissionRequest::SmsRead:
+            co_await PermissionManager::RequestReadSmsPermission();
+            break;
+        case PermissionRequest::SmsSend:
+            co_await PermissionManager::RequestSendSmsPermission();
+            break;
+        case PermissionRequest::Contacts:
+            co_await PermissionManager::RequestReadContactsPermission();
+            break;
         case PermissionRequest::All:
             co_await PermissionManager::RequestCameraAccessPermission();
             co_await requestNotifications();
             co_await PermissionManager::RequestFileAccessPermission();
             co_await PermissionManager::RequestManagingExternalStoragePermission();
             co_await PermissionManager::RequestDisablingBatteryOptimizations();
+            co_await requestSms();
             break;
         default:
             break;
@@ -329,6 +382,10 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         const bool fileGranted = PermissionManager::IsFileAccessPermissionGranted();
         const bool allFilesGranted = PermissionManager::IsManagingExternalStoragePermissionGranted();
         const bool batteryGranted = PermissionManager::IsBatteryOptimizationIgnored();
+        const bool smsReceiveGranted = PermissionManager::IsReceiveSmsPermissionGranted();
+        const bool smsReadGranted = PermissionManager::IsReadSmsPermissionGranted();
+        const bool smsSendGranted = PermissionManager::IsSendSmsPermissionGranted();
+        const bool contactsGranted = PermissionManager::IsReadContactsPermissionGranted();
 
         QMetaObject::invokeMethod(
             qApp,
@@ -338,7 +395,11 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
              notificationListenerGranted,
              fileGranted,
              allFilesGranted,
-             batteryGranted]() {
+             batteryGranted,
+             smsReceiveGranted,
+             smsReadGranted,
+             smsSendGranted,
+             contactsGranted]() {
                 if (!weakThis) {
                     return;
                 }
@@ -349,7 +410,11 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
                     notificationListenerGranted,
                     fileGranted,
                     allFilesGranted,
-                    batteryGranted
+                    batteryGranted,
+                    smsReceiveGranted,
+                    smsReadGranted,
+                    smsSendGranted,
+                    contactsGranted
                 );
                 weakThis->setPermissionsBusy(false);
                 if (weakThis->connected()) {
@@ -403,7 +468,11 @@ void MobileConnectionController::setPermissionSnapshot(
     const bool notificationListenerGranted,
     const bool fileGranted,
     const bool allFilesGranted,
-    const bool batteryGranted
+    const bool batteryGranted,
+    const bool smsReceiveGranted,
+    const bool smsReadGranted,
+    const bool smsSendGranted,
+    const bool contactsGranted
 )
 {
     const bool changed =
@@ -412,7 +481,11 @@ void MobileConnectionController::setPermissionSnapshot(
         m_notificationListenerPermissionGranted != notificationListenerGranted ||
         m_filePermissionGranted != fileGranted ||
         m_allFilesPermissionGranted != allFilesGranted ||
-        m_batteryPermissionGranted != batteryGranted;
+        m_batteryPermissionGranted != batteryGranted ||
+        m_smsReceivePermissionGranted != smsReceiveGranted ||
+        m_smsReadPermissionGranted != smsReadGranted ||
+        m_smsSendPermissionGranted != smsSendGranted ||
+        m_contactsPermissionGranted != contactsGranted;
 
     m_cameraPermissionGranted = cameraGranted;
     m_notificationSendPermissionGranted = notificationSendGranted;
@@ -420,6 +493,10 @@ void MobileConnectionController::setPermissionSnapshot(
     m_filePermissionGranted = fileGranted;
     m_allFilesPermissionGranted = allFilesGranted;
     m_batteryPermissionGranted = batteryGranted;
+    m_smsReceivePermissionGranted = smsReceiveGranted;
+    m_smsReadPermissionGranted = smsReadGranted;
+    m_smsSendPermissionGranted = smsSendGranted;
+    m_contactsPermissionGranted = contactsGranted;
 
     if (changed) {
         emit permissionsStateChanged();
