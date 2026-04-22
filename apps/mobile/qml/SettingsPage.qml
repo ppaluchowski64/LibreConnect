@@ -8,6 +8,7 @@ Page {
 
     required property var conn
     required property var notificationSyncController
+    required property var clipboardSyncController
     required property var themeModes
     required property var goBackCallback
 
@@ -58,60 +59,6 @@ Page {
 
                 Item {
                     width: 32
-                }
-            }
-
-            Frame {
-                Layout.fillWidth: true
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    spacing: 8
-
-                    Text {
-                        text: "Notification Sync"
-                        color: Theme.textColor
-                        font.pixelSize: 16
-                        font.bold: true
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Enable for connected desktop device"
-                            color: Theme.mutedTextColor
-                            font.pixelSize: 14
-                            wrapMode: Text.WordWrap
-                        }
-
-                        Switch {
-                            id: notificationSwitch
-                            checked: page.notificationSyncController.enabled
-                            enabled: page.conn.notificationSendPermissionGranted
-                                     && page.conn.notificationListenerPermissionGranted
-                                     && !page.notificationSyncController.busy
-                            onClicked: page.notificationSyncController.setNotificationSyncEnabled(checked)
-                        }
-                    }
-
-                    Button {
-                        Layout.fillWidth: true
-                        visible: !(page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
-                        text: "Grant Notification Permissions"
-                        onClicked: page.conn.requestNotificationPermissions()
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: (page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
-                              ? page.notificationSyncController.statusMessage
-                              : "Notification sync is disabled until notification permissions are granted."
-                        color: Theme.mutedTextColor
-                        font.pixelSize: 13
-                        wrapMode: Text.WordWrap
-                    }
                 }
             }
 
@@ -256,6 +203,103 @@ Page {
                                 border.color: Theme.panelBorderColor
                             }
                         }
+                    }
+                }
+            }
+
+            Frame {
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    Text {
+                        text: "Notification Sync"
+                        color: Theme.textColor
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Enable for connected desktop device"
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 14
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Switch {
+                            id: notificationSwitch
+                            checked: page.notificationSyncController.enabled
+                            enabled: page.conn.notificationSendPermissionGranted
+                                     && page.conn.notificationListenerPermissionGranted
+                                     && !page.notificationSyncController.busy
+                            onClicked: page.notificationSyncController.setNotificationSyncEnabled(checked)
+                        }
+                    }
+
+                    Button {
+                        Layout.fillWidth: true
+                        visible: !(page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
+                        text: "Grant Notification Permissions"
+                        onClicked: page.conn.requestNotificationPermissions()
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: (page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
+                              ? page.notificationSyncController.statusMessage
+                              : "Notification sync is disabled until notification permissions are granted."
+                        color: Theme.mutedTextColor
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Frame {
+                Layout.fillWidth: true
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    spacing: 8
+
+                    Text {
+                        text: "Clipboard Sync"
+                        color: Theme.textColor
+                        font.pixelSize: 16
+                        font.bold: true
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Enable for connected desktop device"
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 14
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Switch {
+                            id: clipboardSwitch
+                            checked: page.clipboardSyncController.autoSyncEnabled
+                            enabled: !page.clipboardSyncController.busy
+                            onClicked: page.clipboardSyncController.setClipboardAutoSyncEnabled(checked)
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: page.clipboardSyncController.statusMessage
+                        color: Theme.mutedTextColor
+                        font.pixelSize: 13
+                        wrapMode: Text.WordWrap
                     }
                 }
             }

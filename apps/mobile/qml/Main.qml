@@ -49,6 +49,7 @@ ApplicationWindow {
     function showHomePage() {
         showRootPage(homePageUrl, {
             conn: conn,
+            clipboardSyncController: clipboardSyncController,
             showSettingsCallback: function() { root.showSettingsPage() }
         })
     }
@@ -56,6 +57,7 @@ ApplicationWindow {
     function showHomePageFromPermissions() {
         stackView.replace(homePageUrl, {
             conn: conn,
+            clipboardSyncController: clipboardSyncController,
             showSettingsCallback: function() { root.showSettingsPage() }
         })
     }
@@ -72,6 +74,7 @@ ApplicationWindow {
         stackView.push(settingsPageUrl, {
             conn: conn,
             notificationSyncController: notificationSyncController,
+            clipboardSyncController: clipboardSyncController,
             themeModes: themeModes,
             goBackCallback: function() { root.popPage() }
         })
@@ -106,6 +109,10 @@ ApplicationWindow {
 
     MobileNotificationSyncController {
         id: notificationSyncController
+    }
+
+    MobileClipboardSyncController {
+        id: clipboardSyncController
     }
 
     StackView {

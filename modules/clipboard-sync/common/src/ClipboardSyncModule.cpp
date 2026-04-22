@@ -1,14 +1,12 @@
 #include <ClipboardSyncModule.h>
 #include <TextClipboard.h>
 
-constexpr size_t FUTURES_WAIT_DELAY = 10;
-
 void ClipboardSyncModule::SendLocalClipboardSnapshot() const {
-    if (!TextClipboard::Has()) {
+    const std::string text = TextClipboard::Get();
+    if (text.empty()) {
         return;
     }
 
-    std::string text = TextClipboard::Get();
     Debug::Log("ClipboardSyncModule: Sending local clipboard update ({} chars)", text.size());
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, std::move(text));
 }
@@ -67,6 +65,8 @@ void ClipboardSyncModule::DisableResponseCallbacks() {
 void ClipboardSyncModule::OnInitialize() {}
 
 asio::awaitable<void> ClipboardSyncModule::OnEnable() {
+    m_peerModuleEnabled.store(false);
+
     {
         std::weak_ptr weakPtr = std::dynamic_pointer_cast<ClipboardSyncModule>(shared_from_this());
         TextClipboard::AddClipboardUpdateListener([weakPtr = std::move(weakPtr)]() mutable {
@@ -82,20 +82,12 @@ asio::awaitable<void> ClipboardSyncModule::OnEnable() {
 
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_STATE_CHANGE, true);
-
-    asio::steady_timer timer(m_context.get_executor());
-    while (!ShouldAbortEnable()) {
-        if (ShouldAbortEnable()) {
-            co_return;
-        }
-
-        timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
-        co_await timer.async_wait();
-    }
+    co_return;
 }
 
 asio::awaitable<void> ClipboardSyncModule::OnDisable() {
     TextClipboard::RemoveClipboardUpdateListener();
+    m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_DISABLE);
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_STATE_CHANGE, false);
     co_return;

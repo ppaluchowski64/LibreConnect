@@ -6,6 +6,7 @@ Page {
     id: page
 
     required property var conn
+    required property var clipboardSyncController
     required property var showSettingsCallback
 
     readonly property int menuWidth: 190
@@ -258,6 +259,13 @@ Page {
             text: "Remote Control"
             onClicked: {
             }
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Sync Clipboard"
+            enabled: !page.clipboardSyncController.busy
+            onClicked: page.clipboardSyncController.syncClipboard()
         }
 
         Button {

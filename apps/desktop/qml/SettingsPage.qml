@@ -337,6 +337,51 @@ Page {
 
         Rectangle {
             Layout.fillWidth: true
+            implicitHeight: clipboardCardColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: clipboardCardColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+
+                    Text {
+                        text: "Auto Clipboard Sync"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: Theme.textColor
+                        Layout.fillWidth: true
+                    }
+
+                    Switch {
+                        id: clipboardAutoSyncToggle
+                        checked: clipboardSyncController.autoSyncEnabled
+                        enabled: !clipboardSyncController.busy
+                        onClicked: clipboardSyncController.setClipboardAutoSyncEnabled(checked)
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: clipboardSyncController.statusMessage
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
             implicitHeight: temporaryStorageCardColumn.implicitHeight + 32
             radius: 12
             color: Theme.panelColor
@@ -389,51 +434,6 @@ Page {
                         enabled: temporaryStorageController.temporaryStoragePath.length > 0
                         onClicked: temporaryStorageController.clearTemporaryStorage()
                     }
-                }
-            }
-        }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: clipboardCardColumn.implicitHeight + 32
-            radius: 12
-            color: Theme.panelColor
-            border.color: Theme.panelBorderColor
-
-            ColumnLayout {
-                id: clipboardCardColumn
-                anchors.fill: parent
-                anchors.margins: 18
-                spacing: 12
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 14
-
-                    Text {
-                        text: "Auto Clipboard Sync"
-                        font.family: Theme.fontFamily
-                        font.pixelSize: 20
-                        font.bold: true
-                        color: Theme.textColor
-                        Layout.fillWidth: true
-                    }
-
-                    Switch {
-                        id: clipboardAutoSyncToggle
-                        checked: clipboardSyncController.autoSyncEnabled
-                        enabled: !clipboardSyncController.busy
-                        onClicked: clipboardSyncController.setClipboardAutoSyncEnabled(checked)
-                    }
-                }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: clipboardSyncController.statusMessage
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 15
-                    wrapMode: Text.WordWrap
-                    color: Theme.mutedTextColor
                 }
             }
         }

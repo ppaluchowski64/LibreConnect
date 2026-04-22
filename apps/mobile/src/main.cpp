@@ -7,6 +7,7 @@
 #include "AndroidAdvertiser.h"
 #include "MobileThemeController.h"
 #include "MobileNotificationSyncController.h"
+#include "MobileClipboardSyncController.h"
 
 int main(int argc, char *argv[])
 {
@@ -27,6 +28,10 @@ int main(int argc, char *argv[])
 
     qmlRegisterType<MobileNotificationSyncController>(
         "LibreConnect.mobile", 1, 0, "MobileNotificationSyncController"
+    );
+
+    qmlRegisterType<MobileClipboardSyncController>(
+        "LibreConnect.mobile", 1, 0, "MobileClipboardSyncController"
     );
 
     QQmlApplicationEngine engine;
