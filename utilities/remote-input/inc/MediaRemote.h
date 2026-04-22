@@ -3,6 +3,8 @@
 
 #include "InputTypes.h"
 #include "VirtualInputDevice.h"
+#include "MediaTrackInfo.h"
+#include "SystemVolumeController.h"
 
 class MediaRemote : public VirtualInputDevice {
     public:
