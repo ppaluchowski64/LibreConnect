@@ -43,6 +43,7 @@
 #include <vector>
 #include <map>
 #include <memory>
+#include <mutex>
 
 namespace WinToastLib {
 
@@ -301,6 +302,7 @@ namespace WinToastLib {
         std::wstring _appName{};
         std::wstring _aumi{};
         std::map<INT64, NotifyData> _buffer{};
+        mutable std::recursive_mutex _mutex{};
 
         void markAsReadyForDeletion(_In_ INT64 id);
         HRESULT validateShellLinkHelper(_Out_ bool& wasChanged);

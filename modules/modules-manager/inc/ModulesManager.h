@@ -8,9 +8,12 @@
 #include <ClipboardSyncModule.h>
 #include <RemoteInputModule.h>
 #include <SmsBridgeModule.h>
+#include <SystemInfoShareModule.h>
 
 #include <QObject>
 #include <QEvent>
+
+#include "Scanner.h"
 
 #ifndef MACOS_DEVICE
 #include <NetworkCameraModule.h>
@@ -56,6 +59,8 @@ public:
             return s_instance->m_remoteInputModule;
         } else if constexpr (std::is_same_v<type, SmsBridgeModule>) {
             return s_instance->m_smsBridgeModule;
+        } else if constexpr (std::is_same_v<type, SystemInfoShareModule>) {
+            return s_instance->m_systemInfoShareModule;
         } else {
             static_assert(always_false<std::shared_ptr<type>>, "Unknown module type");
         }
@@ -80,6 +85,7 @@ private:
     std::shared_ptr<ClipboardSyncModule> m_clipboardSyncModule;
     std::shared_ptr<RemoteInputModule> m_remoteInputModule;
     std::shared_ptr<SmsBridgeModule> m_smsBridgeModule;
+    std::shared_ptr<SystemInfoShareModule> m_systemInfoShareModule;
 };
 
 #endif

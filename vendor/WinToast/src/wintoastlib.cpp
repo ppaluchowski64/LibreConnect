@@ -863,7 +863,10 @@ INT64 WinToast::showToast(_In_ WinToastTemplate const& toast, _In_ IWinToastHand
                                 }
 
                                 if (SUCCEEDED(hr)) {
-                                    _buffer.emplace(id, NotifyData(notification, activatedToken, dismissedToken, failedToken));
+                                    {
+                                        std::lock_guard<std::recursive_mutex> lock(_mutex);
+                                        _buffer.emplace(id, NotifyData(notification, activatedToken, dismissedToken, failedToken));
+                                    }
                                     DEBUG_MSG("xml: " << Util::AsString(xmlDocument));
                                     hr = notifier->Show(notification.Get());
                                     if (FAILED(hr)) {
@@ -893,6 +896,7 @@ ComPtr<IToastNotifier> WinToast::notifier(_In_ bool* succeded) const {
 }
 
 void WinToast::markAsReadyForDeletion(_In_ INT64 id) {
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     // Flush the buffer by removing all the toasts that are ready for deletion
     for (auto it = _buffer.begin(); it != _buffer.end();) {
         if (it->second.isReadyForDeletion()) {
@@ -916,18 +920,24 @@ bool WinToast::hideToast(_In_ INT64 id) {
         return false;
     }
 
-    auto iter = _buffer.find(id);
-    if (iter == _buffer.end()) {
-        return false;
-    }
+    ComPtr<IToastNotifier> notify{};
+    ComPtr<IToastNotification> notificationObj{};
 
-    auto succeded = false;
-    auto notify   = notifier(&succeded);
-    if (!succeded) {
-        return false;
-    }
+    {
+        std::lock_guard<std::recursive_mutex> lock(_mutex);
+        auto iter = _buffer.find(id);
+        if (iter == _buffer.end()) {
+            return false;
+        }
 
-    ComPtr<IToastNotification> notificationObj = iter->second.notification();
+        auto succeded = false;
+        notify = notifier(&succeded);
+        if (!succeded) {
+            return false;
+        }
+
+        notificationObj = iter->second.notification();
+    }
 
     auto result = notify->Hide(notificationObj.Get());
     if (FAILED(result)) {
@@ -935,11 +945,14 @@ bool WinToast::hideToast(_In_ INT64 id) {
         return false;
     }
 
-    iter = _buffer.find(id);
-    if (iter != _buffer.end()) {
-        iter->second.markAsReadyForDeletion();
-        iter->second.RemoveTokens();
-        _buffer.erase(iter);
+    {
+        std::lock_guard<std::recursive_mutex> lock(_mutex);
+        auto iter = _buffer.find(id);
+        if (iter != _buffer.end()) {
+            iter->second.markAsReadyForDeletion();
+            iter->second.RemoveTokens();
+            _buffer.erase(iter);
+        }
     }
 
     return SUCCEEDED(result);
@@ -947,11 +960,12 @@ bool WinToast::hideToast(_In_ INT64 id) {
 
 void WinToast::clear() {
     auto succeded = false;
-    auto notify   = notifier(&succeded);
+    auto notify= notifier(&succeded);
     if (!succeded) {
         return;
     }
 
+    std::lock_guard<std::recursive_mutex> lock(_mutex);
     auto safeCopy = _buffer;
     for (auto& data : safeCopy) {
         notify->Hide(data.second.notification());
