@@ -1,6 +1,8 @@
 package com.LibreConnect.mobile
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 
@@ -22,5 +24,12 @@ class ClipboardActionActivity : Activity() {
 
     companion object {
         private const val TAG = "ClipboardActionActivity"
+
+        @JvmStatic
+        fun createLaunchIntent(context: Context): Intent {
+            return Intent(context, ClipboardActionActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+        }
     }
 }

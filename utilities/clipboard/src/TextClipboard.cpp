@@ -17,6 +17,7 @@
 
 #ifdef __ANDROID__
     #include <QJniObject>
+    #include <QtCore/qcoreapplication_platform.h>
 #endif
 
 static QMetaObject::Connection clipboardConnection;
@@ -43,13 +44,30 @@ static std::mutex clipboardMutex;
 #endif
 
 bool TextClipboard::Set(const std::string& text) {
-    if (!QGuiApplication::instance() || text.empty())
+    if (text.empty())
         return false;
 
     {
         std::lock_guard lock(clipboardMutex);
         lastText = text;
     }
+
+#ifdef __ANDROID__
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return false;
+    }
+
+    return QJniObject::callStaticMethod<jboolean>(
+        "com/LibreConnect/mobile/ClipboardBridge",
+        "setClipboardText",
+        "(Landroid/content/Context;Ljava/lang/String;)Z",
+        context.object<jobject>(),
+        QJniObject::fromString(QString::fromUtf8(text.c_str())).object<jstring>()
+    );
+#else
+    if (!QGuiApplication::instance())
+        return false;
 
     auto setLogic = [text]() {
         #if defined(__linux__) && !defined(__ANDROID__)
@@ -71,9 +89,29 @@ bool TextClipboard::Set(const std::string& text) {
         setLogic();
 
     return true;
+#endif
 }
 
 std::string TextClipboard::Get() {
+#ifdef __ANDROID__
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return {};
+    }
+
+    const QJniObject text = QJniObject::callStaticObjectMethod(
+        "com/LibreConnect/mobile/ClipboardBridge",
+        "getClipboardText",
+        "(Landroid/content/Context;)Ljava/lang/String;",
+        context.object<jobject>()
+    );
+
+    if (!text.isValid()) {
+        return {};
+    }
+
+    return text.toString().toStdString();
+#else
     if (!QGuiApplication::instance())
         return {};
 
@@ -110,9 +148,23 @@ std::string TextClipboard::Get() {
     }
 
     return getLogic();
+#endif
 }
 
 bool TextClipboard::Has() {
+#ifdef __ANDROID__
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return false;
+    }
+
+    return QJniObject::callStaticMethod<jboolean>(
+        "com/LibreConnect/mobile/ClipboardBridge",
+        "hasClipboardText",
+        "(Landroid/content/Context;)Z",
+        context.object<jobject>()
+    );
+#else
     if (!QGuiApplication::instance())
         return false;
 
@@ -137,11 +189,17 @@ bool TextClipboard::Has() {
     }
 
     return hasLogic();
+#endif
 }
 
 void TextClipboard::AddClipboardUpdateListener(std::function<void()>&& callback) {
-    if (!QGuiApplication::instance() || !callback)
+    if (!callback)
         return;
+
+#ifndef __ANDROID__
+    if (!QGuiApplication::instance())
+        return;
+#endif
 
     RemoveClipboardUpdateListener();
 
@@ -162,6 +220,16 @@ void TextClipboard::AddClipboardUpdateListener(std::function<void()>&& callback)
         {
             std::lock_guard lock(clipboardMutex);
             currentCallback = std::move(wrapper);
+        }
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        if (context.isValid()) {
+            QJniObject::callStaticMethod<void>(
+                "com/LibreConnect/mobile/ClipboardBridge",
+                "setClipboardListenerEnabled",
+                "(Landroid/content/Context;Z)V",
+                context.object<jobject>(),
+                true
+            );
         }
         return;
     #endif
@@ -193,6 +261,17 @@ void TextClipboard::RemoveClipboardUpdateListener() {
             std::lock_guard lock(clipboardMutex);
             currentCallback = nullptr;
         }
+
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        if (context.isValid()) {
+            QJniObject::callStaticMethod<void>(
+                "com/LibreConnect/mobile/ClipboardBridge",
+                "setClipboardListenerEnabled",
+                "(Landroid/content/Context;Z)V",
+                context.object<jobject>(),
+                false
+            );
+        }
     #endif
 
     #if defined(__linux__) && !defined(__ANDROID__)
@@ -211,17 +290,28 @@ void TextClipboard::RemoveClipboardUpdateListener() {
 }
 
 #ifdef __ANDROID__
+    namespace {
+        void DispatchClipboardCallback() {
+            std::function<void()> callback;
+
+            {
+                std::lock_guard lock(clipboardMutex);
+                callback = currentCallback;
+            }
+
+            if (callback) {
+                callback();
+            }
+        }
+    }
+
+    extern "C" JNIEXPORT void JNICALL
+    Java_com_LibreConnect_mobile_ClipboardBridge_nativeOnClipboardChanged(JNIEnv* /*env*/, jclass /*clazz*/) {
+        DispatchClipboardCallback();
+    }
+
     extern "C" JNIEXPORT void JNICALL
     Java_com_LibreConnect_mobile_ClipboardActionActivity_nativeOnClipboardTileClicked(JNIEnv* /*env*/, jobject /*obj*/) {
-        std::function<void()> callback;
-
-        {
-            std::lock_guard lock(clipboardMutex);
-            callback = currentCallback;
-        }
-
-        if (callback) {
-            callback();
-        }
+        DispatchClipboardCallback();
     }
 #endif
