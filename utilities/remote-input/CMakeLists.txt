@@ -80,6 +80,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
     if (WIN32)
         target_link_libraries(remote-input PUBLIC
                 ole32
+                windowsapp
         )
     endif ()
 
