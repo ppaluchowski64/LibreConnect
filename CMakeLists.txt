@@ -127,6 +127,7 @@ BuildStaticLibrary(file-system utilities/file-system project_defaults system-com
 BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-component-pc Qt6::Core Qt6::Gui)
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
+BuildStaticLibrary(system-info utilities/system-info project_defaults Debug-Log Qt6::Core Qt6::Gui)
 
 if (ANDROID)
     BuildStaticLibrary(sms-handler utilities/sms-handler network-component-pc system-component-pc p2p-network-component-pc project_defaults Qt6::Core Qt6::Gui)
@@ -134,8 +135,16 @@ endif ()
 
 if (NOT APPLE)
     target_link_libraries(permission-manager PUBLIC Qt6::CorePrivate)
-
 endif ()
+
+if (APPLE)
+    find_library(IOKIT_LIBRARY IOKit)
+    find_library(COREFOUNDATION_LIBRARY CoreFoundation)
+    target_link_libraries(system-info PRIVATE
+            ${IOKIT_LIBRARY}
+            ${COREFOUNDATION_LIBRARY}
+    )
+endif()
 
 add_subdirectory("utilities/remote-input")
 if (NOT (APPLE AND NOT IOS))
@@ -180,6 +189,11 @@ if (ANDROID OR IOS)
             sms-handler
     )
 
+    BuildApplicationModule(system-info-share-module modules/system-info-share/common modules/system-info-share/mobile
+            common-module
+            system-info
+    )
+
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     if (NOT (APPLE AND NOT IOS))
         BuildApplicationModule(network-camera-module modules/network-camera/common modules/network-camera/desktop
@@ -216,6 +230,12 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(sms-bridge-module modules/sms-bridge/common modules/sms-bridge/desktop
             common-module
     )
+
+    BuildApplicationModule(system-info-share-module modules/system-info-share/common modules/system-info-share/desktop
+            common-module
+            system-info
+    )
+
 endif ()
 
 BuildStaticLibrary(modules-manager modules/modules-manager
@@ -230,6 +250,7 @@ BuildStaticLibrary(modules-manager modules/modules-manager
         clipboard-sync-module
         remote-input-module
         sms-bridge-module
+        system-info-share-module
 )
 
 if (NOT (APPLE AND NOT IOS))

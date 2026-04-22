@@ -1,0 +1,41 @@
+#ifndef SYSTEMINFOSHAREMODULE_H
+#define SYSTEMINFOSHAREMODULE_H
+
+#include <BaseModule.h>
+#include <asio/awaitable.hpp>
+
+#include <QEvent>
+
+class PeerBatteryLevelUpdateEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 302);
+    explicit PeerBatteryLevelUpdateEvent(const float level) : QEvent(Type), m_batteryLevel(level) {}
+    float GetBatteryLevel() const { return m_batteryLevel; }
+
+    PeerBatteryLevelUpdateEvent* clone() const override {
+        return new PeerBatteryLevelUpdateEvent(*this);
+    }
+
+private:
+    float m_batteryLevel;
+};
+
+
+class SystemInfoShareModule : public BaseModule {
+private:
+    asio::awaitable<void> SendBatteryInfo() const;
+
+protected:
+    void EnableResponseCallbacks() override;
+    void DisableResponseCallbacks() override;
+
+    void OnInitialize() override;
+    asio::awaitable<void> OnEnable() override;
+    asio::awaitable<void> OnDisable() override;
+    asio::awaitable<void> OnShutdown() override;
+
+    const char* GetModuleName() const override;
+    ModuleType GetModuleType() const override;
+};
+
+#endif // SYSTEMINFOSHAREMODULE_H
