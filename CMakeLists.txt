@@ -244,6 +244,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
     BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
     BuildTestProgram(MediaRemoteTest remote-input/MediaRemoteTest.cpp remote-input)
+    BuildTestProgram(SystemVolumeController remote-input/SystemVolumeControllerTest.cpp remote-input)
 
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)
