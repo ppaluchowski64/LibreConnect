@@ -27,6 +27,8 @@ Page {
             return "Virtual Camera"
         if (selectedFeature === "messages")
             return "Messages"
+        if (selectedFeature === "notificationHistory")
+            return "Notifications"
         if (selectedFeature === "settings")
             return "Settings"
         return ""
@@ -56,6 +58,11 @@ Page {
                 pageUrl = "qrc:/LibreConnect/desktop/MessagesPage.qml"
                 pageProperties = {
                     smsBridgeController: root.smsBridgeController
+                }
+            } else if (selectedFeature === "notificationHistory") {
+                pageUrl = "qrc:/LibreConnect/desktop/NotificationHistoryPage.qml"
+                pageProperties = {
+                    notificationSyncController: root.notificationSyncController
                 }
             } else {
                 pageUrl = "qrc:/LibreConnect/desktop/SettingsPage.qml"
@@ -583,6 +590,37 @@ Page {
                             text: "Messages"
                             anchors.fill: parent
                             onClicked: root.selectFeature("messages")
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 58
+
+                        readonly property bool historyFeatureEnabled: root.permissionStateController.notificationsGranted
+                                                                     && root.notificationSyncController.enabled
+
+                        ThemedButton {
+                            text: "Notifications"
+                            anchors.fill: parent
+                            enabled: parent.historyFeatureEnabled
+                            onClicked: root.selectFeature("notificationHistory")
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: !parent.historyFeatureEnabled
+                            onClicked: {
+                                if (!root.permissionStateController.notificationsGranted) {
+                                    permissionPromptDialog.permissionType = 2
+                                    permissionPromptDialog.permissionTitle = "Notification Permission Required"
+                                    permissionPromptDialog.permissionMessage = "Notification access is disabled on the mobile app. Grant notification permissions to view notifications."
+                                    permissionPromptDialog.open()
+                                    return
+                                }
+
+                                root.selectFeature("settings")
+                            }
                         }
                     }
 

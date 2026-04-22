@@ -8,9 +8,11 @@
 
 struct NotificationPacket {
     std::string key;
+    std::string appName;
     std::string title;
     std::string content;
     size_t timestamp{0};
+    bool dismissable{true};
     std::vector<std::string> buttons;
     std::vector<uint8_t> mainImage;
     std::vector<uint8_t> iconImage;
@@ -22,9 +24,11 @@ struct NotificationPacket {
 
 struct NotificationRecord {
     std::string key;
+    std::string appName;
     std::string title;
     std::string content;
     size_t timestamp{0};
+    bool dismissable{true};
     std::vector<std::string> buttons;
 
     std::optional<std::filesystem::path> mainImagePath;
@@ -36,9 +40,11 @@ public:
     NotificationData();
     NotificationData(
         std::string key,
+        std::string appName,
         std::string title,
         std::string content,
         size_t timestamp,
+        bool dismissable,
         std::vector<std::string> buttons,
         std::vector<uint8_t> smallIcon,
         std::vector<uint8_t> largeIcon,
@@ -46,9 +52,11 @@ public:
     );
 
     std::string key;
+    std::string appName;
     std::string title;
     std::string content;
     size_t timestamp{0};
+    bool dismissable{true};
     std::vector<std::string> buttons;
     std::vector<uint8_t> smallIcon; // PNG compression
     std::vector<uint8_t> largeIcon; // PNG compression

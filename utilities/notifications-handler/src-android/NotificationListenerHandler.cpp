@@ -32,13 +32,18 @@ std::vector<NotificationData> g_notificationDatas;
 std::mutex g_notificationCallbackMutex;
 std::function<void(const std::string& key)> g_notificationCallback;
 
+std::mutex g_notificationRemovedCallbackMutex;
+std::function<void(const std::string& key)> g_notificationRemovedCallback;
+
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP(
     JNIEnv* env,
     jobject,
     const jstring key,
+    const jstring appName,
     const jstring title,
     const jstring content,
     const jlong timestamp,
+    const jboolean dismissable,
     const jbyteArray iconBytes,
     const jbyteArray imageBytes) {
 
@@ -48,6 +53,7 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
 
     NotificationData notificationData{};
     GetString(env, key, notificationData.key);
+    GetString(env, appName, notificationData.appName);
     GetString(env, title, notificationData.title);
     GetString(env, content, notificationData.content);
 
@@ -62,22 +68,31 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
     Debug::Log("captured notification {}", notificationData.key);
 
     notificationData.timestamp = timestamp;
+    notificationData.dismissable = dismissable == JNI_TRUE;
 
     const std::string keyC = notificationData.key;
+    bool existed = false;
 
     {
         std::lock_guard lock(g_notificationDatasMutex);
-        g_notificationDatas.push_back(notificationData);
+        for (NotificationData& existing : g_notificationDatas) {
+            if (existing.key == notificationData.key) {
+                existing = std::move(notificationData);
+                existed = true;
+                break;
+            }
+        }
+
+        if (!existed) {
+            g_notificationDatas.push_back(std::move(notificationData));
+        }
     }
 
     {
         std::lock_guard lock(g_notificationCallbackMutex);
-        if (!g_notificationCallback) {
-            Debug::LogWarning("notification callback not set (key={})", keyC);
-            return;
+        if (g_notificationCallback) {
+            g_notificationCallback(keyC);
         }
-
-        g_notificationCallback(keyC);
     }
 }
 
@@ -104,6 +119,13 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_NotificationListe
         std::erase_if(g_notificationDatas, [&keyStr](const NotificationData& notification) {
             return notification.key == keyStr;
         });
+    }
+
+    {
+        std::lock_guard lock(g_notificationRemovedCallbackMutex);
+        if (g_notificationRemovedCallback) {
+            g_notificationRemovedCallback(keyStr);
+        }
     }
 
     Debug::Log("removed notification {}", keyStr);

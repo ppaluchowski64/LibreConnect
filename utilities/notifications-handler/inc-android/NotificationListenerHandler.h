@@ -12,9 +12,11 @@ Java_com_LibreConnect_mobile_NotificationListener_onNotificationReceivedCPP(
     JNIEnv* env,
     jobject,
     jstring key,
+    jstring appName,
     jstring title,
     jstring content,
     jlong timestamp,
+    jboolean dismissable,
     jbyteArray iconBytes,
     jbyteArray imageBytes
 );

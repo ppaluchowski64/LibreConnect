@@ -11,6 +11,10 @@ public:
 
 private:
     asio::awaitable<void> SendNewNotification(std::string key) const;
+    asio::awaitable<void> SendNotificationRemoved(std::string key) const;
+    void RegisterNotificationCallbacks(const std::shared_ptr<NotificationSyncModule>& instance);
+    void ClearNotificationCallbacks();
+    void DismissNotificationOnPhone(const std::string& key) const;
     std::shared_ptr<NotificationTransferChannel> GetChannel() const;
     void SetChannel(const std::shared_ptr<NotificationTransferChannel>& channel);
     std::shared_ptr<NotificationTransferChannel> TakeChannel();

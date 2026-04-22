@@ -25,9 +25,10 @@ import org.qtproject.qt.android.bindings.QtActivity
 
 class NotificationListener : NotificationListenerService() {
     private val tag = "NotificationListener"
+    private val extraSubstituteAppNameKey = "android.substName"
     private val trackedNotificationKeys = mutableSetOf<String>()
     private var initialSyncCompleted = false
-    external fun onNotificationReceivedCPP(key: String, title: String?, content: String?, timestamp: Long, largeIconBytes: ByteArray?, mainImage: ByteArray?)
+    external fun onNotificationReceivedCPP(key: String, appName: String?, title: String?, content: String?, timestamp: Long, dismissable: Boolean, largeIconBytes: ByteArray?, mainImage: ByteArray?)
     external fun onNotificationRemovedCPP(key: String)
 
     companion object {
@@ -69,6 +70,20 @@ class NotificationListener : NotificationListenerService() {
                 }, 500)
             } else {
                 instance?.syncActiveNotificationsToCpp(force = true)
+            }
+        }
+
+        @JvmStatic
+        fun dismissNotification(context: Context, key: String) {
+            val listener = instance
+            if (listener != null) {
+                listener.dismissNotificationInternal(key)
+                return
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                val component = ComponentName(context, NotificationListener::class.java)
+                android.service.notification.NotificationListenerService.requestRebind(component)
             }
         }
 
@@ -200,8 +215,16 @@ class NotificationListener : NotificationListenerService() {
             val notification = sbn.notification
             val extras = notification.extras
 
-            val title: String? = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-            val content: String? = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+            val appName = resolveAppName(sbn)
+            val title: String? = firstMeaningfulText(
+                extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+                extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString(),
+                extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+            )
+            val content: String? = firstMeaningfulText(
+                extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+                extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+            )
             val timestamp: Long = sbn.postTime
             val largeIcon = notification.getLargeIcon()
             var mainImageBytes: ByteArray? = null
@@ -237,9 +260,11 @@ class NotificationListener : NotificationListenerService() {
             try {
                 onNotificationReceivedCPP(
                     key,
+                    appName,
                     title,
                     content,
                     timestamp,
+                    sbn.isClearable,
                     iconBytes,
                     mainImageBytes
                 )
@@ -263,19 +288,137 @@ class NotificationListener : NotificationListenerService() {
         }
 
         val key = sbn.key
-        trackedNotificationKeys.remove(key)
+        val wasTracked = trackedNotificationKeys.remove(key)
+        if (!wasTracked && initialSyncCompleted) {
+            return
+        }
 
+        notifyCppNotificationRemoved(key)
+    }
+
+    private fun dismissNotificationInternal(key: String) {
+        val target = activeNotifications?.firstOrNull { it.key == key }
+        if (target == null) {
+            val wasTrackedMissing = trackedNotificationKeys.remove(key)
+            if (wasTrackedMissing) {
+                notifyCppNotificationRemoved(key)
+            }
+            return
+        }
+
+        if (!target.isClearable) {
+            Log.i(tag, "Notification is not dismissable for key=$key")
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                cancelNotification(key)
+            } catch (e: Exception) {
+                Log.w(tag, "Failed to dismiss notification for key=$key", e)
+                return
+            }
+        }
+
+        if (activeNotifications?.any { it.key == key } == true) {
+            Log.i(tag, "Notification still active after dismiss request for key=$key")
+            return
+        }
+    }
+
+    private fun notifyCppNotificationRemoved(key: String) {
         try {
-            onNotificationRemovedCPP(
-                key
-            )
+            onNotificationRemovedCPP(key)
         } catch (e: UnsatisfiedLinkError) {
             Log.e(tag, "JNI method onNotificationRemovedCPP is missing or failed.", e)
         }
     }
 
+    private fun resolveAppName(sbn: StatusBarNotification): String? {
+        val packageName = sbn.packageName
+        if (packageName == "android" || packageName == "com.android.systemui") {
+            return "Android System"
+        }
+
+        val substituteName = firstMeaningfulText(
+            sbn.notification.extras.getCharSequence(extraSubstituteAppNameKey)?.toString()
+        )
+        if (!substituteName.isNullOrEmpty()) {
+            return substituteName
+        }
+
+        return try {
+            val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+            val label = packageManager.getApplicationLabel(applicationInfo)?.toString()?.trim().orEmpty()
+            if (label.isNotEmpty() && label != packageName) {
+                label
+            } else {
+                humanizePackageName(packageName)
+            }
+        } catch (e: Exception) {
+            humanizePackageName(packageName)
+        }
+    }
+
     private fun shouldIgnoreNotification(sbn: StatusBarNotification): Boolean {
-        return sbn.packageName == packageName
+        if (sbn.packageName == packageName) {
+            return true
+        }
+
+        val notification = sbn.notification
+        val extras = notification.extras
+        val title = firstMeaningfulText(
+            extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+        )
+        val body = firstMeaningfulText(
+            extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+        )
+        val groupSummary = (notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+        val noVisibleContent = title.isNullOrEmpty() && body.isNullOrEmpty()
+        val isSystemSource = sbn.packageName == "android" || sbn.packageName == "com.android.systemui"
+
+        if (groupSummary && noVisibleContent) {
+            return true
+        }
+
+        if (isSystemSource && noVisibleContent) {
+            return true
+        }
+
+        return false
+    }
+
+    private fun firstMeaningfulText(vararg values: String?): String? {
+        for (value in values) {
+            val normalized = value?.trim()
+            if (!normalized.isNullOrEmpty()) {
+                return normalized
+            }
+        }
+        return null
+    }
+
+    private fun humanizePackageName(packageName: String): String {
+        if (packageName.isBlank()) {
+            return "Unknown app"
+        }
+
+        val lastToken = packageName.substringAfterLast('.')
+        val cleaned = lastToken.replace('_', ' ').replace('-', ' ').trim()
+        if (cleaned.isEmpty()) {
+            return packageName
+        }
+
+        return cleaned.split(' ')
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { token ->
+                token.replaceFirstChar { ch ->
+                    if (ch.isLowerCase()) ch.titlecase() else ch.toString()
+                }
+            }
     }
 
     private fun drawableToBitmap(drawable: Drawable): Bitmap {

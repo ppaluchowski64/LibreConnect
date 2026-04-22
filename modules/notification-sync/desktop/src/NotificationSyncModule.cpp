@@ -2,9 +2,12 @@
 #include <ConnectionManager.h>
 #include <NotificationEmitter.h>
 #include <boost/nowide/convert.hpp>
+#include <atomic>
 #include <utility>
+#include <vector>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
+std::atomic<int64_t> g_fallbackNotificationId{-1};
 
 std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::GetChannel() const {
     std::lock_guard lock(m_channelMutex);
@@ -19,6 +22,38 @@ void NotificationSyncModule::SetChannel(const std::shared_ptr<NotificationTransf
 std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::TakeChannel() {
     std::lock_guard lock(m_channelMutex);
     return std::exchange(m_channel, nullptr);
+}
+
+bool NotificationSyncModule::DismissNotificationByKey(const std::string& key) {
+    if (key.empty()) {
+        return false;
+    }
+
+    bool knownDismissable = true;
+    bool knownNotification = false;
+    {
+        std::lock_guard lock(m_notificationsVectorMutex);
+        auto keyIt = m_notificationIdsByKey.find(key);
+        if (keyIt != m_notificationIdsByKey.end()) {
+            const auto notificationIt = m_notifications.find(keyIt->second);
+            if (notificationIt != m_notifications.end()) {
+                knownNotification = true;
+                knownDismissable = notificationIt->second.dismissable;
+            }
+        }
+    }
+
+    if (knownNotification && !knownDismissable) {
+        return false;
+    }
+
+    const std::shared_ptr<NotificationTransferChannel> channel = GetChannel();
+    if (!channel || channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        return false;
+    }
+
+    ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISMISS_NOTIFICATION, key);
+    return true;
 }
 
 asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
@@ -44,10 +79,7 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
     const uint16_t totalNotifications = notificationsCount;
     bool receiveFailed = false;
 
-    {
-        std::lock_guard lock(m_notificationsVectorMutex);
-        m_notifications.clear();
-    }
+    ClearNotificationCache(true);
 
     Debug::Log("Notification sync started. Notifications to fetch: {}", totalNotifications);
 
@@ -64,7 +96,7 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
             break;
         }
 
-        instance->ProcessNotificationPacket(notification.value());
+        instance->ProcessNotificationPacket(notification.value(), false);
         processedNotifications++;
     }
 
@@ -75,18 +107,20 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
     }
 }
 
-void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket& packet) {
+void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket& packet, const bool emitDesktopNotification) {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
 
     Debug::Log("Processing notification packet");
     try {
         NotificationRecord notificationRecord;
 
-        notificationRecord.key = std::move(packet.key);
-        notificationRecord.title = std::move(packet.title);
-        notificationRecord.content = std::move(packet.content);
-        notificationRecord.timestamp = std::move(packet.timestamp);
-        notificationRecord.buttons = std::move(packet.buttons);
+        notificationRecord.key = packet.key;
+        notificationRecord.appName = packet.appName;
+        notificationRecord.title = packet.title;
+        notificationRecord.content = packet.content;
+        notificationRecord.timestamp = packet.timestamp;
+        notificationRecord.dismissable = packet.dismissable;
+        notificationRecord.buttons = packet.buttons;
 
         if (!packet.iconImage.empty()) {
             notificationRecord.iconPath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
@@ -120,22 +154,47 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
             notificationRecord.mainImagePath = std::nullopt;
         }
 
-        std::vector<NotificationEmitter::ButtonAction> notificationEmitterButtonActions;
-        notificationEmitterButtonActions.reserve(notificationRecord.buttons.size());
+        ProcessNotificationRemoval(notificationRecord.key, false);
 
-        std::weak_ptr<NotificationSyncModule> weakInstance = instance;
-        std::shared_ptr<int64_t> notificationID = std::make_shared<int64_t>();
-        for (const auto& button : notificationRecord.buttons) {
-            std::wstring buttonWString = boost::nowide::widen(button);
+        int64_t notificationID = g_fallbackNotificationId.fetch_sub(1, std::memory_order_relaxed);
+        if (emitDesktopNotification) {
+            std::vector<NotificationEmitter::ButtonAction> notificationEmitterButtonActions;
+            notificationEmitterButtonActions.reserve(notificationRecord.buttons.size());
 
-            notificationEmitterButtonActions.emplace_back(
-                buttonWString,
-                [weakInstance, notificationID, buttonWString]() {
-                    if (const std::shared_ptr<NotificationSyncModule> module = weakInstance.lock()) {
-                        module->ProcessNotificationButtonAction(*notificationID, buttonWString);
+            std::weak_ptr<NotificationSyncModule> weakInstance = instance;
+            std::shared_ptr<int64_t> emittedNotificationID = std::make_shared<int64_t>();
+            for (const auto& button : notificationRecord.buttons) {
+                std::wstring buttonWString = boost::nowide::widen(button);
+
+                notificationEmitterButtonActions.emplace_back(
+                    buttonWString,
+                    [weakInstance, emittedNotificationID, buttonWString]() {
+                        if (const std::shared_ptr<NotificationSyncModule> module = weakInstance.lock()) {
+                            module->ProcessNotificationButtonAction(*emittedNotificationID, buttonWString);
+                        }
                     }
-                }
+                );
+            }
+
+            notificationID = NotificationEmitter::Emit(
+                boost::nowide::widen(notificationRecord.title),
+                boost::nowide::widen(notificationRecord.content),
+                notificationRecord.iconPath,
+                notificationRecord.mainImagePath,
+                notificationEmitterButtonActions
             );
+
+            if (notificationID < 0) {
+                notificationID = g_fallbackNotificationId.fetch_sub(1, std::memory_order_relaxed);
+            } else {
+                *emittedNotificationID = notificationID;
+            }
+        }
+
+        {
+            std::lock_guard lock(m_notificationsVectorMutex);
+            m_notifications[notificationID] = notificationRecord;
+            m_notificationIdsByKey[notificationRecord.key] = notificationID;
         }
 
         {
@@ -143,18 +202,6 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
             ConnectionManager::SendEvent(event);
         }
 
-        *notificationID = NotificationEmitter::Emit(
-            boost::nowide::widen(notificationRecord.title),
-            boost::nowide::widen(notificationRecord.content),
-            notificationRecord.iconPath,
-            notificationRecord.mainImagePath,
-            notificationEmitterButtonActions
-        );
-
-
-
-        std::lock_guard lock(m_notificationsVectorMutex);
-        m_notifications[*notificationID] = std::move(notificationRecord);
         Debug::Log("Notification packet appended to cache");
     } catch (const std::exception& exception) {
         Debug::LogError("Processing notification packet failed: {}", exception.what());
@@ -162,6 +209,100 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
     } catch (...) {
         Debug::LogError("Processing notification packet failed: unknown error");
         ProcessError(ModuleFailReason::InternalError);
+    }
+}
+
+bool NotificationSyncModule::ProcessNotificationRemoval(const std::string& key, const bool emitEvent) {
+    if (key.empty()) {
+        return false;
+    }
+
+    int64_t notificationId = -1;
+    std::optional<NotificationRecord> removedRecord;
+
+    {
+        std::lock_guard lock(m_notificationsVectorMutex);
+        auto keyIt = m_notificationIdsByKey.find(key);
+        if (keyIt != m_notificationIdsByKey.end()) {
+            notificationId = keyIt->second;
+            m_notificationIdsByKey.erase(keyIt);
+
+            auto notificationIt = m_notifications.find(notificationId);
+            if (notificationIt != m_notifications.end()) {
+                removedRecord = std::move(notificationIt->second);
+                m_notifications.erase(notificationIt);
+            }
+        } else {
+            for (auto notificationIt = m_notifications.begin(); notificationIt != m_notifications.end(); ++notificationIt) {
+                if (notificationIt->second.key == key) {
+                    notificationId = notificationIt->first;
+                    removedRecord = std::move(notificationIt->second);
+                    m_notifications.erase(notificationIt);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (notificationId >= 0) {
+        NotificationEmitter::Remove(notificationId);
+    }
+
+    if (removedRecord.has_value()) {
+        if (removedRecord->iconPath.has_value()) {
+            std::error_code errorCode;
+            std::filesystem::remove(*removedRecord->iconPath, errorCode);
+        }
+        if (removedRecord->mainImagePath.has_value()) {
+            std::error_code errorCode;
+            std::filesystem::remove(*removedRecord->mainImagePath, errorCode);
+        }
+
+        if (emitEvent) {
+            std::unique_ptr<QEvent> event = std::make_unique<NotificationRemovedEvent>(key);
+            ConnectionManager::SendEvent(event);
+        }
+    }
+
+    return removedRecord.has_value();
+}
+
+void NotificationSyncModule::ClearNotificationCache(const bool emitEvents) {
+    std::vector<int64_t> idsToRemove;
+    std::vector<NotificationRecord> removedRecords;
+
+    {
+        std::lock_guard lock(m_notificationsVectorMutex);
+        idsToRemove.reserve(m_notifications.size());
+        removedRecords.reserve(m_notifications.size());
+
+        for (const auto& [id, record] : m_notifications) {
+            idsToRemove.push_back(id);
+            removedRecords.push_back(record);
+        }
+
+        m_notifications.clear();
+        m_notificationIdsByKey.clear();
+    }
+
+    for (const int64_t id : idsToRemove) {
+        NotificationEmitter::Remove(id);
+    }
+
+    for (const NotificationRecord& record : removedRecords) {
+        if (record.iconPath.has_value()) {
+            std::error_code errorCode;
+            std::filesystem::remove(*record.iconPath, errorCode);
+        }
+        if (record.mainImagePath.has_value()) {
+            std::error_code errorCode;
+            std::filesystem::remove(*record.mainImagePath, errorCode);
+        }
+
+        if (emitEvents) {
+            std::unique_ptr<QEvent> event = std::make_unique<NotificationRemovedEvent>(record.key);
+            ConnectionManager::SendEvent(event);
+        }
     }
 }
 
@@ -200,7 +341,12 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         }
 
         Debug::Log("Received notification packet. Key: {}, Title: {}", notification->key, notification->title);
-        instance->ProcessNotificationPacket(notification.value());
+        instance->ProcessNotificationPacket(notification.value(), true);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NOTIFICATION_REMOVED, [instance](PC_Package&& package) {
+        const std::string key = package->GetValue<std::string>();
+        instance->ProcessNotificationRemoval(key, true);
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE, [instance](PC_Package&& package) {
@@ -226,6 +372,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 
 void NotificationSyncModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NEW_NOTIFICATION);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_NOTIFICATION_REMOVED);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE);
@@ -307,15 +454,13 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
         co_await channel->Disconnect();
     }
 
-    {
-        std::lock_guard lock(m_notificationsVectorMutex);
-        m_notifications.clear();
-    }
+    ClearNotificationCache(true);
     Debug::Log("Notification sync module disabled");
 }
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
     Debug::Log("Notification sync module shutdown");
+    ClearNotificationCache(false);
     if (const std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
         co_await channel->Disconnect();
     }

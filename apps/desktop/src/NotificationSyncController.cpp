@@ -4,6 +4,9 @@
 #include <ConnectionManager.h>
 #include <Events.h>
 #include <QPointer>
+#include <QUrl>
+#include <QDateTime>
+#include <algorithm>
 
 NotificationSyncController::NotificationSyncController(QObject* parent)
     : QObject(parent)
@@ -20,12 +23,56 @@ NotificationSyncController::NotificationSyncController(QObject* parent)
     refreshState();
 }
 
+QVariantList NotificationSyncController::notifications() const
+{
+    QVariantList result;
+    result.reserve(m_notifications.size());
+
+    for (const NotificationItem& notification : m_notifications) {
+        QVariantMap map;
+        map.insert(QStringLiteral("key"), notification.key);
+        map.insert(QStringLiteral("appName"), notification.appName);
+        map.insert(QStringLiteral("title"), notification.title);
+        map.insert(QStringLiteral("content"), notification.content);
+        map.insert(QStringLiteral("timestamp"), notification.timestamp);
+        map.insert(QStringLiteral("timestampText"),
+            notification.timestamp > 0
+                ? QDateTime::fromMSecsSinceEpoch(notification.timestamp).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
+                : QStringLiteral("Unknown time"));
+        map.insert(QStringLiteral("dismissable"), notification.dismissable);
+        map.insert(QStringLiteral("icon"), notification.iconPath);
+        result.push_back(map);
+    }
+
+    return result;
+}
+
 void NotificationSyncController::setNotificationSyncEnabled(const bool enabled)
 {
     setRequestedEnabled(enabled, true);
     m_enableAttemptPending = enabled;
     m_disableAttemptPending = !enabled;
     refreshState();
+}
+
+bool NotificationSyncController::dismissNotification(const QString& key)
+{
+    const QString normalized = key.trimmed();
+    if (normalized.isEmpty()) {
+        return false;
+    }
+
+    for (const NotificationItem& item : m_notifications) {
+        if (item.key == normalized) {
+            if (!item.dismissable) {
+                return false;
+            }
+            break;
+        }
+    }
+
+    auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
+    return module->DismissNotificationByKey(normalized.toStdString());
 }
 
 void NotificationSyncController::refreshState()
@@ -36,6 +83,7 @@ void NotificationSyncController::refreshState()
     if (!m_connected) {
         setEnabledState(m_requestedEnabled);
         setBusy(false);
+        clearNotifications();
         setStatusMessage(m_requestedEnabled
             ? QStringLiteral("Notification sync will start after connecting to the device.")
             : QStringLiteral("Notification sync is disabled."));
@@ -99,6 +147,9 @@ void NotificationSyncController::refreshState()
 
         setEnabledState(m_requestedEnabled);
         setBusy(false);
+        if (!m_requestedEnabled) {
+            clearNotifications();
+        }
         setStatusMessage(m_requestedEnabled
             ? QStringLiteral("Notification sync is waiting for notification permissions on the connected device.")
             : QStringLiteral("Notification sync is disabled."));
@@ -129,7 +180,41 @@ bool NotificationSyncController::event(QEvent* event)
 
     if (event->type() == DisconnectedEvent::Type) {
         m_connected = false;
+        clearNotifications();
         refreshState();
+        return true;
+    }
+
+    if (event->type() == NotificationReceivedEvent::Type) {
+        if (!m_connected) {
+            return true;
+        }
+
+        const auto* notificationEvent = static_cast<NotificationReceivedEvent*>(event);
+        const NotificationRecord& record = notificationEvent->GetNotification();
+
+        NotificationItem item;
+        item.key = QString::fromStdString(record.key);
+        item.appName = QString::fromStdString(record.appName);
+        item.title = QString::fromStdString(record.title);
+        item.content = QString::fromStdString(record.content);
+        item.timestamp = static_cast<qint64>(record.timestamp);
+        item.dismissable = record.dismissable;
+        if (record.iconPath.has_value()) {
+            item.iconPath = QUrl::fromLocalFile(QString::fromStdString(record.iconPath->string())).toString();
+        }
+
+        upsertNotification(item);
+        return true;
+    }
+
+    if (event->type() == NotificationRemovedEvent::Type) {
+        if (!m_connected) {
+            return true;
+        }
+
+        const auto* notificationEvent = static_cast<NotificationRemovedEvent*>(event);
+        removeNotificationByKey(QString::fromStdString(notificationEvent->GetKey()));
         return true;
     }
 
@@ -158,6 +243,64 @@ bool NotificationSyncController::event(QEvent* event)
     }
 
     return QObject::event(event);
+}
+
+void NotificationSyncController::upsertNotification(const NotificationItem& item)
+{
+    bool changed = false;
+    for (NotificationItem& existing : m_notifications) {
+        if (existing.key != item.key) {
+            continue;
+        }
+
+        if (existing.appName != item.appName ||
+            existing.title != item.title ||
+            existing.content != item.content ||
+            existing.timestamp != item.timestamp ||
+            existing.dismissable != item.dismissable ||
+            existing.iconPath != item.iconPath) {
+            existing = item;
+            changed = true;
+        }
+
+        if (changed) {
+            std::sort(m_notifications.begin(), m_notifications.end(), [](const NotificationItem& lhs, const NotificationItem& rhs) {
+                return lhs.timestamp > rhs.timestamp;
+            });
+            emit notificationsChanged();
+        }
+        return;
+    }
+
+    m_notifications.push_back(item);
+    std::sort(m_notifications.begin(), m_notifications.end(), [](const NotificationItem& lhs, const NotificationItem& rhs) {
+        return lhs.timestamp > rhs.timestamp;
+    });
+    emit notificationsChanged();
+}
+
+void NotificationSyncController::removeNotificationByKey(const QString& key)
+{
+    const auto newEnd = std::remove_if(m_notifications.begin(), m_notifications.end(), [&key](const NotificationItem& item) {
+        return item.key == key;
+    });
+
+    if (newEnd == m_notifications.end()) {
+        return;
+    }
+
+    m_notifications.erase(newEnd, m_notifications.end());
+    emit notificationsChanged();
+}
+
+void NotificationSyncController::clearNotifications()
+{
+    if (m_notifications.isEmpty()) {
+        return;
+    }
+
+    m_notifications.clear();
+    emit notificationsChanged();
 }
 
 void NotificationSyncController::setBusy(const bool busy)

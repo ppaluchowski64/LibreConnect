@@ -2,6 +2,7 @@
 #include <NotificationListenerHandler.h>
 #include <ConnectionManager.h>
 #include <PermissionManager.h>
+#include <QString>
 #include <QtCore/private/qandroidextras_p.h>
 #include <utility>
 
@@ -10,7 +11,9 @@ constexpr size_t FUTURES_WAIT_DELAY = 10;
 extern std::mutex g_notificationDatasMutex;
 extern std::vector<NotificationData> g_notificationDatas;
 extern std::mutex g_notificationCallbackMutex;
-extern std::function<void(std::string key)> g_notificationCallback;
+extern std::function<void(const std::string& key)> g_notificationCallback;
+extern std::mutex g_notificationRemovedCallbackMutex;
+extern std::function<void(const std::string& key)> g_notificationRemovedCallback;
 
 std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::GetChannel() const {
     std::lock_guard lock(m_channelMutex);
@@ -59,14 +62,78 @@ asio::awaitable<void> NotificationSyncModule::SendNewNotification(const std::str
     }
 
     NotificationPacket packet;
+    packet.appName = std::move(notification.appName);
     packet.title = std::move(notification.title);
     packet.content = std::move(notification.content);
     packet.key = std::move(notification.key);
+    packet.timestamp = notification.timestamp;
+    packet.dismissable = notification.dismissable;
     packet.buttons = std::move(notification.buttons);
     packet.mainImage = std::move(notification.mainImage);
     packet.iconImage = std::move(notification.largeIcon);
 
     co_await channel->Send(packet);
+}
+
+asio::awaitable<void> NotificationSyncModule::SendNotificationRemoved(std::string key) const {
+    const ModuleState state = GetModuleState();
+    if (state != ModuleState::Enabled && state != ModuleState::Enabling) {
+        co_return;
+    }
+
+    if (key.empty()) {
+        co_return;
+    }
+
+    ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_NOTIFICATION_REMOVED, std::move(key));
+}
+
+void NotificationSyncModule::RegisterNotificationCallbacks(const std::shared_ptr<NotificationSyncModule>& instance) {
+    {
+        std::lock_guard lock(g_notificationCallbackMutex);
+        g_notificationCallback = [instance](const std::string& key) {
+            asio::co_spawn(instance->m_context, instance->SendNewNotification(key), asio::detached);
+        };
+    }
+
+    {
+        std::lock_guard lock(g_notificationRemovedCallbackMutex);
+        g_notificationRemovedCallback = [instance](const std::string& key) {
+            asio::co_spawn(instance->m_context, instance->SendNotificationRemoved(key), asio::detached);
+        };
+    }
+}
+
+void NotificationSyncModule::ClearNotificationCallbacks() {
+    {
+        std::lock_guard lock(g_notificationCallbackMutex);
+        g_notificationCallback = {};
+    }
+
+    {
+        std::lock_guard lock(g_notificationRemovedCallbackMutex);
+        g_notificationRemovedCallback = {};
+    }
+}
+
+void NotificationSyncModule::DismissNotificationOnPhone(const std::string& key) const {
+    if (key.empty()) {
+        return;
+    }
+
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return;
+    }
+
+    const QJniObject jKey = QJniObject::fromString(QString::fromStdString(key));
+    QJniObject::callStaticMethod<void>(
+        "com/LibreConnect/mobile/NotificationListener",
+        "dismissNotification",
+        "(Landroid/content/Context;Ljava/lang/String;)V",
+        context.object<jobject>(),
+        jKey.object<jstring>()
+    );
 }
 
 void NotificationSyncModule::EnableResponseCallbacks() {
@@ -86,6 +153,11 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         instance->m_peerModuleEnabled.store(false);
         ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, false);
         instance->Disable();
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISMISS_NOTIFICATION, [instance](PC_Package&& package) {
+        const std::string key = package->GetValue<std::string>();
+        instance->DismissNotificationOnPhone(key);
     });
 
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
@@ -136,9 +208,12 @@ void NotificationSyncModule::EnableResponseCallbacks() {
         for (auto& notification : notifications) {
             NotificationPacket packet;
 
+            packet.appName = std::move(notification.appName);
             packet.title = std::move(notification.title);
             packet.content = std::move(notification.content);
             packet.key = std::move(notification.key);
+            packet.timestamp = notification.timestamp;
+            packet.dismissable = notification.dismissable;
             packet.buttons = std::move(notification.buttons);
             packet.mainImage = std::move(notification.mainImage);
             packet.iconImage = std::move(notification.largeIcon);
@@ -155,6 +230,7 @@ void NotificationSyncModule::EnableResponseCallbacks() {
 void NotificationSyncModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_DISMISS_NOTIFICATION);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_CONNECTION_PORT_INFO);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_ALL_NOTIFICATIONS_REQUEST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE);
@@ -165,13 +241,7 @@ void NotificationSyncModule::OnInitialize() {}
 asio::awaitable<void> NotificationSyncModule::OnEnable() {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
     m_peerModuleEnabled.store(false);
-
-    {
-        std::lock_guard lock(g_notificationCallbackMutex);
-        g_notificationCallback = [instance](const std::string& key) {
-            asio::co_spawn(instance->m_context, instance->SendNewNotification(key), asio::detached);
-        };
-    }
+    ClearNotificationCallbacks();
 
     ClearNotificationDatas();
 
@@ -247,15 +317,12 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
+
+    RegisterNotificationCallbacks(instance);
 }
 
 asio::awaitable<void> NotificationSyncModule::OnDisable() {
-    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
-
-    {
-        std::lock_guard lock(g_notificationCallbackMutex);
-        g_notificationCallback = {};
-    }
+    ClearNotificationCallbacks();
 
     m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_STATE_CHANGE, false);
@@ -269,6 +336,8 @@ asio::awaitable<void> NotificationSyncModule::OnDisable() {
 }
 
 asio::awaitable<void> NotificationSyncModule::OnShutdown() {
+    ClearNotificationCallbacks();
+
     if (const std::shared_ptr<NotificationTransferChannel> channel = TakeChannel()) {
         co_await channel->Disconnect();
     }
