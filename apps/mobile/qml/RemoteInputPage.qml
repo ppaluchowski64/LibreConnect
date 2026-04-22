@@ -132,8 +132,18 @@ Page {
                     border.width: 1
                     border.color: Theme.panelBorderColor
 
+                    Image {
+                        anchors.fill: parent
+                        anchors.margins: 2
+                        source: remoteInputController.coverImageSource
+                        fillMode: Image.PreserveAspectFit
+                        cache: false
+                        visible: source.length > 0
+                    }
+
                     Text {
                         anchors.centerIn: parent
+                        visible: remoteInputController.coverImageSource.length === 0
                         text: "Cover"
                         color: Theme.mutedTextColor
                         font.pixelSize: 15
@@ -179,13 +189,46 @@ Page {
                     elide: Text.ElideRight
                 }
 
-                Text {
+                Slider {
+                    id: seekSlider
+                    Layout.fillWidth: true
+                    visible: remoteInputController.durationSeconds > 0
+                    enabled: remoteInputController.durationSeconds > 0
+                    from: 0
+                    to: Math.max(remoteInputController.durationSeconds, 1)
+                    value: remoteInputController.positionSeconds
+
+                    onPressedChanged: {
+                        if (!pressed && remoteInputController.durationSeconds > 0) {
+                            remoteInputController.seekTo(value)
+                        }
+                    }
+                }
+
+                RowLayout {
                     Layout.fillWidth: true
                     visible: remoteInputController.elapsedTime.length > 0
-                    text: remoteInputController.elapsedTime
-                    color: Theme.mutedTextColor
-                    font.pixelSize: 13
-                    horizontalAlignment: Text.AlignHCenter
+                             || remoteInputController.durationTime.length > 0
+
+                    Text {
+                        Layout.alignment: Qt.AlignLeft
+                        text: remoteInputController.elapsedTime
+                        color: Theme.mutedTextColor
+                        font.pixelSize: 13
+                        visible: text.length > 0
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        Layout.alignment: Qt.AlignRight
+                        text: remoteInputController.durationTime
+                        color: Theme.mutedTextColor
+                        font.pixelSize: 13
+                        visible: text.length > 0
+                    }
                 }
 
                 RowLayout {

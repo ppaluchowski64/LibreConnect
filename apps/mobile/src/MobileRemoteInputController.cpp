@@ -1,5 +1,7 @@
 #include "MobileRemoteInputController.h"
 
+#include <algorithm>
+
 #include <QPointer>
 #include <QChar>
 #include <Qt>
@@ -37,7 +39,7 @@ MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
 
 bool MobileRemoteInputController::hasTrackInfo() const
 {
-    return !m_trackTitle.isEmpty() || !m_trackArtist.isEmpty() || !m_trackCollection.isEmpty();
+    return !m_trackTitle.isEmpty() || !m_trackArtist.isEmpty() || !m_trackCollection.isEmpty() || !m_coverImageSource.isEmpty();
 }
 
 void MobileRemoteInputController::setSessionActive(const bool active)
@@ -92,6 +94,16 @@ void MobileRemoteInputController::sendMediaSignal(const int signal)
     updateAndroidMediaNotification();
 }
 
+void MobileRemoteInputController::seekTo(const double seconds)
+{
+    if (!m_connected || !m_ready || m_durationSeconds <= 0.0) {
+        return;
+    }
+
+    const double clampedSeconds = std::clamp(seconds, 0.0, m_durationSeconds);
+    RemoteInputModule::SetMediaPosition(clampedSeconds);
+}
+
 void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString& text, const int modifiers)
 {
     if (!m_connected) {
@@ -143,19 +155,46 @@ void MobileRemoteInputController::setNowPlayingInfo(
     const QString& artist,
     const QString& collection,
     const QString& elapsed,
-    const bool playing
+    const bool playing,
+    const double positionSeconds,
+    const double durationSeconds,
+    const std::vector<uint8_t>& coverBytes
 )
 {
+    const double safePosition = std::max(0.0, positionSeconds);
+    const double safeDuration = std::max(0.0, durationSeconds);
+    const QString normalizedElapsed = elapsed.isEmpty() ? formatTime(safePosition) : elapsed;
+    const QString normalizedDuration = formatTime(safeDuration);
+    QByteArray coverArray;
+    if (!coverBytes.empty()) {
+        coverArray = QByteArray(reinterpret_cast<const char*>(coverBytes.data()), static_cast<int>(coverBytes.size()));
+    }
+    const bool coverChanged = m_coverBytes != coverArray;
+    const QString coverSource = !coverChanged
+        ? m_coverImageSource
+        : (coverArray.isEmpty()
+            ? QString()
+            : QStringLiteral("data:image/jpeg;base64,%1").arg(QString::fromLatin1(coverArray.toBase64())));
+
     const bool changed = m_trackTitle != title ||
                          m_trackArtist != artist ||
                          m_trackCollection != collection ||
-                         m_elapsedTime != elapsed;
+                         m_elapsedTime != normalizedElapsed ||
+                         m_durationTime != normalizedDuration ||
+                         m_positionSeconds != safePosition ||
+                         m_durationSeconds != safeDuration ||
+                         coverChanged;
     const bool playbackChangedValue = m_playing != playing;
 
     m_trackTitle = title;
     m_trackArtist = artist;
     m_trackCollection = collection;
-    m_elapsedTime = elapsed;
+    m_elapsedTime = normalizedElapsed;
+    m_durationTime = normalizedDuration;
+    m_positionSeconds = safePosition;
+    m_durationSeconds = safeDuration;
+    m_coverBytes = std::move(coverArray);
+    m_coverImageSource = coverSource;
     m_playing = playing;
 
     if (changed) {
@@ -214,7 +253,10 @@ bool MobileRemoteInputController::event(QEvent* event)
             QString::fromStdString(mediaEvent->GetArtist()),
             QString::fromStdString(mediaEvent->GetCollection()),
             QString::fromStdString(mediaEvent->GetElapsed()),
-            mediaEvent->IsPlaying()
+            mediaEvent->IsPlaying(),
+            mediaEvent->GetPositionSeconds(),
+            mediaEvent->GetDurationSeconds(),
+            mediaEvent->GetCoverBytes()
         );
         return true;
     }
@@ -347,6 +389,29 @@ void MobileRemoteInputController::setReadyState(const bool ready)
     if (m_ready) {
         requestNowPlayingUpdate();
     }
+}
+
+QString MobileRemoteInputController::formatTime(const double seconds)
+{
+    if (seconds <= 0.0) {
+        return QString();
+    }
+
+    const int total = static_cast<int>(seconds);
+    const int hours = total / 3600;
+    const int minutes = (total % 3600) / 60;
+    const int secs = total % 60;
+
+    if (hours > 0) {
+        return QStringLiteral("%1:%2:%3")
+            .arg(hours)
+            .arg(minutes, 2, 10, QChar('0'))
+            .arg(secs, 2, 10, QChar('0'));
+    }
+
+    return QStringLiteral("%1:%2")
+        .arg(minutes)
+        .arg(secs, 2, 10, QChar('0'));
 }
 
 MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecialKey(const int qtKey)

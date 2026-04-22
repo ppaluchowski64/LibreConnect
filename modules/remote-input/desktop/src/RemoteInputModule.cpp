@@ -1,36 +1,22 @@
 #include <RemoteInputModule.h>
 #include <ConnectionManager.h>
+#include <MediaTrackInfo.h>
 
 #include <asio/post.hpp>
 
 #include <algorithm>
-#include <mutex>
-#include <optional>
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #ifdef MACOS_DEVICE
 #include <ApplicationServices/ApplicationServices.h>
 #endif
 
-#ifdef _WIN32
-#if defined(__has_include)
-    #if __has_include(<winrt/base.h>) && __has_include(<winrt/Windows.Media.Control.h>)
-        #include <winrt/base.h>
-        #include <winrt/Windows.Foundation.h>
-        #include <winrt/Windows.Media.Control.h>
-        #define LIBRECONNECT_HAS_WINRT_MEDIA_INFO 1
-    #else
-        #define LIBRECONNECT_HAS_WINRT_MEDIA_INFO 0
-    #endif
-#else
-    #define LIBRECONNECT_HAS_WINRT_MEDIA_INFO 0
-#endif
-#endif
-
 namespace {
 constexpr size_t FUTURES_WAIT_DELAY = 10;
+constexpr size_t MAX_MEDIA_COVER_BYTES = 120 * 1024;
 
 bool IsInputDeliveryState(const ModuleState state) {
     return state == ModuleState::Enabled || state == ModuleState::Enabling;
@@ -42,6 +28,9 @@ struct MediaInfoSnapshot {
     std::string collection;
     std::string elapsed;
     bool playing = false;
+    double positionSeconds = 0.0;
+    double durationSeconds = 0.0;
+    std::vector<uint8_t> coverBytes;
 };
 
 std::string FormatElapsedTime(const long long elapsedSeconds) {
@@ -61,60 +50,26 @@ std::string FormatElapsedTime(const long long elapsedSeconds) {
     return stream.str();
 }
 
+MediaInfoSnapshot GetMediaInfoSnapshot() {
 #ifdef _WIN32
-std::optional<MediaInfoSnapshot> GetWindowsMediaInfo() {
-#if LIBRECONNECT_HAS_WINRT_MEDIA_INFO
-    static std::once_flag apartmentInitFlag;
-    std::call_once(apartmentInitFlag, []() {
-        winrt::init_apartment(winrt::apartment_type::multi_threaded);
-    });
-
-    try {
-        using namespace winrt::Windows::Media::Control;
-        const auto manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
-        if (!manager) {
-            return std::nullopt;
-        }
-
-        const auto session = manager.GetCurrentSession();
-        if (!session) {
-            return std::nullopt;
-        }
-
+    if (const auto track = MediaTrackInfo::GetCurrentTrack(); track.has_value()) {
         MediaInfoSnapshot snapshot;
+        snapshot.title = track->title;
+        snapshot.artist = track->artist;
+        snapshot.collection = track->album;
+        snapshot.playing = track->playing;
+        snapshot.positionSeconds = std::max(0.0, track->position);
+        snapshot.durationSeconds = std::max(0.0, track->duration);
 
-        const auto mediaProperties = session.TryGetMediaPropertiesAsync().get();
-        if (mediaProperties) {
-            snapshot.title = winrt::to_string(mediaProperties.Title());
-            snapshot.artist = winrt::to_string(mediaProperties.Artist());
-            snapshot.collection = winrt::to_string(mediaProperties.AlbumTitle());
+        if (snapshot.positionSeconds > 0.0) {
+            snapshot.elapsed = FormatElapsedTime(static_cast<long long>(snapshot.positionSeconds));
         }
 
-        const auto timeline = session.GetTimelineProperties();
-        const long long elapsedSeconds = timeline.Position().count() / 10000000;
-        if (elapsedSeconds > 0) {
-            snapshot.elapsed = FormatElapsedTime(elapsedSeconds);
-        }
-
-        const auto playback = session.GetPlaybackInfo();
-        if (playback) {
-            snapshot.playing = playback.PlaybackStatus() == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
+        if (!track->cover.empty() && track->cover.size() <= MAX_MEDIA_COVER_BYTES) {
+            snapshot.coverBytes = track->cover;
         }
 
         return snapshot;
-    } catch (...) {
-        return std::nullopt;
-    }
-#else
-    return std::nullopt;
-#endif
-}
-#endif
-
-MediaInfoSnapshot GetMediaInfoSnapshot() {
-#ifdef _WIN32
-    if (const auto info = GetWindowsMediaInfo(); info.has_value()) {
-        return info.value();
     }
 #endif
 
@@ -122,13 +77,18 @@ MediaInfoSnapshot GetMediaInfoSnapshot() {
 }
 
 void SendMediaInfoSnapshot(const MediaInfoSnapshot& snapshot) {
+    std::vector<uint8_t> coverPayload = snapshot.coverBytes;
+
     ConnectionManager::Send(
         PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE,
         snapshot.title,
         snapshot.artist,
         snapshot.collection,
         snapshot.elapsed,
-        snapshot.playing
+        snapshot.playing,
+        snapshot.positionSeconds,
+        snapshot.durationSeconds,
+        std::move(coverPayload)
     );
 }
 
@@ -255,6 +215,24 @@ void RemoteInputModule::EnableResponseCallbacks() {
         const MediaInfoSnapshot snapshot = GetMediaInfoSnapshot();
         SendMediaInfoSnapshot(snapshot);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION, [instance](PC_Package&& package) mutable {
+        if (!IsInputDeliveryState(instance->GetModuleState())) {
+            return;
+        }
+
+        if (!EnsureRemoteInputPermission()) {
+            return;
+        }
+
+        const double seconds = std::max(0.0, package->GetValue<double>());
+        asio::post(instance->m_moduleStrand, [seconds]() {
+#ifdef _WIN32
+            MediaTrackInfo::SetPosition(seconds);
+#else
+            (void)seconds;
+#endif
+        });
+    });
 }
 
 void RemoteInputModule::DisableResponseCallbacks() {
@@ -264,6 +242,7 @@ void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_INPUT);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_REQUEST_MEDIA_INFO);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION);
 }
 
 void RemoteInputModule::OnInitialize() {}

@@ -5,6 +5,8 @@
 #include <QTimer>
 #include <QString>
 #include <QChar>
+#include <QByteArray>
+#include <vector>
 
 class MobileRemoteInputController : public QObject
 {
@@ -18,6 +20,10 @@ class MobileRemoteInputController : public QObject
     Q_PROPERTY(QString trackArtist READ trackArtist NOTIFY nowPlayingChanged)
     Q_PROPERTY(QString trackCollection READ trackCollection NOTIFY nowPlayingChanged)
     Q_PROPERTY(QString elapsedTime READ elapsedTime NOTIFY nowPlayingChanged)
+    Q_PROPERTY(QString durationTime READ durationTime NOTIFY nowPlayingChanged)
+    Q_PROPERTY(double positionSeconds READ positionSeconds NOTIFY nowPlayingChanged)
+    Q_PROPERTY(double durationSeconds READ durationSeconds NOTIFY nowPlayingChanged)
+    Q_PROPERTY(QString coverImageSource READ coverImageSource NOTIFY nowPlayingChanged)
     Q_PROPERTY(bool hasTrackInfo READ hasTrackInfo NOTIFY nowPlayingChanged)
 
 public:
@@ -31,17 +37,25 @@ public:
     QString trackArtist() const { return m_trackArtist; }
     QString trackCollection() const { return m_trackCollection; }
     QString elapsedTime() const { return m_elapsedTime; }
+    QString durationTime() const { return m_durationTime; }
+    double positionSeconds() const { return m_positionSeconds; }
+    double durationSeconds() const { return m_durationSeconds; }
+    QString coverImageSource() const { return m_coverImageSource; }
     bool hasTrackInfo() const;
 
     Q_INVOKABLE void setSessionActive(bool active);
     Q_INVOKABLE void sendMediaSignal(int signal);
+    Q_INVOKABLE void seekTo(double seconds);
     Q_INVOKABLE void sendQtKeyEvent(int qtKey, const QString& text, int modifiers);
-    Q_INVOKABLE void setNowPlayingInfo(
+    void setNowPlayingInfo(
         const QString& title,
         const QString& artist,
         const QString& collection,
         const QString& elapsed,
-        bool playing
+        bool playing,
+        double positionSeconds = 0.0,
+        double durationSeconds = 0.0,
+        const std::vector<uint8_t>& coverBytes = {}
     );
 
 signals:
@@ -69,6 +83,7 @@ private:
     void setReadyState(bool ready);
     static KeyMapping mapQtSpecialKey(int qtKey);
     static KeyMapping mapCharacter(QChar c);
+    static QString formatTime(double seconds);
     void updateAndroidMediaNotification() const;
     void hideAndroidMediaNotification() const;
 
@@ -84,4 +99,9 @@ private:
     QString m_trackArtist;
     QString m_trackCollection;
     QString m_elapsedTime;
+    QString m_durationTime;
+    double m_positionSeconds = 0.0;
+    double m_durationSeconds = 0.0;
+    QByteArray m_coverBytes;
+    QString m_coverImageSource;
 };

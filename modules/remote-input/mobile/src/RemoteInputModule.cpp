@@ -3,6 +3,7 @@
 #include <RemoteInputEvents.h>
 
 #include <memory>
+#include <vector>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
@@ -16,6 +17,10 @@ void RemoteInputModule::SendMediaInput(const MediaSignal signal) {
 
 void RemoteInputModule::RequestMediaInfo() {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_REQUEST_MEDIA_INFO);
+}
+
+void RemoteInputModule::SetMediaPosition(const double seconds) {
+    ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION, seconds);
 }
 
 void RemoteInputModule::EnableResponseCallbacks() {
@@ -51,13 +56,26 @@ void RemoteInputModule::EnableResponseCallbacks() {
         const std::string collection = package->GetValue<std::string>();
         const std::string elapsed = package->GetValue<std::string>();
         const bool playing = package->GetValue<bool>();
+        double positionSeconds = 0.0;
+        double durationSeconds = 0.0;
+        std::vector<uint8_t> coverBytes;
+
+        // Keep compatibility with peers that still send the old 5-field payload.
+        try {
+            positionSeconds = package->GetValue<double>();
+            durationSeconds = package->GetValue<double>();
+            coverBytes = package->GetValue<std::vector<uint8_t>>();
+        } catch (...) {}
 
         const std::unique_ptr<QEvent> event = std::make_unique<RemoteMediaInfoEvent>(
             title,
             artist,
             collection,
             elapsed,
-            playing
+            playing,
+            positionSeconds,
+            durationSeconds,
+            std::move(coverBytes)
         );
         ConnectionManager::SendEvent(event);
     });

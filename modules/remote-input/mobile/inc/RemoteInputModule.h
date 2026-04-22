@@ -9,6 +9,7 @@ public:
     static void SendInput(Key key, InputEventType type);
     static void SendMediaInput(MediaSignal signal);
     static void RequestMediaInfo();
+    static void SetMediaPosition(double seconds);
 
 protected:
     void EnableResponseCallbacks() override;
