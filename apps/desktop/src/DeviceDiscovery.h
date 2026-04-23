@@ -3,11 +3,17 @@
 #include <QTimer>
 #include <QVariantMap>
 #include <QSet>
+#include <QPointer>
+#include <memory>
 #include <string>
+#include <system_error>
 
 #include "DeviceModel.h"
 #include <Scanner.h>
 #include <ConnectionManager.h>
+#include <Events.h>
+#include <PermissionManager.h>
+#include <ThreadPool.h>
 #include <boost/uuid/uuid_io.hpp>
 
 class DeviceDiscovery : public QObject {
@@ -35,21 +41,30 @@ public:
         if (!m_searching) {
             m_model.clear();
             setSearching(true);
-
-            LanDeviceScanner::BeginScan();
-            m_timer.start();
+            ++m_discoveryRequestToken;
+#ifdef MACOS_DEVICE
+            startScanAfterPermissionCheck(m_discoveryRequestToken);
+#else
+            startScanner();
+#endif
             return;
         }
 
-        onDiscoveryTimeout();
+        if (m_scanStarted) {
+            onDiscoveryTimeout();
+        }
     }
 
     Q_INVOKABLE void cancelScan() {
         if (!m_searching)
             return;
 
-        m_timer.stop();
-        LanDeviceScanner::EndScan();
+        ++m_discoveryRequestToken;
+        if (m_scanStarted) {
+            m_timer.stop();
+            LanDeviceScanner::EndScan();
+            m_scanStarted = false;
+        }
         setSearching(false);
     }
 
@@ -74,7 +89,7 @@ signals:
 
 private slots:
     void onDiscoveryTimeout() {
-        if (!m_searching)
+        if (!m_searching || !m_scanStarted)
             return;
 
         const std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
@@ -102,6 +117,56 @@ private slots:
     }
 
 private:
+    void startScanner() {
+        if (m_scanStarted) {
+            return;
+        }
+
+        LanDeviceScanner::BeginScan();
+        m_timer.start();
+        m_scanStarted = true;
+    }
+
+#ifdef MACOS_DEVICE
+    void startScanAfterPermissionCheck(const quint64 requestToken) {
+        asio::co_spawn(
+            ThreadPool::GetContext(),
+            [weakThis = QPointer<DeviceDiscovery>(this), requestToken]() -> asio::awaitable<void> {
+                const bool granted = co_await PermissionManager::RequestLocalNetworkAccessPermission();
+                if (!weakThis) {
+                    co_return;
+                }
+
+                QMetaObject::invokeMethod(
+                    weakThis.data(),
+                    [weakThis, requestToken, granted]() {
+                        if (!weakThis || !weakThis->m_searching || weakThis->m_discoveryRequestToken != requestToken) {
+                            return;
+                        }
+
+                        if (!granted) {
+                            weakThis->setSearching(false);
+                            weakThis->emitLocalNetworkPermissionDenied();
+                            return;
+                        }
+
+                        weakThis->startScanner();
+                    },
+                    Qt::QueuedConnection
+                );
+
+                co_return;
+            },
+            asio::detached
+        );
+    }
+
+    static void emitLocalNetworkPermissionDenied() {
+        const auto permissionDeniedError = std::make_error_code(std::errc::permission_denied);
+        ConnectionManager::SendEvent(std::make_unique<ScannerErrorEvent>(permissionDeniedError));
+    }
+#endif
+
     void setSearching(bool s) {
         if (m_searching == s)
             return;
@@ -111,5 +176,7 @@ private:
 
     DeviceModel m_model;
     bool m_searching = false;
+    bool m_scanStarted = false;
+    quint64 m_discoveryRequestToken = 0;
     QTimer m_timer;
 };

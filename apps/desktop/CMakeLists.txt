@@ -20,6 +20,16 @@ BuildQTExecutable(appLibreConnect_desktop
         modules-manager
 )
 
+if (APPLE AND NOT IOS)
+    set_target_properties(appLibreConnect_desktop PROPERTIES
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSInfo.plist.in"
+            MACOSX_BUNDLE_BUNDLE_NAME "LibreConnect"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.libreconnect.desktop"
+            MACOSX_BUNDLE_BUNDLE_VERSION "1.0"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    )
+endif()
+
 LinkVirtualCameraLibs(appLibreConnect_desktop)
 if (WIN32)
     LinkFFMPEGLibs(appLibreConnect_desktop)

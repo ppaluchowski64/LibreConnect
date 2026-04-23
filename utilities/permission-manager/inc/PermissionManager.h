@@ -6,6 +6,9 @@
 
 class PermissionManager {
 public:
+    static asio::awaitable<bool> RequestLocalNetworkAccessPermission();
+    static bool IsLocalNetworkAccessPermissionGranted();
+
 #ifdef ANDROID_DEVICE
     static asio::awaitable<bool> RequestDisablingBatteryOptimizations();
     static asio::awaitable<bool> RequestNotificationAccessPermission();

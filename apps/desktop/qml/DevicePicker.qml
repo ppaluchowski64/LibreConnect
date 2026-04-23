@@ -9,6 +9,7 @@ Page {
     required property var connectionController
     property bool allowBackToPairedDevices: false
     readonly property string windowTitleSuffix: "Setup"
+    property string statusMessage: ""
 
     DeviceDiscovery {
         id: discovery
@@ -25,6 +26,7 @@ Page {
         if (deviceListView.currentIndex < 0 || isConnecting)
             return
 
+        statusMessage = ""
         const dev = discovery.deviceAt(deviceListView.currentIndex)
         windowRef.prepareConnection(dev.deviceId, dev.deviceName, !connectionController.hasPairedDevices)
         connectionAttemptActive = true
@@ -199,7 +201,20 @@ Page {
             height: 48
             font.pixelSize: 16
             enabled: !isConnecting
-            onClicked: discovery.discover()
+            onClicked: {
+                statusMessage = ""
+                discovery.discover()
+            }
+        }
+
+        Text {
+            width: 240
+            text: statusMessage
+            color: Theme.dangerColor
+            font.family: Theme.fontFamily
+            font.pixelSize: 13
+            visible: statusMessage.length > 0
+            wrapMode: Text.WordWrap
         }
     }
 
@@ -249,6 +264,7 @@ Page {
 
         function onConnectedChanged() {
             if (connectionController.connected) {
+                statusMessage = ""
                 endConnectionAttempt(false)
                 discovery.cancelScan()
                 return
@@ -261,7 +277,10 @@ Page {
 
         function onLastErrorChanged() {
             if (connectionController.lastError.length > 0) {
-                endConnectionAttempt(true)
+                statusMessage = connectionController.lastError
+                if (connectionAttemptActive || isConnecting || connectionController.pending || verificationDialog.visible) {
+                    endConnectionAttempt(true)
+                }
             }
         }
 
@@ -373,6 +392,7 @@ Page {
 
     Component.onCompleted: {
         discovery.discover()
+        statusMessage = ""
         console.log("DevicePicker loaded OK")
     }
 }

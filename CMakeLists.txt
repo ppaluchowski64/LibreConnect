@@ -149,6 +149,13 @@ if (APPLE)
             ${IOKIT_LIBRARY}
             ${COREFOUNDATION_LIBRARY}
     )
+
+    if (NOT IOS)
+        find_library(DNSSD_LIBRARY dns_sd)
+        if (DNSSD_LIBRARY)
+            target_link_libraries(permission-manager PUBLIC ${DNSSD_LIBRARY})
+        endif ()
+    endif ()
 endif()
 
 add_subdirectory("utilities/remote-input")

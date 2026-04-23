@@ -26,6 +26,13 @@
 
 namespace {
 constexpr int INVALID_KEY = -1;
+QString AccessibilityPermissionMessage()
+{
+    return QStringLiteral(
+        "Desktop accessibility permission is required for remote input. "
+        "Allow LibreConnect in macOS System Settings > Privacy & Security > Accessibility."
+    );
+}
 
 QString MimeTypeFromImageBytes(const QByteArray& bytes)
 {
@@ -156,10 +163,10 @@ void MobileRemoteInputController::sendMediaSignal(const int signal)
     }
 
     if (!m_accessibilityGranted) {
-        emit accessibilityPermissionRequired(QStringLiteral(
-            "Desktop accessibility permission is required for remote input. "
-            "Allow LibreConnect in macOS System Settings > Privacy & Security > Accessibility."
-        ));
+        const QString message = AccessibilityPermissionMessage();
+        setStatusMessage(QStringLiteral("Desktop accessibility permission is required for remote input."));
+        emit accessibilityPermissionRequired(message);
+        return;
     }
 
     if (signal < static_cast<int>(MediaSignal::PlayPause) ||
@@ -203,10 +210,10 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     }
 
     if (!m_accessibilityGranted) {
-        emit accessibilityPermissionRequired(QStringLiteral(
-            "Desktop accessibility permission is required for remote input. "
-            "Allow LibreConnect in macOS System Settings > Privacy & Security > Accessibility."
-        ));
+        const QString message = AccessibilityPermissionMessage();
+        setStatusMessage(QStringLiteral("Desktop accessibility permission is required for remote input."));
+        emit accessibilityPermissionRequired(message);
+        return;
     }
 
     KeyMapping special = mapQtSpecialKey(qtKey);
@@ -391,10 +398,7 @@ bool MobileRemoteInputController::event(QEvent* event)
         if (rejectedEvent->GetPermissionType() == PermissionType::Accessibility) {
             m_accessibilityGranted = false;
             setStatusMessage(QStringLiteral("Desktop accessibility permission is required for remote input."));
-            emit accessibilityPermissionRequired(QStringLiteral(
-                "Desktop accessibility permission is required for remote input. "
-                "Allow LibreConnect in macOS System Settings > Privacy & Security > Accessibility."
-            ));
+            emit accessibilityPermissionRequired(AccessibilityPermissionMessage());
         }
         return true;
     }
@@ -438,8 +442,10 @@ void MobileRemoteInputController::refreshState()
     }
 
     if (state == ModuleState::Enabling || state == ModuleState::Enabled) {
-        setReadyState(true);
-        setStatusMessage(QStringLiteral("Remote input is ready."));
+        setReadyState(m_accessibilityGranted);
+        setStatusMessage(m_accessibilityGranted
+            ? QStringLiteral("Remote input is ready.")
+            : QStringLiteral("Desktop accessibility permission is required for remote input."));
         return;
     }
 

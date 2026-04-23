@@ -4,6 +4,7 @@
 #include <asio/ssl/error.hpp>
 #include <algorithm>
 #include <cctype>
+#include <system_error>
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <QRegularExpression>
@@ -382,6 +383,17 @@ void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
     if (IsBenignScannerShutdownError(ev->GetErrorCode())) {
         return;
     }
+
+#ifdef MACOS_DEVICE
+    if (ev->GetErrorCode() == std::make_error_code(std::errc::permission_denied)) {
+        handleError(
+            "Local network permission is required to discover devices. "
+            "Allow LibreConnect in System Settings > Privacy & Security > Local Network, then try again.",
+            ev->type()
+        );
+        return;
+    }
+#endif
 
     handleError(CapitalizeErrorMessage(ev->GetErrorCode().message()), ev->type());
 }

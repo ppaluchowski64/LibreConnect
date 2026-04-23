@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -113,26 +114,33 @@ bool IsAccessibilityTrusted(const bool promptForPermission) {
     return trusted;
 }
 
-bool EnsureRemoteInputPermission() {
-    static bool s_reportedGranted = false;
+void ReportRemoteInputPermissionState(const bool granted, const bool forceEmitState) {
+    static std::optional<bool> s_lastReportedState = std::nullopt;
 
-    const bool trusted = IsAccessibilityTrusted(true);
-    if (!trusted) {
-        s_reportedGranted = false;
-        ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Accessibility);
-        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Accessibility);
-        return false;
+    const bool stateChanged = !s_lastReportedState.has_value() || s_lastReportedState.value() != granted;
+    if (!stateChanged && !forceEmitState) {
+        return;
     }
 
-    if (!s_reportedGranted) {
-        s_reportedGranted = true;
+    if (!granted) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Accessibility);
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Accessibility);
+    } else {
         ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Accessibility);
     }
 
-    return true;
+    s_lastReportedState = granted;
+}
+
+bool EnsureRemoteInputPermission(const bool promptForPermission, const bool forceEmitState = false) {
+    const bool trusted = IsAccessibilityTrusted(promptForPermission);
+    ReportRemoteInputPermissionState(trusted, forceEmitState);
+    return trusted;
 }
 #else
-bool EnsureRemoteInputPermission() {
+bool EnsureRemoteInputPermission(const bool promptForPermission, const bool forceEmitState = false) {
+    (void)promptForPermission;
+    (void)forceEmitState;
     return true;
 }
 #endif
@@ -169,7 +177,7 @@ void RemoteInputModule::EnableResponseCallbacks() {
             return;
         }
 
-        if (!EnsureRemoteInputPermission()) {
+        if (!EnsureRemoteInputPermission(false)) {
             return;
         }
 
@@ -197,7 +205,7 @@ void RemoteInputModule::EnableResponseCallbacks() {
             return;
         }
 
-        if (!EnsureRemoteInputPermission()) {
+        if (!EnsureRemoteInputPermission(false)) {
             return;
         }
 
@@ -220,7 +228,7 @@ void RemoteInputModule::EnableResponseCallbacks() {
             return;
         }
 
-        if (!EnsureRemoteInputPermission()) {
+        if (!EnsureRemoteInputPermission(false)) {
             return;
         }
 
@@ -248,6 +256,10 @@ void RemoteInputModule::DisableResponseCallbacks() {
 void RemoteInputModule::OnInitialize() {}
 
 asio::awaitable<void> RemoteInputModule::OnEnable() {
+    if (!EnsureRemoteInputPermission(true, true)) {
+        Debug::LogWarning("RemoteInputModule: Accessibility permission not granted; remote input delivery is blocked.");
+    }
+
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, true);
 
