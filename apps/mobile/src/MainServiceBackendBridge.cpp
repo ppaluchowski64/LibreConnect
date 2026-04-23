@@ -6,20 +6,212 @@
 #include <vector>
 #include <filesystem>
 #include <system_error>
+#include <memory>
+#include <QSettings>
 
 #include <ConnectionManager.h>
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <ThreadPool.h>
+#include <Events.h>
 
 namespace
 {
 std::mutex g_backendMutex;
 bool g_backendRunning = false;
+bool g_findMyHandlersRegistered = false;
 std::mutex g_storageConfigMutex;
 bool g_storageConfigured = false;
 std::string g_storageRoot;
 std::mutex g_cameraFrameCallbackMutex;
+std::mutex g_jniStateMutex;
+JavaVM* g_javaVm = nullptr;
+jobject g_serviceContextGlobal = nullptr;
+jclass g_findMyPhoneClass = nullptr;
+jmethodID g_findMyPhoneStartMethod = nullptr;
+jmethodID g_findMyPhoneStopMethod = nullptr;
+
+void ReleaseFindMyPhoneJniState(JNIEnv* env)
+{
+    if (!env) {
+        return;
+    }
+
+    if (g_serviceContextGlobal) {
+        env->DeleteGlobalRef(g_serviceContextGlobal);
+        g_serviceContextGlobal = nullptr;
+    }
+
+    if (g_findMyPhoneClass) {
+        env->DeleteGlobalRef(g_findMyPhoneClass);
+        g_findMyPhoneClass = nullptr;
+    }
+
+    g_findMyPhoneStartMethod = nullptr;
+    g_findMyPhoneStopMethod = nullptr;
+}
+
+void CacheFindMyPhoneJniState(JNIEnv* env, jobject serviceContext)
+{
+    if (!env || !serviceContext) {
+        return;
+    }
+
+    env->GetJavaVM(&g_javaVm);
+
+    std::lock_guard<std::mutex> lock(g_jniStateMutex);
+    ReleaseFindMyPhoneJniState(env);
+
+    g_serviceContextGlobal = env->NewGlobalRef(serviceContext);
+    jclass localClass = env->FindClass("com/LibreConnect/mobile/FindMyPhone");
+    if (!localClass) {
+        env->ExceptionClear();
+        Debug::LogError("MainServiceBackendBridge: Failed to resolve FindMyPhone class");
+        return;
+    }
+
+    g_findMyPhoneClass = static_cast<jclass>(env->NewGlobalRef(localClass));
+    env->DeleteLocalRef(localClass);
+    if (!g_findMyPhoneClass) {
+        Debug::LogError("MainServiceBackendBridge: Failed to create global class reference for FindMyPhone");
+        return;
+    }
+
+    g_findMyPhoneStartMethod = env->GetStaticMethodID(
+        g_findMyPhoneClass,
+        "startAlert",
+        "(Landroid/content/Context;Ljava/lang/String;)V"
+    );
+    if (!g_findMyPhoneStartMethod) {
+        env->ExceptionClear();
+        Debug::LogError("MainServiceBackendBridge: Failed to resolve FindMyPhone.startAlert");
+    }
+
+    g_findMyPhoneStopMethod = env->GetStaticMethodID(
+        g_findMyPhoneClass,
+        "stopAlert",
+        "(Landroid/content/Context;)V"
+    );
+    if (!g_findMyPhoneStopMethod) {
+        env->ExceptionClear();
+        Debug::LogError("MainServiceBackendBridge: Failed to resolve FindMyPhone.stopAlert");
+    }
+}
+
+template <typename Fn>
+void WithJniEnv(Fn&& fn)
+{
+    JavaVM* vm = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_jniStateMutex);
+        vm = g_javaVm;
+    }
+
+    if (!vm) {
+        return;
+    }
+
+    JNIEnv* env = nullptr;
+    bool attachedHere = false;
+    const jint envStatus = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (envStatus == JNI_EDETACHED) {
+        if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+            Debug::LogError("MainServiceBackendBridge: Failed to attach thread to JVM");
+            return;
+        }
+        attachedHere = true;
+    } else if (envStatus != JNI_OK || !env) {
+        Debug::LogError("MainServiceBackendBridge: Failed to acquire JNIEnv");
+        return;
+    }
+
+    fn(env);
+
+    if (attachedHere) {
+        vm->DetachCurrentThread();
+    }
+}
+
+void StartFindMyPhoneAlertFromService()
+{
+    bool started = false;
+    WithJniEnv([&started](JNIEnv* env) {
+        if (!env) {
+            return;
+        }
+
+        jobject context = nullptr;
+        jclass clazz = nullptr;
+        jmethodID method = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(g_jniStateMutex);
+            context = g_serviceContextGlobal;
+            clazz = g_findMyPhoneClass;
+            method = g_findMyPhoneStartMethod;
+        }
+
+        if (!context || !clazz || !method) {
+            Debug::LogWarning("MainServiceBackendBridge: FindMyPhone JNI state unavailable for start alert");
+            return;
+        }
+
+        QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnectMobile"));
+        const QString ringtoneUri = settings.value(QStringLiteral("findMyPhone/ringtoneUri"), QString()).toString().trimmed();
+        const jstring ringtoneJString = env->NewStringUTF(ringtoneUri.toUtf8().constData());
+
+        env->CallStaticVoidMethod(clazz, method, context, ringtoneJString);
+        env->DeleteLocalRef(ringtoneJString);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            Debug::LogError("MainServiceBackendBridge: Exception while calling FindMyPhone.startAlert");
+            return;
+        }
+
+        settings.setValue(QStringLiteral("findMyPhone/alertActive"), true);
+        started = true;
+    });
+
+    if (started) {
+        ConnectionManager::SendEvent(std::make_unique<FindMyPhoneAlertStateEvent>(true));
+    }
+}
+
+void StopFindMyPhoneAlertFromService()
+{
+    WithJniEnv([](JNIEnv* env) {
+        if (!env) {
+            return;
+        }
+
+        jobject context = nullptr;
+        jclass clazz = nullptr;
+        jmethodID method = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(g_jniStateMutex);
+            context = g_serviceContextGlobal;
+            clazz = g_findMyPhoneClass;
+            method = g_findMyPhoneStopMethod;
+        }
+
+        if (!context || !clazz || !method) {
+            QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnectMobile"));
+            settings.setValue(QStringLiteral("findMyPhone/alertActive"), false);
+            return;
+        }
+
+        env->CallStaticVoidMethod(clazz, method, context);
+        QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnectMobile"));
+        settings.setValue(QStringLiteral("findMyPhone/alertActive"), false);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            Debug::LogError("MainServiceBackendBridge: Exception while calling FindMyPhone.stopAlert");
+        }
+    });
+
+    ConnectionManager::SendEvent(std::make_unique<FindMyPhoneAlertStateEvent>(false));
+}
 
 std::string JStringToStdString(JNIEnv* env, jstring value)
 {
@@ -111,6 +303,15 @@ void StartBackendIfNeeded()
     Debug::Log("MainServiceBackendBridge: starting backend");
     ThreadPool::Start();
     ConnectionManager::StartAcceptingConnections();
+    if (!g_findMyHandlersRegistered) {
+        ConnectionManager::AddResponseHandler(PC_PackageType::FIND_MY_PHONE_START_RINGING, [](PC_Package&&) {
+            StartFindMyPhoneAlertFromService();
+        });
+        ConnectionManager::AddResponseHandler(PC_PackageType::FIND_MY_PHONE_STOP_RINGING, [](PC_Package&&) {
+            StopFindMyPhoneAlertFromService();
+        });
+        g_findMyHandlersRegistered = true;
+    }
     LanDeviceScanner::BeginScan();
     g_backendRunning = true;
 }
@@ -123,6 +324,12 @@ void StopBackendIfNeeded()
     }
 
     Debug::Log("MainServiceBackendBridge: stopping backend");
+    if (g_findMyHandlersRegistered) {
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::FIND_MY_PHONE_START_RINGING);
+        ConnectionManager::RemoveResponseHandler(PC_PackageType::FIND_MY_PHONE_STOP_RINGING);
+        g_findMyHandlersRegistered = false;
+    }
+    StopFindMyPhoneAlertFromService();
     LanDeviceScanner::EndScan();
     ConnectionManager::StopAcceptingConnections();
 
@@ -179,15 +386,18 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeStartBackend(
-    JNIEnv*,
-    jobject)
+    JNIEnv* env,
+    jobject thiz)
 {
+    CacheFindMyPhoneJniState(env, thiz);
     StartBackendIfNeeded();
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeStopBackend(
-    JNIEnv*,
+    JNIEnv* env,
     jobject)
 {
     StopBackendIfNeeded();
+    std::lock_guard<std::mutex> lock(g_jniStateMutex);
+    ReleaseFindMyPhoneJniState(env);
 }

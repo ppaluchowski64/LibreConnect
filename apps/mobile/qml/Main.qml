@@ -324,6 +324,54 @@ ApplicationWindow {
         }
     }
 
+    Dialog {
+        id: findMyPhoneDialog
+        title: ""
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(root.width - 24, 360)
+        closePolicy: Popup.NoAutoClose
+        padding: 16
+        background: Rectangle {
+            radius: 24
+            color: Theme.panelColor
+            border.width: 1
+            border.color: Theme.panelBorderColor
+        }
+        Overlay.modal: Rectangle {
+            color: Theme.dark ? "#99000000" : "#73000000"
+        }
+
+        contentItem: Column {
+            spacing: 12
+            width: findMyPhoneDialog.availableWidth
+
+            Text {
+                width: parent.width
+                text: "Find My Phone"
+                color: Theme.textColor
+                font.pixelSize: 22
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: "Your phone is ringing. Tap OK to stop."
+                color: Theme.mutedTextColor
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Button {
+                width: parent.width
+                text: "OK"
+                Material.elevation: 1
+                onClicked: conn.stopFindMyPhoneAlert()
+            }
+        }
+    }
+
     onClosing: function(close) {
         if (challengeDialog.visible) {
             challengeDialog.close()
@@ -354,6 +402,17 @@ ApplicationWindow {
                 challengeDialog.close()
             }
         }
+
+        function onFindMyPhoneAlertActiveChanged() {
+            if (conn.findMyPhoneAlertActive) {
+                if (!findMyPhoneDialog.visible)
+                    findMyPhoneDialog.open()
+                return
+            }
+
+            if (findMyPhoneDialog.visible)
+                findMyPhoneDialog.close()
+        }
     }
 
     Component.onCompleted: {
@@ -362,5 +421,7 @@ ApplicationWindow {
         conn.refreshPairedDevices()
         conn.refreshPermissionStatuses()
         root.updateConnectedRoute()
+        if (conn.findMyPhoneAlertActive)
+            findMyPhoneDialog.open()
     }
 }

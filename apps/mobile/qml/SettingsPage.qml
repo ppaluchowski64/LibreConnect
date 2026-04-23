@@ -21,6 +21,16 @@ Page {
         return 0
     }
 
+    function currentFindMyPhoneRingtoneIndex() {
+        const options = page.conn.findMyPhoneRingtoneOptions
+        const targetValue = page.conn.findMyPhoneRingtoneUri
+        for (let i = 0; i < options.length; ++i) {
+            if (options[i].value === targetValue)
+                return i
+        }
+        return 0
+    }
+
     background: Rectangle {
         color: Theme.backgroundColor
     }
@@ -296,6 +306,60 @@ Page {
 
                     Text {
                         Layout.fillWidth: true
+                        text: "Find My Phone ringtone"
+                        color: Theme.textColor
+                        font.pixelSize: 14
+                        font.bold: true
+                    }
+
+                    ComboBox {
+                        id: ringtoneCombo
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 48
+                        model: page.conn.findMyPhoneRingtoneOptions
+                        textRole: "label"
+                        currentIndex: page.currentFindMyPhoneRingtoneIndex()
+                        focusPolicy: Qt.NoFocus
+                        Material.accent: Theme.accentColor
+                        onActivated: {
+                            const selected = page.conn.findMyPhoneRingtoneOptions[currentIndex]
+                            if (!selected)
+                                return
+                            page.conn.setFindMyPhoneRingtoneUri(selected.value)
+                        }
+
+                        contentItem: Text {
+                            leftPadding: 14
+                            rightPadding: ringtoneCombo.indicator.width + 18
+                            text: ringtoneCombo.displayText
+                            font: ringtoneCombo.font
+                            color: Theme.textColor
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+
+                        indicator: Text {
+                            x: ringtoneCombo.width - width - 14
+                            y: (ringtoneCombo.height - height) / 2
+                            text: "v"
+                            color: Theme.textColor
+                            font.pixelSize: 14
+                        }
+
+                        background: Rectangle {
+                            radius: 10
+                            color: ringtoneCombo.pressed
+                                   ? (Theme.dark ? Qt.lighter(Theme.buttonColor, 1.16) : Qt.darker(Theme.buttonColor, 1.06))
+                                   : (ringtoneCombo.hovered
+                                      ? (Theme.dark ? Qt.lighter(Theme.buttonColor, 1.10) : Qt.darker(Theme.buttonColor, 1.03))
+                                      : Theme.buttonColor)
+                            border.width: 1
+                            border.color: Theme.panelBorderColor
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
                         text: page.clipboardSyncController.statusMessage
                         color: Theme.mutedTextColor
                         font.pixelSize: 13
@@ -305,4 +369,6 @@ Page {
             }
         }
     }
+
+    Component.onCompleted: page.conn.refreshFindMyPhoneRingtones()
 }

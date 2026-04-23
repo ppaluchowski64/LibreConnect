@@ -7,6 +7,7 @@ BuildQTExecutable(appLibreConnect_mobile
         Qt6::Quick
         modules-manager
         network-camera-module
+        find-my
 )
 
 LinkVirtualCameraLibs(appLibreConnect_mobile)

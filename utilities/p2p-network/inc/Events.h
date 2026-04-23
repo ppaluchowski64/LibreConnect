@@ -112,4 +112,19 @@ private:
 
 };
 
+class FindMyPhoneAlertStateEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase + 6);
+    explicit FindMyPhoneAlertStateEvent(const bool active) : QEvent(Type), m_active(active) {}
+
+    bool IsActive() const { return m_active; }
+
+    FindMyPhoneAlertStateEvent* clone() const override {
+        return new FindMyPhoneAlertStateEvent(*this);
+    }
+
+private:
+    bool m_active;
+};
+
 #endif //EVENTS_H

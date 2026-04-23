@@ -83,6 +83,7 @@
         <service android:name=".MainService"
                  android:label="LibreConnect Main Service"
                  android:exported="true"
+                 android:stopWithTask="false"
                  android:foregroundServiceType="connectedDevice|camera"
                  tools:ignore="ForegroundServicePermission">
         </service>

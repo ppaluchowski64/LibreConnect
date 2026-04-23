@@ -23,9 +23,11 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(bool verificationPending READ verificationPending NOTIFY verificationPendingChanged)
     Q_PROPERTY(int verificationTriesLeft READ verificationTriesLeft NOTIFY verificationTriesLeftChanged)
     Q_PROPERTY(QString verificationError READ verificationError NOTIFY verificationErrorChanged)
+    Q_PROPERTY(bool findMyPhoneAlertActive READ findMyPhoneAlertActive NOTIFY findMyPhoneAlertActiveChanged)
 
 public:
     explicit DeviceConnectionController(QObject* parent = nullptr);
+    ~DeviceConnectionController() override;
 
     bool connected()  const { return m_connected; }
     bool pending()    const { return m_pending; }
@@ -34,6 +36,7 @@ public:
     bool verificationPending() const { return m_verificationPending; }
     int verificationTriesLeft() const { return m_verificationTriesLeft; }
     QString verificationError() const { return m_verificationError; }
+    bool findMyPhoneAlertActive() const { return m_findMyPhoneAlertActive; }
 
     Q_INVOKABLE void connectTo(const QString& ipAddress,
                                quint16 port,
@@ -45,6 +48,8 @@ public:
     Q_INVOKABLE void submitVerificationCode(const QString& code);
     Q_INVOKABLE void cancelVerification();
     Q_INVOKABLE void refreshPairedDevices();
+    Q_INVOKABLE bool startFindMyPhoneAlert();
+    Q_INVOKABLE void stopFindMyPhoneAlert();
 
     signals:
         void connectedChanged();
@@ -54,6 +59,7 @@ public:
     void verificationPendingChanged();
     void verificationTriesLeftChanged();
     void verificationErrorChanged();
+    void findMyPhoneAlertActiveChanged();
 
     void incomingConnectionRequested(QString deviceName);
     void verificationFailed(int triesLeft);
@@ -72,6 +78,7 @@ private:
 
     void handleError(const std::string& message);
     void handleError(const std::string& message, QEvent::Type eventType);
+    void setFindMyPhoneAlertActive(bool active);
 
     bool m_connected = false;
     bool m_pending   = false;
@@ -80,5 +87,6 @@ private:
     bool m_verificationPending = false;
     int m_verificationTriesLeft = 0;
     QString m_verificationError;
+    bool m_findMyPhoneAlertActive = false;
     std::unique_ptr<ConnectionVerificationEvent> m_verificationEvent;
 };

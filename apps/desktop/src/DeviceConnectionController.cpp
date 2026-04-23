@@ -4,6 +4,8 @@
 #include <asio/ssl/error.hpp>
 #include <algorithm>
 #include <cctype>
+#include <QCoreApplication>
+#include <QMetaObject>
 #include <QRegularExpression>
 
 namespace
@@ -60,13 +62,34 @@ std::string CapitalizeErrorMessage(std::string message)
     }
     return message;
 }
+
+constexpr auto kFindMyPhoneStopPackage = PC_PackageType::FIND_MY_PHONE_STOP_RINGING;
 }
 
 DeviceConnectionController::DeviceConnectionController(QObject* parent)
     : QObject(parent)
 {
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+    ConnectionManager::AddResponseHandler(kFindMyPhoneStopPackage, [weakThis = QPointer<DeviceConnectionController>(this)](PC_Package&&) {
+        if (!weakThis || !qApp) {
+            return;
+        }
+
+        QMetaObject::invokeMethod(qApp, [weakThis]() {
+            if (!weakThis) {
+                return;
+            }
+
+            weakThis->setFindMyPhoneAlertActive(false);
+        }, Qt::QueuedConnection);
+    });
+
     refreshPairedDevices();
+}
+
+DeviceConnectionController::~DeviceConnectionController()
+{
+    ConnectionManager::RemoveResponseHandler(kFindMyPhoneStopPackage);
 }
 
 void DeviceConnectionController::connectTo(const QString& ipAddress,
@@ -132,6 +155,27 @@ void DeviceConnectionController::refreshPairedDevices()
 
     m_hasPairedDevices = hasDevices;
     emit pairedDevicesChanged();
+}
+
+bool DeviceConnectionController::startFindMyPhoneAlert()
+{
+    if (!m_connected) {
+        return false;
+    }
+
+    ConnectionManager::Send(PC_PackageType::FIND_MY_PHONE_START_RINGING);
+    setFindMyPhoneAlertActive(true);
+
+    return true;
+}
+
+void DeviceConnectionController::stopFindMyPhoneAlert()
+{
+    if (m_connected) {
+        ConnectionManager::Send(PC_PackageType::FIND_MY_PHONE_STOP_RINGING);
+    }
+
+    setFindMyPhoneAlertActive(false);
 }
 
 void DeviceConnectionController::submitVerificationCode(const QString& code)
@@ -288,6 +332,7 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
     }
 
     m_verificationEvent.reset();
+    setFindMyPhoneAlertActive(false);
 
     if (pendingChangedValue &&
         !connectedChangedValue &&
@@ -396,4 +441,14 @@ void DeviceConnectionController::handleModuleErrorEvent(ModuleErrorEvent* ev)
         .arg(QString::fromLatin1(ModuleTypeToString(ev->GetModuleType())))
         .arg(QString::fromLatin1(ModuleFailReasonToString(ev->GetError())));
     handleError(message.toStdString(), ev->type());
+}
+
+void DeviceConnectionController::setFindMyPhoneAlertActive(const bool active)
+{
+    if (m_findMyPhoneAlertActive == active) {
+        return;
+    }
+
+    m_findMyPhoneAlertActive = active;
+    emit findMyPhoneAlertActiveChanged();
 }

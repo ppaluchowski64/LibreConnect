@@ -2,7 +2,11 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMetaObject>
+#include <QSet>
 #include <QRandomGenerator>
 #include <QTimer>
 
@@ -16,11 +20,18 @@
 #include <ThreadPool.h>
 
 #ifdef ANDROID_DEVICE
+#include <FindMyBridge.h>
 #include <PermissionManager.h>
+#include <QJniObject>
+#include <QtCore/qcoreapplication_platform.h>
 #endif
 
 namespace
 {
+constexpr auto kFindMyPhoneStopPackage = PC_PackageType::FIND_MY_PHONE_STOP_RINGING;
+constexpr auto kFindMyPhoneRingtoneSetting = "findMyPhone/ringtoneUri";
+constexpr auto kFindMyPhoneAlertActiveSetting = "findMyPhone/alertActive";
+
 QString DeviceTypeToLabel(const DeviceType type)
 {
     switch (type) {
@@ -51,7 +62,6 @@ MobileConnectionController::MobileConnectionController(QObject* parent)
     ).toBool();
 
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
-
     if (auto* guiApp = qobject_cast<QGuiApplication*>(qApp)) {
         QObject::connect(guiApp, &QGuiApplication::applicationStateChanged, this, [this](const Qt::ApplicationState state) {
             if (state != Qt::ApplicationActive) {
@@ -62,12 +72,20 @@ MobileConnectionController::MobileConnectionController(QObject* parent)
             if (m_connected) {
                 sendPermissionSnapshotToPeer();
             }
+            setFindMyPhoneAlertActive(m_settings.value(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false).toBool());
         });
     }
 
     refreshPairedDevices();
     refreshLocalIdentity();
     updatePermissionsFromSystem();
+    m_findMyPhoneRingtoneUri = m_settings.value(QString::fromLatin1(kFindMyPhoneRingtoneSetting), QString()).toString().trimmed();
+    setFindMyPhoneAlertActive(m_settings.value(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false).toBool());
+    refreshFindMyPhoneRingtones();
+}
+
+MobileConnectionController::~MobileConnectionController()
+{
 }
 
 void MobileConnectionController::disconnect()
@@ -232,6 +250,33 @@ void MobileConnectionController::completePermissionsOnboarding()
     emit permissionsStateChanged();
 }
 
+QString MobileConnectionController::findMyPhoneRingtoneLabel() const
+{
+    return resolveFindMyPhoneRingtoneLabel(m_findMyPhoneRingtoneUri);
+}
+
+void MobileConnectionController::stopFindMyPhoneAlert()
+{
+    stopFindMyPhoneAlertInternal(true);
+}
+
+void MobileConnectionController::refreshFindMyPhoneRingtones()
+{
+    const QVariantList options = queryFindMyPhoneRingtoneOptions();
+    if (m_findMyPhoneRingtoneOptions != options) {
+        m_findMyPhoneRingtoneOptions = options;
+        emit findMyPhoneRingtoneOptionsChanged();
+    }
+
+    ensureSelectedRingtoneOption();
+    emit findMyPhoneRingtoneChanged();
+}
+
+void MobileConnectionController::setFindMyPhoneRingtoneUri(const QString& uri)
+{
+    setFindMyPhoneRingtoneUriInternal(uri, true);
+}
+
 void MobileConnectionController::setError(const QString& e)
 {
     if (m_lastError == e) {
@@ -276,6 +321,153 @@ void MobileConnectionController::handleModuleErrorEvent(ModuleErrorEvent* ev)
         .arg(QString::fromLatin1(ModuleTypeToString(ev->GetModuleType())))
         .arg(QString::fromLatin1(ModuleFailReasonToString(ev->GetError())));
     setError(message);
+}
+
+void MobileConnectionController::setFindMyPhoneAlertActive(const bool active)
+{
+    if (m_findMyPhoneAlertActive == active) {
+        return;
+    }
+
+    m_findMyPhoneAlertActive = active;
+    emit findMyPhoneAlertActiveChanged();
+}
+
+void MobileConnectionController::stopFindMyPhoneAlertInternal(const bool notifyPeer)
+{
+#ifdef ANDROID_DEVICE
+    FindMyBridge::StopAlert();
+#endif
+
+    if (notifyPeer && m_connected) {
+        ConnectionManager::Send(kFindMyPhoneStopPackage);
+    }
+
+    m_settings.setValue(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false);
+    setFindMyPhoneAlertActive(false);
+}
+
+QVariantList MobileConnectionController::queryFindMyPhoneRingtoneOptions() const
+{
+    QVariantList options;
+    QSet<QString> seenUris;
+
+    auto addOption = [&options, &seenUris](const QString& uri, const QString& label) {
+        const QString normalizedUri = uri.trimmed();
+        if (seenUris.contains(normalizedUri)) {
+            return;
+        }
+
+        seenUris.insert(normalizedUri);
+        QVariantMap option;
+        option.insert(QStringLiteral("value"), normalizedUri);
+        option.insert(QStringLiteral("label"), label);
+        options.push_back(option);
+    };
+
+    addOption(QString(), QStringLiteral("System Default Alarm"));
+
+#ifdef ANDROID_DEVICE
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        const QJniObject jsonResult = QJniObject::callStaticObjectMethod(
+            "com/LibreConnect/mobile/FindMyPhone",
+            "getAvailableRingtones",
+            "(Landroid/content/Context;)Ljava/lang/String;",
+            context.object<jobject>()
+        );
+
+        const QJsonDocument document = QJsonDocument::fromJson(jsonResult.toString().toUtf8());
+        if (document.isArray()) {
+            const QJsonArray items = document.array();
+            for (const QJsonValue& value : items) {
+                if (!value.isObject()) {
+                    continue;
+                }
+
+                const QJsonObject object = value.toObject();
+                const QString uri = object.value(QStringLiteral("uri")).toString().trimmed();
+                const QString label = object.value(QStringLiteral("label")).toString().trimmed();
+                if (uri.isEmpty() || label.isEmpty()) {
+                    continue;
+                }
+
+                addOption(uri, label);
+            }
+        }
+    }
+#endif
+
+    return options;
+}
+
+void MobileConnectionController::ensureSelectedRingtoneOption()
+{
+    const QString selectedUri = m_findMyPhoneRingtoneUri.trimmed();
+    for (const QVariant& optionValue : m_findMyPhoneRingtoneOptions) {
+        const QVariantMap option = optionValue.toMap();
+        if (option.value(QStringLiteral("value")).toString().trimmed() == selectedUri) {
+            return;
+        }
+    }
+
+    QVariantMap customOption;
+    customOption.insert(QStringLiteral("value"), selectedUri);
+    customOption.insert(QStringLiteral("label"), resolveFindMyPhoneRingtoneLabel(selectedUri));
+    m_findMyPhoneRingtoneOptions.push_back(customOption);
+    emit findMyPhoneRingtoneOptionsChanged();
+}
+
+void MobileConnectionController::setFindMyPhoneRingtoneUriInternal(const QString& uri, const bool persist)
+{
+    const QString normalizedUri = uri.trimmed();
+    if (m_findMyPhoneRingtoneUri == normalizedUri) {
+        return;
+    }
+
+    m_findMyPhoneRingtoneUri = normalizedUri;
+
+    if (persist) {
+        m_settings.setValue(QString::fromLatin1(kFindMyPhoneRingtoneSetting), m_findMyPhoneRingtoneUri);
+    }
+
+    ensureSelectedRingtoneOption();
+    emit findMyPhoneRingtoneChanged();
+}
+
+QString MobileConnectionController::resolveFindMyPhoneRingtoneLabel(const QString& uri) const
+{
+    const QString normalizedUri = uri.trimmed();
+    if (normalizedUri.isEmpty()) {
+        return QStringLiteral("System Default Alarm");
+    }
+
+    for (const QVariant& optionValue : m_findMyPhoneRingtoneOptions) {
+        const QVariantMap option = optionValue.toMap();
+        if (option.value(QStringLiteral("value")).toString().trimmed() == normalizedUri) {
+            return option.value(QStringLiteral("label")).toString();
+        }
+    }
+
+#ifdef ANDROID_DEVICE
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        const QJniObject label = QJniObject::callStaticObjectMethod(
+            "com/LibreConnect/mobile/FindMyPhone",
+            "getRingtoneTitle",
+            "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;",
+            context.object<jobject>(),
+            QJniObject::fromString(normalizedUri).object<jstring>()
+        );
+
+        const QString title = label.toString().trimmed();
+        if (!title.isEmpty()) {
+            return title;
+        }
+    }
+#endif
+
+    return QStringLiteral("Custom ringtone");
 }
 
 void MobileConnectionController::updatePermissionsFromSystem()
@@ -538,6 +730,7 @@ bool MobileConnectionController::event(QEvent* e)
                 }
             });
         } else {
+            stopFindMyPhoneAlertInternal(false);
             m_connectedPeerDeviceId.clear();
             setError(QStringLiteral("Connection failed"));
         }
@@ -557,6 +750,7 @@ bool MobileConnectionController::event(QEvent* e)
 
         clearChallenge();
         m_connectedPeerDeviceId.clear();
+        stopFindMyPhoneAlertInternal(false);
         setError(QString::fromStdString(ev->GetErrorCode().message()));
         refreshPairedDevices();
         return true;
@@ -624,6 +818,13 @@ bool MobileConnectionController::event(QEvent* e)
         if (m_connected) {
             sendPermissionSnapshotToPeer();
         }
+        return true;
+    }
+
+    if (type == FindMyPhoneAlertStateEvent::Type) {
+        const auto* alertStateEvent = static_cast<FindMyPhoneAlertStateEvent*>(e);
+        m_settings.setValue(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), alertStateEvent->IsActive());
+        setFindMyPhoneAlertActive(alertStateEvent->IsActive());
         return true;
     }
 

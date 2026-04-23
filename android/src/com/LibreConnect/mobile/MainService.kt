@@ -89,6 +89,26 @@ class MainService : Service() {
         super.onDestroy()
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (backendStarted.get()) {
+            val restartIntent = Intent(applicationContext, MainService::class.java).apply {
+                action = ACTION_START_BACKEND
+            }
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    applicationContext.startForegroundService(restartIntent)
+                } else {
+                    applicationContext.startService(restartIntent)
+                }
+            } catch (t: Throwable) {
+                Log.e(TAG, "Failed to restart service after task removal", t)
+            }
+        }
+
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }

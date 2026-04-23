@@ -250,6 +250,54 @@ Page {
     }
 
     Dialog {
+        id: findMyPhoneDialog
+        title: ""
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 12
+            width: 340
+
+            Text {
+                text: "Ringing your phone..."
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+                width: parent.width
+            }
+
+            Text {
+                text: "Tap Stop Ringing here or OK on your phone to stop the alert."
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+                width: parent.width
+            }
+
+            ThemedButton {
+                text: "Stop Ringing"
+                width: 160
+                height: 42
+                font.pixelSize: 14
+                anchors.horizontalCenter: parent.horizontalCenter
+                onClicked: root.connectionController.stopFindMyPhoneAlert()
+            }
+        }
+    }
+
+    Dialog {
         id: permissionPromptDialog
         property int permissionType: 0
         property string permissionTitle: ""
@@ -475,6 +523,33 @@ Page {
 
                     Column {
                         spacing: 8
+
+                        Rectangle {
+                            width: 190
+                            height: 38
+                            radius: 8
+                            color: findMyPhoneMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
+                            border.color: Theme.panelBorderColor
+                            border.width: 1
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Find My Phone"
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 14
+                                color: Theme.textColor
+                            }
+
+                            MouseArea {
+                                id: findMyPhoneMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: {
+                                    actionsPopup.close()
+                                    root.connectionController.startFindMyPhoneAlert()
+                                }
+                            }
+                        }
 
                         Rectangle {
                             width: 190
@@ -751,9 +826,26 @@ Page {
         }
     }
 
+    Connections {
+        target: root.connectionController
+
+        function onFindMyPhoneAlertActiveChanged() {
+            if (root.connectionController.findMyPhoneAlertActive) {
+                if (!findMyPhoneDialog.visible)
+                    findMyPhoneDialog.open()
+                return
+            }
+
+            if (findMyPhoneDialog.visible)
+                findMyPhoneDialog.close()
+        }
+    }
+
     Component.onCompleted: {
         if (windowRef && windowRef.applyHomeWindowSize !== undefined)
             windowRef.applyHomeWindowSize()
         selectFeature(initialFeature)
+        if (root.connectionController.findMyPhoneAlertActive)
+            findMyPhoneDialog.open()
     }
 }

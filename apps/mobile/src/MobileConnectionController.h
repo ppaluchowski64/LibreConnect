@@ -36,9 +36,14 @@ class MobileConnectionController : public QObject
     Q_PROPERTY(bool smsReadPermissionGranted READ smsReadPermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool smsSendPermissionGranted READ smsSendPermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool contactsPermissionGranted READ contactsPermissionGranted NOTIFY permissionsStateChanged)
+    Q_PROPERTY(bool findMyPhoneAlertActive READ findMyPhoneAlertActive NOTIFY findMyPhoneAlertActiveChanged)
+    Q_PROPERTY(QVariantList findMyPhoneRingtoneOptions READ findMyPhoneRingtoneOptions NOTIFY findMyPhoneRingtoneOptionsChanged)
+    Q_PROPERTY(QString findMyPhoneRingtoneUri READ findMyPhoneRingtoneUri NOTIFY findMyPhoneRingtoneChanged)
+    Q_PROPERTY(QString findMyPhoneRingtoneLabel READ findMyPhoneRingtoneLabel NOTIFY findMyPhoneRingtoneChanged)
 
 public:
     explicit MobileConnectionController(QObject* parent = nullptr);
+    ~MobileConnectionController() override;
 
     bool connected() const { return m_connected; }
     QString lastError() const { return m_lastError; }
@@ -61,6 +66,10 @@ public:
     bool smsReadPermissionGranted() const { return m_smsReadPermissionGranted; }
     bool smsSendPermissionGranted() const { return m_smsSendPermissionGranted; }
     bool contactsPermissionGranted() const { return m_contactsPermissionGranted; }
+    bool findMyPhoneAlertActive() const { return m_findMyPhoneAlertActive; }
+    QVariantList findMyPhoneRingtoneOptions() const { return m_findMyPhoneRingtoneOptions; }
+    QString findMyPhoneRingtoneUri() const { return m_findMyPhoneRingtoneUri; }
+    QString findMyPhoneRingtoneLabel() const;
 
     Q_INVOKABLE void disconnect();
     Q_INVOKABLE void refreshPairedDevices();
@@ -82,6 +91,9 @@ public:
     Q_INVOKABLE void requestContactsPermission();
     Q_INVOKABLE void requestAllPermissions();
     Q_INVOKABLE void completePermissionsOnboarding();
+    Q_INVOKABLE void stopFindMyPhoneAlert();
+    Q_INVOKABLE void refreshFindMyPhoneRingtones();
+    Q_INVOKABLE void setFindMyPhoneRingtoneUri(const QString& uri);
 
 signals:
     void connectedChanged();
@@ -92,6 +104,9 @@ signals:
     void pairedDevicesChanged();
     void localIdentityChanged();
     void permissionsStateChanged();
+    void findMyPhoneAlertActiveChanged();
+    void findMyPhoneRingtoneOptionsChanged();
+    void findMyPhoneRingtoneChanged();
 
     void incomingConnection(QString deviceName);
 
@@ -138,6 +153,12 @@ private:
     );
     bool notificationsPermissionGranted() const;
     QString activePeerDeviceId() const;
+    void setFindMyPhoneAlertActive(bool active);
+    void stopFindMyPhoneAlertInternal(bool notifyPeer);
+    QVariantList queryFindMyPhoneRingtoneOptions() const;
+    void ensureSelectedRingtoneOption();
+    void setFindMyPhoneRingtoneUriInternal(const QString& uri, bool persist);
+    QString resolveFindMyPhoneRingtoneLabel(const QString& uri) const;
 
 private:
     bool m_connected = false;
@@ -162,5 +183,8 @@ private:
     bool m_smsReadPermissionGranted = false;
     bool m_smsSendPermissionGranted = false;
     bool m_contactsPermissionGranted = false;
+    bool m_findMyPhoneAlertActive = false;
+    QVariantList m_findMyPhoneRingtoneOptions;
+    QString m_findMyPhoneRingtoneUri;
     QSettings m_settings;
 };
