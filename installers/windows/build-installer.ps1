@@ -110,6 +110,8 @@ New-Item -ItemType Directory -Force -Path $intermediateDir | Out-Null
 Invoke-External -Exe $wixExe -Description "Building MSI with WiX v6" -Arguments @(
     "build",
     "-arch", "x64",
+    "-ext", "WixToolset.UI.wixext",
+    "-ext", "WixToolset.Util.wixext",
     "-d", "DeployDir=$deployFull",
     "-d", "InstallerScriptSourceDir=$installerScriptSourceDir",
     "-d", "ProductVersion=$Version",

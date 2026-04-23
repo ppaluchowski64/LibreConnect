@@ -10,7 +10,8 @@ $dllPath = [System.IO.Path]::GetFullPath(
 )
 
 if (-not (Test-Path $dllPath -PathType Leaf)) {
-    throw "virtual-camera-platform-implementation.dll not found: $dllPath"
+    # DLL already removed; nothing to unregister.
+    exit 0
 }
 
 $regsvr32Exe = Join-Path $env:WINDIR "System32\regsvr32.exe"
@@ -20,11 +21,11 @@ if (-not (Test-Path $regsvr32Exe -PathType Leaf)) {
 
 $process = Start-Process `
     -FilePath $regsvr32Exe `
-    -ArgumentList @("/s", "`"$dllPath`"") `
+    -ArgumentList @("/u", "/s", "`"$dllPath`"") `
     -WindowStyle Hidden `
     -Wait `
     -PassThru
 
 if ($process.ExitCode -ne 0) {
-    throw "regsvr32 failed with exit code $($process.ExitCode)."
+    throw "regsvr32 /u failed with exit code $($process.ExitCode)."
 }
