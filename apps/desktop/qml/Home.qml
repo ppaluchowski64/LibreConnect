@@ -20,6 +20,7 @@ Page {
     readonly property color destructiveFill: Theme.destructiveFillColor
     readonly property color destructiveFillHover: Theme.destructiveFillHoverColor
     readonly property color destructiveText: Theme.dangerColor
+    readonly property int smsPermissionType: 6
     readonly property string windowTitleSuffix: {
         if (selectedFeature === "fileManager")
             return "File Manager"
@@ -36,6 +37,15 @@ Page {
 
     function selectFeature(featureKey) {
         const nextFeature = featureKey ? featureKey : ""
+
+        if (nextFeature === "messages" && !root.permissionStateController.smsGranted) {
+            permissionPromptDialog.permissionType = root.smsPermissionType
+            permissionPromptDialog.permissionTitle = "Messages Permission Required"
+            permissionPromptDialog.permissionMessage = "SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages."
+            permissionPromptDialog.open()
+            return
+        }
+
         if (selectedFeature === nextFeature) {
             if (windowRef && windowRef.updateWindowTitle !== undefined)
                 windowRef.updateWindowTitle()
@@ -664,7 +674,19 @@ Page {
                         ThemedButton {
                             text: "Messages"
                             anchors.fill: parent
+                            enabled: root.permissionStateController.smsGranted
                             onClicked: root.selectFeature("messages")
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: !root.permissionStateController.smsGranted
+                            onClicked: {
+                                permissionPromptDialog.permissionType = root.smsPermissionType
+                                permissionPromptDialog.permissionTitle = "Messages Permission Required"
+                                permissionPromptDialog.permissionMessage = "SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages."
+                                permissionPromptDialog.open()
+                            }
                         }
                     }
 

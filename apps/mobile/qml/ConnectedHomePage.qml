@@ -9,6 +9,7 @@ Page {
     required property var clipboardSyncController
     required property var remoteInputController
     required property var showRemoteInputCallback
+    required property var showPresenterModeCallback
     required property var showRemoteKeyboardCallback
     required property var showSettingsCallback
 
@@ -259,10 +260,16 @@ Page {
 
         Button {
             Layout.fillWidth: true
-            text: "Remote Control"
+            text: "Media Remote"
             onClicked: {
                 page.showRemoteInputCallback()
             }
+        }
+
+        Button {
+            Layout.fillWidth: true
+            text: "Presenter Mode"
+            onClicked: page.showPresenterModeCallback()
         }
 
         Button {

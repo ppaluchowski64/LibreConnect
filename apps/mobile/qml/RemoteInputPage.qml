@@ -90,7 +90,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Remote Input"
+                text: "Media Remote"
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true

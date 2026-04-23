@@ -90,17 +90,32 @@ void SmsBridgeModule::DisableResponseCallbacks() {
 void SmsBridgeModule::OnInitialize() {}
 
 asio::awaitable<void> SmsBridgeModule::OnEnable() {
+    asio::steady_timer timer(m_context.get_executor());
+
 #ifdef ANDROID_DEVICE
-    co_await PermissionManager::RequestReceiveSmsPermission();
-    co_await PermissionManager::RequestReadContactsPermission();
-    co_await PermissionManager::RequestReadSmsPermission();
-    co_await PermissionManager::RequestSendSmsPermission();
+    while (!ShouldAbortEnable()) {
+        const bool permissionsGranted =
+            PermissionManager::IsReceiveSmsPermissionGranted() &&
+            PermissionManager::IsReadContactsPermissionGranted() &&
+            PermissionManager::IsReadSmsPermissionGranted() &&
+            PermissionManager::IsSendSmsPermissionGranted();
+
+        if (permissionsGranted) {
+            break;
+        }
+
+        timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
+        co_await timer.async_wait();
+    }
+
+    if (ShouldAbortEnable()) {
+        co_return;
+    }
 #endif
 
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, true);
 
-    asio::steady_timer timer(m_context.get_executor());
     while (!ShouldAbortEnable()) {
         if (ShouldAbortEnable()) {
             co_return;

@@ -234,6 +234,38 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     }
 }
 
+void MobileRemoteInputController::presenterPreviousSlide()
+{
+    sendQtKeyEvent(Qt::Key_PageUp, QString(), 0);
+    if (m_connected && m_ready) {
+        setStatusMessage(QStringLiteral("Previous slide command sent."));
+    }
+}
+
+void MobileRemoteInputController::presenterNextSlide()
+{
+    sendQtKeyEvent(Qt::Key_PageDown, QString(), 0);
+    if (m_connected && m_ready) {
+        setStatusMessage(QStringLiteral("Next slide command sent."));
+    }
+}
+
+void MobileRemoteInputController::presenterStartSlideshow()
+{
+    sendQtKeyEvent(Qt::Key_F5, QString(), 0);
+    if (m_connected && m_ready) {
+        setStatusMessage(QStringLiteral("Start slideshow command sent."));
+    }
+}
+
+void MobileRemoteInputController::presenterEndSlideshow()
+{
+    sendQtKeyEvent(Qt::Key_Escape, QString(), 0);
+    if (m_connected && m_ready) {
+        setStatusMessage(QStringLiteral("End slideshow command sent."));
+    }
+}
+
 void MobileRemoteInputController::setNowPlayingInfo(
     const QString& title,
     const QString& artist,
@@ -532,6 +564,30 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecia
         return { static_cast<int>(Key::Delete), false };
     case Qt::Key_Insert:
         return { static_cast<int>(Key::Insert), false };
+    case Qt::Key_F1:
+        return { static_cast<int>(Key::F1), false };
+    case Qt::Key_F2:
+        return { static_cast<int>(Key::F2), false };
+    case Qt::Key_F3:
+        return { static_cast<int>(Key::F3), false };
+    case Qt::Key_F4:
+        return { static_cast<int>(Key::F4), false };
+    case Qt::Key_F5:
+        return { static_cast<int>(Key::F5), false };
+    case Qt::Key_F6:
+        return { static_cast<int>(Key::F6), false };
+    case Qt::Key_F7:
+        return { static_cast<int>(Key::F7), false };
+    case Qt::Key_F8:
+        return { static_cast<int>(Key::F8), false };
+    case Qt::Key_F9:
+        return { static_cast<int>(Key::F9), false };
+    case Qt::Key_F10:
+        return { static_cast<int>(Key::F10), false };
+    case Qt::Key_F11:
+        return { static_cast<int>(Key::F11), false };
+    case Qt::Key_F12:
+        return { static_cast<int>(Key::F12), false };
     default:
         return { INVALID_KEY, false };
     }

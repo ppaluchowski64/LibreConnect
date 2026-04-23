@@ -20,6 +20,8 @@ bool PermissionStateController::isGranted(const int permissionType) const
         return m_fileSystemGranted;
     case PermissionType::Battery:
         return m_batteryGranted;
+    case PermissionType::Sms:
+        return m_smsGranted;
     case PermissionType::Accessibility:
         return false;
     case PermissionType::Unknown:
@@ -85,11 +87,12 @@ bool PermissionStateController::event(QEvent* event)
 
 void PermissionStateController::clearPermissionState()
 {
-    const bool changed = m_cameraGranted || m_notificationsGranted || m_fileSystemGranted || m_batteryGranted;
+    const bool changed = m_cameraGranted || m_notificationsGranted || m_fileSystemGranted || m_batteryGranted || m_smsGranted;
     m_cameraGranted = false;
     m_notificationsGranted = false;
     m_fileSystemGranted = false;
     m_batteryGranted = false;
+    m_smsGranted = false;
 
     if (changed) {
         emit permissionStateChanged();
@@ -122,6 +125,12 @@ void PermissionStateController::setPermissionState(const PermissionType permissi
     case PermissionType::Battery:
         if (m_batteryGranted != granted) {
             m_batteryGranted = granted;
+            changed = true;
+        }
+        break;
+    case PermissionType::Sms:
+        if (m_smsGranted != granted) {
+            m_smsGranted = granted;
             changed = true;
         }
         break;

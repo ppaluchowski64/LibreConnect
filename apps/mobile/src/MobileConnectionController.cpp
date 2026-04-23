@@ -559,7 +559,6 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         case PermissionRequest::All:
             co_await PermissionManager::RequestCameraAccessPermission();
             co_await requestNotifications();
-            co_await PermissionManager::RequestFileAccessPermission();
             co_await PermissionManager::RequestManagingExternalStoragePermission();
             co_await PermissionManager::RequestDisablingBatteryOptimizations();
             co_await requestSms();
@@ -652,6 +651,7 @@ void MobileConnectionController::sendPermissionSnapshotToPeer()
     sendPermissionStatusToPeer(PermissionType::Notifications, notificationsPermissionGranted());
     sendPermissionStatusToPeer(PermissionType::FileSystem, m_filePermissionGranted && m_allFilesPermissionGranted);
     sendPermissionStatusToPeer(PermissionType::Battery, m_batteryPermissionGranted);
+    sendPermissionStatusToPeer(PermissionType::Sms, smsPermissionsGranted());
 }
 
 void MobileConnectionController::setPermissionSnapshot(
@@ -698,6 +698,14 @@ void MobileConnectionController::setPermissionSnapshot(
 bool MobileConnectionController::notificationsPermissionGranted() const
 {
     return m_notificationSendPermissionGranted && m_notificationListenerPermissionGranted;
+}
+
+bool MobileConnectionController::smsPermissionsGranted() const
+{
+    return m_smsReceivePermissionGranted &&
+        m_smsReadPermissionGranted &&
+        m_smsSendPermissionGranted &&
+        m_contactsPermissionGranted;
 }
 
 QString MobileConnectionController::activePeerDeviceId() const

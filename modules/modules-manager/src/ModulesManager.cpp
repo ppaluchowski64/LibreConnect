@@ -118,6 +118,13 @@ void ModulesManager::Initialize() {
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::PERMISSION_REQUEST, [](PC_Package&& package) -> asio::awaitable<void> {
         const PermissionType type = package->GetValue<PermissionType>();
         bool granted = false;
+        auto requestSmsPermissions = []() -> asio::awaitable<bool> {
+            const bool receiveGranted = co_await PermissionManager::RequestReceiveSmsPermission();
+            const bool readSmsGranted = co_await PermissionManager::RequestReadSmsPermission();
+            const bool sendGranted = co_await PermissionManager::RequestSendSmsPermission();
+            const bool contactsGranted = co_await PermissionManager::RequestReadContactsPermission();
+            co_return receiveGranted && readSmsGranted && sendGranted && contactsGranted;
+        };
 
         switch (type) {
         case PermissionType::Camera:
@@ -137,6 +144,9 @@ void ModulesManager::Initialize() {
             break;
         case PermissionType::Accessibility:
             granted = false;
+            break;
+        case PermissionType::Sms:
+            granted = co_await requestSmsPermissions();
             break;
         case PermissionType::Unknown:
         default:

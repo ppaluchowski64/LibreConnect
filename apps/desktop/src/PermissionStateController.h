@@ -15,6 +15,7 @@ class PermissionStateController : public QObject
     Q_PROPERTY(bool notificationsGranted READ notificationsGranted NOTIFY permissionStateChanged)
     Q_PROPERTY(bool fileSystemGranted READ fileSystemGranted NOTIFY permissionStateChanged)
     Q_PROPERTY(bool batteryGranted READ batteryGranted NOTIFY permissionStateChanged)
+    Q_PROPERTY(bool smsGranted READ smsGranted NOTIFY permissionStateChanged)
 
 public:
     explicit PermissionStateController(QObject* parent = nullptr);
@@ -24,6 +25,7 @@ public:
     bool notificationsGranted() const { return m_notificationsGranted; }
     bool fileSystemGranted() const { return m_fileSystemGranted; }
     bool batteryGranted() const { return m_batteryGranted; }
+    bool smsGranted() const { return m_smsGranted; }
 
     Q_INVOKABLE bool isGranted(int permissionType) const;
     Q_INVOKABLE void requestPermission(int permissionType);
@@ -44,5 +46,5 @@ private:
     bool m_notificationsGranted = false;
     bool m_fileSystemGranted = false;
     bool m_batteryGranted = false;
+    bool m_smsGranted = false;
 };
-

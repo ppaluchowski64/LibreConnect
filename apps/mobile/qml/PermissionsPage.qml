@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 Page {
@@ -7,17 +8,18 @@ Page {
 
     required property var conn
     required property var continueToHomeCallback
+    readonly property bool smsAndContactsPermissionsGranted:
+        page.conn.smsReceivePermissionGranted
+        && page.conn.smsReadPermissionGranted
+        && page.conn.smsSendPermissionGranted
+        && page.conn.contactsPermissionGranted
     readonly property bool allPermissionsGranted:
         page.conn.cameraPermissionGranted
         && page.conn.notificationSendPermissionGranted
         && page.conn.notificationListenerPermissionGranted
-        && page.conn.filePermissionGranted
         && page.conn.allFilesPermissionGranted
         && page.conn.batteryPermissionGranted
-        && page.conn.smsReceivePermissionGranted
-        && page.conn.smsReadPermissionGranted
-        && page.conn.smsSendPermissionGranted
-        && page.conn.contactsPermissionGranted
+        && page.smsAndContactsPermissionsGranted
 
     background: Rectangle {
         color: Theme.backgroundColor
@@ -44,7 +46,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Grant permissions for camera, notifications, files, and SMS features. You can skip and grant them later."
+                text: "Grant permissions for camera, notifications, all-files access, and SMS features. You can skip and grant them later."
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -68,6 +70,7 @@ Page {
                         Button {
                             text: page.conn.cameraPermissionGranted ? "Granted" : "Grant"
                             enabled: !page.conn.cameraPermissionGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
                             onClicked: page.conn.requestCameraPermission()
                         }
                     }
@@ -83,6 +86,7 @@ Page {
                         Button {
                             text: page.conn.notificationSendPermissionGranted ? "Granted" : "Grant"
                             enabled: !page.conn.notificationSendPermissionGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
                             onClicked: page.conn.requestNotificationSendPermission()
                         }
                     }
@@ -98,22 +102,8 @@ Page {
                         Button {
                             text: page.conn.notificationListenerPermissionGranted ? "Granted" : "Grant"
                             enabled: !page.conn.notificationListenerPermissionGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
                             onClicked: page.conn.requestNotificationListenerPermission()
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Files"
-                            color: Theme.textColor
-                            font.pixelSize: 15
-                        }
-                        Button {
-                            text: page.conn.filePermissionGranted ? "Granted" : "Grant"
-                            enabled: !page.conn.filePermissionGranted && !page.conn.permissionsBusy
-                            onClicked: page.conn.requestFilePermission()
                         }
                     }
 
@@ -128,6 +118,7 @@ Page {
                         Button {
                             text: page.conn.allFilesPermissionGranted ? "Granted" : "Grant"
                             enabled: !page.conn.allFilesPermissionGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
                             onClicked: page.conn.requestAllFilesPermission()
                         }
                     }
@@ -143,6 +134,7 @@ Page {
                         Button {
                             text: page.conn.batteryPermissionGranted ? "Granted" : "Grant"
                             enabled: !page.conn.batteryPermissionGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
                             onClicked: page.conn.requestBatteryPermission()
                         }
                     }
@@ -151,59 +143,15 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "SMS Receive"
+                            text: "SMS + Contacts"
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.smsReceivePermissionGranted ? "Granted" : "Grant"
-                            enabled: !page.conn.smsReceivePermissionGranted && !page.conn.permissionsBusy
-                            onClicked: page.conn.requestSmsReceivePermission()
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: "SMS Read"
-                            color: Theme.textColor
-                            font.pixelSize: 15
-                        }
-                        Button {
-                            text: page.conn.smsReadPermissionGranted ? "Granted" : "Grant"
-                            enabled: !page.conn.smsReadPermissionGranted && !page.conn.permissionsBusy
-                            onClicked: page.conn.requestSmsReadPermission()
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: "SMS Send"
-                            color: Theme.textColor
-                            font.pixelSize: 15
-                        }
-                        Button {
-                            text: page.conn.smsSendPermissionGranted ? "Granted" : "Grant"
-                            enabled: !page.conn.smsSendPermissionGranted && !page.conn.permissionsBusy
-                            onClicked: page.conn.requestSmsSendPermission()
-                        }
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            Layout.fillWidth: true
-                            text: "Contacts (for SMS names)"
-                            color: Theme.textColor
-                            font.pixelSize: 15
-                        }
-                        Button {
-                            text: page.conn.contactsPermissionGranted ? "Granted" : "Grant"
-                            enabled: !page.conn.contactsPermissionGranted && !page.conn.permissionsBusy
-                            onClicked: page.conn.requestContactsPermission()
+                            text: page.smsAndContactsPermissionsGranted ? "Granted" : "Grant"
+                            enabled: !page.smsAndContactsPermissionsGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
+                            onClicked: page.conn.requestSmsPermissions()
                         }
                     }
                 }
@@ -212,14 +160,17 @@ Page {
             Button {
                 Layout.fillWidth: true
                 text: page.conn.permissionsBusy ? "Requesting..." : "Grant All"
+                visible: !page.allPermissionsGranted
                 enabled: !page.conn.permissionsBusy
+                Material.elevation: 1
                 onClicked: page.conn.requestAllPermissions()
             }
 
             Button {
                 Layout.fillWidth: true
-                text: "Continue"
-                enabled: page.allPermissionsGranted && !page.conn.permissionsBusy
+                text: "Skip For Now"
+                visible: !page.allPermissionsGranted
+                Material.elevation: 1
                 onClicked: {
                     page.conn.completePermissionsOnboarding()
                     page.continueToHomeCallback()
@@ -228,7 +179,10 @@ Page {
 
             Button {
                 Layout.fillWidth: true
-                text: "Skip For Now"
+                text: "Continue"
+                highlighted: true
+                Material.elevation: 2
+                enabled: page.allPermissionsGranted && !page.conn.permissionsBusy
                 onClicked: {
                     page.conn.completePermissionsOnboarding()
                     page.continueToHomeCallback()

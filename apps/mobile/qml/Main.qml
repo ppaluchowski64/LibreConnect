@@ -28,6 +28,7 @@ ApplicationWindow {
     readonly property url settingsPageUrl: Qt.resolvedUrl("SettingsPage.qml")
     readonly property url remoteInputPageUrl: Qt.resolvedUrl("RemoteInputPage.qml")
     readonly property url remoteKeyboardPageUrl: Qt.resolvedUrl("RemoteKeyboardPage.qml")
+    readonly property url presenterModePageUrl: Qt.resolvedUrl("PresenterModePage.qml")
 
     function showRootPage(pageUrl, properties) {
         stackView.clear()
@@ -54,6 +55,7 @@ ApplicationWindow {
             clipboardSyncController: clipboardSyncController,
             remoteInputController: remoteInputController,
             showRemoteInputCallback: function() { root.showRemoteInputPage() },
+            showPresenterModeCallback: function() { root.showPresenterModePage() },
             showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
             showSettingsCallback: function() { root.showSettingsPage() }
         })
@@ -65,6 +67,7 @@ ApplicationWindow {
             clipboardSyncController: clipboardSyncController,
             remoteInputController: remoteInputController,
             showRemoteInputCallback: function() { root.showRemoteInputPage() },
+            showPresenterModeCallback: function() { root.showPresenterModePage() },
             showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
             showSettingsCallback: function() { root.showSettingsPage() }
         })
@@ -98,6 +101,14 @@ ApplicationWindow {
 
     function showRemoteKeyboardPage() {
         stackView.push(remoteKeyboardPageUrl, {
+            conn: conn,
+            remoteInputController: remoteInputController,
+            goBackCallback: function() { root.popPage() }
+        })
+    }
+
+    function showPresenterModePage() {
+        stackView.push(presenterModePageUrl, {
             conn: conn,
             remoteInputController: remoteInputController,
             goBackCallback: function() { root.popPage() }

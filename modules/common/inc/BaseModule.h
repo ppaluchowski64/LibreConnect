@@ -53,7 +53,8 @@ enum class PermissionType : uint16_t {
     Notifications,
     FileSystem,
     Battery,
-    Accessibility
+    Accessibility,
+    Sms
 };
 
 inline const char* ModuleFailReasonToString(const ModuleFailReason reason)

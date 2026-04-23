@@ -152,6 +152,7 @@ private:
         bool contactsGranted
     );
     bool notificationsPermissionGranted() const;
+    bool smsPermissionsGranted() const;
     QString activePeerDeviceId() const;
     void setFindMyPhoneAlertActive(bool active);
     void stopFindMyPhoneAlertInternal(bool notifyPeer);

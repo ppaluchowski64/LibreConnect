@@ -47,6 +47,10 @@ public:
     Q_INVOKABLE void sendMediaSignal(int signal);
     Q_INVOKABLE void seekTo(double seconds);
     Q_INVOKABLE void sendQtKeyEvent(int qtKey, const QString& text, int modifiers);
+    Q_INVOKABLE void presenterPreviousSlide();
+    Q_INVOKABLE void presenterNextSlide();
+    Q_INVOKABLE void presenterStartSlideshow();
+    Q_INVOKABLE void presenterEndSlideshow();
     void setNowPlayingInfo(
         const QString& title,
         const QString& artist,
