@@ -9,7 +9,10 @@ LibreConnect is built to solve everyday cross-device friction:
 - pairing desktop and mobile devices on the same network
 - sharing files directly between paired devices
 - streaming camera data securely over the local network
-- syncing notifications across platforms
+- syncing notifications and clipboard content across platforms
+- using a phone as a media remote, remote keyboard, and presenter controller
+- accessing Android SMS conversations from the desktop app
+- triggering Find My Phone actions on a paired mobile device
 - doing all of the above with end-to-end encrypted transport and local-first architecture
 
 ## Core functionalities
@@ -25,10 +28,19 @@ LibreConnect is built to solve everyday cross-device friction:
   - integrity validation during transfers
 - Camera/media streaming scenarios
   - real-time media transport between devices
-  - optional integration points for virtual camera workflows on desktop platforms
+  - desktop virtual camera integration on supported platforms
 - Notification sharing/synchronization
   - propagates selected notification events across connected devices
   - adapts behavior to each target platform
+- Clipboard synchronization
+  - syncs clipboard content between paired devices
+  - supports desktop-to-mobile and mobile-to-desktop workflows
+- Remote input / presenter controls
+  - media controls, remote keyboard input, and presenter-mode actions from mobile to desktop
+  - uses platform-specific input backends on desktop platforms
+- SMS bridge and device utilities
+  - exposes Android SMS conversations and send actions in the desktop app
+  - includes utility actions such as Find My Phone and shared system/device information
 - Cross-platform client experience
   - desktop and mobile frontends built with shared architecture
   - modular feature system so capabilities can be enabled/extended over time
@@ -37,19 +49,33 @@ LibreConnect is built to solve everyday cross-device friction:
 
 ```text
 apps/                    # Desktop + mobile app entry points and QML UI
+android/                 # Native Android manifest, Gradle config, and platform glue
+installers/              # Packaging scripts for Linux and Windows
 modules/                 # Feature modules (common + desktop/mobile implementations)
+  clipboard-sync/
   common/
   file-share/
+  modules-manager/
   network-camera/
   notification-sync/
+  remote-input/
+  sms-bridge/
+  system-info-share/
 utilities/               # Shared infrastructure and low-level components
+  clipboard/
+  find-my/
   network/
   p2p-network/
+  permission-manager/
   srtp-stream/
   file-system/
   notifications-handler/
+  remote-input/
+  sms-handler/
+  system-info/
   virtual-camera/
 tests/                   # Unit tests and test programs
+tools/                   # Local developer utilities
 cmake/                   # CMake helper scripts/macros
 configure_project.py     # Environment + dependency/bootstrap automation
 conanfile.py             # Conan integration (requirements by platform)
@@ -68,7 +94,7 @@ conandata.yml            # Dependency versions
 
 ### Core runtime libraries
 
-- [Qt 6](https://www.qt.io/product/qt6) (Core, Gui, Quick, Qml, Multimedia, and DBus on Linux desktop)
+- [Qt 6](https://www.qt.io/product/qt6) (Core, Gui, Quick, Qml, QuickControls2, Multimedia, Network, and DBus on Linux desktop)
 - [FFmpeg](https://ffmpeg.org/) `7.1.3`
 - [OpenSSL](https://www.openssl.org/) `3.6.1`
 - [Asio](https://think-async.com/Asio/) `1.36.0`
@@ -87,7 +113,11 @@ conandata.yml            # Dependency versions
   - [Google Benchmark](https://github.com/google/benchmark) `1.9.4`
 - Windows:
   - [WIL (Windows Implementation Library)](https://github.com/microsoft/wil) `1.0.250325.1`
-  - [WinToast](https://github.com/mohabouje/WinToast) (fetched in CMake for notifications)
+  - [WinToast](https://github.com/mohabouje/WinToast) (vendored under `vendor/WinToast`)
+- Android:
+  - [FFmpeg](https://ffmpeg.org/) `7.1.3`
+- Linux:
+  - [ALSA](https://www.alsa-project.org/) `1.2.10`
 
 ### Fetched at configure/build time
 
@@ -103,7 +133,7 @@ conan profile detect --force
 ```
 
 - A filled `.env` file (project root) with required variables:
-  - `BUILD_FOR=Desktop` or `BUILD_FOR=Android`
+  - `BUILD_FOR=Desktop`, `BUILD_FOR=Android`, or `BUILD_FOR=All`
   - `DISABLE_DEBUG=true|false`
   - `BUILD_TESTS=true|false`
   - Qt path(s):
@@ -129,36 +159,53 @@ This script:
 - validates `.env`
 - resolves Conan dependencies per target platform
 - prepares FFmpeg integration for desktop builds
+- installs additional system/deployment dependencies on Linux when required
 
 ### 2) Configure + build with CMake presets
 
-Release:
+Desktop release:
 
 ```bash
-cmake --preset conan-release
-cmake --build --preset conan-release
+cmake --preset desktop-release
+cmake --build --preset desktop-release
 ```
 
-Debug (if enabled by `.env`):
+Desktop debug (if enabled by `.env`):
 
 ```bash
-cmake --preset conan-debug
-cmake --build --preset conan-debug
+cmake --preset desktop-debug
+cmake --build --preset desktop-debug
+```
+
+Android release:
+
+```bash
+cmake --preset android-release
+cmake --build --preset android-release
+```
+
+Android debug (if enabled by `.env`):
+
+```bash
+cmake --preset android-debug
+cmake --build --preset android-debug
 ```
 
 ## Test
 
-If tests are enabled (`BUILD_TESTS=true`), run:
+If desktop tests are enabled (`BUILD_TESTS=true`), run:
 
 ```bash
-ctest --preset conan-release
+ctest --preset desktop-release
 ```
 
 or:
 
 ```bash
-ctest --preset conan-debug
+ctest --preset desktop-debug
 ```
+
+For Android builds, `BUILD_TESTS=true` enables additional mobile test targets and test apps in `tests/`.
 
 ## CI coverage
 
@@ -170,6 +217,8 @@ GitHub Actions currently builds:
 - Android (armv8)
 
 Workflow file: `.github/workflows/Build.yml`
+
+Release packaging is handled separately by `.github/workflows/Deploy.yml`.
 
 ## License
 
