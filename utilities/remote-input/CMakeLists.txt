@@ -1,3 +1,10 @@
+add_library(remote-input-types-internal INTERFACE)
+target_include_directories(remote-input-types-internal INTERFACE
+        ${CMAKE_CURRENT_SOURCE_DIR}/inc/
+)
+
+add_library(remote-input-types ALIAS remote-input-types-internal)
+
 if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
 
     if (UNIX AND NOT APPLE)
