@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
 Page {
     id: page
@@ -126,6 +127,8 @@ Page {
                 }
 
                 Rectangle {
+                    id: coverTemplate
+                    readonly property int coverInset: 2
                     Layout.alignment: Qt.AlignHCenter
                     width: 144
                     height: 144
@@ -134,14 +137,30 @@ Page {
                     border.width: 1
                     border.color: Theme.panelBorderColor
 
-                    Image {
-                        id: coverImage
+                    Item {
+                        id: coverImageContainer
                         anchors.fill: parent
-                        anchors.margins: 2
-                        source: remoteInputController.coverImageSource
-                        fillMode: Image.PreserveAspectFit
-                        cache: false
-                        visible: status === Image.Ready
+                        anchors.margins: coverTemplate.coverInset
+                        visible: coverImage.status === Image.Ready
+
+                        Image {
+                            id: coverImage
+                            anchors.fill: parent
+                            source: remoteInputController.coverImageSource
+                            fillMode: Image.PreserveAspectFit
+                            cache: false
+                            visible: false
+                        }
+
+                        OpacityMask {
+                            anchors.fill: parent
+                            source: coverImage
+                            maskSource: Rectangle {
+                                width: coverImageContainer.width
+                                height: coverImageContainer.height
+                                radius: Math.max(0, coverTemplate.radius - coverTemplate.coverInset)
+                            }
+                        }
                     }
 
                     Text {
