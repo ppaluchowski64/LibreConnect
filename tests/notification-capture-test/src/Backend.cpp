@@ -11,23 +11,27 @@ extern std::vector<NotificationData> g_notificationDatas;
 void Backend::notification(QString message) {
     Debug::Log("Notification message: {}", message.toStdString());
 
-    NotificationBridge::PostNotification(NotificationData{
+    NotificationBridge::PostNotification(NotificationData(
         "adasdasdsasdsdddd",
+        "dd",
         "title",
         message.toStdString(),
         static_cast<uint64_t>(QDateTime::currentMSecsSinceEpoch()),
+        false,
         {"button"},
         {}, {}, {}
-    });
+    ));
 
     NotificationBridge::AddNotificationActionHandler("adasdasdsasdsdddd", "button", []() {
-        NotificationBridge::PostNotification(NotificationData{
+        NotificationBridge::PostNotification(NotificationData(
             "adasdasdsasdsddddddd",
+            "dd",
             "Button clicked",
             "button was clicked",
             static_cast<uint64_t>(QDateTime::currentMSecsSinceEpoch()),
+            false,
             {},{}, {}, {}
-        });
+        ));
     });
 }
 

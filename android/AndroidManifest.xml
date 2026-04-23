@@ -45,6 +45,7 @@
 
     <application android:label="LibreConnect"
                  android:name="org.qtproject.qt.android.bindings.QtApplication"
+                 android:icon="@mipmap/ic_launcher"
                  android:theme="@style/Theme.LibreConnect.Launch"
                  android:hardwareAccelerated="true"
                  android:extractNativeLibs="true"
