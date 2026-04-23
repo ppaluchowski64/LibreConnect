@@ -75,3 +75,7 @@ class ConanApplication(ConanFile):
         if self.settings.os == "Android":
             for req in data.get("android", []):
                 self.requires(req)
+
+        if self.settings.os == "Linux":
+            for req in data.get("linux", []):
+                self.requires(req)

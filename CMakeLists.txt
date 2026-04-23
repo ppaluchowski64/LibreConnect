@@ -131,6 +131,7 @@ BuildStaticLibrary(system-info utilities/system-info project_defaults Debug-Log 
 
 if (ANDROID)
     BuildStaticLibrary(sms-handler utilities/sms-handler network-component-pc system-component-pc p2p-network-component-pc project_defaults Qt6::Core Qt6::Gui)
+    BuildStaticLibrary(find-my utilities/find-my project_defaults Qt6::Core)
 endif ()
 
 if (NOT APPLE)
@@ -275,6 +276,10 @@ if (ENABLE_TESTS)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
     BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
     BuildTestProgram(MediaRemoteTest remote-input/MediaRemoteTest.cpp remote-input)
+    BuildTestProgram(SystemVolumeControllerTest remote-input/SystemVolumeControllerTest.cpp remote-input)
+    if (WIN32)
+        BuildTestProgram(MediaTrackInfoTest remote-input/MediaTrackInfoTest.cpp remote-input)
+    endif ()
 
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
     if (APPLE AND NOT IOS)

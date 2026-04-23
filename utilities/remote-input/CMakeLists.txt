@@ -1,8 +1,3 @@
-add_library(remote-input-types INTERFACE)
-target_include_directories(remote-input-types INTERFACE
-        ${CMAKE_CURRENT_SOURCE_DIR}/inc/
-)
-
 if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
 
     if (UNIX AND NOT APPLE)
@@ -11,6 +6,9 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
                 src/linux/*.cxx
                 src/linux/*.cc
         )
+
+        find_package(ALSA REQUIRED)
+
     elseif (APPLE AND NOT IOS)
         file(GLOB_RECURSE SOURCE_FILES
                 src/macos/*.mm
@@ -58,11 +56,26 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
             concurrentqueue::concurrentqueue
     )
 
+    if (UNIX AND NOT APPLE)
+        target_link_libraries(remote-input PUBLIC
+                ALSA::ALSA
+        )
+    endif ()
+
     if (APPLE AND NOT IOS)
         target_link_libraries(remote-input PUBLIC
                 "-framework ApplicationServices"
                 "-framework Carbon"
                 "-framework AppKit"
+                "-framework CoreAudio"
+                "-framework AudioToolbox"
+        )
+    endif ()
+
+    if (WIN32)
+        target_link_libraries(remote-input PUBLIC
+                ole32
+                windowsapp
         )
     endif ()
 

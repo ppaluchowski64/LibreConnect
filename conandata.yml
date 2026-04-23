@@ -20,3 +20,5 @@ requirements:
     - "wil/1.0.250325.1"
   android:
     - "ffmpeg/7.1.3"
+  linux:
+    - "libalsa/1.2.10"
