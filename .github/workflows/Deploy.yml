@@ -203,6 +203,7 @@ jobs:
           $toolPath = "$env:USERPROFILE\.dotnet\tools"
           $env:PATH = "$toolPath;$env:PATH"
           "$toolPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          
           dotnet tool install --global wix --version 6.*
           if ($LASTEXITCODE -ne 0) {
             dotnet tool update --global wix
@@ -210,6 +211,10 @@ jobs:
               throw "Failed to install or update WiX .NET tool."
             }
           }
+
+          wix extension add --global WixToolset.UI.wixext
+          wix extension add --global WixToolset.Util.wixext
+          
           & "$toolPath\wix.exe" --version
 
       - name: Find deploy directory
