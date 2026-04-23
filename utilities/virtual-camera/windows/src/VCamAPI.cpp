@@ -491,7 +491,9 @@ extern "C" {
 
         if (!IsCLSIDRegistered(clsid))
         {
-            SetError("CLSID is not registered in registry.", handle);
+            const auto clsidDiag = GUID_ToStringW_Simple(clsid);
+            const std::string narrowClsid(clsidDiag.begin(), clsidDiag.end());
+            SetError(("CLSID is not registered in registry: " + narrowClsid).c_str(), handle);
             return VCAM_ERROR_INIT_FAILED;
         }
 
@@ -550,6 +552,8 @@ extern "C" {
             if (FAILED(hr))
             {
                 SetError(hr, handle);
+                AddPrefixToError(fmt::format("MFCreateVirtualCamera failed for CLSID {}: ",
+                    std::string(clsid_str.begin(), clsid_str.end())).c_str(), handle);
                 return VCAM_ERROR_INIT_FAILED;
             }
 
@@ -560,6 +564,8 @@ extern "C" {
                 if (FAILED(hr))
                 {
                     SetError(hr, handle);
+                    AddPrefixToError(fmt::format("vcam->Start failed for CLSID {}: ",
+                        std::string(clsid_str.begin(), clsid_str.end())).c_str(), handle);
                     instance->vcam->Remove();
                     return VCAM_ERROR_INIT_FAILED;
                 }
