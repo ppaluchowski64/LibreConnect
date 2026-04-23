@@ -96,6 +96,10 @@ private slots:
 
         QSet<QString> addresses;
         for (const auto& dev : devices) {
+            if (dev.deviceType != DeviceType::Android) {
+                continue;
+            }
+
             Device d;
 
             d.deviceId   = QString::fromStdString(boost::uuids::to_string(dev.deviceID));
