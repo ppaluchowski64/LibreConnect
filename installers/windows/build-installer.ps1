@@ -1,7 +1,9 @@
 param(
     [string]$DeployDir = "..\..\build\desktop\build\Release\deploy\Release\appLibreConnect_desktop",
     [string]$Version = "1.0.0",
-    [string]$OutputDir = "..\..\out"
+    [string]$OutputDir = "..\..\out",
+    [string]$WixExePath = "",
+    [string]$WixExtensionVersion = ""
 )
 
 Set-StrictMode -Version Latest
@@ -79,20 +81,33 @@ if (-not (Test-Path $virtualCameraSetupScript -PathType Leaf)) {
 
 New-Item -ItemType Directory -Force -Path $outputFull | Out-Null
 
-$wixPathCandidates = @(
+$wixPathCandidates = @()
+if ($env:USERPROFILE) {
+    $wixPathCandidates += (Join-Path $env:USERPROFILE ".dotnet\tools\wix.exe")
+}
+$wixPathCandidates += @(
     "C:\Program Files\WiX Toolset v6.0\bin\wix.exe",
     "C:\Program Files\WiX Toolset v5.0\bin\wix.exe",
     "C:\Program Files (x86)\WiX Toolset v6.0\bin\wix.exe",
     "C:\Program Files (x86)\WiX Toolset v5.0\bin\wix.exe"
 )
 
-$wixExe = Resolve-Tool -Name "wix" -CandidatePaths $wixPathCandidates
+if ($WixExePath) {
+    $wixExe = Resolve-FullPath -BaseDir $scriptDir -PathValue $WixExePath
+    if (-not (Test-Path $wixExe -PathType Leaf)) {
+        throw "Specified WiX executable was not found: $wixExe"
+    }
+} else {
+    $wixExe = Resolve-Tool -Name "wix" -CandidatePaths $wixPathCandidates
+}
 
 $wixVersionOutput = & $wixExe --version 2>&1
 if ($LASTEXITCODE -ne 0) {
     throw "Unable to determine WiX version from '$wixExe'."
 }
 $wixVersionText = $wixVersionOutput | Out-String
+$wixVersionMatch = [regex]::Match($wixVersionText, "\b(\d+\.\d+\.\d+(?:-[0-9A-Za-z\.-]+)?)\b")
+$wixResolvedVersion = if ($wixVersionMatch.Success) { $wixVersionMatch.Groups[1].Value } else { $null }
 $wixMajorMatch = [regex]::Match($wixVersionText, "\b(\d+)\.\d+\.\d+\b")
 if (-not $wixMajorMatch.Success) {
     throw "Could not parse WiX version from output: $wixVersionText"
@@ -101,17 +116,28 @@ $wixMajor = [int]$wixMajorMatch.Groups[1].Value
 if ($wixMajor -lt 4) {
     throw "WiX v4+ is required for this script. Found: $wixVersionText"
 }
+Write-Host "Using WiX executable: $wixExe"
+if ($wixResolvedVersion) {
+    Write-Host "Using WiX version: $wixResolvedVersion"
+}
 
 $installerWxs = Join-Path $scriptDir "installer.wxs"
 $msiPath = Join-Path $outputFull "LibreConnect-$Version-x64.msi"
 $intermediateDir = Join-Path $outputFull "obj"
 New-Item -ItemType Directory -Force -Path $intermediateDir | Out-Null
 
+$uiExtensionRef = "WixToolset.UI.wixext"
+$utilExtensionRef = "WixToolset.Util.wixext"
+if ($WixExtensionVersion) {
+    $uiExtensionRef = "$uiExtensionRef/$WixExtensionVersion"
+    $utilExtensionRef = "$utilExtensionRef/$WixExtensionVersion"
+}
+
 Invoke-External -Exe $wixExe -Description "Building MSI with WiX v6" -Arguments @(
     "build",
     "-arch", "x64",
-    "-ext", "WixToolset.UI.wixext",
-    "-ext", "WixToolset.Util.wixext",
+    "-ext", $uiExtensionRef,
+    "-ext", $utilExtensionRef,
     "-d", "DeployDir=$deployFull",
     "-d", "InstallerScriptSourceDir=$installerScriptSourceDir",
     "-d", "ProductVersion=$Version",

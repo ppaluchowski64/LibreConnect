@@ -10,8 +10,33 @@
 #include "MobileClipboardSyncController.h"
 #include "MobileRemoteInputController.h"
 
+void LibreConnectLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    QString logMessage = QString("[QT] %1").arg(msg);
+    std::string stdMsg = logMessage.toStdString();
+
+    switch (type) {
+    case QtDebugMsg:
+        Debug::Log(stdMsg);
+        break;
+    case QtInfoMsg:
+        Debug::Log(stdMsg);
+        break;
+    case QtWarningMsg:
+        Debug::LogWarning(stdMsg);
+        break;
+    case QtCriticalMsg:
+        Debug::LogError(stdMsg);
+        break;
+    case QtFatalMsg:
+        Debug::LogError(stdMsg);
+        abort();
+    }
+}
+
 int main(int argc, char *argv[])
 {
+    qInstallMessageHandler(LibreConnectLogHandler);
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnectMobile");
