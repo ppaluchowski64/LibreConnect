@@ -201,21 +201,43 @@ jobs:
         shell: powershell
         run: |
           $toolPath = "$env:USERPROFILE\.dotnet\tools"
+          $wixExe = Join-Path $toolPath "wix.exe"
           $env:PATH = "$toolPath;$env:PATH"
           "$toolPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           
           dotnet tool install --global wix --version 6.*
           if ($LASTEXITCODE -ne 0) {
-            dotnet tool update --global wix
+            dotnet tool update --global wix --version 6.*
             if ($LASTEXITCODE -ne 0) {
               throw "Failed to install or update WiX .NET tool."
             }
           }
 
-          wix extension add --global WixToolset.UI.wixext
-          wix extension add --global WixToolset.Util.wixext
+          $wixVersionOutput = & $wixExe --version 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to determine WiX CLI version from $wixExe."
+          }
+
+          $wixVersion = [regex]::Match(($wixVersionOutput | Out-String), '\b\d+\.\d+\.\d+(?:-[0-9A-Za-z\.-]+)?\b').Value
+          if (-not $wixVersion) {
+            throw "Could not parse WiX CLI version from output: $($wixVersionOutput | Out-String)"
+          }
+
+          "WIX_EXE=$wixExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WIX_VERSION=$wixVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          & $wixExe extension add --global "WixToolset.UI.wixext/$wixVersion"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to add WixToolset.UI.wixext/$wixVersion to the global WiX extension cache."
+          }
+
+          & $wixExe extension add --global "WixToolset.Util.wixext/$wixVersion"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to add WixToolset.Util.wixext/$wixVersion to the global WiX extension cache."
+          }
           
-          & "$toolPath\wix.exe" --version
+          & $wixExe extension list --global
+          & $wixExe --version
 
       - name: Find deploy directory
         shell: powershell
@@ -232,7 +254,9 @@ jobs:
           installers/windows/build-installer.ps1 `
             -DeployDir "$env:DEPLOY_DIR" `
             -Version "${{ inputs.version }}" `
-            -OutputDir "$env:GITHUB_WORKSPACE\out\windows"
+            -OutputDir "$env:GITHUB_WORKSPACE\out\windows" `
+            -WixExePath "$env:WIX_EXE" `
+            -WixExtensionVersion "$env:WIX_VERSION"
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4

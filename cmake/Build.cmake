@@ -138,10 +138,18 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
         endforeach()
     endif()
 
-    qt_add_executable(${ExecutableName}
-            ${SOURCE_FILES}
-            ${HEADER_FILES}
-    )
+    if (WIN32)
+        qt_add_executable(${ExecutableName}
+                ${SOURCE_FILES}
+                ${HEADER_FILES}
+        )
+        target_link_libraries(${ExecutableName} PRIVATE Qt6::EntryPointPrivate)
+    else()
+        qt_add_executable(${ExecutableName}
+                ${SOURCE_FILES}
+                ${HEADER_FILES}
+        )
+    endif()
 
     foreach(FILE ${QML_FILES} ${RESOURCES})
         string(REGEX REPLACE "^[^/]+/" "" REL_PATH "${FILE}")
@@ -202,6 +210,13 @@ function(DeployQT Target)
         file(WRITE "${RC_FILE}" "IDI_ICON1 ICON DISCARDABLE \"${WIN_ICON}\"")
         target_sources(${Target} PRIVATE "${RC_FILE}")
 
+        if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+            set_target_properties(${Target} PROPERTIES
+                    LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
+            )
+        endif()
+
+
         add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
                 COMMENT "Deploying Qt dependencies for ${Target}..."
@@ -240,23 +255,27 @@ function(DeployQT Target)
         set(CUSTOM_LD_LIB_PATHS
                 "${CMAKE_SOURCE_DIR}/build/ffmpeg/lib"
         )
-        set(DESKTOP_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/LibreConnect.desktop")
+        set(DESKTOP_FILE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${Target}.desktop")
         set(ICON_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.png")
+        set(DESKTOP_ENTRY_NAME "${Target}")
+        set(DESKTOP_ENTRY_COMMENT "${Target}")
 
-        # Non-desktop/test executables need an Exec entry that matches their binary name.
-        if(NOT Target STREQUAL "appLibreConnect_desktop")
-            set(DESKTOP_FILE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${Target}.desktop")
-            file(WRITE "${DESKTOP_FILE_PATH}"
-                    "[Desktop Entry]\n"
-                    "Type=Application\n"
-                    "Name=${Target}\n"
-                    "Comment=${Target}\n"
-                    "Exec=${Target}\n"
-                    "Icon=libreconnect_logo\n"
-                    "Terminal=false\n"
-                    "Categories=Network;Utility;\n"
-            )
+        if(Target STREQUAL "appLibreConnect_desktop")
+            set(DESKTOP_ENTRY_NAME "LibreConnect")
+            set(DESKTOP_ENTRY_COMMENT "LibreConnect Desktop")
         endif()
+
+        # On Linux the desktop entry controls whether the GUI app requests a terminal.
+        file(WRITE "${DESKTOP_FILE_PATH}"
+                "[Desktop Entry]\n"
+                "Type=Application\n"
+                "Name=${DESKTOP_ENTRY_NAME}\n"
+                "Comment=${DESKTOP_ENTRY_COMMENT}\n"
+                "Exec=${Target}\n"
+                "Icon=libreconnect_logo\n"
+                "Terminal=false\n"
+                "Categories=Network;Utility;\n"
+        )
 
         set_target_properties(${Target} PROPERTIES
                 RUNTIME_OUTPUT_DIRECTORY ${DEPLOY_DIR}/usr/bin

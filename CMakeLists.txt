@@ -80,6 +80,10 @@ endif ()
 
 set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)
 
+if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(DEBUG_LOG_DISABLE_CONSOLE_LOGGING ON CACHE BOOL "" FORCE)
+endif()
+
 FetchContent_Declare(
         debug-log
         GIT_REPOSITORY https://github.com/ddj4747/Debug-Log.git

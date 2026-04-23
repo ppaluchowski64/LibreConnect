@@ -22,23 +22,41 @@
 #endif
 #include "ThemeController.h"
 
+void LibreConnectLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    QString logMessage = QString("[QT] %1").arg(msg);
+    std::string stdMsg = logMessage.toStdString();
+
+    switch (type) {
+    case QtDebugMsg:
+        Debug::Log(stdMsg);
+        break;
+    case QtInfoMsg:
+        Debug::Log(stdMsg);
+        break;
+    case QtWarningMsg:
+        Debug::LogWarning(stdMsg);
+        break;
+    case QtCriticalMsg:
+        Debug::LogError(stdMsg);
+        break;
+    case QtFatalMsg:
+        Debug::LogError(stdMsg);
+        abort();
+    }
+}
 
 int main(int argc, char *argv[])
 {
-    QQuickStyle::setStyle(QStringLiteral("Basic"));
-
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnect");
-
-    QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-VariableFont.ttf"));
-    QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-Italic-VariableFont.ttf"));
-    app.setFont(QFont(QStringLiteral("Inter")));
 
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {
         QDir().mkpath(appDataPath);
         QDir::setCurrent(appDataPath);
+        QDir::setCurrent(QCoreApplication::applicationDirPath());
 
         const Debug::Settings settings{
             .rootPath = appDataPath.toStdString(),
@@ -51,6 +69,13 @@ int main(int argc, char *argv[])
             Debug::SetSettings(settings);
         } catch (...) {}
     }
+
+    qInstallMessageHandler(LibreConnectLogHandler);
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+    QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-VariableFont.ttf"));
+    QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-Italic-VariableFont.ttf"));
+    app.setFont(QFont(QStringLiteral("Inter")));
 
     ThemeController themeController;
     QQmlApplicationEngine engine;
@@ -72,7 +97,10 @@ int main(int argc, char *argv[])
         &engine,
         &QQmlApplicationEngine::objectCreationFailed,
         &app,
-        []() { QCoreApplication::exit(-1); },
+        []() {
+            Debug::LogError("Failed to create QML object");
+            QCoreApplication::exit(-1);
+        },
         Qt::QueuedConnection);
 
     const QUrl url = QUrl("qrc:/LibreConnect/desktop/MainWindow.qml");
