@@ -95,6 +95,7 @@ Page {
                         font.pixelSize: 15
 
                         contentItem: Text {
+                            anchors.fill: parent
                             leftPadding: 10
                             rightPadding: cameraCombo.indicator.width + cameraCombo.spacing
                             text: cameraCombo.displayText
@@ -130,6 +131,9 @@ Page {
                             highlighted: cameraCombo.highlightedIndex === index
 
                             contentItem: Text {
+                                anchors.fill: parent
+                                leftPadding: 10
+                                rightPadding: 10
                                 text: modelData
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 15
@@ -148,17 +152,25 @@ Page {
                         }
 
                         popup: Popup {
+                            id: cameraPopup
+                            modal: true
+                            dim: false
                             x: 0
                             y: Math.round(cameraCombo.height + 4)
                             width: Math.round(cameraCombo.width)
-                            implicitHeight: contentItem.implicitHeight
+                            implicitHeight: Math.min(contentItem.implicitHeight, 260)
                             padding: 1
+                            onOpened: {
+                                if (cameraCombo.currentIndex >= 0)
+                                    cameraPopupList.positionViewAtIndex(cameraCombo.currentIndex, ListView.Contain)
+                            }
 
                             contentItem: ListView {
+                                id: cameraPopupList
                                 clip: true
                                 implicitHeight: contentHeight
-                                model: cameraCombo.popup.visible ? cameraCombo.delegateModel : null
-                                currentIndex: cameraCombo.highlightedIndex
+                                boundsBehavior: Flickable.StopAtBounds
+                                model: cameraCombo.delegateModel
                                 ScrollBar.vertical: ScrollBar {
                                     policy: ScrollBar.AsNeeded
                                 }

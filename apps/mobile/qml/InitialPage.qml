@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
 Page {
     id: page
@@ -17,12 +18,34 @@ Page {
         anchors.margins: 20
         spacing: 14
 
-        Image {
-            source: "qrc:/LibreConnect/mobile/libreconnect_logo.png"
-            sourceSize.width: 96
-            sourceSize.height: 96
+        Item {
+            id: logoWrap
             Layout.alignment: Qt.AlignHCenter
-            fillMode: Image.PreserveAspectFit
+            width: 96
+            height: 96
+            readonly property real cornerRadius: width * 0.22
+
+            Image {
+                id: logoSource
+                anchors.fill: parent
+                source: "qrc:/LibreConnect/mobile/libreconnect_logo_1024.png"
+                sourceSize.width: 1024
+                sourceSize.height: 1024
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                visible: false
+            }
+
+            OpacityMask {
+                anchors.fill: parent
+                source: logoSource
+                maskSource: Rectangle {
+                    width: logoWrap.width
+                    height: logoWrap.height
+                    radius: logoWrap.cornerRadius
+                }
+            }
         }
 
         Text {

@@ -79,6 +79,7 @@ Page {
             Layout.fillWidth: true
 
             ToolButton {
+                id: backButton
                 icon.source: Theme.dark
                              ? "qrc:/LibreConnect/mobile/back_dark.svg"
                              : "qrc:/LibreConnect/mobile/back.svg"
@@ -98,7 +99,8 @@ Page {
             }
 
             Item {
-                width: 32
+                Layout.preferredWidth: backButton.implicitWidth
+                Layout.preferredHeight: backButton.implicitHeight
             }
         }
 

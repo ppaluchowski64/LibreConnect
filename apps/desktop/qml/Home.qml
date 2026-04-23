@@ -625,8 +625,10 @@ Page {
                         width: parent.width
                         height: 58
 
-                        ThemedButton {
+                        FeatureListButton {
                             text: "Cameras"
+                            iconSource: "camera.svg"
+                            darkIconSource: "camera_dark.svg"
                             anchors.fill: parent
                             enabled: root.permissionStateController.cameraGranted
                             onClicked: windowRef.showVirtualCamera()
@@ -648,8 +650,10 @@ Page {
                         width: parent.width
                         height: 58
 
-                        ThemedButton {
+                        FeatureListButton {
                             text: "File Manager"
+                            iconSource: "files.svg"
+                            darkIconSource: "files_dark.svg"
                             anchors.fill: parent
                             enabled: root.permissionStateController.fileSystemGranted
                             onClicked: windowRef.showFileManager()
@@ -671,8 +675,10 @@ Page {
                         width: parent.width
                         height: 58
 
-                        ThemedButton {
+                        FeatureListButton {
                             text: "Messages"
+                            iconSource: "messages.svg"
+                            darkIconSource: "messages_dark.svg"
                             anchors.fill: parent
                             enabled: root.permissionStateController.smsGranted
                             onClicked: root.selectFeature("messages")
@@ -697,8 +703,10 @@ Page {
                         readonly property bool historyFeatureEnabled: root.permissionStateController.notificationsGranted
                                                                      && root.notificationSyncController.enabled
 
-                        ThemedButton {
+                        FeatureListButton {
                             text: "Notifications"
+                            iconSource: "notifications.svg"
+                            darkIconSource: "notifications_dark.svg"
                             anchors.fill: parent
                             enabled: parent.historyFeatureEnabled
                             onClicked: root.selectFeature("notificationHistory")
@@ -725,8 +733,10 @@ Page {
                         width: parent.width
                         height: 58
 
-                        ThemedButton {
+                        FeatureListButton {
                             text: "Sync Clipboard"
+                            iconSource: "clipboard.svg"
+                            darkIconSource: "clipboard_dark.svg"
                             anchors.fill: parent
                             enabled: !root.clipboardSyncController.busy
                             onClicked: root.clipboardSyncController.syncClipboard()

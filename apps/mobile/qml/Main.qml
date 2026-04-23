@@ -30,6 +30,18 @@ ApplicationWindow {
     readonly property url remoteKeyboardPageUrl: Qt.resolvedUrl("RemoteKeyboardPage.qml")
     readonly property url presenterModePageUrl: Qt.resolvedUrl("PresenterModePage.qml")
 
+    function homePageProperties() {
+        return {
+            conn: conn,
+            clipboardSyncController: clipboardSyncController,
+            remoteInputController: remoteInputController,
+            showRemoteInputCallback: function() { root.showRemoteInputPage() },
+            showPresenterModeCallback: function() { root.showPresenterModePage() },
+            showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
+            showSettingsCallback: function() { root.showSettingsPage() }
+        }
+    }
+
     function showRootPage(pageUrl, properties) {
         stackView.clear()
         stackView.push(pageUrl, properties || {})
@@ -50,27 +62,15 @@ ApplicationWindow {
     }
 
     function showHomePage() {
-        showRootPage(homePageUrl, {
-            conn: conn,
-            clipboardSyncController: clipboardSyncController,
-            remoteInputController: remoteInputController,
-            showRemoteInputCallback: function() { root.showRemoteInputPage() },
-            showPresenterModeCallback: function() { root.showPresenterModePage() },
-            showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
-            showSettingsCallback: function() { root.showSettingsPage() }
-        })
+        showRootPage(homePageUrl, homePageProperties())
     }
 
     function showHomePageFromPermissions() {
-        stackView.replace(homePageUrl, {
-            conn: conn,
-            clipboardSyncController: clipboardSyncController,
-            remoteInputController: remoteInputController,
-            showRemoteInputCallback: function() { root.showRemoteInputPage() },
-            showPresenterModeCallback: function() { root.showPresenterModePage() },
-            showRemoteKeyboardCallback: function() { root.showRemoteKeyboardPage() },
-            showSettingsCallback: function() { root.showSettingsPage() }
-        })
+        stackView.replace(homePageUrl, homePageProperties())
+    }
+
+    function showHomePageFromSettings() {
+        stackView.replace(homePageUrl, homePageProperties())
     }
 
     function showPairedDevicesPage() {
@@ -82,12 +82,12 @@ ApplicationWindow {
     }
 
     function showSettingsPage() {
-        stackView.push(settingsPageUrl, {
+        stackView.replace(settingsPageUrl, {
             conn: conn,
             notificationSyncController: notificationSyncController,
             clipboardSyncController: clipboardSyncController,
             themeModes: themeModes,
-            goBackCallback: function() { root.popPage() }
+            showHomeCallback: function() { root.showHomePageFromSettings() }
         })
     }
 
@@ -235,43 +235,9 @@ ApplicationWindow {
             }
         }
 
-        replaceEnter: Transition {
-            ParallelAnimation {
-                NumberAnimation {
-                    property: "opacity"
-                    from: 0
-                    to: 1
-                    duration: root.navAnimationDuration
-                    easing.type: Easing.OutCubic
-                }
-                NumberAnimation {
-                    property: "x"
-                    from: stackView.width * 0.28
-                    to: 0
-                    duration: root.navAnimationDuration
-                    easing.type: Easing.OutCubic
-                }
-            }
-        }
+        replaceEnter: Transition {}
 
-        replaceExit: Transition {
-            ParallelAnimation {
-                NumberAnimation {
-                    property: "opacity"
-                    from: 1
-                    to: 0
-                    duration: root.navAnimationDuration
-                    easing.type: Easing.OutCubic
-                }
-                NumberAnimation {
-                    property: "x"
-                    from: 0
-                    to: -stackView.width * 0.1
-                    duration: root.navAnimationDuration
-                    easing.type: Easing.OutCubic
-                }
-            }
-        }
+        replaceExit: Transition {}
     }
 
     Dialog {

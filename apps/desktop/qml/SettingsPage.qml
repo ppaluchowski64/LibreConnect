@@ -109,6 +109,7 @@ Page {
                         font.pixelSize: 15
 
                         contentItem: Text {
+                            anchors.fill: parent
                             leftPadding: 10
                             rightPadding: themeCombo.indicator.width + themeCombo.spacing
                             text: themeCombo.displayText
@@ -144,6 +145,9 @@ Page {
                             highlighted: themeCombo.highlightedIndex === index
 
                             contentItem: Text {
+                                anchors.fill: parent
+                                leftPadding: 10
+                                rightPadding: 10
                                 text: modelData.label
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 15
@@ -162,17 +166,25 @@ Page {
                         }
 
                         popup: Popup {
+                            id: themePopup
+                            modal: true
+                            dim: false
                             x: 0
                             y: Math.round(themeCombo.height + 4)
                             width: Math.round(themeCombo.width)
-                            implicitHeight: contentItem.implicitHeight
+                            implicitHeight: Math.min(contentItem.implicitHeight, 260)
                             padding: 1
+                            onOpened: {
+                                if (themeCombo.currentIndex >= 0)
+                                    themePopupList.positionViewAtIndex(themeCombo.currentIndex, ListView.Contain)
+                            }
 
                             contentItem: ListView {
+                                id: themePopupList
                                 clip: true
                                 implicitHeight: contentHeight
-                                model: themeCombo.popup.visible ? themeCombo.delegateModel : null
-                                currentIndex: themeCombo.highlightedIndex
+                                boundsBehavior: Flickable.StopAtBounds
+                                model: themeCombo.delegateModel
                                 ScrollBar.vertical: ScrollBar {
                                     policy: ScrollBar.AsNeeded
                                 }
@@ -204,6 +216,7 @@ Page {
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
                     contentItem: Text {
+                        anchors.fill: parent
                         leftPadding: 10
                         rightPadding: themeComboCompact.indicator.width + themeComboCompact.spacing
                         text: themeComboCompact.displayText
@@ -237,6 +250,9 @@ Page {
                         highlighted: themeComboCompact.highlightedIndex === index
 
                         contentItem: Text {
+                            anchors.fill: parent
+                            leftPadding: 10
+                            rightPadding: 10
                             text: modelData.label
                             font.family: Theme.fontFamily
                             font.pixelSize: 15
@@ -255,17 +271,25 @@ Page {
                     }
 
                     popup: Popup {
+                        id: themePopupCompact
+                        modal: true
+                        dim: false
                         x: 0
                         y: Math.round(themeComboCompact.height + 4)
                         width: Math.round(themeComboCompact.width)
-                        implicitHeight: contentItem.implicitHeight
+                        implicitHeight: Math.min(contentItem.implicitHeight, 260)
                         padding: 1
+                        onOpened: {
+                            if (themeComboCompact.currentIndex >= 0)
+                                themePopupListCompact.positionViewAtIndex(themeComboCompact.currentIndex, ListView.Contain)
+                        }
 
                         contentItem: ListView {
+                            id: themePopupListCompact
                             clip: true
                             implicitHeight: contentHeight
-                            model: themeComboCompact.popup.visible ? themeComboCompact.delegateModel : null
-                            currentIndex: themeComboCompact.highlightedIndex
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: themeComboCompact.delegateModel
                             ScrollBar.vertical: ScrollBar {
                                 policy: ScrollBar.AsNeeded
                             }

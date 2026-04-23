@@ -79,6 +79,7 @@ Page {
             Layout.fillWidth: true
 
             ToolButton {
+                id: backButton
                 icon.source: Theme.dark
                              ? "qrc:/LibreConnect/mobile/back_dark.svg"
                              : "qrc:/LibreConnect/mobile/back.svg"
@@ -98,7 +99,8 @@ Page {
             }
 
             Item {
-                width: 32
+                Layout.preferredWidth: backButton.implicitWidth
+                Layout.preferredHeight: backButton.implicitHeight
             }
         }
 
@@ -128,6 +130,7 @@ Page {
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
                         Layout.minimumWidth: 0
+                        padding: 12
                         onClicked: remoteInputController.presenterPreviousSlide()
                         background: Rectangle {
                             radius: 18
@@ -135,27 +138,35 @@ Page {
                             border.width: 1
                             border.color: Theme.panelBorderColor
                         }
-                        contentItem: ColumnLayout {
+                        contentItem: Item {
                             anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 10
 
-                            Image {
-                                Layout.alignment: Qt.AlignHCenter
-                                source: Theme.dark
-                                        ? "qrc:/LibreConnect/mobile/previous_dark.svg"
-                                        : "qrc:/LibreConnect/mobile/previous.svg"
-                                width: 74
-                                height: 74
-                            }
+                            Column {
+                                anchors.centerIn: parent
+                                width: parent.width - (12 * 2)
+                                spacing: 10
 
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Previous"
-                                color: Theme.textColor
-                                font.pixelSize: 17
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
+                                Image {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    source: Theme.dark
+                                            ? "qrc:/LibreConnect/mobile/previous_dark.svg"
+                                            : "qrc:/LibreConnect/mobile/previous.svg"
+                                    width: 92
+                                    height: 92
+                                    sourceSize.width: 92
+                                    sourceSize.height: 92
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: "Previous"
+                                    color: Theme.textColor
+                                    font.pixelSize: 19
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
                             }
                         }
                     }
@@ -165,6 +176,7 @@ Page {
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
                         Layout.minimumWidth: 0
+                        padding: 12
                         onClicked: remoteInputController.presenterNextSlide()
                         background: Rectangle {
                             radius: 18
@@ -172,27 +184,35 @@ Page {
                             border.width: 1
                             border.color: Theme.panelBorderColor
                         }
-                        contentItem: ColumnLayout {
+                        contentItem: Item {
                             anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 10
 
-                            Image {
-                                Layout.alignment: Qt.AlignHCenter
-                                source: Theme.dark
-                                        ? "qrc:/LibreConnect/mobile/next_dark.svg"
-                                        : "qrc:/LibreConnect/mobile/next.svg"
-                                width: 74
-                                height: 74
-                            }
+                            Column {
+                                anchors.centerIn: parent
+                                width: parent.width - (12 * 2)
+                                spacing: 10
 
-                            Text {
-                                Layout.fillWidth: true
-                                text: "Next"
-                                color: Theme.textColor
-                                font.pixelSize: 17
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
+                                Image {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    source: Theme.dark
+                                            ? "qrc:/LibreConnect/mobile/next_dark.svg"
+                                            : "qrc:/LibreConnect/mobile/next.svg"
+                                    width: 92
+                                    height: 92
+                                    sourceSize.width: 92
+                                    sourceSize.height: 92
+                                    fillMode: Image.PreserveAspectFit
+                                    smooth: true
+                                }
+
+                                Text {
+                                    width: parent.width
+                                    text: "Next"
+                                    color: Theme.textColor
+                                    font.pixelSize: 19
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                }
                             }
                         }
                     }
