@@ -250,13 +250,14 @@ jobs:
 
       - name: Create Windows installer
         shell: powershell
+        working-directory: installers/windows
         run: |
-          installers/windows/build-installer.ps1 `
-            -DeployDir "$env:DEPLOY_DIR" `
-            -Version "${{ inputs.version }}" `
-            -OutputDir "$env:GITHUB_WORKSPACE\out\windows" `
-            -WixExePath "$env:WIX_EXE" `
-            -WixExtensionVersion "$env:WIX_VERSION"
+          .\build-installer.ps1 `
+          -DeployDir "$env:DEPLOY_DIR" `
+          -Version "${{ inputs.version }}" `
+          -OutputDir "$env:GITHUB_WORKSPACE\out\windows" `
+          -WixExePath "$env:WIX_EXE" `
+          -WixExtensionVersion "$env:WIX_VERSION"
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
