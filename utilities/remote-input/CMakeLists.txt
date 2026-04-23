@@ -1,7 +1,9 @@
-add_library(remote-input-types INTERFACE)
-target_include_directories(remote-input-types INTERFACE
+add_library(remote-input-types-internal INTERFACE)
+target_include_directories(remote-input-types-internal INTERFACE
         ${CMAKE_CURRENT_SOURCE_DIR}/inc/
 )
+
+add_library(remote-input-types ALIAS remote-input-types-internal)
 
 if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
 
@@ -12,8 +14,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
                 src/linux/*.cc
         )
 
-        find_package(PkgConfig REQUIRED)
-        pkg_check_modules(ALSA REQUIRED IMPORTED_TARGET alsa)
+        find_package(ALSA REQUIRED)
 
     elseif (APPLE AND NOT IOS)
         file(GLOB_RECURSE SOURCE_FILES
@@ -64,7 +65,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
 
     if (UNIX AND NOT APPLE)
         target_link_libraries(remote-input PUBLIC
-                PkgConfig::ALSA
+                ALSA::ALSA
         )
     endif ()
 
@@ -74,6 +75,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
                 "-framework Carbon"
                 "-framework AppKit"
                 "-framework CoreAudio"
+                "-framework AudioToolbox"
         )
     endif ()
 

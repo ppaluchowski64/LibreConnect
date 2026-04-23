@@ -131,6 +131,7 @@ BuildStaticLibrary(system-info utilities/system-info project_defaults Debug-Log 
 
 if (ANDROID)
     BuildStaticLibrary(sms-handler utilities/sms-handler network-component-pc system-component-pc p2p-network-component-pc project_defaults Qt6::Core Qt6::Gui)
+    BuildStaticLibrary(find-my utilities/find-my project_defaults Qt6::Core)
 endif ()
 
 if (NOT APPLE)

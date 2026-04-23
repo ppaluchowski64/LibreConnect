@@ -1,6 +1,7 @@
 #include "SystemVolumeController.h"
 
 #include <CoreAudio/CoreAudio.h>
+#include <AudioToolbox/AudioHardwareService.h>
 
 int SystemVolumeController::GetVolume() {
     AudioDeviceID defaultDevice = 0;
