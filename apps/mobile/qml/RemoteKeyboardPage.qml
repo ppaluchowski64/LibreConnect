@@ -238,7 +238,7 @@ Page {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Backspace and Enter are forwarded even when no text is currently typed."
+                    text: "Text is forwarded to desktop in real time."
                     color: Theme.mutedTextColor
                     font.pixelSize: 14
                     horizontalAlignment: Text.AlignHCenter
