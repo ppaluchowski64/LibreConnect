@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 
 Page {
     id: page
@@ -439,14 +439,18 @@ Page {
                             visible: false
                         }
 
-                        OpacityMask {
+                        Rectangle {
+                            id: homeLogoMask
+                            anchors.fill: parent
+                            radius: homeLogoWrap.cornerRadius
+                            visible: false
+                        }
+
+                        MultiEffect {
                             anchors.fill: parent
                             source: homeLogoSource
-                            maskSource: Rectangle {
-                                width: homeLogoWrap.width
-                                height: homeLogoWrap.height
-                                radius: homeLogoWrap.cornerRadius
-                            }
+                            maskEnabled: true
+                            maskSource: homeLogoMask
                         }
                     }
 
