@@ -42,12 +42,11 @@ Page {
         }
     }
 
-    Image {
+    RoundedLogo {
         id: logo
-        source: "libreconnect_logo.png"
+        source: "libreconnect_logo_1024.png"
         width: 140
         height: 140
-        fillMode: Image.PreserveAspectFit
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 24

@@ -5,6 +5,9 @@
 #include <ConnectionManager.h>
 #include <Events.h>
 #include <ModulesManager.h>
+#ifdef ANDROID_DEVICE
+#include <PermissionManager.h>
+#endif
 
 MobileNotificationSyncController::MobileNotificationSyncController(QObject* parent)
     : QObject(parent)
@@ -12,6 +15,12 @@ MobileNotificationSyncController::MobileNotificationSyncController(QObject* pare
 {
     m_requestedEnabled = m_settings.value(QStringLiteral("notificationSync/enabled"), false).toBool();
     m_enableAttemptPending = m_requestedEnabled;
+#ifdef ANDROID_DEVICE
+    m_permissionsGranted = PermissionManager::IsNotificationEmitPermissionGranted()
+        && PermissionManager::IsNotificationAccessPermissionGranted();
+#else
+    m_permissionsGranted = true;
+#endif
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
 
     m_pollTimer.setInterval(400);
@@ -34,6 +43,12 @@ bool MobileNotificationSyncController::event(QEvent* event)
     if (event->type() == ConnectedEvent::Type) {
         const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
         m_connected = connectedEvent->GetResult() == EventResult::SUCCESS;
+#ifdef ANDROID_DEVICE
+        m_permissionsGranted = PermissionManager::IsNotificationEmitPermissionGranted()
+            && PermissionManager::IsNotificationAccessPermissionGranted();
+#else
+        m_permissionsGranted = true;
+#endif
         if (m_connected && m_requestedEnabled) {
             m_enableAttemptPending = true;
         }
@@ -46,30 +61,38 @@ bool MobileNotificationSyncController::event(QEvent* event)
 
     if (event->type() == DisconnectedEvent::Type) {
         m_connected = false;
+#ifdef ANDROID_DEVICE
+        m_permissionsGranted = PermissionManager::IsNotificationEmitPermissionGranted()
+            && PermissionManager::IsNotificationAccessPermissionGranted();
+#else
+        m_permissionsGranted = true;
+#endif
         refreshState();
         return true;
     }
 
     if (event->type() == ModuleRequestedPermissionGranted::Type) {
         const auto* grantedEvent = static_cast<ModuleRequestedPermissionGranted*>(event);
-        if (grantedEvent->GetPermissionType() == PermissionType::Notifications &&
-            m_connected &&
-            m_requestedEnabled) {
-            m_enableAttemptPending = true;
-            refreshState();
+        if (grantedEvent->GetPermissionType() == PermissionType::Notifications) {
+            m_permissionsGranted = true;
+            if (m_connected && m_requestedEnabled) {
+                m_enableAttemptPending = true;
+                refreshState();
+            }
         }
         return true;
     }
 
     if (event->type() == ModuleRequestedPermissionRejected::Type) {
         const auto* rejectedEvent = static_cast<ModuleRequestedPermissionRejected*>(event);
-        if (rejectedEvent->GetPermissionType() == PermissionType::Notifications &&
-            m_connected &&
-            m_requestedEnabled) {
-            setRequestedEnabled(false, true);
-            m_enableAttemptPending = false;
-            m_disableAttemptPending = false;
-            refreshState();
+        if (rejectedEvent->GetPermissionType() == PermissionType::Notifications) {
+            m_permissionsGranted = false;
+            if (m_connected && m_requestedEnabled) {
+                setRequestedEnabled(false, true);
+                m_enableAttemptPending = false;
+                m_disableAttemptPending = false;
+                refreshState();
+            }
         }
         return true;
     }
@@ -138,6 +161,13 @@ void MobileNotificationSyncController::refreshState()
         }
 
         if (m_requestedEnabled && m_enableAttemptPending) {
+            if (!m_permissionsGranted) {
+                setEnabledState(m_requestedEnabled);
+                setBusy(false);
+                setStatusMessage(QStringLiteral("Notification sync is waiting for notification permissions on this device."));
+                return;
+            }
+
             setEnabledState(true);
             setBusy(true);
             setStatusMessage(QStringLiteral("Starting notification sync..."));

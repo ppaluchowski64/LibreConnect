@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
-import QtQuick.Effects
 
 Page {
     id: page
@@ -420,38 +419,10 @@ Page {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    Item {
-                        id: homeLogoWrap
+                    RoundedLogo {
                         Layout.alignment: Qt.AlignHCenter
                         width: 96
                         height: 96
-                        readonly property real cornerRadius: width * 0.22
-
-                        Image {
-                            id: homeLogoSource
-                            anchors.fill: parent
-                            source: "qrc:/LibreConnect/mobile/libreconnect_logo_1024.png"
-                            sourceSize.width: 1024
-                            sourceSize.height: 1024
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                            mipmap: true
-                            visible: false
-                        }
-
-                        Rectangle {
-                            id: homeLogoMask
-                            anchors.fill: parent
-                            radius: homeLogoWrap.cornerRadius
-                            visible: false
-                        }
-
-                        MultiEffect {
-                            anchors.fill: parent
-                            source: homeLogoSource
-                            maskEnabled: true
-                            maskSource: homeLogoMask
-                        }
                     }
 
                     Text {

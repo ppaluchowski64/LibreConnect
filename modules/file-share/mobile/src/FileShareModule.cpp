@@ -111,6 +111,13 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     const std::shared_ptr<TransferChannel> channel = m_transferChannels[channelIndex];
+    if (channel->GetConnectionState() != ConnectionState::CONNECTED) {
+        Debug::LogError("FileShareModule: Transfer channel {} is not connected", channelIndex);
+        ProcessError(ModuleFailReason::InternalError);
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
 
     {
         const auto future = isDirectory ?
@@ -303,7 +310,7 @@ void FileShareModule::EnableResponseCallbacks() {
         while (true) {
             for (size_t i = 0; i < m_transferChannels.size(); ++i) {
                 const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                if (!channel->IsUsed(false)) {
+                if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
                     transferChannelIndex = i;
                     goto FINISH_CHANNEL_SEARCH;
                 }
@@ -370,7 +377,7 @@ void FileShareModule::EnableResponseCallbacks() {
                         continue;
                     }
 
-                    if (!channel->IsUsed(false)) {
+                    if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
                         transferChannelIndex = i;
                         m_reservedIncomingPostChannels.insert(i);
                         goto FINISH_CHANNEL_SEARCH;

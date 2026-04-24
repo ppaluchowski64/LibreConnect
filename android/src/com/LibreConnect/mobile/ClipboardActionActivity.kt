@@ -3,23 +3,55 @@ package com.LibreConnect.mobile
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 
 class ClipboardActionActivity : Activity() {
-    private external fun nativeOnClipboardTileClicked()
+    private var syncDispatched = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.i(TAG, "Transparent Clipboard Activity created to acquire window focus")
+        overridePendingTransition(0, 0)
+        Log.i(TAG, "Clipboard action activity created; waiting for foreground focus")
+    }
 
-        if (MainService.ensureNativeLoaded(this)) {
-            nativeOnClipboardTileClicked()
-        } else {
-            Log.e(TAG, "Failed to load native library for clipboard action")
+    override fun onResume() {
+        super.onResume()
+        window?.decorView?.post {
+            dispatchClipboardSyncIfFocused("onResume")
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            dispatchClipboardSyncIfFocused("onWindowFocusChanged")
+        }
+    }
+
+    private fun dispatchClipboardSyncIfFocused(trigger: String) {
+        if (syncDispatched || isFinishing) {
+            return
         }
 
-        finish()
+        if (!hasWindowFocus()) {
+            Log.i(TAG, "Clipboard action activity is not focused yet ($trigger)")
+            return
+        }
+
+        syncDispatched = true
+
+        val clipboardText = ClipboardBridge.getClipboardText(this)
+        Log.i(TAG, "Dispatching clipboard sync from $trigger (${clipboardText.length} chars)")
+        ClipboardSyncDispatcher.requestManualSync(this, clipboardText)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            finishAndRemoveTask()
+        } else {
+            finish()
+        }
+        overridePendingTransition(0, 0)
     }
 
     companion object {
@@ -28,7 +60,12 @@ class ClipboardActionActivity : Activity() {
         @JvmStatic
         fun createLaunchIntent(context: Context): Intent {
             return Intent(context, ClipboardActionActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION or
+                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                )
             }
         }
     }

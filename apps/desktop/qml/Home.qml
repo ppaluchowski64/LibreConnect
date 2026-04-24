@@ -407,14 +407,10 @@ Page {
                         anchors.margins: 12
                         spacing: 12
 
-                        Image {
-                            source: "libreconnect_logo.png"
+                        RoundedLogo {
+                            source: "libreconnect_logo_1024.png"
                             Layout.preferredWidth: 62
                             Layout.preferredHeight: 62
-                            sourceSize.width: 62
-                            sourceSize.height: 62
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
                         }
 
                         Column {

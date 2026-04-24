@@ -109,7 +109,8 @@ Window {
     function showInitial() {
         applyFixedWindowSize()
         replaceRootPage("qrc:/LibreConnect/desktop/Initial.qml", {
-            windowRef: window
+            windowRef: window,
+            connectionController: connectionController
         })
     }
 

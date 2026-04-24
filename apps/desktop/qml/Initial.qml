@@ -6,18 +6,18 @@ Page {
     id: root
 
     required property var windowRef
+    required property var connectionController
     readonly property string windowTitleSuffix: "Setup"
 
     background: Rectangle {
         color: Theme.backgroundColor
     }
 
-    Image {
+    RoundedLogo {
         id: logo
-        source: "qrc:/LibreConnect/desktop/libreconnect_logo.png"
+        source: "qrc:/LibreConnect/desktop/libreconnect_logo_1024.png"
         width: 140
         height: 140
-        fillMode: Image.PreserveAspectFit
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 24
@@ -69,6 +69,83 @@ Page {
         width: 160
         height: 56
         font.pixelSize: 20
-        onClicked: windowRef.showDevicePicker(false)
+        onClicked: {
+            if (Qt.platform.os === "osx" && !connectionController.localNetworkPermissionGranted) {
+                localNetworkDialog.open()
+                return
+            }
+
+            windowRef.showDevicePicker(false)
+        }
+    }
+
+    Dialog {
+        id: localNetworkDialog
+        modal: true
+        title: ""
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: 420
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        Column {
+            width: parent.width
+            spacing: 12
+
+            Text {
+                width: parent.width
+                text: "Allow Local Network Access"
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: "LibreConnect needs macOS local network access before it can scan for nearby phones."
+                font.family: Theme.fontFamily
+                font.pixelSize: 16
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: "After you continue, macOS will show its Local Network permission prompt."
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: Theme.mutedTextColor
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                spacing: 10
+
+                ThemedButton {
+                    text: "Not Now"
+                    width: 140
+                    height: 44
+                    onClicked: localNetworkDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Continue"
+                    width: 140
+                    height: 44
+                    onClicked: {
+                        localNetworkDialog.close()
+                        windowRef.showDevicePicker(false)
+                    }
+                }
+            }
+        }
     }
 }

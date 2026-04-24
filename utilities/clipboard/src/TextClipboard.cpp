@@ -309,9 +309,4 @@ void TextClipboard::RemoveClipboardUpdateListener() {
     Java_com_LibreConnect_mobile_ClipboardBridge_nativeOnClipboardChanged(JNIEnv* /*env*/, jclass /*clazz*/) {
         DispatchClipboardCallback();
     }
-
-    extern "C" JNIEXPORT void JNICALL
-    Java_com_LibreConnect_mobile_ClipboardActionActivity_nativeOnClipboardTileClicked(JNIEnv* /*env*/, jobject /*obj*/) {
-        DispatchClipboardCallback();
-    }
 #endif

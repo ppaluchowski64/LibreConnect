@@ -20,6 +20,7 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(bool pending   READ pending   NOTIFY pendingChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(bool hasPairedDevices READ hasPairedDevices NOTIFY pairedDevicesChanged)
+    Q_PROPERTY(bool localNetworkPermissionGranted READ localNetworkPermissionGranted NOTIFY localNetworkPermissionGrantedChanged)
     Q_PROPERTY(bool verificationPending READ verificationPending NOTIFY verificationPendingChanged)
     Q_PROPERTY(int verificationTriesLeft READ verificationTriesLeft NOTIFY verificationTriesLeftChanged)
     Q_PROPERTY(QString verificationError READ verificationError NOTIFY verificationErrorChanged)
@@ -33,6 +34,7 @@ public:
     bool pending()    const { return m_pending; }
     QString lastError() const { return m_lastError; }
     bool hasPairedDevices() const { return m_hasPairedDevices; }
+    bool localNetworkPermissionGranted() const;
     bool verificationPending() const { return m_verificationPending; }
     int verificationTriesLeft() const { return m_verificationTriesLeft; }
     QString verificationError() const { return m_verificationError; }
@@ -56,6 +58,7 @@ public:
     void pendingChanged();
     void lastErrorChanged();
     void pairedDevicesChanged();
+    void localNetworkPermissionGrantedChanged();
     void verificationPendingChanged();
     void verificationTriesLeftChanged();
     void verificationErrorChanged();
