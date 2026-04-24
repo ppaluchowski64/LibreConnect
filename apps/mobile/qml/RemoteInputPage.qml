@@ -1,7 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
+import QtQuick.Effects
 
 Page {
     id: page
@@ -152,14 +152,18 @@ Page {
                             visible: false
                         }
 
-                        OpacityMask {
+                        Rectangle {
+                            id: coverMask
+                            anchors.fill: parent
+                            radius: Math.max(0, coverTemplate.radius - coverTemplate.coverInset)
+                            visible: false
+                        }
+
+                        MultiEffect {
                             anchors.fill: parent
                             source: coverImage
-                            maskSource: Rectangle {
-                                width: coverImageContainer.width
-                                height: coverImageContainer.height
-                                radius: Math.max(0, coverTemplate.radius - coverTemplate.coverInset)
-                            }
+                            maskEnabled: true
+                            maskSource: coverMask
                         }
                     }
 
