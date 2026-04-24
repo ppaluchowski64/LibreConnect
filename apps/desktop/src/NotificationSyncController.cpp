@@ -137,6 +137,13 @@ void NotificationSyncController::refreshState()
         }
 
         if (m_requestedEnabled && m_enableAttemptPending) {
+            if (!m_permissionsGranted) {
+                setEnabledState(m_requestedEnabled);
+                setBusy(false);
+                setStatusMessage(QStringLiteral("Notification sync is waiting for notification permissions on the connected device."));
+                return;
+            }
+
             setEnabledState(true);
             setBusy(true);
             setStatusMessage(QStringLiteral("Starting notification sync..."));
@@ -168,6 +175,7 @@ bool NotificationSyncController::event(QEvent* event)
     if (event->type() == ConnectedEvent::Type) {
         const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
         m_connected = connectedEvent->GetResult() == EventResult::SUCCESS;
+        m_permissionsGranted = false;
         if (m_connected && m_requestedEnabled) {
             m_enableAttemptPending = true;
         }
@@ -180,6 +188,7 @@ bool NotificationSyncController::event(QEvent* event)
 
     if (event->type() == DisconnectedEvent::Type) {
         m_connected = false;
+        m_permissionsGranted = false;
         clearNotifications();
         refreshState();
         return true;
@@ -220,24 +229,26 @@ bool NotificationSyncController::event(QEvent* event)
 
     if (event->type() == ModuleRequestedPermissionGranted::Type) {
         const auto* grantedEvent = static_cast<ModuleRequestedPermissionGranted*>(event);
-        if (grantedEvent->GetPermissionType() == PermissionType::Notifications &&
-            m_connected &&
-            m_requestedEnabled) {
-            m_enableAttemptPending = true;
-            refreshState();
+        if (grantedEvent->GetPermissionType() == PermissionType::Notifications) {
+            m_permissionsGranted = true;
+            if (m_connected && m_requestedEnabled) {
+                m_enableAttemptPending = true;
+                refreshState();
+            }
         }
         return true;
     }
 
     if (event->type() == ModuleRequestedPermissionRejected::Type) {
         const auto* rejectedEvent = static_cast<ModuleRequestedPermissionRejected*>(event);
-        if (rejectedEvent->GetPermissionType() == PermissionType::Notifications &&
-            m_connected &&
-            m_requestedEnabled) {
-            setRequestedEnabled(false, true);
-            m_enableAttemptPending = false;
-            m_disableAttemptPending = false;
-            refreshState();
+        if (rejectedEvent->GetPermissionType() == PermissionType::Notifications) {
+            m_permissionsGranted = false;
+            if (m_connected && m_requestedEnabled) {
+                setRequestedEnabled(false, true);
+                m_enableAttemptPending = false;
+                m_disableAttemptPending = false;
+                refreshState();
+            }
         }
         return true;
     }

@@ -69,7 +69,11 @@
         <activity
                 android:name=".ClipboardActionActivity"
                 android:theme="@android:style/Theme.Translucent.NoTitleBar"
+                android:taskAffinity=""
                 android:excludeFromRecents="true"
+                android:noHistory="true"
+                android:finishOnTaskLaunch="true"
+                android:stateNotNeeded="true"
                 android:exported="false" />
 
         <service android:name=".NotificationListener"

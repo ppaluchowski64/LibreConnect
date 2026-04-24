@@ -97,6 +97,15 @@ Page {
         sortPairedDevices()
     }
 
+    function startDiscovery() {
+        if (Qt.platform.os === "osx" && !connectionController.localNetworkPermissionGranted) {
+            localNetworkDialog.open()
+            return
+        }
+
+        discovery.discover()
+    }
+
     function selectedDeviceName() {
         for (let i = 0; i < pairedDevices.length; ++i) {
             const item = pairedDevices[i]
@@ -150,12 +159,11 @@ Page {
         color: Theme.backgroundColor
     }
 
-    Image {
+    RoundedLogo {
         id: logo
-        source: "qrc:/LibreConnect/desktop/libreconnect_logo.png"
+        source: "qrc:/LibreConnect/desktop/libreconnect_logo_1024.png"
         width: 140
         height: 140
-        fillMode: Image.PreserveAspectFit
         anchors.top: parent.top
         anchors.right: parent.right
         anchors.margins: 24
@@ -425,9 +433,79 @@ Page {
         }
     }
 
+    Dialog {
+        id: localNetworkDialog
+        modal: true
+        title: ""
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: 430
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        Column {
+            width: parent.width
+            spacing: 12
+
+            Text {
+                width: parent.width
+                text: "Allow Local Network Access"
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: "LibreConnect needs local network access before it can look for your paired phones on macOS."
+                font.family: Theme.fontFamily
+                font.pixelSize: 16
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                width: parent.width
+                text: "Continue to show the system permission prompt. Until it is granted, online status checks will stay paused."
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: Theme.mutedTextColor
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                spacing: 10
+
+                ThemedButton {
+                    text: "Not Now"
+                    width: 140
+                    height: 44
+                    onClicked: localNetworkDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Continue"
+                    width: 140
+                    height: 44
+                    onClicked: {
+                        localNetworkDialog.close()
+                        discovery.discover()
+                    }
+                }
+            }
+        }
+    }
+
     Component.onCompleted: {
         reloadPairedDevices()
-        discovery.discover()
+        startDiscovery()
         rebuildOnlineStatus()
     }
 }

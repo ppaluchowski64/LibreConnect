@@ -10,6 +10,8 @@
 #include <QSettings>
 
 #include <ConnectionManager.h>
+#include <ModulesManager.h>
+#include <ClipboardSyncModule.h>
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <ThreadPool.h>
@@ -30,6 +32,21 @@ jobject g_serviceContextGlobal = nullptr;
 jclass g_findMyPhoneClass = nullptr;
 jmethodID g_findMyPhoneStartMethod = nullptr;
 jmethodID g_findMyPhoneStopMethod = nullptr;
+
+void StartBackendIfNeeded();
+
+void RequestClipboardSync(std::string localClipboardText = {})
+{
+    StartBackendIfNeeded();
+    Debug::Log("MainServiceBackendBridge: manual clipboard sync requested");
+    auto& module = ModulesManager::GetModuleReference<ClipboardSyncModule>();
+    if (localClipboardText.empty()) {
+        module->RequestSyncWithPeer();
+        return;
+    }
+
+    module->RequestSyncWithPeer(std::move(localClipboardText));
+}
 
 void ReleaseFindMyPhoneJniState(JNIEnv* env)
 {
@@ -400,4 +417,26 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
     StopBackendIfNeeded();
     std::lock_guard<std::mutex> lock(g_jniStateMutex);
     ReleaseFindMyPhoneJniState(env);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeRequestClipboardSync(
+    JNIEnv*,
+    jobject)
+{
+    RequestClipboardSync();
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardActionActivity_nativeRequestClipboardSync(
+    JNIEnv*,
+    jobject)
+{
+    RequestClipboardSync();
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDispatcher_nativeRequestClipboardSyncWithText(
+    JNIEnv* env,
+    jclass,
+    jstring clipboardText)
+{
+    RequestClipboardSync(JStringToStdString(env, clipboardText));
 }

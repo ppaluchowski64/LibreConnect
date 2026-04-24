@@ -40,6 +40,7 @@ private:
     QSettings m_settings;
     QTimer m_pollTimer;
     bool m_connected = false;
+    bool m_permissionsGranted = false;
     bool m_requestedEnabled = false;
     bool m_enableAttemptPending = false;
     bool m_disableAttemptPending = false;

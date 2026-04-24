@@ -158,7 +158,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
             DeserializeObject(fileHeaderSize, headerBuffer, offset);
 
             if (fileHeaderSize > buffer.size()) {
-                Debug::LogError("The header size ({}) is exceeding the buffer size ({})", fileHeaderSize, headerBuffer.size());
+                Debug::LogError("The header size ({}) is exceeding the buffer size ({})", fileHeaderSize, buffer.size());
                 m_receive.store(false);
                 co_return;
             }
@@ -184,7 +184,11 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
                 continue;
             }
 
-            co_await Receive(filePath.value(), fileHeader.fileSize);
+            const bool received = co_await Receive(filePath.value(), fileHeader.fileSize);
+            if (!received) {
+                m_receive.store(false);
+                co_return;
+            }
 
         } while (!fileHeader.last);
 
@@ -231,7 +235,7 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
 
             FileHeader fileHeader{};
             fileHeader.fileSize = std::filesystem::file_size(currentFilePath);
-            fileHeader.relativePath = std::filesystem::relative(currentFilePath, path).string();
+            fileHeader.relativePath = std::filesystem::relative(currentFilePath, path).generic_string();
             fileHeader.last = isLast;
 
             std::vector<uint8_t> buffer(fileHeader.GetSerializedSize() + sizeof(size_t));
@@ -240,7 +244,11 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
             fileHeader.Serialize(buffer, offset);
 
             co_await asio::async_write(*m_socket, asio::buffer(buffer), asio::use_awaitable);
-            co_await Send(currentFilePath);
+            const bool sent = co_await Send(currentFilePath);
+            if (!sent) {
+                m_send.store(false);
+                co_return;
+            }
         }
 
     } catch (const std::exception& e) {
@@ -269,7 +277,11 @@ asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
     co_await asio::async_read(*m_socket, mutableBuffer, asio::use_awaitable);
     fileHeader.Deserialize(buffer, offset);
 
-    co_await Receive(path, fileHeader.fileSize);
+    const bool received = co_await Receive(path, fileHeader.fileSize);
+    if (!received) {
+        m_receive.store(false);
+        co_return;
+    }
 
     m_receive.store(false);
 }
@@ -297,7 +309,11 @@ asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
     const asio::const_buffer constBuffer(buffer.data(), buffer.size());
 
     co_await asio::async_write(*m_socket, constBuffer, asio::use_awaitable);
-    co_await Send(path);
+    const bool sent = co_await Send(path);
+    if (!sent) {
+        m_send.store(false);
+        co_return;
+    }
 
     m_send.store(false);
 }
@@ -310,7 +326,8 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
 
         std::ofstream fileStream(destination, std::ios::binary);
         if (!fileStream.is_open()) {
-            Debug::LogError("Failed to open destination file");
+            Debug::LogError("Failed to open destination file '{}'", destination.string());
+            co_await Disconnect();
             co_return false;
         }
 
@@ -318,12 +335,17 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
 
         while (offset < length) {
             const size_t bufferSize = std::min(m_bufferIn.size(), length - offset);
-            offset += bufferSize;
-
             asio::mutable_buffer buffer(m_bufferIn.data(), bufferSize);
             co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
 
             fileStream.write(reinterpret_cast<const char*>(m_bufferIn.data()), bufferSize);
+            if (!fileStream.good()) {
+                Debug::LogError("Failed while writing destination file '{}'", destination.string());
+                co_await Disconnect();
+                co_return false;
+            }
+
+            offset += bufferSize;
             m_progress.fetch_add(bufferSize);
         }
 

@@ -21,7 +21,9 @@ class ClipboardTileService : TileService() {
         super.onClick()
         Log.i(TAG, "Clipboard tile clicked")
         refreshTile()
-        startActivityAndCollapse(ClipboardActionActivity.createLaunchIntent(this))
+        unlockAndRun {
+            startActivityAndCollapse(ClipboardActionActivity.createLaunchIntent(this))
+        }
     }
 
     private fun refreshTile() {

@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <QRegularExpression>
+#include <PermissionManager.h>
 
 namespace
 {
@@ -91,6 +92,11 @@ DeviceConnectionController::DeviceConnectionController(QObject* parent)
 DeviceConnectionController::~DeviceConnectionController()
 {
     ConnectionManager::RemoveResponseHandler(kFindMyPhoneStopPackage);
+}
+
+bool DeviceConnectionController::localNetworkPermissionGranted() const
+{
+    return PermissionManager::IsLocalNetworkAccessPermissionGranted();
 }
 
 void DeviceConnectionController::connectTo(const QString& ipAddress,
@@ -386,6 +392,7 @@ void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
 
 #ifdef MACOS_DEVICE
     if (ev->GetErrorCode() == std::make_error_code(std::errc::permission_denied)) {
+        emit localNetworkPermissionGrantedChanged();
         handleError(
             "Local network permission is required to discover devices. "
             "Allow LibreConnect in System Settings > Privacy & Security > Local Network, then try again.",

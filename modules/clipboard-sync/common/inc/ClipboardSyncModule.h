@@ -11,6 +11,7 @@
 class ClipboardSyncModule : public BaseModule {
 public:
     void RequestSyncWithPeer();
+    void RequestSyncWithPeer(std::string localClipboardText);
 
 protected:
     void EnableResponseCallbacks() override;
@@ -26,6 +27,7 @@ protected:
 
 private:
     static std::string NormalizeClipboardText(std::string text);
+    void SendClipboardText(std::string text) const;
     void SendLocalClipboardSnapshot() const;
 
     mutable std::mutex m_clipboardStateMutex;

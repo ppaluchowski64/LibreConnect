@@ -144,7 +144,20 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
             }
 
             Debug::Log("LanDeviceScanner::Co_JoinMulticastGroup joining multicast on {}", address.to_string());
-            m_inSocket->set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
+            try {
+                m_inSocket->set_option(asio::ip::multicast::join_group(DEVICE_DISCOVERY_MULTICAST_ADDRESS, address.to_v4()));
+            } catch (const std::system_error& joinError) {
+                if (joinError.code() == asio::error::address_in_use) {
+                    Debug::LogWarning(
+                        "LanDeviceScanner::Co_JoinMulticastGroup skipping duplicate multicast registration on {} ({})",
+                        address.to_string(),
+                        joinError.what()
+                    );
+                    continue;
+                }
+
+                throw;
+            }
         }
 
         asio::co_spawn(m_strand, Co_SendProbes(), asio::detached);

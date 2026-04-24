@@ -13,8 +13,7 @@ std::string ClipboardSyncModule::NormalizeClipboardText(std::string text) {
     return text;
 }
 
-void ClipboardSyncModule::SendLocalClipboardSnapshot() const {
-    const std::string text = TextClipboard::Get();
+void ClipboardSyncModule::SendClipboardText(std::string text) const {
     if (text.empty()) {
         return;
     }
@@ -41,8 +40,17 @@ void ClipboardSyncModule::SendLocalClipboardSnapshot() const {
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_UPDATE_CLIPBOARD, text);
 }
 
+void ClipboardSyncModule::SendLocalClipboardSnapshot() const {
+    SendClipboardText(TextClipboard::Get());
+}
+
 void ClipboardSyncModule::RequestSyncWithPeer() {
     SendLocalClipboardSnapshot();
+    ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_REQUEST_SYNC);
+}
+
+void ClipboardSyncModule::RequestSyncWithPeer(std::string localClipboardText) {
+    SendClipboardText(std::move(localClipboardText));
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_REQUEST_SYNC);
 }
 

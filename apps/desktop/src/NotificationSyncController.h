@@ -58,6 +58,7 @@ private:
     QSettings m_settings;
     QTimer m_pollTimer;
     bool m_connected = false;
+    bool m_permissionsGranted = false;
     bool m_enabled = false;
     bool m_busy = false;
     bool m_requestedEnabled = false;
