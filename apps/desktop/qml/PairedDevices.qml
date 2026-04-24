@@ -98,12 +98,12 @@ Page {
     }
 
     function startDiscovery() {
-        if (Qt.platform.os === "osx" && !connectionController.localNetworkPermissionGranted) {
-            localNetworkDialog.open()
+        if (Qt.platform.os !== "osx") {
+            discovery.discover()
             return
         }
 
-        discovery.discover()
+        connectionController.checkLocalNetworkPermission()
     }
 
     function selectedDeviceName() {
@@ -433,6 +433,20 @@ Page {
         }
     }
 
+    Connections {
+        target: connectionController
+
+        function onLocalNetworkPermissionCheckFinished(granted) {
+            if (granted) {
+                localNetworkDialog.close()
+                discovery.discover()
+                return
+            }
+
+            localNetworkDialog.open()
+        }
+    }
+
     Dialog {
         id: localNetworkDialog
         modal: true
@@ -473,7 +487,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Continue to show the system permission prompt. Until it is granted, online status checks will stay paused."
+                text: "If macOS did not already show its Local Network permission prompt, continue to try again. Until it is granted, online status checks will stay paused."
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
                 color: Theme.mutedTextColor
@@ -487,16 +501,18 @@ Page {
                     text: "Not Now"
                     width: 140
                     height: 44
+                    enabled: !connectionController.localNetworkPermissionCheckPending
                     onClicked: localNetworkDialog.close()
                 }
 
                 ThemedButton {
-                    text: "Continue"
+                    text: connectionController.localNetworkPermissionCheckPending ? "Checking..." : "Continue"
                     width: 140
                     height: 44
+                    enabled: !connectionController.localNetworkPermissionCheckPending
                     onClicked: {
                         localNetworkDialog.close()
-                        discovery.discover()
+                        connectionController.checkLocalNetworkPermission()
                     }
                 }
             }

@@ -21,6 +21,7 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(bool hasPairedDevices READ hasPairedDevices NOTIFY pairedDevicesChanged)
     Q_PROPERTY(bool localNetworkPermissionGranted READ localNetworkPermissionGranted NOTIFY localNetworkPermissionGrantedChanged)
+    Q_PROPERTY(bool localNetworkPermissionCheckPending READ localNetworkPermissionCheckPending NOTIFY localNetworkPermissionCheckPendingChanged)
     Q_PROPERTY(bool verificationPending READ verificationPending NOTIFY verificationPendingChanged)
     Q_PROPERTY(int verificationTriesLeft READ verificationTriesLeft NOTIFY verificationTriesLeftChanged)
     Q_PROPERTY(QString verificationError READ verificationError NOTIFY verificationErrorChanged)
@@ -35,6 +36,7 @@ public:
     QString lastError() const { return m_lastError; }
     bool hasPairedDevices() const { return m_hasPairedDevices; }
     bool localNetworkPermissionGranted() const;
+    bool localNetworkPermissionCheckPending() const { return m_localNetworkPermissionCheckPending; }
     bool verificationPending() const { return m_verificationPending; }
     int verificationTriesLeft() const { return m_verificationTriesLeft; }
     QString verificationError() const { return m_verificationError; }
@@ -52,6 +54,7 @@ public:
     Q_INVOKABLE void refreshPairedDevices();
     Q_INVOKABLE bool startFindMyPhoneAlert();
     Q_INVOKABLE void stopFindMyPhoneAlert();
+    Q_INVOKABLE void checkLocalNetworkPermission();
 
     signals:
         void connectedChanged();
@@ -59,6 +62,8 @@ public:
     void lastErrorChanged();
     void pairedDevicesChanged();
     void localNetworkPermissionGrantedChanged();
+    void localNetworkPermissionCheckPendingChanged();
+    void localNetworkPermissionCheckFinished(bool granted);
     void verificationPendingChanged();
     void verificationTriesLeftChanged();
     void verificationErrorChanged();
@@ -87,6 +92,7 @@ private:
     bool m_pending   = false;
     QString m_lastError;
     bool m_hasPairedDevices = false;
+    bool m_localNetworkPermissionCheckPending = false;
     bool m_verificationPending = false;
     int m_verificationTriesLeft = 0;
     QString m_verificationError;
