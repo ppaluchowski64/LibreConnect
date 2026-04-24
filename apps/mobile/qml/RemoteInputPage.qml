@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import Qt5Compat.GraphicalEffects
 
 Page {
     id: page
@@ -149,17 +148,6 @@ Page {
                             source: remoteInputController.coverImageSource
                             fillMode: Image.PreserveAspectFit
                             cache: false
-                            visible: false
-                        }
-
-                        OpacityMask {
-                            anchors.fill: parent
-                            source: coverImage
-                            maskSource: Rectangle {
-                                width: coverImageContainer.width
-                                height: coverImageContainer.height
-                                radius: Math.max(0, coverTemplate.radius - coverTemplate.coverInset)
-                            }
                         }
                     }
 
