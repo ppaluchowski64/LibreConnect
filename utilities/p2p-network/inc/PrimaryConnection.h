@@ -14,7 +14,7 @@
 #include <functional>
 #include <InitialConnection.h>
 
-static constexpr size_t MAX_PACKAGE_SIZE = 1024 * 256;
+constexpr size_t MAX_PACKAGE_SIZE = 1024 * 256;
 static constexpr size_t MAX_INBOUND_QUEUED_BYTES = 1024 * 1024 * 16;
 
 class PrimaryConnection final : public std::enable_shared_from_this<PrimaryConnection> {
