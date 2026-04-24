@@ -73,9 +73,9 @@ find_package(xxHash           REQUIRED)
 find_package(Boost            REQUIRED)
 
 if (UNIX AND NOT APPLE AND NOT ANDROID)
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 Multimedia DBus)
+    find_package(Qt6 REQUIRED COMPONENTS Core Core5Compat Gui Quick Qml QuickControls2 Multimedia DBus)
 else ()
-    find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml QuickControls2 Multimedia)
+    find_package(Qt6 REQUIRED COMPONENTS Core Core5Compat Gui Quick Qml QuickControls2 Multimedia)
 endif ()
 
 set(DEBUG_LOG_DISABLE_STACKTRACE ON CACHE BOOL "" FORCE)

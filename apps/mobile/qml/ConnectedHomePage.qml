@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 
 Page {
     id: page
@@ -424,8 +425,10 @@ Page {
                         Layout.alignment: Qt.AlignHCenter
                         width: 96
                         height: 96
+                        readonly property real cornerRadius: width * 0.22
 
                         Image {
+                            id: homeLogoSource
                             anchors.fill: parent
                             source: "qrc:/LibreConnect/mobile/libreconnect_logo_1024.png"
                             sourceSize.width: 1024
@@ -433,6 +436,17 @@ Page {
                             fillMode: Image.PreserveAspectFit
                             smooth: true
                             mipmap: true
+                            visible: false
+                        }
+
+                        OpacityMask {
+                            anchors.fill: parent
+                            source: homeLogoSource
+                            maskSource: Rectangle {
+                                width: homeLogoWrap.width
+                                height: homeLogoWrap.height
+                                radius: homeLogoWrap.cornerRadius
+                            }
                         }
                     }
 
