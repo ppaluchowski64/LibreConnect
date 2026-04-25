@@ -808,6 +808,27 @@ bool MobileConnectionController::event(QEvent* e)
         return true;
     }
 
+    if (type == DeviceNotPairedEvent::Type) {
+        const auto* ev = static_cast<DeviceNotPairedEvent*>(e);
+        const QString deviceId = QString::fromStdString(ev->GetDeviceID());
+        if (!deviceId.isEmpty()) {
+            removePairedDevice(deviceId);
+        } else {
+            refreshPairedDevices();
+        }
+        setError(QStringLiteral("This device is no longer paired with the remote device. Pair the devices again and retry."));
+        return true;
+    }
+
+    if (type == DeviceCooldownEvent::Type) {
+        const auto* ev = static_cast<DeviceCooldownEvent*>(e);
+        setError(
+            QStringLiteral("Connection temporarily blocked by the remote device. Try again in about %1 seconds.")
+                .arg(ev->LeftDuration(), 0, 'f', 1)
+        );
+        return true;
+    }
+
     if (type == ConnectionVerificationEvent::Type) {
         auto* ev = static_cast<ConnectionVerificationEvent*>(e);
         ev->SendAnswer(std::string{});

@@ -272,6 +272,31 @@ bool DeviceConnectionController::event(QEvent* e)
         return true;
     }
 
+    if (type == DeviceNotPairedEvent::Type) {
+        const auto* ev = static_cast<DeviceNotPairedEvent*>(e);
+        const QString deviceId = QString::fromStdString(ev->GetDeviceID());
+        std::string message = "This device is no longer paired with the remote device. Pair the devices again and retry. " + deviceId.toStdString();
+
+        handleError(message, type);
+        if (!deviceId.isEmpty()) {
+            removePairedDevice(deviceId);
+        } else {
+            refreshPairedDevices();
+        }
+        return true;
+    }
+
+    if (type == DeviceCooldownEvent::Type) {
+        const auto* ev = static_cast<DeviceCooldownEvent*>(e);
+        handleError(
+            QStringLiteral("Connection temporarily blocked by the remote device. Try again in about %1 seconds.")
+                .arg(ev->LeftDuration(), 0, 'f', 1)
+                .toStdString(),
+            type
+        );
+        return true;
+    }
+
     if (type == ModuleErrorEvent::Type) {
         handleModuleErrorEvent(static_cast<ModuleErrorEvent*>(e));
         return true;

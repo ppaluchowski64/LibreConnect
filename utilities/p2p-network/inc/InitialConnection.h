@@ -18,11 +18,13 @@ enum class InitialConnectionMode : uint8_t {
 };
 
 enum class InitialConnectionPackageType : PackageTypeInt {
-    DEVICE_DATA_FC,
-    DEVICE_DATA_FS,
+    DEVICE_DATA_FOR_CONNECTION,
+    DEVICE_DATA_FOR_SEEKING_CONNECTION,
     CHALLENGE_ANSWER_REQUEST,
     CHALLENGE_RESPONSE,
-    CHALLENGE_WRONG_ANSWER
+    CHALLENGE_WRONG_ANSWER,
+    DEVICE_IS_UNPAIRED,
+    DEVICE_CONNECT_COOLDOWN
 };
 
 struct InitialConnectionData {
@@ -60,6 +62,12 @@ public:
     void TemporaryOwnership(const std::shared_ptr<InitialConnection>& ptr);
 
 private:
+    template <Serializable... Args>
+    void Send(InitialConnectionPackageType type, Args&&... args) {
+        m_packagesOut.emplace_back(Package<InitialConnectionPackageType>::CreateUnique(type, std::forward<Args>(args)...));
+        m_sendFlag.Signal();
+    }
+
     asio::awaitable<void> CoConnect(TCPEndpoint endpoint, InitialConnectionMode mode);
     asio::awaitable<void> CoSeek(TCPEndpoint endpoint, std::function<void(TCPEndpoint endpoint)> callback);
     asio::awaitable<void> CoDisconnect(bool cancelSeeking);
@@ -87,6 +95,8 @@ private:
 
     ConnectionState m_connectionState{ConnectionState::DISCONNECTED};
     int32_t m_challengeLeftTries;
+    bool m_sendInFlight{false};
+    bool m_receivedTerminalHandshakeReason{false};
 };
 
 #endif //INITIAL_CONNECTION_H

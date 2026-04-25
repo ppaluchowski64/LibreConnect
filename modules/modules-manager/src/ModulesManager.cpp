@@ -14,7 +14,13 @@ std::mutex ModulesManager::s_mutex{};
 
 bool ModulesManager::event(QEvent* event) {
     if (event->type() == ConnectedEvent::Type) {
-        Debug::Log("ModulesManager: ConnectedEvent received, ensuring modules are initialized");
+        const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
+        if (connectedEvent->GetResult() != EventResult::SUCCESS) {
+            Debug::Log("ModulesManager: ConnectedEvent reported failure, skipping module initialization");
+            return true;
+        }
+
+        Debug::Log("ModulesManager: ConnectedEvent reported success, ensuring modules are initialized");
         Initialize();
         return true;
     }

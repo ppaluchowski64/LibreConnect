@@ -127,4 +127,34 @@ private:
     bool m_active;
 };
 
+class DeviceNotPairedEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase + 7);
+    explicit DeviceNotPairedEvent(const std::string& deviceID) : QEvent(Type), m_deviceID(deviceID) {}
+
+    std::string GetDeviceID() const { return m_deviceID; }
+
+    DeviceNotPairedEvent* clone() const override {
+        return new DeviceNotPairedEvent(*this);
+    }
+
+private:
+    std::string m_deviceID;
+
+};
+
+class DeviceCooldownEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase + 8);
+    explicit DeviceCooldownEvent(const float duration) : QEvent(Type), m_leftDuration(duration) {}
+    float LeftDuration() const { return m_leftDuration; }
+
+    DeviceCooldownEvent* clone() const override {
+        return new DeviceCooldownEvent(*this);
+    }
+
+private:
+    float m_leftDuration;
+};
+
 #endif //EVENTS_H

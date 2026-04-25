@@ -19,6 +19,8 @@ typedef std::unique_ptr<Package<InitialConnectionPackageType>> InitialConnection
 namespace {
 using BanClock = std::chrono::steady_clock;
 constexpr auto CONNECTION_RETRY_BAN_DURATION = std::chrono::minutes(5);
+constexpr auto DISCONNECT_DRAIN_TIMEOUT = std::chrono::milliseconds(500);
+constexpr auto DISCONNECT_DRAIN_POLL_INTERVAL = std::chrono::milliseconds(5);
 
 std::mutex g_connectionBanMutex;
 std::unordered_map<std::string, BanClock::time_point> g_connectionBanExpirations;
@@ -49,6 +51,26 @@ bool IsConnectionTemporarilyBanned(const std::string& connectionBanKey) {
     }
 
     return true;
+}
+
+float BanDurationInSeconds(const std::string& connectionBanKey) {
+    if (connectionBanKey.empty()) {
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(g_connectionBanMutex);
+    const auto now = BanClock::now();
+    const auto it = g_connectionBanExpirations.find(connectionBanKey);
+    if (it == g_connectionBanExpirations.end()) {
+        return 0;
+    }
+
+    if (it->second <= now) {
+        g_connectionBanExpirations.erase(it);
+        return 0;
+    }
+
+    return std::chrono::duration<float>(it->second - now).count();
 }
 
 void BanConnectionTemporarily(const std::string& connectionBanKey) {
@@ -176,6 +198,7 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
     m_expectedChallengeCode.clear();
     m_requestedConnectionMode = mode;
     m_finalHandshakeCompleted = false;
+    m_receivedTerminalHandshakeReason = false;
 
     try {
         m_socket = TCPSocket(m_context, endpoint.protocol());
@@ -192,10 +215,8 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
         data.deviceInfo = DeviceInfo::GetThisDeviceInfo();
         data.initialConnectionMode = mode;
 
-        Debug::Log("InitialConnection: Sending DEVICE_DATA_FC (Client Identity)");
-        InitialConnectionPackagePtr package = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FC, data);
-        m_packagesOut.emplace_back(std::move(package));
-        m_sendFlag.Signal();
+        Debug::Log("InitialConnection: Sending DEVICE_DATA_FOR_CONNECTION (Client Identity)");
+        Send(InitialConnectionPackageType::DEVICE_DATA_FOR_CONNECTION, data);
 
     } catch (std::system_error& error) {
         Debug::Log("InitialConnection: CoConnect Error - {}", error.what());
@@ -215,6 +236,7 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
     m_expectedChallengeCode.clear();
     m_requestedConnectionMode = InitialConnectionMode::CONNECTION_WITHOUT_PAIR;
     m_finalHandshakeCompleted = false;
+    m_receivedTerminalHandshakeReason = false;
 
     try {
         m_socket = TCPSocket(m_context);
@@ -260,6 +282,18 @@ asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) 
     m_connectionState = ConnectionState::DISCONNECTING;
     m_sendFlag.Signal();
 
+    const auto drainDeadline = BanClock::now() + DISCONNECT_DRAIN_TIMEOUT;
+    while ((m_sendInFlight || !m_packagesOut.empty()) && BanClock::now() < drainDeadline) {
+        co_await ThreadPool::AsyncYieldFor(DISCONNECT_DRAIN_POLL_INTERVAL);
+    }
+
+    if (m_sendInFlight || !m_packagesOut.empty()) {
+        Debug::LogWarning(
+            "InitialConnection: Timed out waiting for {} pending handshake package(s) to flush before disconnect",
+            m_packagesOut.size()
+        );
+    }
+
     if (m_socket.is_open()) {
         std::error_code ec;
         m_socket.cancel(ec);
@@ -291,12 +325,16 @@ asio::awaitable<void> InitialConnection::CoSend() {
     const std::shared_ptr<InitialConnection> self = shared_from_this();
 
     try {
-        while (m_connectionState == ConnectionState::CONNECTED) {
+        while (true) {
             if (m_packagesOut.empty()) {
+                if (m_connectionState != ConnectionState::CONNECTED) {
+                    break;
+                }
+
                 co_await m_sendFlag.Wait();
             }
 
-            if (m_connectionState != ConnectionState::CONNECTED) break;
+            if (m_connectionState == ConnectionState::DISCONNECTED) break;
 
             while (!m_packagesOut.empty()) {
                 const std::unique_ptr<Package<InitialConnectionPackageType>> package = std::move(m_packagesOut.front());
@@ -315,15 +353,24 @@ asio::awaitable<void> InitialConnection::CoSend() {
                     asio::const_buffer(package->GetRawBody(), header.size)
                 };
 
+                m_sendInFlight = true;
                 co_await asio::async_write(m_socket, constBuffers, asio::use_awaitable);
+                m_sendInFlight = false;
+            }
+
+            if (m_connectionState != ConnectionState::CONNECTED && !m_sendInFlight && m_packagesOut.empty()) {
+                break;
             }
         }
 
     } catch (std::system_error& error) {
+        m_sendInFlight = false;
         Debug::Log("InitialConnection: CoSend Error - {}", error.what());
         HandleAsioError(error.code());
         self->Disconnect();
     }
+
+    m_packagesOut.clear();
 }
 
 asio::awaitable<void> InitialConnection::CoReceive() {
@@ -355,32 +402,35 @@ asio::awaitable<void> InitialConnection::CoReceive() {
             co_await asio::async_read(m_socket, packageBuffer, asio::use_awaitable);
             if (m_connectionState != ConnectionState::CONNECTED) break;
 
-            if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FC)) {
+            if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FOR_CONNECTION)) {
                 package->GetValue(data);
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
                 const std::string connectionBanKey = BuildConnectionBanKey(data.deviceInfo);
 
-                Debug::Log("InitialConnection: Handshake step 1 - Received DEVICE_DATA_FC from {}", data.deviceInfo.deviceName);
+                Debug::Log("InitialConnection: Handshake step 1 - Received DEVICE_DATA_FOR_CONNECTION from {}", data.deviceInfo.deviceName);
                 if (IsConnectionTemporarilyBanned(connectionBanKey)) {
                     Debug::LogWarning(
                         "InitialConnection: Rejecting connection from {} due to active verification cooldown",
                         data.deviceInfo.deviceName
                     );
+
+                    Send(InitialConnectionPackageType::DEVICE_CONNECT_COOLDOWN, BanDurationInSeconds(connectionBanKey));
                     Disconnect();
-                    continue;
+                    co_return;
                 }
 
-                if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
-                    !IsPairedDeviceKnown(data.deviceInfo)) {
+                if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR && !IsPairedDeviceKnown(data.deviceInfo)) {
                     const std::error_code pairError = std::make_error_code(std::errc::permission_denied);
                     Debug::LogWarning(
                         "InitialConnection: CONNECT_WITH_PAIR rejected for unpaired device {} ({})",
                         data.deviceInfo.deviceName,
                         boost::uuids::to_string(data.deviceInfo.deviceID)
                     );
-                    const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(pairError);
-                    ConnectionManager::SendEvent(event);
-                    throw std::system_error(pairError, "CONNECT_WITH_PAIR rejected because peer is not paired");
+
+                    const auto localDeviceId = boost::uuids::to_string(DeviceInfo::GetThisDeviceInfo().deviceID);
+                    Send(InitialConnectionPackageType::DEVICE_IS_UNPAIRED, localDeviceId);
+                    Disconnect();
+                    co_return;
                 }
 
                 std::string pairingCode{};
@@ -391,23 +441,31 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                     );
                 }
 
-                std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, std::move(pairingCode), [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
+                if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
                     try {
-                        asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
+                        asio::co_spawn(m_strand, CoProcessConnectionPendingCallback(true, data, ""), asio::detached);
                     } catch (const std::exception& ex) {
                         Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
                     }
-                });
+                } else {
+                    std::unique_ptr<QEvent> event = std::make_unique<ConnectionPendingEvent>(data.deviceInfo, data.initialConnectionMode, std::move(pairingCode), [ref = shared_from_this(), data](const bool actionResult, std::string challenge) {
+                        try {
+                            asio::co_spawn(ref->m_strand, ref->CoProcessConnectionPendingCallback(actionResult, data, std::move(challenge)), asio::detached);
+                        } catch (const std::exception& ex) {
+                            Debug::LogError("InitialConnection: Failed to spawn pending callback coroutine - {}", ex.what());
+                        }
+                    });
 
-                ConnectionManager::SendEvent(event);
+                    ConnectionManager::SendEvent(event);
+                }
 
-            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FS)) {
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_DATA_FOR_SEEKING_CONNECTION)) {
                 // Client side receiving final confirmation
                 data = package->GetValue<InitialConnectionData>();
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
                 m_finalHandshakeCompleted = true;
 
-                Debug::Log("InitialConnection: Handshake step 2 - Received DEVICE_DATA_FS ({}:{}). Transitioning to Primary.", data.deviceInfo.deviceAddress, data.deviceInfo.deviceAddressPort);
+                Debug::Log("InitialConnection: Handshake step 2 - Received DEVICE_DATA_FOR_SEEKING_CONNECTION ({}:{}). Transitioning to Primary.", data.deviceInfo.deviceAddress, data.deviceInfo.deviceAddressPort);
                 ConnectionManager::ConnectPrimary(data);
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_RESPONSE)) {
@@ -419,10 +477,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                         m_challengeLeftTries--;
                     }
                     Debug::Log("InitialConnection: Challenge Mismatch! Tries remaining: {}", m_challengeLeftTries);
-
-                    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER, m_challengeLeftTries);
-                    m_packagesOut.emplace_back(std::move(out));
-                    m_sendFlag.Signal();
+                    Send(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER, m_challengeLeftTries);
 
                     if (m_challengeLeftTries <= 0) {
                         const std::string connectionBanKey = BuildConnectionBanKey(data.deviceInfo);
@@ -432,6 +487,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                             data.deviceInfo.deviceName
                         );
                         Disconnect();
+                        co_return;
                     }
                     continue;
                 }
@@ -468,6 +524,22 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 });
 
                 ConnectionManager::SendEvent(std::move(event));
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_IS_UNPAIRED)) {
+                Debug::LogError("InitialConnection: Devices aren't paired");
+                m_receivedTerminalHandshakeReason = true;
+                std::string deviceId;
+                if (header.size > 0) {
+                    deviceId = package->GetValue<std::string>();
+                }
+                std::unique_ptr<QEvent> event = std::make_unique<DeviceNotPairedEvent>(deviceId);
+                Debug::Log(deviceId);
+                ConnectionManager::SendEvent(std::move(event));
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::DEVICE_CONNECT_COOLDOWN)) {
+                float duration = package->GetValue<float>();
+                Debug::LogWarning("InitialConnection: Other peer have banned your device (left ban duration: {}s)", duration);
+                m_receivedTerminalHandshakeReason = true;
+                std::unique_ptr<QEvent> event = std::make_unique<DeviceCooldownEvent>(duration);
+                ConnectionManager::SendEvent(std::move(event));
             }
         }
 
@@ -476,6 +548,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         HandleAsioError(error.code());
 
         if (!m_finalHandshakeCompleted &&
+            !m_receivedTerminalHandshakeReason &&
             m_requestedConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
             (error.code() == asio::error::eof ||
              error.code() == asio::error::connection_reset ||
@@ -498,10 +571,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(st
     }
 
     Debug::Log("InitialConnection: User provided challenge response. Sending back to server.");
-    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::CHALLENGE_RESPONSE, std::move(response));
-
-    m_packagesOut.emplace_back(std::move(out));
-    m_sendFlag.Signal();
+    Send(InitialConnectionPackageType::CHALLENGE_RESPONSE, std::move(response));
     m_expectedChallengeCode.clear();
 
     co_return;
@@ -541,13 +611,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
 
     if (!m_challengeResult.empty()) {
         Debug::Log("InitialConnection: Sending CHALLENGE_ANSWER_REQUEST to Client.");
-        InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(
-            InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST,
-            m_localCertificateFingerprint
-        );
-
-        m_packagesOut.emplace_back(std::move(out));
-        m_sendFlag.Signal();
+        Send(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST, m_localCertificateFingerprint);
         co_return;
     }
 
@@ -564,12 +628,8 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     });
 }
 
-asio::awaitable<void> InitialConnection::CoPrimaryConnectionCallback(const InitialConnectionData data) {
-    Debug::Log("InitialConnection: Primary listener ready. Sending final DEVICE_DATA_FS.");
-    InitialConnectionPackagePtr out = Package<InitialConnectionPackageType>::CreateUnique(InitialConnectionPackageType::DEVICE_DATA_FS, data);
-
-    m_packagesOut.emplace_back(std::move(out));
-    m_sendFlag.Signal();
-
+asio::awaitable<void> InitialConnection::CoPrimaryConnectionCallback(InitialConnectionData data) {
+    Debug::Log("InitialConnection: Primary listener ready. Sending final DEVICE_DATA_FOR_SEEKING_CONNECTION.");
+    Send(InitialConnectionPackageType::DEVICE_DATA_FOR_SEEKING_CONNECTION, data);
     co_return;
 }

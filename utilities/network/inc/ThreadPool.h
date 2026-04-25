@@ -49,6 +49,13 @@ public:
         return future;
     }
 
+    template<class Rep, class Period>
+    static asio::awaitable<void> AsyncYieldFor(std::chrono::duration<Rep, Period> duration) {
+        asio::steady_timer timer(co_await asio::this_coro::executor);
+        timer.expires_after(std::chrono::duration_cast<asio::steady_timer::duration>(duration));
+        co_await timer.async_wait(asio::use_awaitable);
+    }
+
 
 private:
     static void Initialize();
