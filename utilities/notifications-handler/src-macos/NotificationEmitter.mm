@@ -361,10 +361,7 @@ int64_t NotificationEmitter::Emit(
             [attachments addObject:attachment];
         }
     } else if (appIconPath.has_value()) {
-        NSDictionary* options = @{
-            UNNotificationAttachmentOptionsThumbnailClippingRectKey: (__bridge_transfer NSDictionary*)CGRectCreateDictionaryRepresentation(CGRectMake(0.0, 0.0, 1.0, 1.0))
-        };
-        if (UNNotificationAttachment* attachment = CreateAttachmentFromPath(@"app-icon", appIconPath, options)) {
+        if (UNNotificationAttachment* attachment = CreateAttachmentFromPath(@"app-icon", appIconPath)) {
             [attachments addObject:attachment];
         }
     }
