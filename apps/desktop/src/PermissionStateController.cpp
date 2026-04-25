@@ -2,6 +2,9 @@
 
 #include <ConnectionManager.h>
 #include <Events.h>
+#ifdef MACOS_DEVICE
+#include <NotificationEmitter.h>
+#endif
 
 PermissionStateController::PermissionStateController(QObject* parent)
     : QObject(parent)
@@ -23,7 +26,9 @@ bool PermissionStateController::isGranted(const int permissionType) const
     case PermissionType::Sms:
         return m_smsGranted;
     case PermissionType::Accessibility:
-        return false;
+        return m_accessibilityGranted;
+    case PermissionType::DesktopNotifications:
+        return m_desktopNotificationsGranted;
     case PermissionType::Unknown:
     default:
         return false;
@@ -42,6 +47,16 @@ void PermissionStateController::requestPermission(const int permissionType)
     }
 
     ConnectionManager::Send(PC_PackageType::PERMISSION_REQUEST, type);
+}
+
+void PermissionStateController::requestDesktopNotificationPermission()
+{
+#ifdef MACOS_DEVICE
+    const bool granted = NotificationEmitter::RequestPermission();
+    setPermissionState(PermissionType::DesktopNotifications, granted);
+#else
+    requestPermission(static_cast<int>(PermissionType::DesktopNotifications));
+#endif
 }
 
 bool PermissionStateController::event(QEvent* event)
@@ -87,12 +102,15 @@ bool PermissionStateController::event(QEvent* event)
 
 void PermissionStateController::clearPermissionState()
 {
-    const bool changed = m_cameraGranted || m_notificationsGranted || m_fileSystemGranted || m_batteryGranted || m_smsGranted;
+    const bool changed = m_cameraGranted || m_notificationsGranted || m_fileSystemGranted || m_batteryGranted ||
+                         m_smsGranted || m_accessibilityGranted || m_desktopNotificationsGranted;
     m_cameraGranted = false;
     m_notificationsGranted = false;
     m_fileSystemGranted = false;
     m_batteryGranted = false;
     m_smsGranted = false;
+    m_accessibilityGranted = false;
+    m_desktopNotificationsGranted = false;
 
     if (changed) {
         emit permissionStateChanged();
@@ -135,6 +153,16 @@ void PermissionStateController::setPermissionState(const PermissionType permissi
         }
         break;
     case PermissionType::Accessibility:
+        if (m_accessibilityGranted != granted) {
+            m_accessibilityGranted = granted;
+            changed = true;
+        }
+        break;
+    case PermissionType::DesktopNotifications:
+        if (m_desktopNotificationsGranted != granted) {
+            m_desktopNotificationsGranted = granted;
+            changed = true;
+        }
         break;
     case PermissionType::Unknown:
     default:

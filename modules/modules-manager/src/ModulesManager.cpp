@@ -9,6 +9,35 @@
 #include <PermissionManager.h>
 #endif
 
+#ifdef MACOS_DEVICE
+#include <ApplicationServices/ApplicationServices.h>
+#include <NotificationEmitter.h>
+#endif
+
+namespace {
+#ifdef MACOS_DEVICE
+bool RequestMacAccessibilityPermission() {
+    const void* keys[] = { kAXTrustedCheckOptionPrompt };
+    const void* values[] = { kCFBooleanTrue };
+    CFDictionaryRef options = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        keys,
+        values,
+        1,
+        &kCFCopyStringDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
+
+    const bool trusted = AXIsProcessTrustedWithOptions(options);
+    if (options != nullptr) {
+        CFRelease(options);
+    }
+
+    return trusted;
+}
+#endif
+}
+
 ModulesManager* ModulesManager::s_instance{nullptr};
 std::mutex ModulesManager::s_mutex{};
 
@@ -154,7 +183,48 @@ void ModulesManager::Initialize() {
         case PermissionType::Sms:
             granted = co_await requestSmsPermissions();
             break;
+        case PermissionType::DesktopNotifications:
+            granted = false;
+            break;
         case PermissionType::Unknown:
+        default:
+            granted = false;
+            break;
+        }
+
+        ConnectionManager::Send(
+            granted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
+            type
+        );
+
+        std::unique_ptr<QEvent> event;
+        if (granted) {
+            event = std::make_unique<ModuleRequestedPermissionGranted>(type);
+        } else {
+            event = std::make_unique<ModuleRequestedPermissionRejected>(type);
+        }
+        ConnectionManager::SendEvent(event);
+
+        co_return;
+    });
+#elif defined(MACOS_DEVICE)
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::PERMISSION_REQUEST, [](PC_Package&& package) -> asio::awaitable<void> {
+        const PermissionType type = package->GetValue<PermissionType>();
+        bool granted = false;
+
+        switch (type) {
+        case PermissionType::Accessibility:
+            granted = RequestMacAccessibilityPermission();
+            break;
+        case PermissionType::DesktopNotifications:
+            granted = NotificationEmitter::RequestPermission();
+            break;
+        case PermissionType::Unknown:
+        case PermissionType::Camera:
+        case PermissionType::Notifications:
+        case PermissionType::FileSystem:
+        case PermissionType::Battery:
+        case PermissionType::Sms:
         default:
             granted = false;
             break;

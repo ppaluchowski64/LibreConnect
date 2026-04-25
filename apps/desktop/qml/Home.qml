@@ -361,12 +361,15 @@ Page {
                 }
 
                 ThemedButton {
-                    text: "Prompt on Phone"
+                    text: permissionPromptDialog.permissionType >= 0 ? "Prompt on Phone" : "Allow on Mac"
                     width: 170
                     height: 40
                     font.pixelSize: 14
                     onClicked: {
-                        root.permissionStateController.requestPermission(permissionPromptDialog.permissionType)
+                        if (permissionPromptDialog.permissionType >= 0)
+                            root.permissionStateController.requestPermission(permissionPromptDialog.permissionType)
+                        else
+                            root.permissionStateController.requestDesktopNotificationPermission()
                         permissionPromptDialog.close()
                     }
                 }
@@ -696,7 +699,7 @@ Page {
                         width: parent.width
                         height: 58
 
-                        readonly property bool historyFeatureEnabled: root.permissionStateController.notificationsGranted
+                        readonly property bool historyFeatureEnabled: root.notificationSyncController.permissionsGranted
                                                                      && root.notificationSyncController.enabled
 
                         FeatureListButton {
@@ -712,10 +715,18 @@ Page {
                             anchors.fill: parent
                             visible: !parent.historyFeatureEnabled
                             onClicked: {
-                                if (!root.permissionStateController.notificationsGranted) {
+                                if (!root.notificationSyncController.remotePermissionGranted) {
                                     permissionPromptDialog.permissionType = 2
-                                    permissionPromptDialog.permissionTitle = "Notification Permission Required"
+                                    permissionPromptDialog.permissionTitle = "Phone Notification Permission Required"
                                     permissionPromptDialog.permissionMessage = "Notification access is disabled on the mobile app. Grant notification permissions to view notifications."
+                                    permissionPromptDialog.open()
+                                    return
+                                }
+
+                                if (!root.notificationSyncController.localPermissionGranted) {
+                                    permissionPromptDialog.permissionType = -1
+                                    permissionPromptDialog.permissionTitle = "macOS Notification Permission Required"
+                                    permissionPromptDialog.permissionMessage = "Allow LibreConnect in System Settings > Notifications to view synced notifications on this Mac."
                                     permissionPromptDialog.open()
                                     return
                                 }

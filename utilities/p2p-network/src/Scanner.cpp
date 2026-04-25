@@ -9,6 +9,23 @@
 #include <DebugLog.h>
 #include <QNetworkInformation>
 
+namespace
+{
+bool MatchesErrorCondition(const std::error_code& errorCode, const std::errc condition)
+{
+    return errorCode == std::make_error_code(condition) ||
+           errorCode.default_error_condition() == std::make_error_condition(condition);
+}
+
+bool IsTransientScannerNetworkError(const std::error_code& errorCode)
+{
+    return MatchesErrorCondition(errorCode, std::errc::host_unreachable) ||
+           MatchesErrorCondition(errorCode, std::errc::network_unreachable) ||
+           MatchesErrorCondition(errorCode, std::errc::network_down) ||
+           MatchesErrorCondition(errorCode, std::errc::address_not_available);
+}
+}
+
 LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
 LanDeviceScanner::LanDeviceScanner() : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)), m_outSocket(nullptr), m_inSocket(nullptr) {
@@ -156,6 +173,15 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
                     continue;
                 }
 
+                if (IsTransientScannerNetworkError(joinError.code())) {
+                    Debug::LogWarning(
+                        "LanDeviceScanner::Co_JoinMulticastGroup skipping interface {} until it becomes routable ({})",
+                        address.to_string(),
+                        joinError.what()
+                    );
+                    continue;
+                }
+
                 throw;
             }
         }
@@ -220,8 +246,40 @@ asio::awaitable<void> LanDeviceScanner::Co_SendProbes() const {
                 if (address.is_loopback()) {
                     continue;
                 }
-                m_outSocket->set_option(asio::ip::multicast::outbound_interface(address.to_v4()));
-                co_await m_outSocket->async_send_to(constBuffer, multicastEndpoint, asio::use_awaitable);
+
+                std::error_code setOptionError;
+                m_outSocket->set_option(asio::ip::multicast::outbound_interface(address.to_v4()), setOptionError);
+                if (setOptionError) {
+                    if (IsTransientScannerNetworkError(setOptionError)) {
+                        Debug::LogWarning(
+                            "LanDeviceScanner::Co_SendProbes skipping unroutable interface {} ({})",
+                            address.to_string(),
+                            setOptionError.message()
+                        );
+                        continue;
+                    }
+
+                    throw std::system_error(setOptionError);
+                }
+
+                std::error_code sendError;
+                co_await m_outSocket->async_send_to(
+                    constBuffer,
+                    multicastEndpoint,
+                    asio::redirect_error(asio::use_awaitable, sendError)
+                );
+                if (sendError) {
+                    if (IsTransientScannerNetworkError(sendError)) {
+                        Debug::LogWarning(
+                            "LanDeviceScanner::Co_SendProbes send failed on {} but will retry ({})",
+                            address.to_string(),
+                            sendError.message()
+                        );
+                        continue;
+                    }
+
+                    throw std::system_error(sendError);
+                }
             }
 
             asio::steady_timer timer(m_context);

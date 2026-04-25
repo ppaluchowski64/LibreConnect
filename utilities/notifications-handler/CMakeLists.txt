@@ -98,7 +98,6 @@ if (ANDROID)
 
     target_link_libraries(notifications-handler PUBLIC
             Qt6::Core
-            Qt6::CorePrivate
     )
 
     target_include_directories(notifications-handler PUBLIC

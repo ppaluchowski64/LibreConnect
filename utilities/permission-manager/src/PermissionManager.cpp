@@ -2,7 +2,6 @@
 
 #include <PermissionManager.h>
 #include <QtCore/qcoreapplication_platform.h>
-#include <QtCore/private/qandroidextras_p.h>
 #include <QtGui/QGuiApplication>
 #include <atomic>
 #include <chrono>
@@ -14,6 +13,7 @@ using namespace std::chrono_literals;
 
 constexpr std::chrono::milliseconds kPermissionFlowRetryDelay = 50ms;
 constexpr std::chrono::seconds kPermissionRequestTimeout = 120s;
+constexpr jint kAndroidPermissionGranted = 0;
 
 std::atomic<bool> g_permissionFlowInProgress{false};
 
@@ -103,8 +103,17 @@ bool StartSettingsActivity(const QJniObject& intent) {
         newTaskFlag
     );
 
-    QtAndroidPrivate::startActivity(intent, 0);
-    return true;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return false;
+    }
+
+    context.callMethod<void>(
+        "startActivity",
+        "(Landroid/content/Intent;)V",
+        intent.object<jobject>()
+    );
+    return !QJniEnvironment().checkAndClearExceptions();
 }
 
 bool OpenAppPermissionSettings() {
@@ -159,6 +168,25 @@ bool ShouldShowPermissionRationale(const QString& permission) {
         "shouldShowRequestPermissionRationale",
         "(Ljava/lang/String;)Z",
         QJniObject::fromString(permission).object<jstring>()
+    );
+}
+
+jint CheckAndroidPermission(const QString& permission) {
+    return QJniObject::callStaticMethod<jint>(
+        "org/qtproject/qt/android/bindings/QtActivity",
+        "checkPermission",
+        "(Ljava/lang/String;)I",
+        QJniObject::fromString(permission).object<jstring>()
+    );
+}
+
+bool RequestAndroidPermissionBlocking(const QString& permission, const int timeoutMs) {
+    return QJniObject::callStaticMethod<jboolean>(
+        "org/qtproject/qt/android/bindings/QtActivity",
+        "requestPermissionBlocking",
+        "(Ljava/lang/String;I)Z",
+        QJniObject::fromString(permission).object<jstring>(),
+        static_cast<jint>(timeoutMs)
     );
 }
 #endif
@@ -380,30 +408,14 @@ asio::awaitable<void> PermissionManager::WaitForReturnToApp() {
 }
 
 asio::awaitable<bool> PermissionManager::RequestPermission(QString&& permission) {
-    const auto status = QtAndroidPrivate::checkPermission(permission).result();
+    const jint status = CheckAndroidPermission(permission);
 
-    if (status == QtAndroidPrivate::PermissionResult::Authorized) {
+    if (status == kAndroidPermissionGranted) {
         co_return true;
     }
 
-    const QFuture<QtAndroidPrivate::PermissionResult> future = QtAndroidPrivate::requestPermission(permission);
-    const auto executor = co_await asio::this_coro::executor;
-    asio::steady_timer pollTimer(executor);
-    const std::chrono::time_point<std::chrono::steady_clock> timeoutAt = std::chrono::steady_clock::now() + kPermissionRequestTimeout;
-
-    while (!future.isFinished()) {
-        if (std::chrono::steady_clock::now() >= timeoutAt) {
-            Debug::LogWarning("Timed out waiting for permission result: {}", permission.toStdString());
-            co_return false;
-        }
-
-        pollTimer.expires_after(kPermissionFlowRetryDelay);
-        asio::error_code ec;
-        co_await pollTimer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
-    }
-
-    const QtAndroidPrivate::PermissionResult result = future.result();
-    if (result == QtAndroidPrivate::PermissionResult::Authorized) {
+    const bool granted = RequestAndroidPermissionBlocking(permission, static_cast<int>(kPermissionRequestTimeout.count() * 1000));
+    if (granted) {
         co_return true;
     }
 
@@ -416,8 +428,7 @@ asio::awaitable<bool> PermissionManager::RequestPermission(QString&& permission)
     }
 
     co_await WaitForReturnToApp();
-    const auto finalStatus = QtAndroidPrivate::checkPermission(permission).result();
-    co_return finalStatus == QtAndroidPrivate::PermissionResult::Authorized;
+    co_return CheckAndroidPermission(permission) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsNotificationAccessPermissionGranted() {
@@ -429,13 +440,11 @@ bool PermissionManager::IsNotificationEmitPermissionGranted() {
         return true;
     }
 
-    return QtAndroidPrivate::checkPermission(QString("android.permission.POST_NOTIFICATIONS")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.POST_NOTIFICATIONS")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsCameraAccessPermissionGranted() {
-    return QtAndroidPrivate::checkPermission(QString("android.permission.CAMERA")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.CAMERA")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsFileAccessPermissionGranted() {
@@ -443,8 +452,7 @@ bool PermissionManager::IsFileAccessPermissionGranted() {
         return true;
     }
 
-    return QtAndroidPrivate::checkPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsManagingExternalStoragePermissionGranted() {
@@ -460,23 +468,19 @@ bool PermissionManager::IsBatteryOptimizationIgnored() {
 }
 
 bool PermissionManager::IsReceiveSmsPermissionGranted() {
-    return QtAndroidPrivate::checkPermission(QString("android.permission.RECEIVE_SMS")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.RECEIVE_SMS")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsReadContactsPermissionGranted() {
-    return QtAndroidPrivate::checkPermission(QString("android.permission.READ_CONTACTS")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.READ_CONTACTS")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsReadSmsPermissionGranted() {
-    return QtAndroidPrivate::checkPermission(QString("android.permission.READ_SMS")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.READ_SMS")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsSendSmsPermissionGranted() {
-    return QtAndroidPrivate::checkPermission(QString("android.permission.SEND_SMS")).result()
-        == QtAndroidPrivate::PermissionResult::Authorized;
+    return CheckAndroidPermission(QString("android.permission.SEND_SMS")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsNotificationListenerEnabled() {

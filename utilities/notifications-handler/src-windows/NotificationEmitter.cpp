@@ -203,6 +203,14 @@ int64_t NotificationEmitter::Emit(
     });
 }
 
+bool NotificationEmitter::RequestPermission() {
+    return true;
+}
+
+bool NotificationEmitter::IsPermissionGranted() {
+    return true;
+}
+
 void NotificationEmitter::Remove(const int64_t id) {
     if (id < 0) return;
 

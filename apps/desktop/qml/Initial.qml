@@ -62,20 +62,34 @@ Page {
 
     ThemedButton {
         id: nextButton
-        text: "Next"
+        text: connectionController.localNetworkPermissionCheckPending ? "Checking..." : "Next"
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 24
         width: 160
         height: 56
         font.pixelSize: 20
+        enabled: !connectionController.localNetworkPermissionCheckPending
         onClicked: {
-            if (Qt.platform.os === "osx" && !connectionController.localNetworkPermissionGranted) {
-                localNetworkDialog.open()
+            if (Qt.platform.os !== "osx") {
+                windowRef.showDevicePicker(false)
                 return
             }
 
-            windowRef.showDevicePicker(false)
+            connectionController.checkLocalNetworkPermission()
+        }
+    }
+
+    Connections {
+        target: connectionController
+
+        function onLocalNetworkPermissionCheckFinished(granted) {
+            if (granted) {
+                windowRef.showDevicePicker(false)
+                return
+            }
+
+            localNetworkDialog.open()
         }
     }
 
@@ -119,7 +133,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "After you continue, macOS will show its Local Network permission prompt."
+                text: "If macOS did not already show its Local Network permission prompt, continue to try again."
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
                 color: Theme.mutedTextColor
@@ -133,16 +147,18 @@ Page {
                     text: "Not Now"
                     width: 140
                     height: 44
+                    enabled: !connectionController.localNetworkPermissionCheckPending
                     onClicked: localNetworkDialog.close()
                 }
 
                 ThemedButton {
-                    text: "Continue"
+                    text: connectionController.localNetworkPermissionCheckPending ? "Checking..." : "Continue"
                     width: 140
                     height: 44
+                    enabled: !connectionController.localNetworkPermissionCheckPending
                     onClicked: {
                         localNetworkDialog.close()
-                        windowRef.showDevicePicker(false)
+                        connectionController.checkLocalNetworkPermission()
                     }
                 }
             }

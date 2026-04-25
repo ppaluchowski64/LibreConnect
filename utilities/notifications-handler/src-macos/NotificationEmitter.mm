@@ -6,7 +6,9 @@
 #include <cstdlib>
 #include <atomic>
 #include <cstring>
+#include <dispatch/dispatch.h>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -18,11 +20,12 @@ std::mutex g_actionsMutex;
 std::unordered_map<int64_t, std::vector<std::function<void()>>> g_actionsByNotificationId;
 std::atomic<int64_t> g_nextNotificationId{1};
 std::once_flag g_delegateOnce;
-std::once_flag g_authorizationOnce;
 id<UNUserNotificationCenterDelegate> g_delegate = nil;
 
 constexpr const char* kRequestPrefix = "LibreConnect_";
 constexpr const char* kActionPrefix = "BTN_";
+constexpr int64_t kPermissionWaitTimeoutNanoseconds = 120LL * NSEC_PER_SEC;
+constexpr int64_t kSettingsWaitTimeoutNanoseconds = 5LL * NSEC_PER_SEC;
 
 bool IsBundledMacAppProcess() {
     NSBundle* bundle = [NSBundle mainBundle];
@@ -31,16 +34,7 @@ bool IsBundledMacAppProcess() {
     }
 
     NSString* bundleIdentifier = [bundle bundleIdentifier];
-    if (bundleIdentifier == nil || [bundleIdentifier length] == 0) {
-        return false;
-    }
-
-    NSString* bundlePath = [[bundle bundleURL] path];
-    if (bundlePath == nil || ![[bundlePath pathExtension] isEqualToString:@"app"]) {
-        return false;
-    }
-
-    return true;
+    return bundleIdentifier != nil && [bundleIdentifier length] > 0;
 }
 
 NSString* ToNSString(const std::wstring& value) {
@@ -58,6 +52,37 @@ NSString* ToNSString(const std::wstring& value) {
                                                    length:value.size() * sizeof(wchar_t)
                                                  encoding:kWideEncoding];
     return converted ?: @"";
+}
+
+UNNotificationAttachment* CreateAttachmentFromPath(
+    NSString* identifier,
+    const std::optional<std::filesystem::path>& path,
+    NSDictionary* options = nil
+) {
+    if (!path.has_value()) {
+        return nil;
+    }
+
+    const std::string nativePath = path->string();
+    if (nativePath.empty()) {
+        return nil;
+    }
+
+    NSString* filePath = [NSString stringWithUTF8String:nativePath.c_str()];
+    if (filePath == nil || ![[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
+        return nil;
+    }
+
+    NSError* error = nil;
+    UNNotificationAttachment* attachment = [UNNotificationAttachment attachmentWithIdentifier:identifier
+                                                                                           URL:[NSURL fileURLWithPath:filePath]
+                                                                                       options:options
+                                                                                         error:&error];
+    if (attachment == nil && error != nil) {
+        NSLog(@"LibreConnect NotificationEmitter: attachment creation failed for %@: %@", filePath, error);
+    }
+
+    return attachment;
 }
 
 bool ParseNotificationId(NSString* requestIdentifier, int64_t& id) {
@@ -110,12 +135,82 @@ void PostAsync(std::function<void()> action) {
     std::thread([action = std::move(action)]() mutable { action(); }).detach();
 }
 
+template <typename Action>
+auto RunSyncOnMainThread(Action&& action) -> decltype(action()) {
+    using Result = decltype(action());
+
+    if ([NSThread isMainThread]) {
+        return action();
+    }
+
+    __block std::optional<Result> result;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        result = action();
+    });
+
+    return result.value();
+}
+
+bool IsAuthorizedStatus(const UNAuthorizationStatus status) {
+    return status == UNAuthorizationStatusAuthorized
+#ifdef UNAuthorizationStatusProvisional
+        || status == UNAuthorizationStatusProvisional
+#endif
+#ifdef UNAuthorizationStatusEphemeral
+        || status == UNAuthorizationStatusEphemeral
+#endif
+        ;
+}
+
+UNAuthorizationStatus FetchAuthorizationStatus() {
+    __block UNAuthorizationStatus status = UNAuthorizationStatusNotDetermined;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    [[UNUserNotificationCenter currentNotificationCenter]
+        getNotificationSettingsWithCompletionHandler:^(UNNotificationSettings* settings) {
+            if (settings != nil) {
+                status = settings.authorizationStatus;
+            }
+            dispatch_semaphore_signal(semaphore);
+        }];
+
+    const long waitResult = dispatch_semaphore_wait(
+        semaphore,
+        dispatch_time(DISPATCH_TIME_NOW, kSettingsWaitTimeoutNanoseconds)
+    );
+    if (waitResult != 0) {
+        return UNAuthorizationStatusNotDetermined;
+    }
+
+    return status;
+}
+
 } // namespace
 
 @interface LibreConnectNotificationDelegate : NSObject <UNUserNotificationCenterDelegate>
 @end
 
 @implementation LibreConnectNotificationDelegate
+- (void)userNotificationCenter:(UNUserNotificationCenter*)center
+       willPresentNotification:(UNNotification*)notification
+         withCompletionHandler:(void (^)(UNNotificationPresentationOptions))completionHandler {
+    (void)center;
+    (void)notification;
+
+    if (completionHandler) {
+        UNNotificationPresentationOptions options = UNNotificationPresentationOptionList;
+#ifdef UNNotificationPresentationOptionBanner
+        options |= UNNotificationPresentationOptionBanner;
+#else
+        options |= UNNotificationPresentationOptionAlert;
+#endif
+#ifdef UNNotificationPresentationOptionSound
+        options |= UNNotificationPresentationOptionSound;
+#endif
+        completionHandler(options);
+    }
+}
+
 - (void)userNotificationCenter:(UNUserNotificationCenter*)center
 didReceiveNotificationResponse:(UNNotificationResponse*)response
          withCompletionHandler:(void (^)(void))completionHandler {
@@ -152,20 +247,76 @@ namespace {
 
 void EnsureMacNotificationSetup() {
     std::call_once(g_delegateOnce, []() {
-        g_delegate = [LibreConnectNotificationDelegate new];
-        [UNUserNotificationCenter currentNotificationCenter].delegate = g_delegate;
-    });
-
-    std::call_once(g_authorizationOnce, []() {
-        UNAuthorizationOptions options = UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge;
-        [[UNUserNotificationCenter currentNotificationCenter]
-            requestAuthorizationWithOptions:options
-                          completionHandler:^(__unused BOOL granted, __unused NSError* error) {
-                          }];
+        RunSyncOnMainThread([]() {
+            g_delegate = [LibreConnectNotificationDelegate new];
+            [UNUserNotificationCenter currentNotificationCenter].delegate = g_delegate;
+            return true;
+        });
     });
 }
 
 } // namespace
+
+bool NotificationEmitter::RequestPermission() {
+    if (!IsBundledMacAppProcess()) {
+        return false;
+    }
+
+    EnsureMacNotificationSetup();
+
+    const UNAuthorizationStatus currentStatus = FetchAuthorizationStatus();
+    if (IsAuthorizedStatus(currentStatus)) {
+        return true;
+    }
+
+    if (currentStatus == UNAuthorizationStatusDenied) {
+        return false;
+    }
+
+    __block BOOL granted = NO;
+    __block NSError* requestError = nil;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+    UNAuthorizationOptions options = UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge;
+    auto requestAuthorization = ^{
+        [[UNUserNotificationCenter currentNotificationCenter]
+            requestAuthorizationWithOptions:options
+                          completionHandler:^(BOOL permissionGranted, NSError* error) {
+                granted = permissionGranted;
+                requestError = error;
+                dispatch_semaphore_signal(semaphore);
+            }];
+    };
+
+    if ([NSThread isMainThread]) {
+        requestAuthorization();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), requestAuthorization);
+    }
+
+    const long waitResult = dispatch_semaphore_wait(
+        semaphore,
+        dispatch_time(DISPATCH_TIME_NOW, kPermissionWaitTimeoutNanoseconds)
+    );
+    if (waitResult != 0) {
+        NSLog(@"LibreConnect NotificationEmitter: requestAuthorization timed out");
+        return false;
+    }
+
+    if (requestError != nil) {
+        NSLog(@"LibreConnect NotificationEmitter: requestAuthorization failed: %@", requestError);
+    }
+
+    return granted || IsAuthorizedStatus(FetchAuthorizationStatus());
+}
+
+bool NotificationEmitter::IsPermissionGranted() {
+    if (!IsBundledMacAppProcess()) {
+        return false;
+    }
+
+    EnsureMacNotificationSetup();
+    return IsAuthorizedStatus(FetchAuthorizationStatus());
+}
 
 int64_t NotificationEmitter::Emit(
     const std::wstring& notificationName,
@@ -173,21 +324,50 @@ int64_t NotificationEmitter::Emit(
     const std::optional<std::filesystem::path>& appIconPath,
     const std::optional<std::filesystem::path>& mainImagePath,
     const std::vector<ButtonAction>& buttons) {
-    (void)appIconPath;
-    (void)mainImagePath;
+    return Emit(notificationName, std::wstring{}, notificationContent, appIconPath, mainImagePath, buttons);
+}
 
+int64_t NotificationEmitter::Emit(
+    const std::wstring& notificationName,
+    const std::wstring& notificationSubtitle,
+    const std::wstring& notificationContent,
+    const std::optional<std::filesystem::path>& appIconPath,
+    const std::optional<std::filesystem::path>& mainImagePath,
+    const std::vector<ButtonAction>& buttons) {
     if (!IsBundledMacAppProcess()) {
         return -1;
     }
 
     EnsureMacNotificationSetup();
+    if (!RequestPermission()) {
+        return -1;
+    }
 
     const int64_t notificationId = g_nextNotificationId.fetch_add(1);
     NSString* requestIdentifier = [NSString stringWithFormat:@"%s%lld", kRequestPrefix, notificationId];
 
     UNMutableNotificationContent* content = [UNMutableNotificationContent new];
     content.title = ToNSString(notificationName);
+    content.subtitle = ToNSString(notificationSubtitle);
     content.body = ToNSString(notificationContent);
+    content.sound = [UNNotificationSound defaultSound];
+#ifdef UNNotificationInterruptionLevelActive
+    content.interruptionLevel = UNNotificationInterruptionLevelActive;
+#endif
+
+    NSMutableArray<UNNotificationAttachment*>* attachments = [NSMutableArray array];
+    if (mainImagePath.has_value()) {
+        if (UNNotificationAttachment* attachment = CreateAttachmentFromPath(@"hero-image", mainImagePath)) {
+            [attachments addObject:attachment];
+        }
+    } else if (appIconPath.has_value()) {
+        if (UNNotificationAttachment* attachment = CreateAttachmentFromPath(@"app-icon", appIconPath)) {
+            [attachments addObject:attachment];
+        }
+    }
+    if ([attachments count] > 0) {
+        content.attachments = attachments;
+    }
 
     if (!buttons.empty()) {
         NSMutableArray<UNNotificationAction*>* actions = [NSMutableArray arrayWithCapacity:buttons.size()];
@@ -230,8 +410,11 @@ int64_t NotificationEmitter::Emit(
     UNNotificationRequest* request = [UNNotificationRequest requestWithIdentifier:requestIdentifier content:content trigger:trigger];
 
     [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request
-                                                            withCompletionHandler:^(__unused NSError* error) {
-                                                            }];
+                                                            withCompletionHandler:^(NSError* error) {
+        if (error != nil) {
+            NSLog(@"LibreConnect NotificationEmitter: addNotificationRequest failed: %@", error);
+        }
+    }];
 
     return notificationId;
 }

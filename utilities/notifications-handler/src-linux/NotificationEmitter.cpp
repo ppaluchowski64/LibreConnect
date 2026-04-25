@@ -86,6 +86,14 @@ int64_t NotificationEmitter::Emit(
     return static_cast<int64_t>(msg.arguments().at(0).toUInt());
 }
 
+bool NotificationEmitter::RequestPermission() {
+    return true;
+}
+
+bool NotificationEmitter::IsPermissionGranted() {
+    return true;
+}
+
 void NotificationEmitter::Remove(const int64_t id) {
     if (id <= 0) return;
 

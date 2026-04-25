@@ -198,9 +198,11 @@ Page {
 
                         Text {
                             Layout.fillWidth: true
-                            text: (page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
-                                  ? page.notificationSyncController.statusMessage
-                                  : "Notification sync is disabled until notification permissions are granted."
+                            text: !(page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
+                                  ? "Notification sync is disabled until notification permissions are granted."
+                                  : (page.notificationSyncController.desktopPermissionGranted
+                                      ? page.notificationSyncController.statusMessage
+                                      : "Notification sync is waiting for the connected desktop device to allow LibreConnect notifications.")
                             color: Theme.mutedTextColor
                             font.pixelSize: 13
                             wrapMode: Text.WordWrap

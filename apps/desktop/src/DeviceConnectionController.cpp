@@ -9,6 +9,7 @@
 #include <QMetaObject>
 #include <QRegularExpression>
 #include <PermissionManager.h>
+#include <ThreadPool.h>
 
 namespace
 {
@@ -97,6 +98,57 @@ DeviceConnectionController::~DeviceConnectionController()
 bool DeviceConnectionController::localNetworkPermissionGranted() const
 {
     return PermissionManager::IsLocalNetworkAccessPermissionGranted();
+}
+
+void DeviceConnectionController::checkLocalNetworkPermission()
+{
+#ifdef MACOS_DEVICE
+    if (m_localNetworkPermissionCheckPending) {
+        return;
+    }
+
+    if (PermissionManager::IsLocalNetworkAccessPermissionGranted()) {
+        emit localNetworkPermissionGrantedChanged();
+        emit localNetworkPermissionCheckFinished(true);
+        return;
+    }
+
+    m_localNetworkPermissionCheckPending = true;
+    emit localNetworkPermissionCheckPendingChanged();
+
+    asio::co_spawn(
+        ThreadPool::GetContext(),
+        [weakThis = QPointer<DeviceConnectionController>(this)]() -> asio::awaitable<void> {
+            const bool granted = co_await PermissionManager::RequestLocalNetworkAccessPermission();
+            if (!weakThis) {
+                co_return;
+            }
+
+            QMetaObject::invokeMethod(
+                weakThis.data(),
+                [weakThis, granted]() {
+                    if (!weakThis) {
+                        return;
+                    }
+
+                    if (weakThis->m_localNetworkPermissionCheckPending) {
+                        weakThis->m_localNetworkPermissionCheckPending = false;
+                        emit weakThis->localNetworkPermissionCheckPendingChanged();
+                    }
+
+                    emit weakThis->localNetworkPermissionGrantedChanged();
+                    emit weakThis->localNetworkPermissionCheckFinished(granted);
+                },
+                Qt::QueuedConnection
+            );
+
+            co_return;
+        },
+        asio::detached
+    );
+#else
+    emit localNetworkPermissionCheckFinished(true);
+#endif
 }
 
 void DeviceConnectionController::connectTo(const QString& ipAddress,
@@ -418,6 +470,7 @@ void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
 #ifdef MACOS_DEVICE
     if (ev->GetErrorCode() == std::make_error_code(std::errc::permission_denied)) {
         emit localNetworkPermissionGrantedChanged();
+        emit localNetworkPermissionCheckFinished(false);
         handleError(
             "Local network permission is required to discover devices. "
             "Allow LibreConnect in System Settings > Privacy & Security > Local Network, then try again.",
