@@ -3,7 +3,6 @@
 #include <ConnectionManager.h>
 #include <PermissionManager.h>
 #include <QString>
-#include <QtCore/private/qandroidextras_p.h>
 #include <utility>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;

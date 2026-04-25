@@ -138,10 +138,6 @@ if (ANDROID)
     BuildStaticLibrary(find-my utilities/find-my project_defaults Qt6::Core)
 endif ()
 
-if (NOT APPLE)
-    target_link_libraries(permission-manager PUBLIC Qt6::CorePrivate)
-endif ()
-
 if (APPLE)
     find_library(IOKIT_LIBRARY IOKit)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation)

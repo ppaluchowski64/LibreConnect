@@ -3,6 +3,7 @@
 #include <ModulesManager.h>
 #include <ConnectionManager.h>
 #include <Events.h>
+#include <NotificationEmitter.h>
 #include <QPointer>
 #include <QUrl>
 #include <QDateTime>
@@ -20,7 +21,30 @@ NotificationSyncController::NotificationSyncController(QObject* parent)
     connect(&m_pollTimer, &QTimer::timeout, this, &NotificationSyncController::refreshState);
     m_pollTimer.start();
 
+    refreshLocalPermissionState(false, true);
     refreshState();
+}
+
+QString NotificationSyncController::permissionMessage() const
+{
+    if (!m_permissionsGranted && !m_localPermissionGranted) {
+        return QStringLiteral(
+            "Notification sync needs notification permissions on the mobile device and permission to show notifications on this Mac."
+        );
+    }
+
+    if (!m_permissionsGranted) {
+        return QStringLiteral("Notification sync is unavailable until notification permissions are granted on the mobile device.");
+    }
+
+    if (!m_localPermissionGranted) {
+        return QStringLiteral(
+            "Notification sync is unavailable until LibreConnect is allowed to show notifications on this Mac. "
+            "Allow it in System Settings > Notifications."
+        );
+    }
+
+    return QString();
 }
 
 QVariantList NotificationSyncController::notifications() const
@@ -77,6 +101,8 @@ bool NotificationSyncController::dismissNotification(const QString& key)
 
 void NotificationSyncController::refreshState()
 {
+    refreshLocalPermissionState(m_connected);
+
     auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
     const ModuleState state = module->GetModuleState();
 
@@ -105,6 +131,20 @@ void NotificationSyncController::refreshState()
     }
 
     if (state == ModuleState::Enabled) {
+        if (!m_permissionsGranted || !m_localPermissionGranted) {
+            m_enableAttemptPending = false;
+            m_disableAttemptPending = false;
+            if (m_requestedEnabled) {
+                setRequestedEnabled(false, true);
+            }
+
+            setEnabledState(false);
+            setBusy(true);
+            setStatusMessage(permissionMessage());
+            module->Disable(true);
+            return;
+        }
+
         m_enableAttemptPending = false;
         if (!m_requestedEnabled) {
             setRequestedEnabled(true, true);
@@ -157,16 +197,16 @@ void NotificationSyncController::refreshState()
         if (!m_requestedEnabled) {
             clearNotifications();
         }
-        setStatusMessage(m_requestedEnabled
-            ? QStringLiteral("Notification sync is waiting for notification permissions on the connected device.")
+        setStatusMessage(!m_permissionsGranted || !m_localPermissionGranted
+            ? permissionMessage()
             : QStringLiteral("Notification sync is disabled."));
         return;
     }
 
     setEnabledState(m_requestedEnabled);
     setBusy(false);
-    setStatusMessage(m_requestedEnabled
-        ? QStringLiteral("Notification sync is waiting for notification permissions on the connected device.")
+    setStatusMessage(!m_permissionsGranted || !m_localPermissionGranted
+        ? permissionMessage()
         : QStringLiteral("Notification sync is disabled."));
 }
 
@@ -176,6 +216,8 @@ bool NotificationSyncController::event(QEvent* event)
         const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
         m_connected = connectedEvent->GetResult() == EventResult::SUCCESS;
         m_permissionsGranted = false;
+        m_lastReportedLocalPermissionState.reset();
+        refreshLocalPermissionState(m_connected, true);
         if (m_connected && m_requestedEnabled) {
             m_enableAttemptPending = true;
         }
@@ -189,6 +231,7 @@ bool NotificationSyncController::event(QEvent* event)
     if (event->type() == DisconnectedEvent::Type) {
         m_connected = false;
         m_permissionsGranted = false;
+        m_lastReportedLocalPermissionState.reset();
         clearNotifications();
         refreshState();
         return true;
@@ -230,7 +273,10 @@ bool NotificationSyncController::event(QEvent* event)
     if (event->type() == ModuleRequestedPermissionGranted::Type) {
         const auto* grantedEvent = static_cast<ModuleRequestedPermissionGranted*>(event);
         if (grantedEvent->GetPermissionType() == PermissionType::Notifications) {
-            m_permissionsGranted = true;
+            if (m_permissionsGranted != true) {
+                m_permissionsGranted = true;
+                emit permissionStateChanged();
+            }
             if (m_connected && m_requestedEnabled) {
                 m_enableAttemptPending = true;
                 refreshState();
@@ -242,7 +288,10 @@ bool NotificationSyncController::event(QEvent* event)
     if (event->type() == ModuleRequestedPermissionRejected::Type) {
         const auto* rejectedEvent = static_cast<ModuleRequestedPermissionRejected*>(event);
         if (rejectedEvent->GetPermissionType() == PermissionType::Notifications) {
-            m_permissionsGranted = false;
+            if (m_permissionsGranted != false) {
+                m_permissionsGranted = false;
+                emit permissionStateChanged();
+            }
             if (m_connected && m_requestedEnabled) {
                 setRequestedEnabled(false, true);
                 m_enableAttemptPending = false;
@@ -353,4 +402,41 @@ void NotificationSyncController::setRequestedEnabled(const bool enabled, const b
     if (persist) {
         m_settings.setValue(QStringLiteral("notificationSync/enabled"), enabled);
     }
+}
+
+void NotificationSyncController::refreshLocalPermissionState(const bool reportToPeer, const bool forceReport)
+{
+#ifdef MACOS_DEVICE
+    const bool granted = NotificationEmitter::IsPermissionGranted();
+#else
+    const bool granted = true;
+#endif
+
+    if (m_localPermissionGranted != granted) {
+        m_localPermissionGranted = granted;
+        emit permissionStateChanged();
+    }
+
+    if (reportToPeer && m_connected) {
+        reportLocalPermissionStateToPeer(forceReport);
+    }
+}
+
+void NotificationSyncController::reportLocalPermissionStateToPeer(const bool forceReport)
+{
+    if (!m_connected) {
+        return;
+    }
+
+    if (!forceReport &&
+        m_lastReportedLocalPermissionState.has_value() &&
+        m_lastReportedLocalPermissionState.value() == m_localPermissionGranted) {
+        return;
+    }
+
+    ConnectionManager::Send(
+        m_localPermissionGranted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
+        PermissionType::DesktopNotifications
+    );
+    m_lastReportedLocalPermissionState = m_localPermissionGranted;
 }

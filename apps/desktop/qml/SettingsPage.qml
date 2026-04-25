@@ -335,16 +335,16 @@ Page {
                     Switch {
                         id: syncToggle
                         checked: notificationSyncController.enabled
-                        enabled: permissionStateController.notificationsGranted && !notificationSyncController.busy
+                        enabled: notificationSyncController.permissionsGranted && !notificationSyncController.busy
                         onClicked: notificationSyncController.setNotificationSyncEnabled(checked)
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: permissionStateController.notificationsGranted
+                    text: notificationSyncController.permissionsGranted
                           ? notificationSyncController.statusMessage
-                          : "Notification sync is unavailable until notification permissions are granted on the mobile device."
+                          : notificationSyncController.permissionMessage
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
@@ -354,7 +354,7 @@ Page {
 
             MouseArea {
                 anchors.fill: parent
-                visible: !permissionStateController.notificationsGranted
+                visible: !notificationSyncController.permissionsGranted
                 onClicked: notificationPermissionDialog.open()
             }
         }
@@ -469,6 +469,7 @@ Page {
 
     Dialog {
         id: notificationPermissionDialog
+        readonly property bool mobilePermissionMissing: !notificationSyncController.remotePermissionGranted
         title: ""
         modal: true
         x: Math.round((parent.width - width) / 2)
@@ -487,7 +488,9 @@ Page {
             width: notificationPermissionDialog.contentWidth
 
             Text {
-                text: "Notification Permission Required"
+                text: notificationPermissionDialog.mobilePermissionMissing
+                      ? "Phone Notification Permission Required"
+                      : "macOS Notification Permission Required"
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -497,7 +500,9 @@ Page {
             }
 
             Text {
-                text: "Grant notification permissions on the mobile app to use notification sync."
+                text: notificationPermissionDialog.mobilePermissionMissing
+                      ? "Grant notification permissions on the mobile app to use notification sync."
+                      : "Allow LibreConnect in System Settings > Notifications to show synced notifications on this Mac."
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -518,12 +523,15 @@ Page {
                 }
 
                 ThemedButton {
-                    text: "Prompt on Phone"
+                    text: notificationPermissionDialog.mobilePermissionMissing ? "Prompt on Phone" : "Allow on Mac"
                     width: 170
                     height: 40
                     font.pixelSize: 14
                     onClicked: {
-                        permissionStateController.requestPermission(2)
+                        if (notificationPermissionDialog.mobilePermissionMissing)
+                            permissionStateController.requestPermission(2)
+                        else
+                            permissionStateController.requestDesktopNotificationPermission()
                         notificationPermissionDialog.close()
                     }
                 }

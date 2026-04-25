@@ -3,11 +3,36 @@
 #include <NotificationEmitter.h>
 #include <boost/nowide/convert.hpp>
 #include <atomic>
+#include <optional>
 #include <utility>
 #include <vector>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 std::atomic<int64_t> g_fallbackNotificationId{-1};
+
+namespace {
+#ifdef MACOS_DEVICE
+void ReportDesktopNotificationPermissionState(const bool granted, const bool requestStarted, const bool forceEmit = false) {
+    static std::optional<bool> s_lastReportedState = std::nullopt;
+
+    const bool stateChanged = !s_lastReportedState.has_value() || s_lastReportedState.value() != granted;
+    if (!stateChanged && !forceEmit) {
+        return;
+    }
+
+    if (!granted) {
+        if (requestStarted) {
+            ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::DesktopNotifications);
+        }
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::DesktopNotifications);
+    } else {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::DesktopNotifications);
+    }
+
+    s_lastReportedState = granted;
+}
+#endif
+}
 
 std::shared_ptr<NotificationTransferChannel> NotificationSyncModule::GetChannel() const {
     std::lock_guard lock(m_channelMutex);
@@ -176,6 +201,16 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
                 );
             }
 
+#ifdef MACOS_DEVICE
+            notificationID = NotificationEmitter::Emit(
+                boost::nowide::widen(notificationRecord.title),
+                boost::nowide::widen(notificationRecord.appName),
+                boost::nowide::widen(notificationRecord.content),
+                notificationRecord.iconPath,
+                notificationRecord.mainImagePath,
+                notificationEmitterButtonActions
+            );
+#else
             notificationID = NotificationEmitter::Emit(
                 boost::nowide::widen(notificationRecord.title),
                 boost::nowide::widen(notificationRecord.content),
@@ -183,6 +218,7 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
                 notificationRecord.mainImagePath,
                 notificationEmitterButtonActions
             );
+#endif
 
             if (notificationID < 0) {
                 notificationID = g_fallbackNotificationId.fetch_sub(1, std::memory_order_relaxed);
@@ -382,6 +418,22 @@ void NotificationSyncModule::OnInitialize() {}
 
 asio::awaitable<void> NotificationSyncModule::OnEnable() {
     m_peerModuleEnabled.store(false);
+
+#ifdef MACOS_DEVICE
+    if (!NotificationEmitter::IsPermissionGranted()) {
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::DesktopNotifications);
+    }
+
+    if (!NotificationEmitter::RequestPermission()) {
+        ReportDesktopNotificationPermissionState(false, false, true);
+        Debug::LogWarning("NotificationSyncModule: Desktop notification permission not granted on macOS.");
+        Disable();
+        co_return;
+    }
+
+    ReportDesktopNotificationPermissionState(true, false, true);
+#endif
+
     ConnectionManager::Send(PC_PackageType::NOTIFICATION_SYNC_MODULE_ENABLE);
 
     if (const std::shared_ptr<NotificationTransferChannel> previousChannel = TakeChannel()) {

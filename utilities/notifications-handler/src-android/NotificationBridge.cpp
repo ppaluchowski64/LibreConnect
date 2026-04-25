@@ -8,7 +8,6 @@
 #include <QtCore/qjniobject.h>
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qcoreapplication_platform.h>
-#include <QtCore/private/qandroidextras_p.h>
 
 #include <NotificationBridge.h>
 #include <DebugLog.h>

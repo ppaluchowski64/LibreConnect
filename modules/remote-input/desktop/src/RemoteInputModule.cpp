@@ -18,6 +18,7 @@
 namespace {
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 constexpr size_t MAX_MEDIA_COVER_BYTES = 512 * 1024;
+constexpr auto PERMISSION_STATE_POLL_INTERVAL = std::chrono::milliseconds(500);
 
 bool IsInputDeliveryState(const ModuleState state) {
     return state == ModuleState::Enabled || state == ModuleState::Enabling;
@@ -114,7 +115,7 @@ bool IsAccessibilityTrusted(const bool promptForPermission) {
     return trusted;
 }
 
-void ReportRemoteInputPermissionState(const bool granted, const bool forceEmitState) {
+void ReportRemoteInputPermissionState(const bool granted, const bool requestStarted, const bool forceEmitState) {
     static std::optional<bool> s_lastReportedState = std::nullopt;
 
     const bool stateChanged = !s_lastReportedState.has_value() || s_lastReportedState.value() != granted;
@@ -123,7 +124,9 @@ void ReportRemoteInputPermissionState(const bool granted, const bool forceEmitSt
     }
 
     if (!granted) {
-        ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Accessibility);
+        if (requestStarted) {
+            ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Accessibility);
+        }
         ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Accessibility);
     } else {
         ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Accessibility);
@@ -134,7 +137,7 @@ void ReportRemoteInputPermissionState(const bool granted, const bool forceEmitSt
 
 bool EnsureRemoteInputPermission(const bool promptForPermission, const bool forceEmitState = false) {
     const bool trusted = IsAccessibilityTrusted(promptForPermission);
-    ReportRemoteInputPermissionState(trusted, forceEmitState);
+    ReportRemoteInputPermissionState(trusted, promptForPermission && !trusted, forceEmitState);
     return trusted;
 }
 #else
@@ -264,9 +267,15 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, true);
 
     asio::steady_timer timer(m_context.get_executor());
+    auto nextPermissionRefresh = std::chrono::steady_clock::now() + PERMISSION_STATE_POLL_INTERVAL;
     while (!ShouldAbortEnable()) {
         if (ShouldAbortEnable()) {
             co_return;
+        }
+
+        if (std::chrono::steady_clock::now() >= nextPermissionRefresh) {
+            EnsureRemoteInputPermission(false);
+            nextPermissionRefresh = std::chrono::steady_clock::now() + PERMISSION_STATE_POLL_INTERVAL;
         }
 
         timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));

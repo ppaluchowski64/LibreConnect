@@ -23,6 +23,19 @@ public:
         const std::vector<ButtonAction>& buttons
     );
 
+#ifdef MACOS_DEVICE
+    static int64_t Emit(
+        const std::wstring& notificationName,
+        const std::wstring& notificationSubtitle,
+        const std::wstring& notificationContent,
+        const std::optional<std::filesystem::path>& appIconPath,
+        const std::optional<std::filesystem::path>& mainImagePath,
+        const std::vector<ButtonAction>& buttons
+    );
+#endif
+
+    static bool RequestPermission();
+    static bool IsPermissionGranted();
     static void Remove(int64_t id);
 
 };

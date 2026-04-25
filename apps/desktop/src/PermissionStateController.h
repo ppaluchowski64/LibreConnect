@@ -16,6 +16,8 @@ class PermissionStateController : public QObject
     Q_PROPERTY(bool fileSystemGranted READ fileSystemGranted NOTIFY permissionStateChanged)
     Q_PROPERTY(bool batteryGranted READ batteryGranted NOTIFY permissionStateChanged)
     Q_PROPERTY(bool smsGranted READ smsGranted NOTIFY permissionStateChanged)
+    Q_PROPERTY(bool accessibilityGranted READ accessibilityGranted NOTIFY permissionStateChanged)
+    Q_PROPERTY(bool desktopNotificationsGranted READ desktopNotificationsGranted NOTIFY permissionStateChanged)
 
 public:
     explicit PermissionStateController(QObject* parent = nullptr);
@@ -26,9 +28,12 @@ public:
     bool fileSystemGranted() const { return m_fileSystemGranted; }
     bool batteryGranted() const { return m_batteryGranted; }
     bool smsGranted() const { return m_smsGranted; }
+    bool accessibilityGranted() const { return m_accessibilityGranted; }
+    bool desktopNotificationsGranted() const { return m_desktopNotificationsGranted; }
 
     Q_INVOKABLE bool isGranted(int permissionType) const;
     Q_INVOKABLE void requestPermission(int permissionType);
+    Q_INVOKABLE void requestDesktopNotificationPermission();
 
 signals:
     void connectedChanged();
@@ -47,4 +52,6 @@ private:
     bool m_fileSystemGranted = false;
     bool m_batteryGranted = false;
     bool m_smsGranted = false;
+    bool m_accessibilityGranted = false;
+    bool m_desktopNotificationsGranted = false;
 };

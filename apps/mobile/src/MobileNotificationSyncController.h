@@ -12,6 +12,7 @@ class MobileNotificationSyncController : public QObject
     Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
+    Q_PROPERTY(bool desktopPermissionGranted READ desktopPermissionGranted NOTIFY permissionStateChanged)
 
 public:
     explicit MobileNotificationSyncController(QObject* parent = nullptr);
@@ -19,6 +20,7 @@ public:
     bool enabled() const { return m_enabled; }
     bool busy() const { return m_busy; }
     QString statusMessage() const { return m_statusMessage; }
+    bool desktopPermissionGranted() const { return m_desktopPermissionGranted; }
 
     Q_INVOKABLE void setNotificationSyncEnabled(bool enabled);
 
@@ -26,6 +28,7 @@ signals:
     void enabledChanged();
     void busyChanged();
     void statusMessageChanged();
+    void permissionStateChanged();
 
 protected:
     bool event(QEvent* event) override;
@@ -41,6 +44,7 @@ private:
     QTimer m_pollTimer;
     bool m_connected = false;
     bool m_permissionsGranted = false;
+    bool m_desktopPermissionGranted = true;
     bool m_requestedEnabled = false;
     bool m_enableAttemptPending = false;
     bool m_disableAttemptPending = false;

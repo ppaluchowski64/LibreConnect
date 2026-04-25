@@ -236,6 +236,14 @@ function(DeployQT Target)
                 COMMENT "Running macdeployqt on ${Target}..."
                 VERBATIM
         )
+
+        if (Target STREQUAL "appLibreConnect_desktop")
+            add_custom_command(TARGET ${Target} POST_BUILD
+                    COMMAND /usr/bin/codesign --force --deep --sign - --identifier com.libreconnect.desktop "$<TARGET_BUNDLE_DIR:${Target}>"
+                    COMMENT "Re-signing ${Target} with the app bundle identifier..."
+                    VERBATIM
+            )
+        endif()
     elseif(ANDROID)
 
     elseif(UNIX)
