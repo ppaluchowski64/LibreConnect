@@ -44,6 +44,8 @@ constexpr uint32_t MAX_NUMBER_OF_VERIFICATION_TRIES = 5;
 const asio::ip::address_v4 DEVICE_DISCOVERY_MULTICAST_ADDRESS = asio::ip::make_address_v4("224.0.0.251");
 constexpr uint16_t DEVICE_DISCOVERY_MULTICAST_PORT            = 5430;
 
+constexpr uint16_t DAEMON_SIGNAL_PORT = 5603;
+
 template <typename T>
 concept PackageTypeConcept = std::is_same_v<std::underlying_type_t<T>, PackageTypeInt>;
 

@@ -269,6 +269,13 @@ if (ANDROID)
     add_subdirectory("apps/mobile")
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     add_subdirectory("apps/desktop")
+    BuildProgram(desktop-daemon daemon
+            project_defaults
+            Debug-Log
+            network-component-pc
+            system-component-pc
+            p2p-network-component-pc
+    )
 endif()
 
 if (ENABLE_TESTS)
