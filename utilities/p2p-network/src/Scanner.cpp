@@ -30,6 +30,11 @@ LanDeviceScanner* LanDeviceScanner::s_instance{nullptr};
 
 LanDeviceScanner::LanDeviceScanner() : m_context(ThreadPool::GetContext()), m_strand(asio::make_strand(m_context)), m_outSocket(nullptr), m_inSocket(nullptr) {
     const auto netInstance = QNetworkInformation::instance();
+    if (netInstance == nullptr) {
+        Debug::LogWarning("LanDeviceScanner: QNetworkInformation instance unavailable; transport change restarts disabled");
+        return;
+    }
+
     QObject::connect(netInstance, &QNetworkInformation::transportMediumChanged, [this]() {
         if (!m_isScanning.load()) {
             return;
@@ -65,20 +70,38 @@ void LanDeviceScanner::RestartScan() {
     asio::co_spawn(s_instance->m_strand, s_instance->Co_RestartScan(), asio::detached);
 }
 
-void LanDeviceScanner::BeginScan() {
+void LanDeviceScanner::BeginScan(const Options& options) {
     if (s_instance == nullptr) {
         s_instance = new LanDeviceScanner();
         Debug::Log("LanDeviceScanner::BeginScan created scanner instance");
     }
 
+    const bool optionsChanged = s_instance->m_options.transmitProbes != options.transmitProbes ||
+                                s_instance->m_options.emitEvents != options.emitEvents;
+    s_instance->m_options = options;
+
     if (s_instance->m_isScanning.load()) {
+        if (optionsChanged) {
+            Debug::Log(
+                "LanDeviceScanner::BeginScan options changed while active; restarting scan (transmitProbes: {}, emitEvents: {})",
+                s_instance->m_options.transmitProbes,
+                s_instance->m_options.emitEvents
+            );
+            RestartScan();
+            return;
+        }
+
         Debug::Log("LanDeviceScanner::BeginScan ignored: scanner already active");
         return;
     }
 
     s_instance->m_discoveredDevices.clear();
     s_instance->m_devicesLastProbe.clear();
-    Debug::Log("LanDeviceScanner::BeginScan started");
+    Debug::Log(
+        "LanDeviceScanner::BeginScan started (transmitProbes: {}, emitEvents: {})",
+        s_instance->m_options.transmitProbes,
+        s_instance->m_options.emitEvents
+    );
 
     asio::co_spawn(s_instance->m_strand, s_instance->Co_JoinMulticastGroup(), asio::detached);
 }
@@ -132,22 +155,25 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
 
         m_isScanning.store(true);
 
-        m_outSocket = std::make_unique<UDPSocket>(m_context);
+        if (m_options.transmitProbes) {
+            m_outSocket = std::make_unique<UDPSocket>(m_context);
+            m_outSocket->open(asio::ip::udp::v4());
+            m_outSocket->bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), 0));
+            m_outSocket->set_option(asio::ip::multicast::enable_loopback(false));
+            m_outSocket->set_option(asio::socket_base::reuse_address(true));
+            m_outSocket->set_option(asio::ip::multicast::hops(8));
+        }
+
         m_inSocket = std::make_unique<UDPSocket>(m_context);
-
-        m_outSocket->open(asio::ip::udp::v4());
-        m_outSocket->bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), 0));
-        m_outSocket->set_option(asio::ip::multicast::enable_loopback(false));
-        m_outSocket->set_option(asio::socket_base::reuse_address(true));
-        m_outSocket->set_option(asio::ip::multicast::hops(8));
-
         m_inSocket->open(asio::ip::udp::v4());
         m_inSocket->set_option(asio::socket_base::reuse_address(true));
         m_inSocket->set_option(asio::ip::multicast::enable_loopback(false));
 
 #ifdef SO_REUSEPORT
         int reuse = 1;
-        ::setsockopt(m_outSocket->native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+        if (m_outSocket != nullptr) {
+            ::setsockopt(m_outSocket->native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+        }
         ::setsockopt(m_inSocket->native_handle(), SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 #endif
 
@@ -186,9 +212,15 @@ asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {
             }
         }
 
-        asio::co_spawn(m_strand, Co_SendProbes(), asio::detached);
+        if (m_options.transmitProbes) {
+            asio::co_spawn(m_strand, Co_SendProbes(), asio::detached);
+        }
+
         asio::co_spawn(m_strand, Co_ReceiveResponses(), asio::detached);
-        Debug::Log("LanDeviceScanner::Co_JoinMulticastGroup joined and probe tasks started");
+        Debug::Log(
+            "LanDeviceScanner::Co_JoinMulticastGroup joined multicast group and started scanner tasks (transmitProbes: {})",
+            m_options.transmitProbes
+        );
 
     } catch (const std::system_error& errorCode) {
         Debug::LogError("LanDeviceScanner::Co_JoinMulticastGroup failed: {}", errorCode.what());
@@ -345,8 +377,13 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
     Debug::Log("LanDeviceScanner stopped receiving probes");
 }
 
-void LanDeviceScanner::ProcessError(const asio::system_error& error) {
+void LanDeviceScanner::ProcessError(const asio::system_error& error) const {
     HandleAsioError(error.code());
+
+    if (!m_options.emitEvents) {
+        return;
+    }
+
     const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(error.code());
     ConnectionManager::SendEvent(event);
 }

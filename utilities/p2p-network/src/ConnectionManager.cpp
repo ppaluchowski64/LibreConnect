@@ -483,7 +483,9 @@ std::shared_ptr<SSLContext_> ConnectionManager::GetSSLContextServer() {
     return s_instance->m_sslContextServer;
 }
 
-ConnectionManager::ConnectionManager() : m_context(ThreadPool::GetContext()) { }
+ConnectionManager::ConnectionManager() : m_context(ThreadPool::GetContext()) {
+    Debug::Log("aaa");
+}
 
 void ConnectionManager::Initialize() {
     s_instance = new ConnectionManager();

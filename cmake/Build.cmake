@@ -84,6 +84,8 @@ function(BuildProgram ExecutableName RootPath)
     add_executable(${ExecutableName} ${SOURCE_FILES} ${HEADER_FILES})
     target_include_directories(${ExecutableName} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
+
+    DeployQT(${ExecutableName})
 endfunction()
 
 function(BuildQTExecutable ExecutableName RootPath ModuleURI)
@@ -215,7 +217,6 @@ function(DeployQT Target)
                     LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
             )
         endif()
-
 
         add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"

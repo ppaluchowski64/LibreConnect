@@ -12,9 +12,14 @@
 
 class LanDeviceScanner {
 public:
+    struct Options {
+        bool transmitProbes{true};
+        bool emitEvents{true};
+    };
+
     LanDeviceScanner();
 
-    static void BeginScan();
+    static void BeginScan(const Options& options = {});
     static void EndScan();
     static void RestartScan();
     static std::vector<DeviceInfo> GetDiscoveredDevices();
@@ -26,7 +31,7 @@ private:
     asio::awaitable<void> Co_SendProbes() const;
     asio::awaitable<void> Co_ReceiveResponses();
 
-    static void ProcessError(const asio::system_error& error);
+    void ProcessError(const asio::system_error& error) const;
 
     static size_t GetTimeMS();
     static LanDeviceScanner* s_instance;
@@ -41,6 +46,7 @@ private:
     std::unique_ptr<UDPSocket> m_inSocket;
 
     std::vector<DeviceInfo> m_discoveredDevices;
+    Options m_options{};
     std::atomic<bool> m_isScanning{false};
 };
 

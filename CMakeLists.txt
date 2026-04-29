@@ -269,6 +269,7 @@ if (ANDROID)
     add_subdirectory("apps/mobile")
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     add_subdirectory("apps/desktop")
+
     BuildProgram(desktop-daemon daemon
             project_defaults
             Debug-Log
