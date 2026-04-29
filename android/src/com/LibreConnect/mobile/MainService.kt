@@ -188,7 +188,8 @@ class MainService : Service() {
             return
         }
 
-        nativeConfigureStorage(filesDir.absolutePath)
+        val storageDir = getExternalFilesDir(null) ?: filesDir
+        nativeConfigureStorage(storageDir.absolutePath)
         acquireMulticastLock()
         acquireWifiLock()
         acquireCpuWakeLock()
