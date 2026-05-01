@@ -10,8 +10,45 @@ import android.net.Uri
 import java.io.File
 import androidx.core.graphics.createBitmap
 import java.io.ByteArrayOutputStream
+import androidx.core.content.FileProvider
 
 object FileSystemUtils {
+    @JvmStatic
+    fun shareLogs(context: Context) {
+        val storageDir = context.getExternalFilesDir(null)
+        val logFiles = storageDir?.listFiles { _, name -> name.endsWith(".log") }
+        
+        if (logFiles.isNullOrEmpty()) {
+            return
+        }
+
+        val uris = ArrayList<Uri>()
+        for (file in logFiles) {
+            try {
+                val contentUri = FileProvider.getUriForFile(
+                    context,
+                    "com.LibreConnect.mobile.fileprovider",
+                    file
+                )
+                uris.add(contentUri)
+            } catch (e: Exception) {
+                // Skip if couldn't get URI
+            }
+        }
+
+        if (uris.isEmpty()) return
+
+        val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = "text/plain"
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val chooser = Intent.createChooser(intent, "Export Logs")
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    }
+
     @JvmStatic
     fun getFileIconAsPngBytes(context: Context, filePath: String, density: Int): ByteArray? {
         val bitmap = getFileIcon(context, filePath, density) ?: return null
