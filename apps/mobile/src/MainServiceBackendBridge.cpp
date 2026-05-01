@@ -191,3 +191,17 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
 {
     StopBackendIfNeeded();
 }
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeShareLogs(
+    JNIEnv* env,
+    jobject obj)
+{
+    // obj is the MainService instance, which is a Context
+    jclass utilsClass = env->FindClass("com/LibreConnect/mobile/FileSystemUtils");
+    if (!utilsClass) return;
+
+    jmethodID shareMethod = env->GetStaticMethodID(utilsClass, "shareLogs", "(Landroid/content/Context;)V");
+    if (!shareMethod) return;
+
+    env->CallStaticVoidMethod(utilsClass, shareMethod, obj);
+}
