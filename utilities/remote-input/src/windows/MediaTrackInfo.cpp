@@ -4,8 +4,6 @@
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
 
-#include <fstream>
-
 namespace {
     void EnsureWinRtInitialized() {
         thread_local bool initialized = false;
@@ -75,18 +73,4 @@ void MediaTrackInfo::SetPosition(double seconds) {
             session.TryChangePlaybackPositionAsync(ticks).get();
         }
     } catch (...) {}
-}
-
-bool MediaTrackInfo::SaveCoverToFile(const TrackMetadata& metadata, const std::string& path) {
-    if (metadata.cover.empty())
-        return false;
-
-    std::ofstream file(path, std::ios::binary);
-    if (!file)
-        return false;
-
-    file.write(reinterpret_cast<const char*>(metadata.cover.data()),
-               static_cast<std::streamsize>(metadata.cover.size()));
-
-    return true;
 }

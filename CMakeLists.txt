@@ -284,7 +284,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
     BuildTestProgram(MediaRemoteTest remote-input/MediaRemoteTest.cpp remote-input)
     BuildTestProgram(SystemVolumeControllerTest remote-input/SystemVolumeControllerTest.cpp remote-input)
-    if (WIN32)
+    if (NOT ANDROID AND NOT IOS)
         BuildTestProgram(MediaTrackInfoTest remote-input/MediaTrackInfoTest.cpp remote-input)
     endif ()
 

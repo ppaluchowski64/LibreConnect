@@ -66,6 +66,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
     if (UNIX AND NOT APPLE)
         target_link_libraries(remote-input PUBLIC
                 ALSA::ALSA
+                Qt6::DBus
         )
     endif ()
 
