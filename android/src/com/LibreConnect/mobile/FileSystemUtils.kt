@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
 import android.net.Uri
+import android.widget.Toast
 import java.io.File
 import androidx.core.graphics.createBitmap
 import java.io.ByteArrayOutputStream
@@ -15,10 +16,14 @@ import androidx.core.content.FileProvider
 object FileSystemUtils {
     @JvmStatic
     fun shareLogs(context: Context) {
-        val storageDir = context.getExternalFilesDir(null)
-        val logFiles = storageDir?.listFiles { _, name -> name.endsWith(".log") }
-        
+        val storageDir = context.getExternalFilesDir(null) ?: context.filesDir
+        val logFiles = storageDir
+            .walkTopDown()
+            .filter { it.isFile && it.extension.equals("log", ignoreCase = true) }
+            .toList()
+
         if (logFiles.isNullOrEmpty()) {
+            Toast.makeText(context, "No logs found to export", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -36,7 +41,10 @@ object FileSystemUtils {
             }
         }
 
-        if (uris.isEmpty()) return
+        if (uris.isEmpty()) {
+            Toast.makeText(context, "No logs found to export", Toast.LENGTH_SHORT).show()
+            return
+        }
 
         val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "text/plain"

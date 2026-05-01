@@ -407,17 +407,22 @@ Page {
 
                     RowLayout {
                         anchors.fill: parent
-                        anchors.margins: 12
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        anchors.topMargin: 8
+                        anchors.bottomMargin: 8
                         spacing: 12
 
                         RoundedLogo {
                             source: "libreconnect_logo_1024.png"
                             Layout.preferredWidth: 62
                             Layout.preferredHeight: 62
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         Column {
                             Layout.fillWidth: true
+                            Layout.alignment: Qt.AlignVCenter
                             spacing: 3
 
                             Text {
@@ -433,76 +438,95 @@ Page {
                                 width: parent.width
                             }
 
-                            Text {
-                                text: "Connected"
-                                font.family: Theme.fontFamily
-                                font.pixelSize: 16
-                                color: Theme.mutedTextColor
+                            RowLayout {
+                                spacing: 8
+
+                                Text {
+                                    id: connectedStatusLabel
+                                    text: "Connected"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 15
+                                    color: Theme.mutedTextColor
+                                }
+
+                                Text {
+                                    id: dotLabel
+                                    visible: root.connectionController.batteryPercentage >= 0
+                                    text: "•"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 15
+                                    color: Theme.mutedTextColor
+                                }
+
+                                Text {
+                                    visible: root.connectionController.batteryPercentage >= 0
+                                    text: root.connectionController.batteryPercentage + "%"
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 15
+                                    color: Theme.subtleTextColor
+                                    Layout.alignment: Qt.AlignVCenter
+                                }
                             }
                         }
 
-                        Item {
-                            Layout.alignment: Qt.AlignBottom
-                            width: 82
-                            height: 36
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                            Layout.preferredWidth: 36
+                            spacing: 8
 
-                            Row {
-                                anchors.right: parent.right
-                                anchors.bottom: parent.bottom
-                                spacing: 8
+                            Rectangle {
+                                id: settingsButton
+                                Layout.alignment: Qt.AlignHCenter
+                                width: 36
+                                height: 36
+                                radius: 10
+                                color: settingsMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
+                                border.color: Theme.panelBorderColor
+                                border.width: 1
 
-                                Rectangle {
-                                    id: settingsButton
-                                    width: 36
-                                    height: 36
-                                    radius: 10
-                                    color: settingsMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
-                                    border.color: Theme.panelBorderColor
-                                    border.width: 1
-
-                                    Image {
-                                        anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
-                                        sourceSize.width: 22
-                                        sourceSize.height: 22
-                                        fillMode: Image.PreserveAspectFit
-                                        source: Theme.dark ? "settings_dark.svg" : "settings.svg"
-                                    }
-
-                                    MouseArea {
-                                        id: settingsMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: root.selectFeature("settings")
-                                    }
+                                Image {
+                                    anchors.centerIn: parent
+                                    width: 22
+                                    height: 22
+                                    sourceSize.width: 22
+                                    sourceSize.height: 22
+                                    fillMode: Image.PreserveAspectFit
+                                    source: Theme.dark ? "settings_dark.svg" : "settings.svg"
                                 }
 
-                                Rectangle {
-                                    id: moreButton
-                                    width: 36
-                                    height: 36
-                                    radius: 10
-                                    color: moreMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
-                                    border.color: Theme.panelBorderColor
-                                    border.width: 1
+                                MouseArea {
+                                    id: settingsMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: root.selectFeature("settings")
+                                }
+                            }
 
-                                    Image {
-                                        anchors.centerIn: parent
-                                        width: 22
-                                        height: 22
-                                        sourceSize.width: 22
-                                        sourceSize.height: 22
-                                        fillMode: Image.PreserveAspectFit
-                                        source: Theme.dark ? "more_dark.svg" : "more.svg"
-                                    }
+                            Rectangle {
+                                id: moreButton
+                                Layout.alignment: Qt.AlignHCenter
+                                width: 36
+                                height: 36
+                                radius: 10
+                                color: moreMouse.containsMouse ? Theme.buttonColor : Theme.backgroundColor
+                                border.color: Theme.panelBorderColor
+                                border.width: 1
 
-                                    MouseArea {
-                                        id: moreMouse
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        onClicked: actionsPopup.open()
-                                    }
+                                Image {
+                                    anchors.centerIn: parent
+                                    width: 22
+                                    height: 22
+                                    sourceSize.width: 22
+                                    sourceSize.height: 22
+                                    fillMode: Image.PreserveAspectFit
+                                    source: Theme.dark ? "more_dark.svg" : "more.svg"
+                                }
+
+                                MouseArea {
+                                    id: moreMouse
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: actionsPopup.open()
                                 }
                             }
                         }

@@ -4,12 +4,15 @@
 #include <asio/ssl/error.hpp>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <system_error>
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <QRegularExpression>
+#include <ModulesManager.h>
 #include <PermissionManager.h>
 #include <ThreadPool.h>
+#include <SystemInfoShareModule.h>
 
 namespace
 {
@@ -324,6 +327,15 @@ bool DeviceConnectionController::event(QEvent* e)
         return true;
     }
 
+    if (type == PeerBatteryLevelUpdateEvent::Type) {
+        const auto* ev = static_cast<PeerBatteryLevelUpdateEvent*>(e);
+        const int percentage = ev->GetBatteryLevel() < 0
+            ? -1
+            : std::clamp(static_cast<int>(std::lround(ev->GetBatteryLevel())), 0, 100);
+        setBatteryPercentage(percentage);
+        return true;
+    }
+
     if (type == DeviceNotPairedEvent::Type) {
         const auto* ev = static_cast<DeviceNotPairedEvent*>(e);
         const QString deviceId = QString::fromStdString(ev->GetDeviceID());
@@ -380,7 +392,11 @@ void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
 
     m_verificationEvent.reset();
 
-    if (!success) {
+    if (success) {
+        auto& systemInfoModule = ModulesManager::GetModuleReference<SystemInfoShareModule>();
+        systemInfoModule->Enable(true);
+    } else {
+        setBatteryPercentage(-1);
         handleError("Connection failed", ev->type());
     }
 }
@@ -417,6 +433,11 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
 
     m_verificationEvent.reset();
     setFindMyPhoneAlertActive(false);
+    setBatteryPercentage(-1);
+    if (connectedChangedValue) {
+        auto& systemInfoModule = ModulesManager::GetModuleReference<SystemInfoShareModule>();
+        systemInfoModule->Disable(true);
+    }
 
     if (pendingChangedValue &&
         !connectedChangedValue &&
@@ -548,4 +569,14 @@ void DeviceConnectionController::setFindMyPhoneAlertActive(const bool active)
 
     m_findMyPhoneAlertActive = active;
     emit findMyPhoneAlertActiveChanged();
+}
+
+void DeviceConnectionController::setBatteryPercentage(const int percentage)
+{
+    if (m_batteryPercentage == percentage) {
+        return;
+    }
+
+    m_batteryPercentage = percentage;
+    emit batteryPercentageChanged();
 }
