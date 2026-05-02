@@ -29,11 +29,17 @@ public:
     void FetchEntryIcon(const FileEntry& entry, FileIconDensity density) const;
 
 private:
+    struct AcquiredTransferChannel {
+        size_t index{};
+        std::shared_ptr<TransferChannel> channel;
+        std::shared_ptr<void> reservationGuard;
+    };
+
     bool TryBeginDirectoryRequest(const std::string& path) const;
     void EndDirectoryRequest(const std::string& path) const;
+    asio::awaitable<AcquiredTransferChannel> AcquireTransferChannel(bool reserveIncomingPost = false) const;
 
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
-    asio::awaitable<std::vector<FileEntry>> FetchDirectoryEntriesAwaitable(std::string path);
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;

@@ -92,6 +92,41 @@ constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 
 FileShareModule::FileShareModule() = default;
 
+asio::awaitable<FileShareModule::AcquiredTransferChannel> FileShareModule::AcquireTransferChannel(const bool reserveIncomingPost) const {
+    asio::steady_timer timer(m_context);
+
+    while (true) {
+        if (reserveIncomingPost) {
+            std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+            for (size_t i = 0; i < m_transferChannels.size(); ++i) {
+                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
+                if (m_reservedIncomingPostChannels.find(i) != m_reservedIncomingPostChannels.end()) {
+                    continue;
+                }
+
+                if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
+                    m_reservedIncomingPostChannels.insert(i);
+                    const auto reservationGuard = std::shared_ptr<void>(nullptr, [this, i](void*) {
+                        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
+                        m_reservedIncomingPostChannels.erase(i);
+                    });
+                    co_return AcquiredTransferChannel{i, std::move(channel), reservationGuard};
+                }
+            }
+        } else {
+            for (size_t i = 0; i < m_transferChannels.size(); ++i) {
+                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
+                if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
+                    co_return AcquiredTransferChannel{i, std::move(channel), nullptr};
+                }
+            }
+        }
+
+        timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
+        co_await timer.async_wait();
+    }
+}
+
 bool FileShareModule::TryBeginDirectoryRequest(const std::string& path) const {
     std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
     const auto [_, inserted] = m_inFlightDirectoryRequests.insert(path);
@@ -147,36 +182,20 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
         PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST,
         std::move(requestPath)
     );
-    std::vector<FileEntry> entries;
 
-    if (response) {
-        response.value()->GetValue(entries);
-    } else {
+    std::vector<FileEntry> entries;
+    size_t index;
+
+    if (!response) {
         Debug::LogError("FileShareModule: Directory entries request failed");
         ProcessError(ModuleFailReason::Timeout);
     }
 
+    response.value()->GetValue(index);
+    co_await m_transferChannels[index]->ReceiveDirectoryEntries(entries);
+
     const std::unique_ptr<QEvent> event = std::make_unique<FetchDirectoryEntriesResultEvent>(std::move(path), std::move(entries));
     ConnectionManager::SendEvent(event);
-}
-
-asio::awaitable<std::vector<FileEntry>> FileShareModule::FetchDirectoryEntriesAwaitable(std::string path) {
-    const std::shared_ptr<const BaseModule> instance = shared_from_this();
-    std::string requestPath = path;
-
-    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
-        PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST,
-        std::move(requestPath)
-    );
-    std::vector<FileEntry> entries;
-
-    if (response) {
-        response.value()->GetValue(entries);
-    } else {
-        ProcessError(ModuleFailReason::Timeout);
-    }
-
-    co_return entries;
 }
 
 void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& destination) const {
@@ -576,37 +595,10 @@ void FileShareModule::EnableResponseCallbacks() {
 
         const std::filesystem::path destinationPath = std::filesystem::path(destination) / fileName;
 
-        uint8_t transferChannelIndex{};
+        const AcquiredTransferChannel acquiredChannel = co_await AcquireTransferChannel(true);
+        const uint8_t transferChannelIndex = static_cast<uint8_t>(acquiredChannel.index);
+        const std::shared_ptr<TransferChannel> channel = acquiredChannel.channel;
         asio::steady_timer timer(m_context);
-
-        while (true) {
-            {
-                std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-                for (size_t i = 0; i < m_transferChannels.size(); ++i) {
-                    const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                    if (m_reservedIncomingPostChannels.find(i) != m_reservedIncomingPostChannels.end()) {
-                        continue;
-                    }
-
-                    if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
-                        transferChannelIndex = static_cast<uint8_t>(i);
-                        m_reservedIncomingPostChannels.insert(i);
-                        goto FINISH_CHANNEL_SEARCH;
-                    }
-                }
-            }
-
-            timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
-            co_await timer.async_wait();
-        }
-
-        FINISH_CHANNEL_SEARCH:
-        std::shared_ptr<TransferChannel> channel = m_transferChannels[transferChannelIndex];
-        const auto reservationGuard = std::shared_ptr<void>(nullptr, [this, transferChannelIndex](void*) {
-            std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-            m_reservedIncomingPostChannels.erase(static_cast<size_t>(transferChannelIndex));
-        });
-        (void)reservationGuard;
         Debug::Log("FileShareModule: Selected transfer channel {} for incoming post request {}", transferChannelIndex, requestID);
 
         const auto future = isDirectory ?

@@ -20,9 +20,16 @@ public:
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
 
 private:
+    struct AcquiredTransferChannel {
+        size_t index{};
+        std::shared_ptr<TransferChannel> channel;
+        std::shared_ptr<void> reservationGuard;
+    };
+
     std::shared_future<DirectoryResult> GetOrCreateDirectoryScanFuture(const std::string& path);
     void CleanupDirectoryScanFutureIfReady(const std::string& path);
     void ClearDirectoryScanFutures();
+    asio::awaitable<AcquiredTransferChannel> AcquireTransferChannel(bool reserveIncomingPost = false) const;
 
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     std::vector<uint8_t> GetEntryIcon(const std::string& file, FileIconDensity density);

@@ -318,6 +318,174 @@ asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
     m_send.store(false);
 }
 
+asio::awaitable<void> TransferChannel::SendDirectoryEntries(std::vector<FileEntry>&& entries) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+    if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
+        Debug::LogWarning(
+            "TransferChannel: SendDirectoryEntries skipped. State: {}, SendInUse: {}",
+            static_cast<int>(m_connectionState.load()),
+            m_send.load()
+        );
+        co_return;
+    }
+
+    m_send.store(true);
+    m_progress.store(0);
+    const size_t totalCount = entries.size();
+    size_t sentCount = 0;
+    size_t chunkCount = 0;
+    constexpr size_t frameHeaderSize = sizeof(size_t) * 2;
+    Debug::Log("TransferChannel: SendDirectoryEntries started. Entries: {}", totalCount);
+
+    size_t offset = 0;
+
+    {
+        SerializeObject(totalCount, m_bufferOut, offset);
+        if (!co_await SendBuffer(sizeof(size_t))) {
+            m_send.store(false);
+            co_return;
+        }
+    }
+
+    offset = frameHeaderSize;
+    size_t count = 0;
+    for (const auto& entry : entries) {
+        const size_t entrySize = entry.GetSerializedSize();
+        if (offset + entrySize > m_bufferOut.size()) {
+            {
+                size_t zeroOffset = 0;
+                SerializeObject(offset - frameHeaderSize, m_bufferOut, zeroOffset);
+                SerializeObject(count, m_bufferOut, zeroOffset);
+            }
+
+            if (!co_await SendBuffer(offset)) {
+                m_send.store(false);
+                co_return;
+            }
+            sentCount += count;
+            chunkCount++;
+            Debug::Log(
+                "TransferChannel: SendDirectoryEntries chunk sent. Chunk: {}, EntriesInChunk: {}, EntriesSent: {}/{}",
+                chunkCount,
+                count,
+                sentCount,
+                totalCount
+            );
+            offset = frameHeaderSize;
+            count = 0;
+        }
+
+        count++;
+        entry.Serialize(m_bufferOut, offset);
+    }
+
+    {
+        size_t zeroOffset = 0;
+        SerializeObject(offset - frameHeaderSize, m_bufferOut, zeroOffset);
+        SerializeObject(count, m_bufferOut, zeroOffset);
+    }
+
+    if (!co_await SendBuffer(offset)) {
+        m_send.store(false);
+        co_return;
+    }
+    sentCount += count;
+    chunkCount++;
+    Debug::Log(
+        "TransferChannel: SendDirectoryEntries finished. Chunks: {}, EntriesSent: {}/{}",
+        chunkCount,
+        sentCount,
+        totalCount
+    );
+    m_send.store(false);
+}
+
+asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileEntry>& entries) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+    if (m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
+        Debug::LogWarning(
+            "TransferChannel: ReceiveDirectoryEntries skipped. State: {}, ReceiveInUse: {}",
+            static_cast<int>(m_connectionState.load()),
+            m_receive.load()
+        );
+        co_return;
+    }
+
+    m_receive.store(true);
+    m_progress.store(0);
+    constexpr size_t frameHeaderSize = sizeof(size_t) * 2;
+
+    size_t totalCount = 0;
+    size_t offset = 0;
+
+    {
+        const asio::mutable_buffer buffer(m_bufferIn.data(), sizeof(size_t));
+        co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
+        DeserializeObject(totalCount, m_bufferIn, offset);
+    }
+    Debug::Log("TransferChannel: ReceiveDirectoryEntries started. Expected entries: {}", totalCount);
+
+    entries.reserve(totalCount);
+    const size_t expectedTotalCount = totalCount;
+    size_t receivedCount = 0;
+    size_t chunkCount = 0;
+
+    while (true) {
+        const asio::mutable_buffer headerBuffer(m_bufferIn.data(), frameHeaderSize);
+        co_await asio::async_read(*m_socket, headerBuffer, asio::use_awaitable);
+
+        size_t payloadSize = 0;
+        size_t count = 0;
+        offset = 0;
+        DeserializeObject(payloadSize, m_bufferIn, offset);
+        DeserializeObject(count, m_bufferIn, offset);
+
+        if (payloadSize > m_bufferIn.size() - frameHeaderSize) {
+            Debug::LogError(
+                "TransferChannel: ReceiveDirectoryEntries payload exceeds buffer. Payload: {}, Capacity: {}",
+                payloadSize,
+                m_bufferIn.size() - frameHeaderSize
+            );
+            m_receive.store(false);
+            co_return;
+        }
+
+        if (payloadSize > 0) {
+            const asio::mutable_buffer payloadBuffer(m_bufferIn.data() + frameHeaderSize, payloadSize);
+            co_await asio::async_read(*m_socket, payloadBuffer, asio::use_awaitable);
+        }
+
+        offset = frameHeaderSize;
+        for (size_t i = 0; i < count; i++) {
+            entries.push_back({});
+            FileEntry& entry = entries.back();
+            entry.Deserialize(m_bufferIn, offset);
+        }
+        receivedCount += count;
+        chunkCount++;
+        Debug::Log(
+            "TransferChannel: ReceiveDirectoryEntries chunk received. Chunk: {}, EntriesInChunk: {}, EntriesReceived: {}/{}",
+            chunkCount,
+            count,
+            receivedCount,
+            expectedTotalCount
+        );
+
+        totalCount -= count;
+        if (totalCount == 0) {
+            break;
+        }
+    }
+
+    Debug::Log(
+        "TransferChannel: ReceiveDirectoryEntries finished. Chunks: {}, EntriesReceived: {}/{}",
+        chunkCount,
+        receivedCount,
+        expectedTotalCount
+    );
+    m_receive.store(false);
+}
+
 asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path destination, size_t length) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
@@ -349,6 +517,22 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
             m_progress.fetch_add(bufferSize);
         }
 
+    } catch (std::system_error& error) {
+        HandleAsioError(error.code());
+        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
+        co_return false;
+    }
+
+    co_return true;
+}
+
+asio::awaitable<bool> TransferChannel::SendBuffer(const size_t size) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+
+    try {
+        const asio::const_buffer buffer(m_bufferOut.data(), size);
+        co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
+        m_progress.fetch_add(size);
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
         asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
