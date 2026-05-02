@@ -537,6 +537,13 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
 
     const std::vector<uint8_t> iconBuffer = response.value()->GetValue<std::vector<uint8_t>>();
     Debug::Log("FileShareModule: FetchEntryIcon response received. Bytes: {}", iconBuffer.size());
+    if (iconBuffer.empty()) {
+        Debug::LogWarning("FileShareModule: FetchEntryIcon returned no icon data");
+        const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, std::filesystem::path{}, false);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+
     const std::filesystem::path iconBaseDirectory = EnsureFileShareTempCategoryPath(ICON_TEMP_CATEGORY);
     const std::filesystem::path iconDirectory = CreateHashedSubdirectory(iconBaseDirectory, path);
     if (iconDirectory.empty()) {
@@ -556,9 +563,7 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
             co_return;
         }
 
-        if (!iconBuffer.empty()) {
-            stream.write(reinterpret_cast<const char*>(iconBuffer.data()), static_cast<std::streamsize>(iconBuffer.size()));
-        }
+        stream.write(reinterpret_cast<const char*>(iconBuffer.data()), static_cast<std::streamsize>(iconBuffer.size()));
 
         if (!stream.good()) {
             Debug::LogError("FileShareModule: Failed while writing icon bytes to {}", entryDestination.string());
