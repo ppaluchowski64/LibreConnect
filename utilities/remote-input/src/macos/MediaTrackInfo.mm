@@ -2,121 +2,197 @@
 #include <DebugLog.h>
 
 #import <Foundation/Foundation.h>
-#include <dlfcn.h>
-#include <dispatch/dispatch.h>
+#include <nlohmann/json.hpp>
 
 #include <optional>
 #include <string>
 #include <vector>
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <sstream>
+
+using json = nlohmann::json;
 
 namespace {
-    void* GetMediaRemoteHandle() {
-        static void* handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY);
-        return handle;
-    }
+    NSString* GetHelperPath(NSString* name, NSString* extension) {
+        NSString* path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
 
-    void* GetMediaRemoteFunction(const char* symbolName) {
-        void* handle = GetMediaRemoteHandle();
+        if (path)
+            return path;
 
-        if (!handle)
-            return nullptr;
+        if ([extension isEqualToString:@"framework"]) {
+            path = [[[NSBundle mainBundle] privateFrameworksPath] stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%@", name, extension]];
 
-        return dlsym(handle, symbolName);
-    }
+            if ([[NSFileManager defaultManager] fileExistsAtPath:path])
+                return path;
+        }
 
-    NSString* GetMediaRemoteStringConstant(const char* symbolName) {
-        void* handle = GetMediaRemoteHandle();
+        NSString* execPath = [[NSBundle mainBundle] executablePath];
 
-        if (!handle)
-            return nil;
+        if (execPath) {
+            NSString* dir = [execPath stringByDeletingLastPathComponent];
+            path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"%@.%@", name, extension]];
 
-        CFStringRef* strRefPtr = (CFStringRef*)dlsym(handle, symbolName);
+            if ([[NSFileManager defaultManager] fileExistsAtPath:path])
+                return path;
 
-        if (strRefPtr && *strRefPtr)
-            return (__bridge NSString*)(*strRefPtr);
+            if ([extension isEqualToString:@"framework"]) {
+                path = [dir stringByAppendingPathComponent:[NSString stringWithFormat:@"Frameworks/%@.%@", name, extension]];
+
+                if ([[NSFileManager defaultManager] fileExistsAtPath:path])
+                    return path;
+            }
+        }
 
         return nil;
     }
+
+    std::optional<TrackMetadata> ParseMetadata(const json& j) {
+        if (j.is_null())
+            return std::nullopt;
+
+        TrackMetadata info{};
+
+        if (j.contains("title") && !j["title"].is_null())
+            info.title = j["title"];
+
+        if (j.contains("artist") && !j["artist"].is_null())
+            info.artist = j["artist"];
+
+        if (j.contains("album") && !j["album"].is_null())
+            info.album = j["album"];
+
+        if (j.contains("duration") && !j["duration"].is_null())
+            info.duration = j["duration"];
+
+        if (j.contains("elapsedTime") && !j["elapsedTime"].is_null())
+            info.position = j["elapsedTime"];
+
+        if (j.contains("playing") && !j["playing"].is_null())
+            info.playing = j["playing"];
+
+        if (j.contains("artworkData") && !j["artworkData"].is_null()) {
+            NSData* art = [[NSData alloc] initWithBase64EncodedString:@(std::string(j["artworkData"]).c_str()) options:0];
+
+            if (art) {
+                auto bytes = static_cast<const uint8_t*>([art bytes]);
+                info.cover.assign(bytes, bytes + [art length]);
+            }
+        }
+
+        return info;
+    }
+
+    class MediaWorker {
+        public:
+            static MediaWorker& Get() {
+                static MediaWorker instance;
+                return instance;
+            }
+
+            std::optional<TrackMetadata> GetState() {
+                std::unique_lock lock(m_mutex);
+                StartIfNeeded();
+                return m_state;
+            }
+
+        private:
+            MediaWorker() = default;
+
+            void StartIfNeeded() {
+                if (m_running)
+                    return;
+
+                NSString* script = GetHelperPath(@"mediaremote-adapter", @"pl");
+                NSString* framework = GetHelperPath(@"MediaRemoteAdapter", @"framework");
+
+                if (!script || !framework)
+                    return;
+
+                m_task = [[NSTask alloc] init];
+                [m_task setLaunchPath:@"/usr/bin/perl"];
+                [m_task setArguments:@[script, framework, @"stream", @"--no-diff", @"--debounce=100"]];
+
+                m_pipe = [NSPipe pipe];
+                [m_task setStandardOutput:m_pipe];
+                [m_task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
+
+                if (![m_task launchAndReturnError:nil])
+                    return;
+
+                m_running = true;
+
+                std::thread([this] {
+                    ProcessStream();
+                }).detach();
+            }
+
+            void ProcessStream() {
+                NSFileHandle* handle = [m_pipe fileHandleForReading];
+                std::string buffer;
+
+                while (m_running) {
+                    @autoreleasepool {
+                        NSData* data = [handle availableData];
+
+                        if (!data || [data length] == 0) {
+                            m_running = false;
+                            break;
+                        }
+
+                        buffer.append(static_cast<const char*>([data bytes]), [data length]);
+
+                        size_t pos;
+
+                        while ((pos = buffer.find('\n')) != std::string::npos) {
+                            std::string line = buffer.substr(0, pos);
+                            buffer.erase(0, pos + 1);
+
+                            if (line.empty())
+                                continue;
+
+                            try {
+                                auto j = json::parse(line);
+                                auto newState = ParseMetadata(j["payload"]);
+
+                                std::unique_lock lock(m_mutex);
+                                m_state = newState;
+
+                            } catch (...) {}
+                        }
+                    }
+                }
+            }
+
+            std::mutex m_mutex;
+            std::optional<TrackMetadata> m_state;
+            std::atomic<bool> m_running{false};
+            NSTask* m_task = nil;
+            NSPipe* m_pipe = nil;
+    };
 }
 
 std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
-    typedef void (^MRInfoBlock)(CFDictionaryRef);
-    typedef void (*MRGetInfoFunc)(dispatch_queue_t, MRInfoBlock);
-
-    auto MRMediaRemoteGetNowPlayingInfo = (MRGetInfoFunc)GetMediaRemoteFunction("MRMediaRemoteGetNowPlayingInfo");
-
-    if (!MRMediaRemoteGetNowPlayingInfo)
-        return std::nullopt;
-
-    static NSString* kTitle = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoTitle") ?: @"kMRMediaRemoteNowPlayingInfoTitle";
-    static NSString* kArtist = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoArtist") ?: @"kMRMediaRemoteNowPlayingInfoArtist";
-    static NSString* kAlbum = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoAlbum") ?: @"kMRMediaRemoteNowPlayingInfoAlbum";
-    static NSString* kDuration = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoDuration") ?: @"kMRMediaRemoteNowPlayingInfoDuration";
-    static NSString* kPosition = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoElapsedTime") ?: @"kMRMediaRemoteNowPlayingInfoElapsedTime";
-    static NSString* kRate = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoPlaybackRate") ?: @"kMRMediaRemoteNowPlayingInfoPlaybackRate";
-    static NSString* kArtwork = GetMediaRemoteStringConstant("kMRMediaRemoteNowPlayingInfoArtworkData") ?: @"kMRMediaRemoteNowPlayingInfoArtworkData";
-
-    __block TrackMetadata info{};
-    __block bool found = false;
-
-    if ([NSThread isMainThread])
-        Debug::LogWarning("MediaTrackInfo::GetCurrentTrack() called on main thread! Potential deadlock.");
-
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-
-    MRMediaRemoteGetNowPlayingInfo(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(CFDictionaryRef information) {
-        if (information) {
-            NSDictionary *dict = (__bridge NSDictionary *)information;
-
-            NSString *title = dict[kTitle];
-            NSString *artist = dict[kArtist];
-            NSString *album = dict[kAlbum];
-            NSNumber *duration = dict[kDuration];
-            NSNumber *position = dict[kPosition];
-            NSNumber *rate = dict[kRate];
-            NSData *artwork = dict[kArtwork];
-
-            if (title) info.title = [title UTF8String];
-            if (artist) info.artist = [artist UTF8String];
-            if (album) info.album = [album UTF8String];
-            if (duration) info.duration = [duration doubleValue];
-            if (position) info.position = [position doubleValue];
-
-            if (rate) info.playing = ([rate doubleValue] > 0.0);
-
-            if (artwork) {
-                const uint8_t* bytes = (const uint8_t*)[artwork bytes];
-                info.cover.assign(bytes, bytes + [artwork length]);
-            }
-
-            found = true;
-        }
-
-        dispatch_semaphore_signal(semaphore);
-    });
-
-    dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)));
-
-    if (found)
-        return info;
-
-    return std::nullopt;
+    return MediaWorker::Get().GetState();
 }
 
 void MediaTrackInfo::SetPosition(double seconds) {
-    const uint32_t MRMediaRemoteCommandSeekToPlaybackPosition = 45;
+    NSString* script = GetHelperPath(@"mediaremote-adapter", @"pl");
+    NSString* framework = GetHelperPath(@"MediaRemoteAdapter", @"framework");
 
-    typedef void (*MRSendCommandFunc)(uint32_t, CFDictionaryRef, void*);
-    auto MRMediaRemoteSendCommand = (MRSendCommandFunc)GetMediaRemoteFunction("MRMediaRemoteSendCommand");
-
-    if (!MRMediaRemoteSendCommand)
+    if (!script || !framework)
         return;
 
-    static NSString* kOptionPosition = GetMediaRemoteStringConstant("kMRMediaRemoteOptionPlaybackPosition") ?: @"kMRMediaRemoteOptionPlaybackPosition";
+    auto micros = static_cast<long long>(seconds * 1e6);
+    NSArray* args = @[script, framework, @"seek", [@(micros) stringValue]];
 
-    NSDictionary *options = @{
-        kOptionPosition : @(seconds)
-    };
+    NSTask* task = [[NSTask alloc] init];
+    [task setLaunchPath:@"/usr/bin/perl"];
+    [task setArguments:args];
+    [task setStandardOutput:[NSFileHandle fileHandleWithNullDevice]];
+    [task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
 
-    MRMediaRemoteSendCommand(MRMediaRemoteCommandSeekToPlaybackPosition, (__bridge CFDictionaryRef)options, nil);
+    if ([task launchAndReturnError:nil])
+        [task waitUntilExit];
 }

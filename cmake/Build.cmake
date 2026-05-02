@@ -344,3 +344,40 @@ function(LinkFFMPEGLibs target)
         endforeach()
     endif ()
 endfunction()
+
+function(BundleMediaRemoteAdapter target)
+    if (APPLE AND NOT IOS)
+        add_dependencies(${target} MediaRemoteAdapter)
+
+        set(SCRIPT_FILE "${CMAKE_SOURCE_DIR}/vendor/mediaremote-adapter/bin/mediaremote-adapter.pl")
+        set_source_files_properties(${SCRIPT_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+        target_sources(${target} PRIVATE ${SCRIPT_FILE})
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_BUNDLE_DIR:MediaRemoteAdapter>
+                $<TARGET_BUNDLE_DIR:${target}>/Contents/Frameworks/MediaRemoteAdapter.framework
+                COMMENT "Bundling MediaRemoteAdapter.framework into ${target}"
+        )
+    endif()
+endfunction()
+
+function(LinkMediaRemoteAdapter target)
+    if (APPLE AND NOT IOS)
+        add_dependencies(${target} MediaRemoteAdapter)
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${CMAKE_SOURCE_DIR}/vendor/mediaremote-adapter/bin/mediaremote-adapter.pl
+                $<TARGET_FILE_DIR:${target}>/mediaremote-adapter.pl
+                COMMENT "Copying mediaremote-adapter.pl for ${target}"
+        )
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_BUNDLE_DIR:MediaRemoteAdapter>
+                $<TARGET_FILE_DIR:${target}>/MediaRemoteAdapter.framework
+                COMMENT "Copying MediaRemoteAdapter.framework for ${target}"
+        )
+    endif()
+endfunction()

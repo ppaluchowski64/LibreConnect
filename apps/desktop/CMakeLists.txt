@@ -30,6 +30,8 @@ if (APPLE AND NOT IOS)
     )
 endif()
 
+BundleMediaRemoteAdapter(appLibreConnect_desktop)
+
 LinkVirtualCameraLibs(appLibreConnect_desktop)
 if (WIN32)
     LinkFFMPEGLibs(appLibreConnect_desktop)
