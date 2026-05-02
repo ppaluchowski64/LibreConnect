@@ -2,6 +2,7 @@
 #include <DebugLog.h>
 
 #import <Foundation/Foundation.h>
+
 #include <nlohmann/json.hpp>
 
 #include <optional>
@@ -11,6 +12,7 @@
 #include <mutex>
 #include <atomic>
 #include <sstream>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -48,40 +50,55 @@ namespace {
         return nil;
     }
 
-    std::optional<TrackMetadata> ParseMetadata(const json& j) {
+    struct ExtractedData {
+        TrackMetadata info;
+        long long timestampEpochMicros = 0;
+        long long elapsedTimeMicros = 0;
+        double playbackRate = 0.0;
+    };
+
+    std::optional<ExtractedData> ParseMetadata(const json& j) {
         if (j.is_null())
             return std::nullopt;
 
-        TrackMetadata info{};
+        ExtractedData data{};
 
         if (j.contains("title") && !j["title"].is_null())
-            info.title = j["title"];
+            data.info.title = j["title"];
 
         if (j.contains("artist") && !j["artist"].is_null())
-            info.artist = j["artist"];
+            data.info.artist = j["artist"];
 
         if (j.contains("album") && !j["album"].is_null())
-            info.album = j["album"];
+            data.info.album = j["album"];
 
-        if (j.contains("duration") && !j["duration"].is_null())
-            info.duration = j["duration"];
+        if (j.contains("durationMicros") && !j["durationMicros"].is_null())
+            data.info.duration = static_cast<double>(j["durationMicros"].get<long long>()) / 1e6;
 
-        if (j.contains("elapsedTime") && !j["elapsedTime"].is_null())
-            info.position = j["elapsedTime"];
+        if (j.contains("elapsedTimeMicros") && !j["elapsedTimeMicros"].is_null()) {
+            data.elapsedTimeMicros = j["elapsedTimeMicros"].get<long long>();
+            data.info.position = static_cast<double>(data.elapsedTimeMicros) / 1e6;
+        }
 
         if (j.contains("playing") && !j["playing"].is_null())
-            info.playing = j["playing"];
+            data.info.playing = j["playing"];
+
+        if (j.contains("timestampEpochMicros") && !j["timestampEpochMicros"].is_null())
+            data.timestampEpochMicros = j["timestampEpochMicros"].get<long long>();
+
+        if (j.contains("playbackRate") && !j["playbackRate"].is_null())
+            data.playbackRate = j["playbackRate"].get<double>();
 
         if (j.contains("artworkData") && !j["artworkData"].is_null()) {
             NSData* art = [[NSData alloc] initWithBase64EncodedString:@(std::string(j["artworkData"]).c_str()) options:0];
 
             if (art) {
                 auto bytes = static_cast<const uint8_t*>([art bytes]);
-                info.cover.assign(bytes, bytes + [art length]);
+                data.info.cover.assign(bytes, bytes + [art length]);
             }
         }
 
-        return info;
+        return data;
     }
 
     class MediaWorker {
@@ -94,7 +111,25 @@ namespace {
             std::optional<TrackMetadata> GetState() {
                 std::unique_lock lock(m_mutex);
                 StartIfNeeded();
-                return m_state;
+
+                if (!m_state)
+                    return std::nullopt;
+
+                TrackMetadata info = m_state->info;
+
+                if (info.playing && m_state->playbackRate > 0.0) {
+                    auto now = std::chrono::duration_cast<std::chrono::microseconds>(
+                        std::chrono::system_clock::now().time_since_epoch()
+                    ).count();
+
+                    long long diff = now - m_state->timestampEpochMicros;
+                    info.position = static_cast<double>(m_state->elapsedTimeMicros + (diff * m_state->playbackRate)) / 1e6;
+                }
+
+                if (info.duration > 0.0 && info.position > info.duration)
+                    info.position = info.duration;
+
+                return info;
             }
 
         private:
@@ -112,7 +147,7 @@ namespace {
 
                 m_task = [[NSTask alloc] init];
                 [m_task setLaunchPath:@"/usr/bin/perl"];
-                [m_task setArguments:@[script, framework, @"stream", @"--no-diff", @"--debounce=100"]];
+                [m_task setArguments:@[script, framework, @"stream", @"--no-diff", @"--debounce=100", @"--micros"]];
 
                 m_pipe = [NSPipe pipe];
                 [m_task setStandardOutput:m_pipe];
@@ -166,7 +201,7 @@ namespace {
             }
 
             std::mutex m_mutex;
-            std::optional<TrackMetadata> m_state;
+            std::optional<ExtractedData> m_state;
             std::atomic<bool> m_running{false};
             NSTask* m_task = nil;
             NSPipe* m_pipe = nil;
@@ -185,7 +220,7 @@ void MediaTrackInfo::SetPosition(double seconds) {
         return;
 
     auto micros = static_cast<long long>(seconds * 1e6);
-    NSArray* args = @[script, framework, @"seek", [@(micros) stringValue]];
+    NSArray* args = @[script, framework, @"seek", [NSString stringWithFormat:@"%lld", micros]];
 
     NSTask* task = [[NSTask alloc] init];
     [task setLaunchPath:@"/usr/bin/perl"];
