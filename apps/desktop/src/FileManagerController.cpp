@@ -21,6 +21,17 @@
 #include <ModulesManager.h>
 
 namespace {
+constexpr FileIconDensity ENTRY_ICON_DENSITY = FileIconDensity::XHIGH;
+
+QString pathToQString(const std::filesystem::path& path)
+{
+#ifdef _WIN32
+    return QString::fromStdWString(path.wstring());
+#else
+    return QString::fromStdString(path.string());
+#endif
+}
+
 QString fileTypeLabel(const std::optional<FileType>& type)
 {
     if (!type.has_value()) {
@@ -704,7 +715,35 @@ bool FileManagerController::event(QEvent* event)
         setStatusMessage(remoteEntries.isEmpty()
             ? QStringLiteral("This folder is empty.")
             : QStringLiteral("Loaded %1 entries.").arg(remoteEntries.size()));
+        requestIconsForCurrentEntries();
         startNextQueuedAction();
+        return true;
+    }
+
+    if (event->type() == FetchEntryIconResultEvent::Type) {
+        auto* iconEvent = static_cast<FetchEntryIconResultEvent*>(event);
+        const QString entryPath = composeRemotePath(iconEvent->GetEntry());
+        if (entryPath.isEmpty()) {
+            return true;
+        }
+
+        const std::string lookupPath = entryPath.toStdString();
+        m_iconRequestsInFlight.erase(lookupPath);
+
+        if (iconEvent->Success() && !iconEvent->GetIconPath().empty()) {
+            const QString iconSource = QUrl::fromLocalFile(pathToQString(iconEvent->GetIconPath())).toString();
+            m_entriesWithoutReportedIcon.erase(lookupPath);
+            m_iconSourceByPath.insert_or_assign(lookupPath, iconSource);
+            updateEntryIcon(entryPath, iconSource);
+        } else {
+            m_entriesWithoutReportedIcon.insert(lookupPath);
+
+            auto entryLookup = m_entryLookup.find(lookupPath);
+            if (entryLookup != m_entryLookup.end()) {
+                updateEntryIcon(entryPath, fileTypeIconSource(entryLookup->second.GetType()));
+            }
+        }
+
         return true;
     }
 
@@ -1196,6 +1235,69 @@ void FileManagerController::loadDirectory(const QString& remotePath)
     module->FetchDirectoryEntries(normalizedPath.toStdString());
 }
 
+void FileManagerController::requestIconsForCurrentEntries()
+{
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        return;
+    }
+
+    for (const auto& [path, entry] : m_entryLookup) {
+        requestEntryIcon(QString::fromStdString(path), entry);
+    }
+}
+
+void FileManagerController::requestEntryIcon(const QString& fullPath, const FileEntry& entry)
+{
+    if (fullPath.isEmpty()) {
+        return;
+    }
+
+    if (entry.GetType().has_value() && entry.GetType().value() == FileType::Directory) {
+        return;
+    }
+
+    const std::string lookupPath = fullPath.toStdString();
+    if (m_iconSourceByPath.find(lookupPath) != m_iconSourceByPath.end()
+        || m_iconRequestsInFlight.find(lookupPath) != m_iconRequestsInFlight.end()
+        || m_entriesWithoutReportedIcon.find(lookupPath) != m_entriesWithoutReportedIcon.end()) {
+        return;
+    }
+
+    m_iconRequestsInFlight.insert(lookupPath);
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    module->FetchEntryIcon(entry, ENTRY_ICON_DENSITY);
+}
+
+void FileManagerController::updateEntryIcon(const QString& fullPath, const QString& iconSource)
+{
+    if (fullPath.isEmpty() || iconSource.isEmpty()) {
+        return;
+    }
+
+    QVariantList updatedEntries = m_remoteEntries;
+    bool changed = false;
+    for (QVariant& value : updatedEntries) {
+        QVariantMap item = value.toMap();
+        if (item.value(QStringLiteral("path")).toString() != fullPath) {
+            continue;
+        }
+
+        if (item.value(QStringLiteral("iconSource")).toString() == iconSource) {
+            return;
+        }
+
+        item.insert(QStringLiteral("iconSource"), iconSource);
+        value = item;
+        changed = true;
+        break;
+    }
+
+    if (changed) {
+        setRemoteEntries(updatedEntries);
+    }
+}
+
 void FileManagerController::setCurrentRemotePath(const QString& currentRemotePath)
 {
     if (m_currentRemotePath == currentRemotePath) {
@@ -1301,11 +1403,14 @@ QString FileManagerController::composeRemotePath(const FileEntry& entry)
     return normalizeRemotePath(basePath + QStringLiteral("/") + name);
 }
 
-QVariantMap FileManagerController::toVariantMap(const FileEntry& entry)
+QVariantMap FileManagerController::toVariantMap(const FileEntry& entry) const
 {
     QVariantMap item;
     const QString fullPath = composeRemotePath(entry);
     const bool isDirectory = entry.GetType().has_value() && entry.GetType().value() == FileType::Directory;
+    const std::string lookupPath = fullPath.toStdString();
+    const auto reportedIcon = m_iconSourceByPath.find(lookupPath);
+    const bool hasNoReportedIcon = m_entriesWithoutReportedIcon.find(lookupPath) != m_entriesWithoutReportedIcon.end();
 
     item.insert(QStringLiteral("name"), QString::fromStdString(entry.GetName().value_or(std::string())));
     item.insert(QStringLiteral("path"), fullPath);
@@ -1313,6 +1418,10 @@ QVariantMap FileManagerController::toVariantMap(const FileEntry& entry)
     item.insert(QStringLiteral("size"), static_cast<qulonglong>(entry.GetSize().value_or(0)));
     item.insert(QStringLiteral("sizeLabel"), formatEntrySize(entry));
     item.insert(QStringLiteral("typeLabel"), fileTypeLabel(entry.GetType()));
-    item.insert(QStringLiteral("iconSource"), fileTypeIconSource(entry.GetType()));
+    item.insert(QStringLiteral("iconSource"), isDirectory
+        ? fileTypeIconSource(entry.GetType())
+        : (reportedIcon != m_iconSourceByPath.end()
+            ? reportedIcon->second
+            : (hasNoReportedIcon ? fileTypeIconSource(entry.GetType()) : QString())));
     return item;
 }

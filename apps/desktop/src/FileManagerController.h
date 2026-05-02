@@ -11,6 +11,7 @@
 #include <QList>
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include <FileEntry.h>
 
@@ -80,6 +81,9 @@ private:
     void startNextQueuedUpload();
     void beginUploadForLocalPath(const QString& localPath);
     void loadDirectory(const QString& remotePath);
+    void requestIconsForCurrentEntries();
+    void requestEntryIcon(const QString& fullPath, const FileEntry& entry);
+    void updateEntryIcon(const QString& fullPath, const QString& iconSource);
     void setCurrentRemotePath(const QString& currentRemotePath);
     void setRemoteEntries(const QVariantList& remoteEntries);
     void setBusy(bool busy);
@@ -89,7 +93,7 @@ private:
     static QString normalizeRemotePath(const QString& path);
     static QString parentRemotePath(const QString& path);
     static QString composeRemotePath(const FileEntry& entry);
-    static QVariantMap toVariantMap(const FileEntry& entry);
+    QVariantMap toVariantMap(const FileEntry& entry) const;
 
     QTimer m_pollTimer;
     QString m_currentRemotePath = QStringLiteral("/storage/emulated/0");
@@ -107,6 +111,9 @@ private:
     QStringList m_pendingUploadQueue;
     QVariantList m_remoteEntries;
     std::unordered_map<std::string, FileEntry> m_entryLookup;
+    std::unordered_map<std::string, QString> m_iconSourceByPath;
+    std::unordered_set<std::string> m_iconRequestsInFlight;
+    std::unordered_set<std::string> m_entriesWithoutReportedIcon;
     bool m_busy = false;
     bool m_waitingForModule = false;
     bool m_downloadBatchActive = false;
