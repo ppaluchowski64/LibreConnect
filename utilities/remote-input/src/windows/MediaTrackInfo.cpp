@@ -4,6 +4,11 @@
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
 
+#include <string>
+#include <vector>
+#include <cstdint>
+#include <optional>
+
 namespace {
     void EnsureWinRtInitialized() {
         thread_local bool initialized = false;

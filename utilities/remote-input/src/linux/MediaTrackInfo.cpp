@@ -9,6 +9,10 @@
 #include <QUrl>
 #include <QFile>
 
+#include <string>
+#include <vector>
+#include <optional>
+
 namespace {
     QString GetActiveMprisPlayer() {
         if (!QDBusConnection::sessionBus().isConnected())
