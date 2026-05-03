@@ -13,6 +13,7 @@ Page {
     required property var showPresenterModeCallback
     required property var showRemoteKeyboardCallback
     required property var showSettingsCallback
+    property int logoTapCount: 0
 
     readonly property int menuWidth: 190
 
@@ -22,8 +23,27 @@ Page {
                 : ("qrc:/LibreConnect/mobile/" + baseName + ".svg")
     }
 
+    function handleLogoTap() {
+        logoTapCount += 1
+        if (logoTapCount >= 5) {
+            logoTapCount = 0
+            logoTapResetTimer.stop()
+            page.conn.exportLogs()
+            return
+        }
+
+        logoTapResetTimer.restart()
+    }
+
     background: Rectangle {
         color: Theme.backgroundColor
+    }
+
+    Timer {
+        id: logoTapResetTimer
+        interval: 1500
+        repeat: false
+        onTriggered: page.logoTapCount = 0
     }
 
     component FeatureTile: Button {
@@ -423,6 +443,11 @@ Page {
                         Layout.alignment: Qt.AlignHCenter
                         width: 96
                         height: 96
+
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: page.handleLogoTap()
+                        }
                     }
 
                     Text {

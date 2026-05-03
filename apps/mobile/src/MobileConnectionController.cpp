@@ -277,6 +277,23 @@ void MobileConnectionController::setFindMyPhoneRingtoneUri(const QString& uri)
     setFindMyPhoneRingtoneUriInternal(uri, true);
 }
 
+void MobileConnectionController::exportLogs()
+{
+#ifdef ANDROID_DEVICE
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return;
+    }
+
+    QJniObject::callStaticMethod<void>(
+        "com/LibreConnect/mobile/FileSystemUtils",
+        "shareLogs",
+        "(Landroid/content/Context;)V",
+        context.object<jobject>()
+    );
+#endif
+}
+
 void MobileConnectionController::setError(const QString& e)
 {
     if (m_lastError == e) {

@@ -19,9 +19,9 @@
 
         <Icon Id="icon.ico" SourceFile="..\..\apps\desktop\res\libreconnect_logo.ico"/>
         <Property Id="ARPPRODUCTICON" Value="icon.ico" />
-        <Property Id="ARPHELPLINK" Value="https://github.com/LibreConnect/pconnect" />
-        <Property Id="ARPURLINFOABOUT" Value="https://github.com/LibreConnect/pconnect" />
-        <Property Id="ARPURLUPDATEINFO" Value="https://github.com/LibreConnect/pconnect" />
+        <Property Id="ARPHELPLINK" Value="https://github.com/ppaluchowski64/LibreConnect" />
+        <Property Id="ARPURLINFOABOUT" Value="https://github.com/ppaluchowski64/LibreConnect" />
+        <Property Id="ARPURLUPDATEINFO" Value="https://github.com/ppaluchowski64/LibreConnect" />
 
         <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
         <Property Id="CREATE_DESKTOP_SHORTCUT" Value="1" Secure="yes" />

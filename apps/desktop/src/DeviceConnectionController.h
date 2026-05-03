@@ -26,6 +26,7 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(int verificationTriesLeft READ verificationTriesLeft NOTIFY verificationTriesLeftChanged)
     Q_PROPERTY(QString verificationError READ verificationError NOTIFY verificationErrorChanged)
     Q_PROPERTY(bool findMyPhoneAlertActive READ findMyPhoneAlertActive NOTIFY findMyPhoneAlertActiveChanged)
+    Q_PROPERTY(int batteryPercentage READ batteryPercentage NOTIFY batteryPercentageChanged)
 
 public:
     explicit DeviceConnectionController(QObject* parent = nullptr);
@@ -41,6 +42,7 @@ public:
     int verificationTriesLeft() const { return m_verificationTriesLeft; }
     QString verificationError() const { return m_verificationError; }
     bool findMyPhoneAlertActive() const { return m_findMyPhoneAlertActive; }
+    int batteryPercentage() const { return m_batteryPercentage; }
 
     Q_INVOKABLE void connectTo(const QString& ipAddress,
                                quint16 port,
@@ -68,6 +70,7 @@ public:
     void verificationTriesLeftChanged();
     void verificationErrorChanged();
     void findMyPhoneAlertActiveChanged();
+    void batteryPercentageChanged();
 
     void incomingConnectionRequested(QString deviceName);
     void verificationFailed(int triesLeft);
@@ -83,6 +86,7 @@ private:
     void handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev);
     void handleConnectionVerificationEvent(ConnectionVerificationEvent* ev);
     void handleModuleErrorEvent(ModuleErrorEvent* ev);
+    void setBatteryPercentage(int percentage);
 
     void handleError(const std::string& message);
     void handleError(const std::string& message, QEvent::Type eventType);
@@ -97,5 +101,6 @@ private:
     int m_verificationTriesLeft = 0;
     QString m_verificationError;
     bool m_findMyPhoneAlertActive = false;
+    int m_batteryPercentage = -1;
     std::unique_ptr<ConnectionVerificationEvent> m_verificationEvent;
 };

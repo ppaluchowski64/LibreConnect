@@ -66,11 +66,13 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
     if (UNIX AND NOT APPLE)
         target_link_libraries(remote-input PUBLIC
                 ALSA::ALSA
+                Qt6::DBus
         )
     endif ()
 
     if (APPLE AND NOT IOS)
         target_link_libraries(remote-input PUBLIC
+                "-framework Foundation"
                 "-framework ApplicationServices"
                 "-framework Carbon"
                 "-framework AppKit"

@@ -8,7 +8,7 @@
 
 class PeerBatteryLevelUpdateEvent final : public QEvent {
 public:
-    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 302);
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(QEvent::User + 304);
     explicit PeerBatteryLevelUpdateEvent(const float level) : QEvent(Type), m_batteryLevel(level) {}
     float GetBatteryLevel() const { return m_batteryLevel; }
 

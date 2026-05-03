@@ -8,6 +8,7 @@
 #include <QFontDatabase>
 #include <QFont>
 #include <QQuickStyle>
+#include <filesystem>
 #include <DebugLog.h>
 #include "DeviceDiscovery.h"
 #include "DeviceModel.h"
@@ -70,6 +71,8 @@ int main(int argc, char *argv[])
             Debug::SetSettings(settings);
         } catch (...) {}
     }
+
+    std::filesystem::current_path(appDataPath.toStdString());
 
     qInstallMessageHandler(LibreConnectLogHandler);
     QQuickStyle::setStyle(QStringLiteral("Basic"));

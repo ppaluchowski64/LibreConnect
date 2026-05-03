@@ -7,9 +7,29 @@ Page {
 
     required property var conn
     required property var showPairedDevicesCallback
+    property int logoTapCount: 0
+
+    function handleLogoTap() {
+        logoTapCount += 1
+        if (logoTapCount >= 5) {
+            logoTapCount = 0
+            logoTapResetTimer.stop()
+            page.conn.exportLogs()
+            return
+        }
+
+        logoTapResetTimer.restart()
+    }
 
     background: Rectangle {
         color: Theme.backgroundColor
+    }
+
+    Timer {
+        id: logoTapResetTimer
+        interval: 1500
+        repeat: false
+        onTriggered: page.logoTapCount = 0
     }
 
     ColumnLayout {
@@ -21,6 +41,11 @@ Page {
             Layout.alignment: Qt.AlignHCenter
             width: 96
             height: 96
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: page.handleLogoTap()
+            }
         }
 
         Text {

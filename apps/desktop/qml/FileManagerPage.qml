@@ -14,6 +14,9 @@ Page {
     property var pathSegments: []
     property bool dropActive: false
     property bool pathEditMode: false
+    property string sortColumn: "modified"
+    property bool sortAscending: false
+    property var sortedRemoteEntries: sortEntries(fileManagerController.remoteEntries)
     readonly property int selectedCount: selectedRemotePaths.length
     readonly property string windowTitleSuffix: "File Manager"
 
@@ -84,11 +87,11 @@ Page {
     }
 
     function selectRange(index) {
-        if (index < 0 || index >= fileManagerController.remoteEntries.length)
+        if (index < 0 || index >= sortedRemoteEntries.length)
             return
 
-        if (lastInteractedIndex < 0 || lastInteractedIndex >= fileManagerController.remoteEntries.length) {
-            const item = fileManagerController.remoteEntries[index]
+        if (lastInteractedIndex < 0 || lastInteractedIndex >= sortedRemoteEntries.length) {
+            const item = sortedRemoteEntries[index]
             setSingleSelection(item.path, index)
             return
         }
@@ -98,7 +101,7 @@ Page {
         const next = []
 
         for (let i = first; i <= last; ++i) {
-            const entry = fileManagerController.remoteEntries[i]
+            const entry = sortedRemoteEntries[i]
             if (entry && entry.path)
                 next.push(entry.path)
         }
@@ -115,8 +118,8 @@ Page {
 
     function pruneSelectionToVisibleEntries() {
         const visible = {}
-        for (let i = 0; i < fileManagerController.remoteEntries.length; ++i) {
-            const entry = fileManagerController.remoteEntries[i]
+        for (let i = 0; i < sortedRemoteEntries.length; ++i) {
+            const entry = sortedRemoteEntries[i]
             visible[entry.path] = true
         }
 
@@ -135,8 +138,8 @@ Page {
     }
 
     function entryByPath(path) {
-        for (let i = 0; i < fileManagerController.remoteEntries.length; ++i) {
-            const entry = fileManagerController.remoteEntries[i]
+        for (let i = 0; i < sortedRemoteEntries.length; ++i) {
+            const entry = sortedRemoteEntries[i]
             if (entry.path === path)
                 return entry
         }
@@ -163,6 +166,90 @@ Page {
                     ? root.selectedRemotePaths.slice()
                     : [targetPath]
         fileManagerController.beginExternalDrag(paths)
+    }
+
+    function compareEntryValues(lhs, rhs, column) {
+        if (column === "size")
+            return (lhs.size || 0) - (rhs.size || 0)
+
+        if (column === "modified") {
+            const lhsKnown = lhs.modifiedKnown ? 1 : 0
+            const rhsKnown = rhs.modifiedKnown ? 1 : 0
+            if (lhsKnown !== rhsKnown)
+                return lhsKnown - rhsKnown
+            return (lhs.modified || 0) - (rhs.modified || 0)
+        }
+
+        const lhsName = String(lhs.name || "").toLocaleLowerCase()
+        const rhsName = String(rhs.name || "").toLocaleLowerCase()
+        if (lhsName < rhsName)
+            return -1
+        if (lhsName > rhsName)
+            return 1
+        return String(lhs.name || "").localeCompare(String(rhs.name || ""))
+    }
+
+    function sortEntries(entries) {
+        const sorted = entries ? entries.slice() : []
+        sorted.sort(function(lhs, rhs) {
+            if (lhs.isDirectory !== rhs.isDirectory)
+                return lhs.isDirectory ? -1 : 1
+
+            let result = compareEntryValues(lhs, rhs, sortColumn)
+            if (result === 0 && sortColumn !== "name")
+                result = compareEntryValues(lhs, rhs, "name")
+
+            return sortAscending ? result : -result
+        })
+
+        return sorted
+    }
+
+    function setSortColumn(column) {
+        lastInteractedIndex = -1
+
+        if (sortColumn === column) {
+            sortAscending = !sortAscending
+            return
+        }
+
+        sortColumn = column
+        sortAscending = column === "name"
+    }
+
+    function sortIndicator(column) {
+        if (sortColumn !== column)
+            return ""
+
+        return sortAscending ? " ^" : " v"
+    }
+
+    function sizeColumnWidth(totalWidth) {
+        return 104
+    }
+
+    function modifiedColumnWidth(totalWidth) {
+        return 148
+    }
+
+    function iconColumnWidth(totalWidth) {
+        return 24
+    }
+
+    function nameColumnWidth(totalWidth) {
+        const iconWidth = iconColumnWidth(totalWidth)
+        const sizeWidth = sizeColumnWidth(totalWidth)
+        const modifiedWidth = modifiedColumnWidth(totalWidth)
+
+        return Math.max(0, totalWidth - iconWidth - (3 * 12) - sizeWidth - modifiedWidth)
+    }
+
+    function entryIconSource(entry) {
+        if (!entry || !entry.path)
+            return ""
+
+        const fetchedSource = fileManagerController.iconSources[entry.path]
+        return fetchedSource && fetchedSource.length > 0 ? fetchedSource : entry.iconSource
     }
 
     function beginPathEdit() {
@@ -729,16 +816,102 @@ Page {
             border.width: root.dropActive ? 2 : 1
             border.color: root.dropActive ? Theme.selectedBorderColor : Theme.panelBorderColor
 
-            ListView {
-                id: entriesView
-                anchors.fill: parent
+            Rectangle {
+                id: entriesHeader
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.leftMargin: 10
                 anchors.topMargin: 10
+                anchors.rightMargin: scrollGutter.visible ? 28 : 10
+                height: 34
+                radius: 6
+                color: Theme.backgroundColor
+                border.color: Theme.panelBorderColor
+                border.width: 1
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 12
+                    anchors.rightMargin: 12
+                    spacing: 12
+
+                    Item {
+                        width: root.iconColumnWidth(parent.width)
+                        height: parent.height
+                    }
+
+                    Text {
+                        width: root.nameColumnWidth(parent.width)
+                        height: parent.height
+                        text: "Name" + root.sortIndicator("name")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.bold: root.sortColumn === "name"
+                        color: Theme.subtleTextColor
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setSortColumn("name")
+                        }
+                    }
+
+                    Text {
+                        width: root.sizeColumnWidth(parent.width)
+                        height: parent.height
+                        visible: width > 0
+                        text: "Size" + root.sortIndicator("size")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.bold: root.sortColumn === "size"
+                        color: Theme.subtleTextColor
+                        elide: Text.ElideRight
+                        horizontalAlignment: Text.AlignRight
+                        verticalAlignment: Text.AlignVCenter
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setSortColumn("size")
+                        }
+                    }
+
+                    Text {
+                        width: root.modifiedColumnWidth(parent.width)
+                        height: parent.height
+                        text: "Modified" + root.sortIndicator("modified")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 12
+                        font.bold: root.sortColumn === "modified"
+                        color: Theme.subtleTextColor
+                        elide: Text.ElideRight
+                        verticalAlignment: Text.AlignVCenter
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setSortColumn("modified")
+                        }
+                    }
+                }
+            }
+
+            ListView {
+                id: entriesView
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: entriesHeader.bottom
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 10
+                anchors.topMargin: 8
                 anchors.bottomMargin: 10
                 anchors.rightMargin: scrollGutter.visible ? 28 : 10
                 clip: true
                 spacing: 8
-                model: fileManagerController.remoteEntries
+                model: root.sortedRemoteEntries
                 ScrollBar.vertical: ScrollBar {
                     id: entriesScrollBar
                     parent: scrollGutter
@@ -753,6 +926,11 @@ Page {
                     required property int index
                     required property var modelData
 
+                    function requestVisibleIcon() {
+                        if (modelData && modelData.path)
+                            fileManagerController.requestEntryIcon(modelData.path)
+                    }
+
                     width: entriesView.width
                     height: 58
                     radius: 10
@@ -763,24 +941,33 @@ Page {
                                   ? Theme.selectedBorderColor
                                   : Theme.panelBorderColor
 
+                    Component.onCompleted: requestVisibleIcon()
+                    onModelDataChanged: requestVisibleIcon()
+
                     Row {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 12
 
                         Image {
-                            source: Theme.dark && modelData.iconSource.endsWith(".svg")
-                                    ? modelData.iconSource.replace(".svg", "_dark.svg")
-                                    : modelData.iconSource
-                            width: 24
-                            height: 24
+                            readonly property string resolvedIconSource: root.entryIconSource(modelData)
+                            source: Theme.dark && resolvedIconSource.endsWith(".svg")
+                                    ? resolvedIconSource.replace(".svg", "_dark.svg")
+                                    : resolvedIconSource
+                            width: root.iconColumnWidth(parent.width)
+                            height: root.iconColumnWidth(parent.width)
+                            sourceSize.width: width
+                            sourceSize.height: height
+                            asynchronous: true
+                            cache: true
                             anchors.verticalCenter: parent.verticalCenter
                             fillMode: Image.PreserveAspectFit
                         }
 
                         Column {
-                            width: parent.width - 50
+                            width: root.nameColumnWidth(parent.width)
                             spacing: 2
+                            anchors.verticalCenter: parent.verticalCenter
 
                             Text {
                                 text: modelData.name
@@ -793,13 +980,36 @@ Page {
                             }
 
                             Text {
-                                text: modelData.typeLabel + "  |  " + modelData.sizeLabel
+                                text: modelData.typeLabel
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 12
                                 color: Theme.subtleTextColor
                                 elide: Text.ElideRight
                                 width: parent.width
                             }
+                        }
+
+                        Text {
+                            width: root.sizeColumnWidth(parent.width)
+                            height: parent.height
+                            text: modelData.sizeLabel
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            color: Theme.mutedTextColor
+                            elide: Text.ElideRight
+                            horizontalAlignment: Text.AlignRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        Text {
+                            width: root.modifiedColumnWidth(parent.width)
+                            height: parent.height
+                            text: modelData.modifiedLabel
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            color: Theme.mutedTextColor
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
                         }
                     }
 
@@ -879,10 +1089,10 @@ Page {
 
             Rectangle {
                 id: scrollGutter
-                anchors.top: parent.top
+                anchors.top: entriesHeader.bottom
                 anchors.bottom: parent.bottom
                 anchors.right: parent.right
-                anchors.topMargin: 10
+                anchors.topMargin: 8
                 anchors.bottomMargin: 10
                 anchors.rightMargin: 8
                 width: 14

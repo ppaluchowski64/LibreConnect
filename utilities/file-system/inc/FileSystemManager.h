@@ -18,6 +18,7 @@ class FileSystemManager {
         static std::filesystem::path GetTemporaryStoragePath();
         static std::filesystem::path GetTemporaryStoragePath(const std::string& category);
         static bool ClearTemporaryStorage();
+
         static DirectoryResult GetEntries(const std::filesystem::path& dirPath);
 
         static bool CopyToClipboard(const std::vector<std::filesystem::path>& paths);

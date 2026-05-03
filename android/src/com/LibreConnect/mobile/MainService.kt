@@ -25,6 +25,7 @@ class MainService : Service() {
     external fun nativeConfigureStorage(storageRootPath: String)
     external fun nativeStartBackend()
     external fun nativeStopBackend()
+    external fun nativeShareLogs()
     external fun nativeOnCameraEncodedSample(
         encodedSample: ByteBuffer,
         size: Int,
@@ -188,7 +189,8 @@ class MainService : Service() {
             return
         }
 
-        nativeConfigureStorage(filesDir.absolutePath)
+        val storageDir = getExternalFilesDir(null) ?: filesDir
+        nativeConfigureStorage(storageDir.absolutePath)
         acquireMulticastLock()
         acquireWifiLock()
         acquireCpuWakeLock()
@@ -334,6 +336,11 @@ class MainService : Service() {
         @JvmStatic
         fun stopCameraFrameReceiver() {
             CameraFrameReceiver.stop()
+        }
+
+        @JvmStatic
+        fun shareLogs(context: Context) {
+            FileSystemUtils.shareLogs(context)
         }
 
         @SuppressLint("UnsafeDynamicallyLoadedCode")

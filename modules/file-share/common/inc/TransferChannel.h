@@ -9,6 +9,8 @@
 #include <AsioCommon.h>
 #include <AwaitableFlag.h>
 
+#include <FileEntry.h>
+
 class TransferChannel final : public std::enable_shared_from_this<TransferChannel>{
 public:
     TransferChannel();
@@ -29,6 +31,9 @@ public:
     asio::awaitable<void> ReceiveFile(std::filesystem::path path);
     asio::awaitable<void> SendFile(std::filesystem::path path);
 
+    asio::awaitable<void> SendDirectoryEntries(std::vector<FileEntry>&& entries);
+    asio::awaitable<void> ReceiveDirectoryEntries(std::vector<FileEntry>& entries);
+
     asio::awaitable<void> CleanupConnection();
 
 private:
@@ -44,6 +49,8 @@ private:
 
     asio::awaitable<bool> Send(std::filesystem::path file);
     asio::awaitable<bool> Receive(std::filesystem::path destination, size_t length);
+
+    asio::awaitable<bool> SendBuffer(size_t size);
 
     std::unique_ptr<SSLSocket> m_socket;
     std::shared_ptr<SSLContext_> m_sslContext;

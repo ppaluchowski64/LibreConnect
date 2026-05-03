@@ -6,11 +6,13 @@
 #include <QTimer>
 #include <QString>
 #include <QUrl>
+#include <QVariantMap>
 #include <QVariantList>
 #include <QStringList>
 #include <QList>
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include <FileEntry.h>
 
@@ -21,6 +23,7 @@ class FileManagerController : public QObject
     Q_PROPERTY(QString currentRemotePath READ currentRemotePath NOTIFY currentRemotePathChanged)
     Q_PROPERTY(QString localDownloadDirectory READ localDownloadDirectory NOTIFY localDownloadDirectoryChanged)
     Q_PROPERTY(QVariantList remoteEntries READ remoteEntries NOTIFY remoteEntriesChanged)
+    Q_PROPERTY(QVariantMap iconSources READ iconSources NOTIFY iconSourcesChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool dragExportInProgress READ dragExportInProgress NOTIFY dragExportInProgressChanged)
     Q_PROPERTY(double transferProgress READ transferProgress NOTIFY transferProgressChanged)
@@ -32,6 +35,7 @@ public:
     QString currentRemotePath() const { return m_currentRemotePath; }
     QString localDownloadDirectory() const { return m_localDownloadDirectory; }
     QVariantList remoteEntries() const { return m_remoteEntries; }
+    QVariantMap iconSources() const;
     bool busy() const { return m_busy; }
     bool dragExportInProgress() const { return m_dragExportInProgress; }
     double transferProgress() const { return m_transferProgress; }
@@ -48,6 +52,7 @@ public:
     Q_INVOKABLE void copyEntries(const QStringList& remotePaths);
     Q_INVOKABLE void beginExternalDrag(const QStringList& remotePaths);
     Q_INVOKABLE void uploadLocalEntry(const QUrl& localPathUrl);
+    Q_INVOKABLE void requestEntryIcon(const QString& remotePath);
 
 protected:
     bool event(QEvent* event) override;
@@ -56,6 +61,7 @@ signals:
     void currentRemotePathChanged();
     void localDownloadDirectoryChanged();
     void remoteEntriesChanged();
+    void iconSourcesChanged();
     void busyChanged();
     void dragExportInProgressChanged();
     void transferProgressChanged();
@@ -80,6 +86,9 @@ private:
     void startNextQueuedUpload();
     void beginUploadForLocalPath(const QString& localPath);
     void loadDirectory(const QString& remotePath);
+    void queueEntryIconRequest(const QString& fullPath, const FileEntry& entry);
+    void processQueuedIconRequests();
+    void updateEntryIcon(const QString& fullPath, const QString& iconSource);
     void setCurrentRemotePath(const QString& currentRemotePath);
     void setRemoteEntries(const QVariantList& remoteEntries);
     void setBusy(bool busy);
@@ -89,7 +98,7 @@ private:
     static QString normalizeRemotePath(const QString& path);
     static QString parentRemotePath(const QString& path);
     static QString composeRemotePath(const FileEntry& entry);
-    static QVariantMap toVariantMap(const FileEntry& entry);
+    QVariantMap toVariantMap(const FileEntry& entry) const;
 
     QTimer m_pollTimer;
     QString m_currentRemotePath = QStringLiteral("/storage/emulated/0");
@@ -105,8 +114,13 @@ private:
     QList<QStringList> m_pendingCopyQueue;
     QStringList m_pendingDownloadQueue;
     QStringList m_pendingUploadQueue;
+    QStringList m_pendingIconQueue;
     QVariantList m_remoteEntries;
     std::unordered_map<std::string, FileEntry> m_entryLookup;
+    std::unordered_map<std::string, QString> m_iconSourceByPath;
+    std::unordered_set<std::string> m_iconRequestsInFlight;
+    std::unordered_set<std::string> m_queuedIconRequests;
+    std::unordered_set<std::string> m_entriesWithoutReportedIcon;
     bool m_busy = false;
     bool m_waitingForModule = false;
     bool m_downloadBatchActive = false;

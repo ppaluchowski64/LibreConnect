@@ -20,6 +20,10 @@
 #include <QMetaObject>
 #include <QThread>
 
+#if defined(__linux__) || defined(__APPLE__) || defined(__ANDROID__)
+#include <dirent.h>
+#endif
+
 namespace
 {
 constexpr const char* TEMP_STORAGE_ROOT_FOLDER = "LibreConnect";
@@ -323,18 +327,51 @@ bool FileSystemManager::ClearTemporaryStorage()
     return true;
 }
 
+
 DirectoryResult FileSystemManager::GetEntries(const std::filesystem::path& dirPath) {
     DirectoryResult result;
 
-    if (!std::filesystem::exists(dirPath) || !std::filesystem::is_directory(dirPath))
+#if defined(__linux__) || defined(__APPLE__) || defined(__ANDROID__)
+    DIR* dir = opendir(dirPath.c_str());
+    if (!dir) {
         return result;
+    }
 
-    try {
-        for (const auto& entry : std::filesystem::directory_iterator(dirPath)) {
-            result.entries.emplace_back(entry.path());
-        }
-        result.success = true;
-    } catch (const std::filesystem::filesystem_error&) {}
+    result.entries.reserve(2048);
+
+    struct dirent* entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        if (entry->d_name[0] == '.' &&
+           (entry->d_name[1] == '\0' || (entry->d_name[1] == '.' && entry->d_name[2] == '\0'))) {
+            continue;
+           }
+
+        result.entries.emplace_back(dirPath / entry->d_name);
+    }
+
+    closedir(dir);
+    result.success = true;
+
+#else
+    std::error_code ec;
+    if (!std::filesystem::is_directory(dirPath, ec) || ec) {
+        return result;
+    }
+
+    constexpr std::filesystem::directory_options options = std::filesystem::directory_options::skip_permission_denied;
+    std::filesystem::directory_iterator it(dirPath, options, ec);
+
+    if (ec) {
+        return result;
+    }
+
+    result.entries.reserve(2048);
+    for (const auto& entry : it) {
+        result.entries.emplace_back(entry.path());
+    }
+
+    result.success = true;
+#endif
 
     return result;
 }

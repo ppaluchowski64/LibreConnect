@@ -94,6 +94,7 @@ public:
     Q_INVOKABLE void stopFindMyPhoneAlert();
     Q_INVOKABLE void refreshFindMyPhoneRingtones();
     Q_INVOKABLE void setFindMyPhoneRingtoneUri(const QString& uri);
+    Q_INVOKABLE void exportLogs();
 
 signals:
     void connectedChanged();
