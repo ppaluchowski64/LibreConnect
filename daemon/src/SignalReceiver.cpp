@@ -96,7 +96,15 @@ std::vector<uuid> SignalReceiver::GetConnectedDevices() {
     }
 
     std::erase_if(s_instance->m_connectedDevices, [](const Device& device) {
-        return !IsProcessAlive(device.m_pid);
+        if (!IsProcessAlive(device.m_pid)) {
+            Debug::Log(
+                "SignalReceiver::GetConnectedDevices removed connected device {}",
+                boost::uuids::to_string(device.m_uuid)
+            );
+            return true;
+        }
+
+        return false;
     });
 
     std::vector<uuid> connectedDevices;
@@ -109,7 +117,7 @@ std::vector<uuid> SignalReceiver::GetConnectedDevices() {
     return connectedDevices;
 }
 
-bool SignalReceiver::IsProcessAlive(const int pid) {
+bool SignalReceiver::IsProcessAlive(const auto pid) {
 #ifdef _WIN32
 
     const HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);

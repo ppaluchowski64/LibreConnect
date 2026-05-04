@@ -14,6 +14,10 @@
 #include <ConcurrentUnorderedMap.h>
 #include <boost/uuid/nil_generator.hpp>
 
+#if defined(DESKTOP_DEVICE)
+#include <SignalSender.h>
+#endif
+
 enum class InitialConnectionMode : uint8_t;
 typedef std::unique_ptr<Package<PC_PackageType>> PC_Package;
 typedef std::function<void(PC_Package&&)> RequestCallbackType;

@@ -140,6 +140,10 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
         m_connectionState.store(ConnectionState::CONNECTED);
         m_heartbeatReceived.store(false);
+#if defined(DESKTOP_DEVICE)
+        m_signalSender.ConnectionSignal(data.deviceInfo.deviceID);
+        m_connectedUUID.emplace(data.deviceInfo.deviceID);
+#endif
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -211,7 +215,10 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
 
         m_connectionState.store(ConnectionState::CONNECTED);
         m_heartbeatReceived.store(false);
-
+#if defined(DESKTOP_DEVICE)
+        m_signalSender.ConnectionSignal(data.deviceInfo.deviceID);
+        m_connectedUUID.emplace(data.deviceInfo.deviceID);
+#endif
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
         asio::co_spawn(m_strand, CoSendHeartbeat(), asio::detached);
@@ -255,6 +262,13 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     ClearQueuedPackages();
     m_heartbeatReceived.store(false);
     m_connectionState.store(ConnectionState::DISCONNECTED);
+
+#if defined(DESKTOP_DEVICE)
+    if (m_connectedUUID.has_value()) {
+        m_signalSender.DisconnectionSignal(m_connectedUUID.value());
+        m_connectedUUID = std::nullopt;
+    }
+#endif
 
     Debug::Log("PrimaryConnection: Disconnected TLS primary connection successfully.");
 

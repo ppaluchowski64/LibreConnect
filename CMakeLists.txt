@@ -138,6 +138,10 @@ if (ANDROID)
     BuildStaticLibrary(find-my utilities/find-my project_defaults Qt6::Core)
 endif ()
 
+if ((WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE)) AND NOT ANDROID)
+    target_link_libraries(p2p-network-component-pc PUBLIC desktop-daemon-utilities)
+endif ()
+
 if (APPLE)
     find_library(IOKIT_LIBRARY IOKit)
     find_library(COREFOUNDATION_LIBRARY CoreFoundation)
@@ -268,15 +272,8 @@ endif ()
 if (ANDROID)
     add_subdirectory("apps/mobile")
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
+    add_subdirectory("daemon")
     add_subdirectory("apps/desktop")
-
-    BuildProgram(desktop-daemon daemon
-            project_defaults
-            Debug-Log
-            network-component-pc
-            system-component-pc
-            p2p-network-component-pc
-    )
 endif()
 
 if (ENABLE_TESTS)

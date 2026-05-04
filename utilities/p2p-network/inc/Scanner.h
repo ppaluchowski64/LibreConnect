@@ -19,7 +19,7 @@ public:
 
     LanDeviceScanner();
 
-    static void BeginScan(const Options& options = {});
+    static void BeginScan(const Options& options = {true, true});
     static void EndScan();
     static void RestartScan();
     static std::vector<DeviceInfo> GetDiscoveredDevices();

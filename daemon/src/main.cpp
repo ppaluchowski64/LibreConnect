@@ -32,6 +32,7 @@ void LoadDevicesToAutoConnect(std::vector<uuid>& devices) {
 }
 
 void StartInstance(const std::string& address, uint16_t port) {
+    Debug::Log("Auto-Connected to {}:{}", address, port);
     // TODO
 }
 
@@ -101,11 +102,11 @@ int main(int argc, char *argv[]) {
         LoadDevicesToAutoConnect(autoConnectDevices);
 
         for (const auto& device : devices) {
-            if (std::ranges::find(autoConnectDevices, device.deviceID) == connectedDevices.end()) {
+            if (std::ranges::find(autoConnectDevices, device.deviceID) == autoConnectDevices.end()) {
                 continue;
             }
 
-            if (std::ranges::find(connectedDevices, device.deviceID) != autoConnectDevices.end()) {
+            if (std::ranges::find(connectedDevices, device.deviceID) != connectedDevices.end()) {
                 continue;
             }
 

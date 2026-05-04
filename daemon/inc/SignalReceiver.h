@@ -3,6 +3,14 @@
 #include <Packable.h>
 #include <ThreadPool.h>
 
+static auto GetPid() {
+#ifdef _WIN32
+    return GetCurrentProcessId();
+#else
+    return getpid();
+#endif
+}
+
 class SignalReceiver {
 public:
     static void StartReceiving();
@@ -12,13 +20,13 @@ public:
 private:
     struct Device {
         uuid m_uuid;
-        int m_pid;
+        decltype(GetPid()) m_pid;
     };
 
     static SignalReceiver* s_instance;
     static std::mutex s_mutex;
 
-    static bool IsProcessAlive(int pid);
+    static bool IsProcessAlive(auto pid);
     asio::awaitable<void> CoReceive();
 
     IOContextStrand m_strand{ThreadPool::GetContext().get_executor()};

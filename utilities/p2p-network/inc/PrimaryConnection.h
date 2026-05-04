@@ -14,6 +14,10 @@
 #include <functional>
 #include <InitialConnection.h>
 
+#if defined(DESKTOP_DEVICE)
+#include <SignalSender.h>
+#endif
+
 constexpr size_t MAX_PACKAGE_SIZE = 1024 * 256;
 static constexpr size_t MAX_INBOUND_QUEUED_BYTES = 1024 * 1024 * 16;
 
@@ -73,6 +77,11 @@ private:
 
     std::shared_ptr<SSLContext_> m_sslContext;
     std::unique_ptr<SSLSocket> m_socket;
+
+#if defined(DESKTOP_DEVICE)
+    SignalSender m_signalSender;
+    std::optional<uuid> m_connectedUUID;
+#endif
 
     AwaitableFlag m_sendFlag;
     std::shared_ptr<AwaitableFlag> m_receiveFlag;

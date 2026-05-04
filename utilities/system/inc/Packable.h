@@ -16,7 +16,6 @@
 
 typedef boost::uuids::uuid uuid;
 
-
 template <typename T>
 struct is_pair : std::false_type {};
 template <typename T, typename U>
