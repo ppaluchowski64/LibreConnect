@@ -16,6 +16,12 @@
 
 typedef boost::uuids::uuid uuid;
 
+inline void EnsureSerializeSpace(const std::vector<uint8_t>& buffer, const size_t offset, const size_t required) {
+    if (offset > buffer.size() || required > buffer.size() - offset) {
+        throw std::runtime_error("SerializeObject out of bounds");
+    }
+}
+
 template <typename T>
 struct is_pair : std::false_type {};
 template <typename T, typename U>
@@ -106,6 +112,7 @@ inline size_t GetObjectSerializedSize(const std::vector<T>& object);
 
 template <Primitive T>
 inline void SerializeObject(T object, std::vector<uint8_t>& buffer, size_t& offset) {
+    EnsureSerializeSpace(buffer, offset, sizeof(object));
     boost::endian::native_to_big_inplace(object);
     std::memcpy(&buffer[offset], &object, sizeof(object));
     offset += sizeof(object);
@@ -130,6 +137,7 @@ inline void SerializeObject(const std::string& object, std::vector<uint8_t>& buf
     const size_t size = object.size();
     SerializeObject(size, buffer, offset);
     if (!object.empty()) {
+        EnsureSerializeSpace(buffer, offset, object.size());
         std::memcpy(&buffer[offset], object.c_str(), object.size());
         offset += object.size();
     }
@@ -255,6 +263,14 @@ template <typename T>
 inline void DeserializeObject(std::vector<T>& object, const std::vector<uint8_t>& buffer, size_t& offset) {
     size_t size;
     DeserializeObject(size, buffer, offset);
+    if (offset > buffer.size()) {
+        throw std::runtime_error("DeserializeObject vector out of bounds");
+    }
+
+    const size_t remainingBytes = buffer.size() - offset;
+    if (size > remainingBytes) {
+        throw std::runtime_error("DeserializeObject vector size exceeds remaining payload");
+    }
     object.resize(size);
     for (auto& element : object) {
         DeserializeObject(element, buffer, offset);

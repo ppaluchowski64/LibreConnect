@@ -238,6 +238,7 @@ asio::awaitable<std::optional<NotificationPacket>> NotificationTransferChannel::
 
         if (payloadSize > MAX_NOTIFICATION_PACKET_SIZE) {
             Debug::LogError("Notification packet too large: {} bytes", payloadSize);
+            m_readInProgress.store(false, std::memory_order_release);
             asio::co_spawn(m_context, Disconnect(), asio::detached);
             co_return std::nullopt;
         }

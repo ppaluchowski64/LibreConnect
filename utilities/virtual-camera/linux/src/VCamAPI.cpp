@@ -289,7 +289,7 @@ extern "C" {
 
             for (char c : deviceName) {
                 if (!whiteList.contains(c)) {
-                    SetError("Invalid character in device name", *handle);
+                    SetError(fmt::format("Invalid character in device name (char: '{}')", c), *handle);
                     return VCAM_ERROR_INIT_FAILED;
                 }
             }

@@ -2,7 +2,12 @@
 #include <NotificationListenerHandler.h>
 #include <NotificationData.h>
 #include <algorithm>
+#include <limits>
 #include <mutex>
+
+namespace {
+constexpr size_t MAX_NOTIFICATION_IMAGE_BYTES = 8 * 1024 * 1024;
+}
 
 static void GetString(JNIEnv* env, const jstring& str, std::string& dst) {
     if (str == nullptr) {
@@ -21,9 +26,39 @@ static void GetString(JNIEnv* env, const jstring& str, std::string& dst) {
 }
 
 static void GetByteArray(JNIEnv* env, const jbyteArray byteArray, std::vector<uint8_t>& dst) {
+    if (byteArray == nullptr) {
+        dst.clear();
+        return;
+    }
+
     const jsize len = env->GetArrayLength(byteArray);
+    if (len <= 0) {
+        dst.clear();
+        return;
+    }
+
+    if (static_cast<size_t>(len) > MAX_NOTIFICATION_IMAGE_BYTES) {
+        Debug::LogWarning(
+            "Skipping oversized notification image payload: {} bytes (limit: {})",
+            len,
+            MAX_NOTIFICATION_IMAGE_BYTES
+        );
+        dst.clear();
+        return;
+    }
+
+    if (static_cast<size_t>(len) > std::numeric_limits<size_t>::max() / sizeof(uint8_t)) {
+        dst.clear();
+        return;
+    }
+
     dst.resize(len);
     env->GetByteArrayRegion(byteArray, 0, len, reinterpret_cast<jbyte*>(dst.data()));
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        Debug::LogWarning("Failed to copy notification image byte array from JNI");
+        dst.clear();
+    }
 }
 
 std::mutex g_notificationDatasMutex;
