@@ -216,6 +216,8 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
         data.initialConnectionMode = mode;
 
         Debug::Log("InitialConnection: Sending DEVICE_DATA_FOR_CONNECTION (Client Identity)");
+
+        // Ignore this clangd error, its bullshit
         Send(InitialConnectionPackageType::DEVICE_DATA_FOR_CONNECTION, data);
 
     } catch (std::system_error& error) {

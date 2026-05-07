@@ -45,43 +45,6 @@ LibreConnect is built to solve everyday cross-device friction:
   - desktop and mobile frontends built with shared architecture
   - modular feature system so capabilities can be enabled/extended over time
 
-## Project structure
-
-```text
-apps/                    # Desktop + mobile app entry points and QML UI
-android/                 # Native Android manifest, Gradle config, and platform glue
-installers/              # Packaging scripts for Linux and Windows
-modules/                 # Feature modules (common + desktop/mobile implementations)
-  clipboard-sync/
-  common/
-  file-share/
-  modules-manager/
-  network-camera/
-  notification-sync/
-  remote-input/
-  sms-bridge/
-  system-info-share/
-utilities/               # Shared infrastructure and low-level components
-  clipboard/
-  find-my/
-  network/
-  p2p-network/
-  permission-manager/
-  srtp-stream/
-  file-system/
-  notifications-handler/
-  remote-input/
-  sms-handler/
-  system-info/
-  virtual-camera/
-tests/                   # Unit tests and test programs
-tools/                   # Local developer utilities
-cmake/                   # CMake helper scripts/macros
-configure_project.py     # Environment + dependency/bootstrap automation
-conanfile.py             # Conan integration (requirements by platform)
-conandata.yml            # Dependency versions
-```
-
 ## Dependencies
 
 ### Build/tooling

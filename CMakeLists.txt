@@ -162,6 +162,8 @@ add_subdirectory("utilities/remote-input")
 if (NOT (APPLE AND NOT IOS))
     add_subdirectory("utilities/virtual-camera")
 endif ()
+
+add_subdirectory("utilities/virtual-microphone")
 add_subdirectory("utilities/notifications-handler")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager)
@@ -280,9 +282,15 @@ if (ENABLE_TESTS)
     BuildTests(Concurrent_Structures_Test concurrent-structures network-component-pc system-component-pc)
     BuildTests(Asio_Abstractions_Package_Test asio-abstractions/package network-component-pc system-component-pc)
     BuildTestProgram(DeviceType_Test device-type/DetectDeviceType.cpp system-component-pc)
+
     if (NOT (APPLE AND NOT IOS))
         BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
     endif ()
+
+    if (WIN32)
+        BuildTestProgram(VirtualMicrophoneTest virtual-microphone/VirtualMicrophoneTest.cpp virtual-microphone Debug-Log)
+    endif ()
+
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
