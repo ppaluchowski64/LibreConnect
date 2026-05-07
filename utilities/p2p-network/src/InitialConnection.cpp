@@ -4,12 +4,12 @@
 #include <ConnectionManager.h>
 #include <ThreadPool.h>
 #include <magic_enum/magic_enum.hpp>
-#include <openssl/sha.h>
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
 #include <chrono>
 #include <mutex>
+#include <random>
 #include <unordered_map>
 #include <filesystem>
 #include <boost/uuid/uuid_io.hpp>
@@ -103,31 +103,10 @@ bool IsPairedDeviceKnown(const DeviceInfo& remoteDeviceInfo) {
 }
 }
 
-std::string InitialConnection::ComputePairingCode(const std::string& localFingerprint, const std::string& remoteFingerprint) {
-    if (localFingerprint.empty() || remoteFingerprint.empty()) {
-        return {};
-    }
-
-    std::string first = localFingerprint;
-    std::string second = remoteFingerprint;
-    if (second < first) {
-        std::swap(first, second);
-    }
-
-    const std::string material = first + "|" + second;
-    unsigned char digest[SHA256_DIGEST_LENGTH]{};
-    SHA256(
-        reinterpret_cast<const unsigned char*>(material.data()),
-        material.size(),
-        digest
-    );
-
-    uint64_t value = 0;
-    for (size_t i = 0; i < sizeof(value); ++i) {
-        value = (value << 8) | static_cast<uint64_t>(digest[i]);
-    }
-
-    value %= 1000000ULL;
+std::string InitialConnection::GeneratePairingCode() {
+    thread_local std::mt19937 generator(std::random_device{}());
+    std::uniform_int_distribution<int> distribution(0, 999999);
+    const int value = distribution(generator);
 
     std::ostringstream oss;
     oss << std::setw(6) << std::setfill('0') << value;
@@ -194,8 +173,6 @@ void InitialConnection::TemporaryOwnership(const std::shared_ptr<InitialConnecti
 asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const InitialConnectionMode mode) {
     const std::shared_ptr<InitialConnection> self = shared_from_this();
     m_connectionState = ConnectionState::CONNECTING;
-    m_localCertificateFingerprint = DeviceInfo::GetThisDeviceInfo().certificateFingerprint;
-    m_expectedChallengeCode.clear();
     m_requestedConnectionMode = mode;
     m_finalHandshakeCompleted = false;
     m_receivedTerminalHandshakeReason = false;
@@ -232,8 +209,6 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
     m_temporaryOwnership.reset();
 
     m_connectionState = ConnectionState::CONNECTING;
-    m_localCertificateFingerprint = DeviceInfo::GetThisDeviceInfo().certificateFingerprint;
-    m_expectedChallengeCode.clear();
     m_requestedConnectionMode = InitialConnectionMode::CONNECTION_WITHOUT_PAIR;
     m_finalHandshakeCompleted = false;
     m_receivedTerminalHandshakeReason = false;
@@ -435,10 +410,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
                 std::string pairingCode{};
                 if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
-                    pairingCode = ComputePairingCode(
-                        m_localCertificateFingerprint,
-                        data.deviceInfo.certificateFingerprint
-                    );
+                    pairingCode = GeneratePairingCode();
                 }
 
                 if (data.initialConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR) {
@@ -509,12 +481,6 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST)) {
                 Debug::Log("InitialConnection: Received Challenge Request. Spawning Verification UI Event.");
-                std::string remoteFingerprint;
-                if (header.size > 0) {
-                    remoteFingerprint = package->GetValue<std::string>();
-                }
-
-                m_expectedChallengeCode = ComputePairingCode(m_localCertificateFingerprint, remoteFingerprint);
                 std::unique_ptr<ConnectionVerificationEvent> event = std::make_unique<ConnectionVerificationEvent>([ref = shared_from_this()](std::string response) {
                     try {
                         asio::co_spawn(ref->m_strand, ref->CoProcessConnectionVerificationEvent(std::move(response)), asio::detached);
@@ -565,14 +531,8 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 }
 
 asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(std::string response) {
-    if (!m_expectedChallengeCode.empty() && response != m_expectedChallengeCode) {
-        Debug::LogWarning("InitialConnection: Local pairing-code verification failed; rejecting verification response");
-        response.clear();
-    }
-
     Debug::Log("InitialConnection: User provided challenge response. Sending back to server.");
     Send(InitialConnectionPackageType::CHALLENGE_RESPONSE, std::move(response));
-    m_expectedChallengeCode.clear();
 
     co_return;
 }
@@ -588,30 +548,16 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     m_challengeResult = std::move(challenge);
 
     if (data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT) {
-        const std::string expectedCode = ComputePairingCode(
-            m_localCertificateFingerprint,
-            data.deviceInfo.certificateFingerprint
-        );
-
-        if (expectedCode.empty()) {
-            Debug::LogError("InitialConnection: Failed to derive pairing code from certificate fingerprints");
+        if (m_challengeResult.empty()) {
+            Debug::LogError("InitialConnection: Pairing mode requires a generated pairing code");
             Disconnect();
             co_return;
-        }
-
-        if (m_challengeResult.empty()) {
-            m_challengeResult = expectedCode;
-        }
-
-        if (m_challengeResult != expectedCode) {
-            Debug::LogWarning("InitialConnection: UI challenge did not match expected pairing code; using expected value");
-            m_challengeResult = expectedCode;
         }
     }
 
     if (!m_challengeResult.empty()) {
         Debug::Log("InitialConnection: Sending CHALLENGE_ANSWER_REQUEST to Client.");
-        Send(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST, m_localCertificateFingerprint);
+        Send(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST);
         co_return;
     }
 
