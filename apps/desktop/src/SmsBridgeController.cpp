@@ -14,6 +14,50 @@
 
 namespace {
 constexpr int POLL_INTERVAL_MS = 400;
+
+bool parseTimestampedMessage(
+    const QString& rawMessage,
+    const QString& prefix,
+    const bool trimTrailingSection,
+    int& messageType,
+    qint64& timestamp,
+    QString& body
+)
+{
+    if (!rawMessage.startsWith(prefix)) {
+        return false;
+    }
+
+    const int prefixLength = prefix.size();
+    const int firstSeparator = rawMessage.indexOf(QLatin1Char('|'), prefixLength);
+    const int secondSeparator = firstSeparator < 0 ? -1 : rawMessage.indexOf(QLatin1Char('|'), firstSeparator + 1);
+    const int lastSeparator = trimTrailingSection ? rawMessage.lastIndexOf(QLatin1Char('|')) : -1;
+
+    if (firstSeparator <= prefixLength || secondSeparator <= firstSeparator) {
+        body = rawMessage.mid(prefixLength);
+        return true;
+    }
+
+    bool typeOk = false;
+    bool timestampOk = false;
+    const int parsedType = rawMessage.mid(prefixLength, firstSeparator - prefixLength).toInt(&typeOk);
+    const qint64 parsedTimestamp = rawMessage.mid(firstSeparator + 1, secondSeparator - firstSeparator - 1).toLongLong(&timestampOk);
+
+    const int bodyEnd = trimTrailingSection && lastSeparator > secondSeparator
+        ? lastSeparator
+        : rawMessage.size();
+    body = rawMessage.mid(secondSeparator + 1, bodyEnd - secondSeparator - 1);
+
+    if (typeOk) {
+        messageType = parsedType;
+    }
+
+    if (timestampOk && parsedTimestamp > 0) {
+        timestamp = parsedTimestamp;
+    }
+
+    return true;
+}
 }
 
 SmsBridgeController::SmsBridgeController(QObject* parent)
@@ -391,23 +435,21 @@ SmsBridgeController::MessageState SmsBridgeController::parseMessage(
     parsed.timestamp = defaultTimestamp;
 
     int smsType = 1;
-    if (rawMessage.startsWith(QStringLiteral("v2|"))) {
-        const int firstSeparator = rawMessage.indexOf(QLatin1Char('|'), 3);
-        const int secondSeparator = firstSeparator < 0 ? -1 : rawMessage.indexOf(QLatin1Char('|'), firstSeparator + 1);
-
-        if (firstSeparator > 0 && secondSeparator > firstSeparator) {
-            bool typeOk = false;
-            bool timestampOk = false;
-            smsType = rawMessage.mid(3, firstSeparator - 3).toInt(&typeOk);
-            const qint64 parsedTimestamp = rawMessage.mid(firstSeparator + 1, secondSeparator - firstSeparator - 1).toLongLong(&timestampOk);
-            parsed.body = rawMessage.mid(secondSeparator + 1);
-
-            if (typeOk && timestampOk && parsedTimestamp > 0) {
-                parsed.timestamp = parsedTimestamp;
-            }
-        } else {
-            parsed.body = rawMessage.mid(3);
-        }
+    if (parseTimestampedMessage(
+            rawMessage,
+            QStringLiteral("v2|"),
+            false,
+            smsType,
+            parsed.timestamp,
+            parsed.body
+        ) || parseTimestampedMessage(
+            rawMessage,
+            QStringLiteral("mms|"),
+            true,
+            smsType,
+            parsed.timestamp,
+            parsed.body
+        )) {
     } else if (!rawMessage.isEmpty() && rawMessage.at(0).isDigit()) {
         smsType = rawMessage.at(0).digitValue();
         parsed.body = rawMessage.mid(1);
