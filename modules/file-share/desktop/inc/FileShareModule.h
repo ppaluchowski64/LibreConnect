@@ -7,7 +7,7 @@
 #include <unordered_set>
 
 #include <BaseModule.h>
-#include <TransferChannel.h>
+#include <TransferChannelPool.h>
 #include <ConnectionManager.h>
 
 #include <FileSystemManager.h>
@@ -15,7 +15,7 @@
 
 class FileShareModule final : public BaseModule {
 public:
-    explicit FileShareModule();
+    FileShareModule() = default;
 
     void FetchDirectoryEntries(const std::string& path) const;
     void FetchDirectoryEntries(const FileEntry& entry) const;
@@ -29,15 +29,8 @@ public:
     void FetchEntryIcon(const FileEntry& entry, FileIconDensity density) const;
 
 private:
-    struct AcquiredTransferChannel {
-        size_t index{};
-        std::shared_ptr<TransferChannel> channel;
-        std::shared_ptr<void> reservationGuard;
-    };
-
     bool TryBeginDirectoryRequest(const std::string& path) const;
     void EndDirectoryRequest(const std::string& path) const;
-    asio::awaitable<AcquiredTransferChannel> AcquireTransferChannel(bool reserveIncomingPost = false) const;
 
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
     asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
@@ -46,11 +39,8 @@ private:
     asio::awaitable<std::vector<std::filesystem::path>> PrepareEntriesForExternalDragAwaitable(std::vector<FileEntry> entries) const;
     static asio::awaitable<void> FetchEntryIconAwaitable(FileEntry entry, FileIconDensity density);
 
-    std::vector<std::shared_ptr<TransferChannel>> m_transferChannels;
     mutable std::mutex m_directoryRequestMutex;
     mutable std::unordered_set<std::string> m_inFlightDirectoryRequests;
-    mutable std::mutex m_incomingPostReservationMutex;
-    mutable std::unordered_set<size_t> m_reservedIncomingPostChannels;
 
 protected:
     void EnableResponseCallbacks() override;

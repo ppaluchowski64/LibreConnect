@@ -60,6 +60,7 @@ object SmsUtils {
     @SuppressLint("Range")
     fun getAllContacts(context: Context): List<Pair<String?, String?>> {
         val contactsByKey = linkedMapOf<String, Pair<String?, String?>>()
+        val lastMessageTimes = mutableMapOf<String, Long>()
 
         if (hasPermission(context, android.Manifest.permission.READ_CONTACTS)) {
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
@@ -77,9 +78,7 @@ object SmsUtils {
                         do {
                             val number = cursor.getString(numberIndex)
                             val normalized = normalizeAddress(number)
-                            if (normalized.isEmpty()) {
-                                continue
-                            }
+                            if (normalized.isEmpty()) continue
 
                             contactsByKey[normalized] = Pair(cursor.getString(nameIndex), number)
                         } while (cursor.moveToNext())
@@ -92,32 +91,43 @@ object SmsUtils {
 
         if (hasPermission(context, android.Manifest.permission.READ_SMS)) {
             val uri = Telephony.Sms.CONTENT_URI
-            val projection = arrayOf(Telephony.Sms.ADDRESS)
+            val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.DATE)
             val sortOrder = "${Telephony.Sms.DATE} DESC"
 
             try {
                 context.contentResolver.query(uri, projection, null, null, sortOrder)?.use { cursor ->
                     if (cursor.moveToFirst()) {
                         val addressIndex = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
+                        val dateIndex = cursor.getColumnIndex(Telephony.Sms.DATE)
+
                         do {
                             val address = cursor.getString(addressIndex)
+                            val date = cursor.getLong(dateIndex)
                             val normalized = normalizeAddress(address)
-                            if (normalized.isEmpty() || contactsByKey.containsKey(normalized)) {
-                                continue
+
+                            if (normalized.isEmpty()) continue
+
+                            if (!lastMessageTimes.containsKey(normalized)) {
+                                lastMessageTimes[normalized] = date
                             }
 
-                            val displayAddress = address?.trim().orEmpty()
-                            val visible = if (displayAddress.isNotEmpty()) displayAddress else normalized
-                            contactsByKey[normalized] = Pair(visible, visible)
+                            if (!contactsByKey.containsKey(normalized)) {
+                                val displayAddress = address?.trim().orEmpty()
+                                val visible = if (displayAddress.isNotEmpty()) displayAddress else normalized
+                                contactsByKey[normalized] = Pair(visible, visible)
+                            }
                         } while (cursor.moveToNext())
                     }
                 }
             } catch (_: SecurityException) {
-
             }
         }
 
-        return contactsByKey.values.toList()
+        return contactsByKey.toList()
+            .sortedByDescending { (normalizedKey, _) ->
+                lastMessageTimes[normalizedKey] ?: 0L
+            }
+            .map { it.second }
     }
 
     @JvmStatic

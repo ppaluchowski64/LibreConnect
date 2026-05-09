@@ -2,11 +2,14 @@
 
 #include <QObject>
 #include <QEvent>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QString>
 #include <QHash>
+#include <QSet>
 #include <QVector>
+#include <vector>
 
 class SmsBridgeController : public QObject
 {
@@ -88,6 +91,7 @@ private:
     void emitConversationChanged();
     void updateSelectedMessages();
     QVariantList buildMessagesVariant(const QString& key) const;
+    void requestMmsContentFetches(const std::vector<std::string>& rawMessages) const;
     ContactState* findContact(const QString& key);
     const ContactState* findContact(const QString& key) const;
 
@@ -101,5 +105,6 @@ private:
     QString m_selectedContactKey;
     QString m_selectedContactName;
     QHash<QString, QString> m_pendingMessageConversationById;
+    mutable QSet<QString> m_requestedMmsContentTargets;
     qint64 m_timestampCounter = 0;
 };

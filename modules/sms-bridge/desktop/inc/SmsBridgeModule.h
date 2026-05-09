@@ -8,11 +8,13 @@ public:
     uuid SendSMS(const std::string& target, const std::string& message) const;
     void GetContactList() const;
     void GetTargetMessages(const std::string& target) const;
+    void FetchMMSContent(const std::string& target) const;
 
 private:
     asio::awaitable<void> SendSMSAwaitable(std::string target, std::string message, uuid messageUUID) const;
     asio::awaitable<void> GetContactListAwaitable() const;
     asio::awaitable<void> GetTargetMessagesAwaitable(std::string target) const;
+    asio::awaitable<void> FetchMMSContentAwaitable(std::string target) const;
 
 protected:
     void EnableResponseCallbacks() override;

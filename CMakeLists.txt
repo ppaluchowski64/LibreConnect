@@ -164,7 +164,7 @@ if (NOT (APPLE AND NOT IOS))
 endif ()
 add_subdirectory("utilities/notifications-handler")
 
-BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager)
+BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager file-system)
 
 if (ANDROID OR IOS)
 

@@ -58,6 +58,35 @@ bool parseTimestampedMessage(
 
     return true;
 }
+
+QStringList extractMmsAttachmentTargets(const QString& rawMessage)
+{
+    if (!rawMessage.startsWith(QStringLiteral("mms|"))) {
+        return {};
+    }
+
+    const int firstSeparator = rawMessage.indexOf(QLatin1Char('|'), 4);
+    const int secondSeparator = firstSeparator < 0 ? -1 : rawMessage.indexOf(QLatin1Char('|'), firstSeparator + 1);
+    const int lastSeparator = rawMessage.lastIndexOf(QLatin1Char('|'));
+    if (firstSeparator <= 4 || secondSeparator <= firstSeparator || lastSeparator <= secondSeparator) {
+        return {};
+    }
+
+    const QString attachmentsSection = rawMessage.mid(lastSeparator + 1).trimmed();
+    if (attachmentsSection.isEmpty()) {
+        return {};
+    }
+
+    QStringList targets;
+    for (const QString& candidate : attachmentsSection.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QString trimmed = candidate.trimmed();
+        if (!trimmed.isEmpty()) {
+            targets.push_back(trimmed);
+        }
+    }
+
+    return targets;
+}
 }
 
 SmsBridgeController::SmsBridgeController(QObject* parent)
@@ -216,6 +245,7 @@ bool SmsBridgeController::event(QEvent* event)
             ensureModuleEnabled();
             refreshConversations();
         } else {
+            m_requestedMmsContentTargets.clear();
             setReady(false);
             setBusy(false);
             setStatusMessage(QStringLiteral("Connect to a mobile device to load messages."));
@@ -230,6 +260,7 @@ bool SmsBridgeController::event(QEvent* event)
             emit connectedChanged();
             emit canSendChanged();
         }
+        m_requestedMmsContentTargets.clear();
         setReady(false);
         setBusy(false);
         setStatusMessage(QStringLiteral("Phone disconnected."));
@@ -384,6 +415,23 @@ bool SmsBridgeController::event(QEvent* event)
     }
 
     return QObject::event(event);
+}
+
+void SmsBridgeController::requestMmsContentFetches(const std::vector<std::string>& rawMessages) const
+{
+    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
+
+    for (const std::string& rawMessage : rawMessages) {
+        const QStringList targets = extractMmsAttachmentTargets(QString::fromStdString(rawMessage));
+        for (const QString& target : targets) {
+            if (m_requestedMmsContentTargets.contains(target)) {
+                continue;
+            }
+
+            m_requestedMmsContentTargets.insert(target);
+            module->FetchMMSContent(target.toStdString());
+        }
+    }
 }
 
 QString SmsBridgeController::normalizeNumber(const QString& number)

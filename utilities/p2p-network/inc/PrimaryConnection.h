@@ -55,6 +55,7 @@ public:
     IPAddress GetPeerAddress() const;
     bool HasPendingPackages() const;
     void MarkHeartbeatReceived();
+    ConnectionState GetConnectionState() const;
 
 
 private:

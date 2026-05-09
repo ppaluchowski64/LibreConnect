@@ -110,6 +110,10 @@ void PrimaryConnection::MarkHeartbeatReceived() {
     m_heartbeatReceived.store(true);
 }
 
+ConnectionState PrimaryConnection::GetConnectionState() const {
+    return m_connectionState.load();
+}
+
 asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext_> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;

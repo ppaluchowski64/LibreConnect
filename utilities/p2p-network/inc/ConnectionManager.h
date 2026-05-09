@@ -42,6 +42,7 @@ public:
     static void AddEventListener(const QPointer<QObject>& object);
     static TCPEndpoint GetSeekEndpoint();
     static IPAddress GetPeerAddress();
+    static ConnectionState GetConnectionState();
 
     template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {

@@ -76,6 +76,32 @@ void SmsBridgeModule::EnableResponseCallbacks() {
         Debug::Log("SmsBridgeModule: Send SMS to {} result: {}", target, result);
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::SMS_BRIDGE_MODULE_SEND_SMS_RESPONSE, result);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST, [instance](PC_Package&& package) mutable {
+        const size_t requestID   = package->GetValue<size_t>();
+        const std::string target = package->GetValue<std::string>();
+        std::string path{};
+
+#ifdef ANDROID_DEVICE
+        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        const QJniObject jUri = QJniObject::fromString(QString::fromStdString(target));
+
+        const QJniObject result = QJniObject::callStaticObjectMethod(
+            "com/LibreConnect/mobile/SmsUtils",
+            "saveAttachmentToCache",
+            "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;",
+            context.object(),
+            jUri.object<jstring>()
+        );
+
+        if (result.isValid()) {
+            path = result.toString().toStdString();
+        }
+#endif
+
+        if (path.empty()) {
+            ConnectionManager::SendRequestResponse(requestID, PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_RESPONSE, static_cast<size_t>(-1));
+        }
+    });
 }
 
 void SmsBridgeModule::DisableResponseCallbacks() {
@@ -85,6 +111,7 @@ void SmsBridgeModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_FETCH_ALL_CONTACTS_REQUEST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_FETCH_ALL_MESSAGES_REQUEST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_SEND_SMS_REQUEST);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST);
 }
 
 void SmsBridgeModule::OnInitialize() {}

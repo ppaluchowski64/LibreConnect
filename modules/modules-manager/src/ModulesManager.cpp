@@ -1,5 +1,6 @@
 #include <ModulesManager.h>
 #include <ConnectionManager.h>
+#include <TransferChannelPool.h>
 #include <DebugLog.h>
 #include <QPointer>
 #include <Events.h>
@@ -36,6 +37,9 @@ bool RequestMacAccessibilityPermission() {
     return trusted;
 }
 #endif
+
+    constexpr size_t TRANSFER_CHANNEL_COUNT = 10;
+
 }
 
 ModulesManager* ModulesManager::s_instance{nullptr};
@@ -51,12 +55,15 @@ bool ModulesManager::event(QEvent* event) {
 
         Debug::Log("ModulesManager: ConnectedEvent reported success, ensuring modules are initialized");
         Initialize();
+        TransferChannelPool::Reset();
+        asio::co_spawn(ThreadPool::GetContext(), TransferChannelPool::Connect(), asio::detached);
         return true;
     }
 
     if (event->type() == DisconnectedEvent::Type) {
         Debug::Log("ModulesManager: DisconnectedEvent received, shutting down modules");
         Shutdown();
+        TransferChannelPool::Reset();
         return true;
     }
 
@@ -96,6 +103,7 @@ ModulesManager::ModulesManager() {
 #endif
 
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+    TransferChannelPool::Initialize(TRANSFER_CHANNEL_COUNT);
 }
 
 void ModulesManager::Initialize() {
@@ -103,6 +111,7 @@ void ModulesManager::Initialize() {
 
     if (s_instance == nullptr) {
         s_instance = new ModulesManager();
+
         Debug::Log("ModulesManager: Instance created");
     }
 
