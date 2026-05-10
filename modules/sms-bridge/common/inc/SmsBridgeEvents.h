@@ -3,6 +3,7 @@
 
 #include <QEvent>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <utility>

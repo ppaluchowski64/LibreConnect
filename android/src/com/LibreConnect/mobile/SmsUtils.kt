@@ -56,11 +56,18 @@ object SmsUtils {
             .lowercase(Locale.ROOT)
     }
 
+    private fun encodeConversationSummary(name: String?, latestTimestamp: Long, latestPreview: String?): String {
+        val safeName = name.orEmpty()
+        val safePreview = latestPreview.orEmpty()
+        return "summary|$latestTimestamp|$safeName|$safePreview"
+    }
+
     @JvmStatic
     @SuppressLint("Range")
     fun getAllContacts(context: Context): List<Pair<String?, String?>> {
         val contactsByKey = linkedMapOf<String, Pair<String?, String?>>()
         val lastMessageTimes = mutableMapOf<String, Long>()
+        val lastPreviews = mutableMapOf<String, String>()
 
         if (hasPermission(context, android.Manifest.permission.READ_CONTACTS)) {
             val uri = ContactsContract.CommonDataKinds.Phone.CONTENT_URI
@@ -91,7 +98,7 @@ object SmsUtils {
 
         if (hasPermission(context, android.Manifest.permission.READ_SMS)) {
             val uri = Telephony.Sms.CONTENT_URI
-            val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.DATE)
+            val projection = arrayOf(Telephony.Sms.ADDRESS, Telephony.Sms.DATE, Telephony.Sms.BODY)
             val sortOrder = "${Telephony.Sms.DATE} DESC"
 
             try {
@@ -99,16 +106,19 @@ object SmsUtils {
                     if (cursor.moveToFirst()) {
                         val addressIndex = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
                         val dateIndex = cursor.getColumnIndex(Telephony.Sms.DATE)
+                        val bodyIndex = cursor.getColumnIndex(Telephony.Sms.BODY)
 
                         do {
                             val address = cursor.getString(addressIndex)
                             val date = cursor.getLong(dateIndex)
+                            val body = cursor.getString(bodyIndex).orEmpty()
                             val normalized = normalizeAddress(address)
 
                             if (normalized.isEmpty()) continue
 
                             if (!lastMessageTimes.containsKey(normalized)) {
                                 lastMessageTimes[normalized] = date
+                                lastPreviews[normalized] = body
                             }
 
                             if (!contactsByKey.containsKey(normalized)) {
@@ -123,11 +133,61 @@ object SmsUtils {
             }
         }
 
+        if (hasPermission(context, android.Manifest.permission.READ_SMS)) {
+            val uri = Telephony.Mms.CONTENT_URI
+            val projection = arrayOf(Telephony.Mms._ID, Telephony.Mms.DATE, Telephony.Mms.MESSAGE_BOX)
+            val sortOrder = "${Telephony.Mms.DATE} DESC"
+
+            try {
+                context.contentResolver.query(uri, projection, null, null, sortOrder)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idIndex = cursor.getColumnIndex(Telephony.Mms._ID)
+                        val dateIndex = cursor.getColumnIndex(Telephony.Mms.DATE)
+                        val boxIndex = cursor.getColumnIndex(Telephony.Mms.MESSAGE_BOX)
+
+                        do {
+                            val mmsId = cursor.getString(idIndex)
+                            val date = cursor.getLong(dateIndex) * 1000
+                            val box = cursor.getInt(boxIndex)
+                            val address = getMmsConversationAddress(context, mmsId, box)
+                            val normalized = normalizeAddress(address)
+
+                            if (normalized.isEmpty()) continue
+
+                            if (!lastMessageTimes.containsKey(normalized) || date > (lastMessageTimes[normalized] ?: 0L)) {
+                                val textBody = getMmsTextBody(context, mmsId).trim()
+                                val attachments = getMmsAttachments(context, mmsId)
+                                lastMessageTimes[normalized] = date
+                                lastPreviews[normalized] = if (textBody.isNotEmpty()) {
+                                    textBody
+                                } else if (attachments.isNotEmpty()) {
+                                    "MMS attachment"
+                                } else {
+                                    "MMS"
+                                }
+                            }
+
+                            if (!contactsByKey.containsKey(normalized)) {
+                                val visible = address?.trim().orEmpty().ifEmpty { normalized }
+                                contactsByKey[normalized] = Pair(visible, visible)
+                            }
+                        } while (cursor.moveToNext())
+                    }
+                }
+            } catch (_: SecurityException) {
+            }
+        }
+
         return contactsByKey.toList()
             .sortedByDescending { (normalizedKey, _) ->
                 lastMessageTimes[normalizedKey] ?: 0L
             }
-            .map { it.second }
+            .map { (normalizedKey, contact) ->
+                Pair(
+                    encodeConversationSummary(contact.first, lastMessageTimes[normalizedKey] ?: 0L, lastPreviews[normalizedKey]),
+                    contact.second
+                )
+            }
     }
 
     @JvmStatic
@@ -290,6 +350,34 @@ object SmsUtils {
             Log.e(tag, "Failed to resolve MMS sender", e)
         }
         return null
+    }
+
+    @JvmStatic
+    fun getMmsConversationAddress(context: Context, mmsId: String, messageBox: Int): String? {
+        val uri = "content://mms/$mmsId/addr".toUri()
+        val projection = arrayOf("address")
+        val addressType = if (messageBox == Telephony.Mms.MESSAGE_BOX_SENT) 151 else 137
+
+        try {
+            context.contentResolver.query(
+                uri,
+                projection,
+                "type=$addressType",
+                null,
+                null
+            )?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val address = cursor.getString(cursor.getColumnIndexOrThrow("address"))
+                    if (!address.isNullOrBlank() && address != "insert-address-token") {
+                        return address
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to resolve MMS conversation address", e)
+        }
+
+        return getMmsSender(context, mmsId)
     }
 
     @JvmStatic

@@ -1,8 +1,10 @@
 #include <SmsBridgeModule.h>
 #include <SmsBridgeEvents.h>
 #include <SMS_Handler.h>
+#include <TransferChannelPool.h>
 
 #include <cstdint>
+#include <filesystem>
 
 #ifdef ANDROID_DEVICE
 #include <PermissionManager.h>
@@ -76,7 +78,7 @@ void SmsBridgeModule::EnableResponseCallbacks() {
         Debug::Log("SmsBridgeModule: Send SMS to {} result: {}", target, result);
         ConnectionManager::SendRequestResponse(requestID, PC_PackageType::SMS_BRIDGE_MODULE_SEND_SMS_RESPONSE, result);
     });
-    ConnectionManager::AddResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST, [instance](PC_Package&& package) mutable {
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST, [instance](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID   = package->GetValue<size_t>();
         const std::string target = package->GetValue<std::string>();
         std::string path{};
@@ -99,8 +101,43 @@ void SmsBridgeModule::EnableResponseCallbacks() {
 #endif
 
         if (path.empty()) {
-            ConnectionManager::SendRequestResponse(requestID, PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_RESPONSE, static_cast<size_t>(-1));
+            ConnectionManager::SendRequestResponse(
+                requestID,
+                PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_RESPONSE,
+                false,
+                size_t{0},
+                std::string{}
+            );
+            co_return;
         }
+
+        const std::filesystem::path attachmentPath(path);
+        if (!std::filesystem::exists(attachmentPath) || !std::filesystem::is_regular_file(attachmentPath)) {
+            Debug::LogError("SmsBridgeModule: Cached MMS attachment is missing: {}", path);
+            ConnectionManager::SendRequestResponse(
+                requestID,
+                PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_RESPONSE,
+                false,
+                size_t{0},
+                std::string{}
+            );
+            co_return;
+        }
+
+        const BorrowedTransferChannel acquiredChannel = co_await TransferChannelPool::BorrowTransferChannel();
+        const size_t transferChannelIndex = acquiredChannel.index;
+        const std::shared_ptr<TransferChannel> channel = acquiredChannel.channel;
+        const std::string fileName = attachmentPath.filename().string();
+
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_RESPONSE,
+            true,
+            transferChannelIndex,
+            fileName
+        );
+
+        co_await channel->SendFile(attachmentPath);
     });
 }
 
@@ -111,7 +148,7 @@ void SmsBridgeModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_FETCH_ALL_CONTACTS_REQUEST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_FETCH_ALL_MESSAGES_REQUEST);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_SEND_SMS_REQUEST);
-    ConnectionManager::RemoveResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST);
 }
 
 void SmsBridgeModule::OnInitialize() {}

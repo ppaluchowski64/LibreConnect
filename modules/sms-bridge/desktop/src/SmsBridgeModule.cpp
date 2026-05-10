@@ -77,6 +77,9 @@ void SmsBridgeModule::FetchMMSContent(const std::string& target) const {
 asio::awaitable<void> SmsBridgeModule::FetchMMSContentAwaitable(std::string target) const {
     const std::filesystem::path destinationDirectory = CreateFileShareTempSessionDirectory(MMS_CONTENT_TEMP_CATEGORY);
     if (destinationDirectory.empty()) {
+        Debug::LogError("SmsBridgeModule: FetchMMSContentAwaitable failed to create destination directory. Target: {}", target);
+        const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, std::filesystem::path{});
+        ConnectionManager::SendEvent(event);
         co_return;
     }
 
@@ -84,23 +87,43 @@ asio::awaitable<void> SmsBridgeModule::FetchMMSContentAwaitable(std::string targ
     if (!response.has_value()) {
         Debug::LogError("SmsBridgeModule: FetchMMSContentAwaitable failed (timeout). Target: {}", target);
         ProcessError(ModuleFailReason::Timeout);
+        const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, std::filesystem::path{});
+        ConnectionManager::SendEvent(event);
         co_return;
     }
 
+    const bool success = response.value()->GetValue<bool>();
     const size_t index = response.value()->GetValue<size_t>();
+    const std::string fileName = response.value()->GetValue<std::string>();
+    if (!success || fileName.empty()) {
+        Debug::LogError("SmsBridgeModule: FetchMMSContentAwaitable failed. Target: {}", target);
+        const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, std::filesystem::path{});
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+
     const auto opt = TransferChannelPool::Get(index);
+    std::filesystem::path destinationFile;
 
     if (opt.has_value()) {
         const auto& channel = opt.value();
-        co_await channel->ReceiveFile(destinationDirectory / target);
+        destinationFile = destinationDirectory / std::filesystem::path(fileName).filename();
+        co_await channel->ReceiveFile(destinationFile);
     } else {
         Debug::LogError("FileShareModule: Transfer channel {} doesn't exists", index);
         ProcessError(ModuleFailReason::InternalError);
+        const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, std::filesystem::path{});
+        ConnectionManager::SendEvent(event);
         ConnectionManager::Disconnect();
         co_return;
     }
 
-    const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, destinationDirectory);
+    if (!std::filesystem::exists(destinationFile)) {
+        Debug::LogError("SmsBridgeModule: MMS content transfer did not create destination file. Target: {}", target);
+        destinationFile.clear();
+    }
+
+    const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, destinationFile);
     ConnectionManager::SendEvent(event);
 }
 
