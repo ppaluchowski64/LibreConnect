@@ -44,9 +44,10 @@ private:
     static std::atomic<ConnectionState> s_connectionState;
 
     std::mutex m_connectionMutex;
+    mutable std::mutex m_channelsMutex;
     std::vector<std::shared_ptr<TransferChannel>> m_channels;
     size_t m_count{};
-    std::atomic<size_t> m_channelConnectionIncrement{};
+    std::atomic<bool> m_waitingForConnections{false};
     mutable std::mutex m_incomingPostReservationMutex;
     mutable std::unordered_set<size_t> m_reservedIncomingPostChannels;
 };

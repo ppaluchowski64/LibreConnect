@@ -109,7 +109,7 @@ private:
     void updateSelectedMessages();
     QVariantList buildMessagesVariant(const QString& key) const;
     void applyCachedMmsContent(QVector<MessageState>& messages) const;
-    void requestMmsContentFetches(const QVector<MessageState>& messages);
+    void requestMmsContentFetches(QVector<MessageState>& messages);
     void queueMmsContentFetch(const QString& target);
     void startNextMmsContentFetch();
     ContactState* findContact(const QString& key);

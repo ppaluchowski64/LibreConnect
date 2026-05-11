@@ -5,7 +5,7 @@
 #include <ConnectionManager.h>
 
 namespace {
-constexpr size_t BORROW_WAIT_POLL_MS = 100;
+constexpr size_t BORROW_WAIT_POLL_MS = 10;
 constexpr size_t CHANNEL_CONNECT_POLL_MS = 10;
 constexpr auto CHANNELS_CONNECT_TIMEOUT = std::chrono::seconds(15);
 }
@@ -42,7 +42,9 @@ void TransferChannelPool::Initialize(const size_t count) {
             return;
         }
 
-        const size_t index = s_instance->m_channelConnectionIncrement.fetch_add(1);
+        const uint32_t index = package->GetValue<uint32_t>();
+        const uint16_t port = package->GetValue<uint16_t>();
+        Debug::Log("TransferChannelPool: Received port {} for channel {}", port, index);
 
         if (index >= s_instance->m_count) {
             Debug::LogWarning(
@@ -53,9 +55,6 @@ void TransferChannelPool::Initialize(const size_t count) {
             return;
         }
 
-        const uint16_t port = package->GetValue<uint16_t>();
-        Debug::Log("TransferChannelPool: Received port {} for channel {}", port, index);
-
         const auto opt = Get(index);
         if (!opt.has_value() || !opt.value()) {
             Debug::LogError("TransferChannelPool: Channel {} unavailable for connect", index);
@@ -64,12 +63,16 @@ void TransferChannelPool::Initialize(const size_t count) {
 
         const auto& channel = opt.value();
 
-        asio::co_spawn(ThreadPool::GetContext(), channel->Connect(TCPEndpoint(ConnectionManager::GetPeerAddress(), port)), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), [channel, port]() -> asio::awaitable<void> {
+            co_await channel->Connect(TCPEndpoint(ConnectionManager::GetPeerAddress(), port));
+        }, asio::detached);
 
 #ifdef MOBILE_DEVICE
-        if (index + 1 == s_instance->m_count) {
-            Debug::Log("TransferChannelPool: Received final port info, waiting for all channels to connect");
-            asio::co_spawn(ThreadPool::GetContext(), WaitForAllChannelsConnected(), asio::detached);
+        if (!s_instance->m_waitingForConnections.exchange(true)) {
+            Debug::Log("TransferChannelPool: Starting wait for all channels to connect");
+            asio::co_spawn(ThreadPool::GetContext(), []() -> asio::awaitable<void> {
+                co_await WaitForAllChannelsConnected();
+            }, asio::detached);
         }
 #endif
     });
@@ -100,7 +103,6 @@ asio::awaitable<void> TransferChannelPool::Connect() {
 
     Debug::Log("TransferChannelPool: Starting outbound connect flow");
     s_connectionState.store(ConnectionState::CONNECTING);
-    s_instance->m_channelConnectionIncrement.store(0);
     ConnectionManager::Send(PC_PackageType::TRANSFER_CHANNEL_POOL_CONNECT);
 #endif
 }
@@ -129,16 +131,20 @@ asio::awaitable<void> TransferChannelPool::Seek() {
     IOContext& context = ThreadPool::GetContext();
     Debug::Log("TransferChannelPool: Starting inbound seek flow for {} channels", count);
 
-    std::vector<std::pair<std::unique_ptr<AwaitableFlag>, uint16_t>> ports;
-    ports.reserve(count);
+    struct PortInfo {
+        std::unique_ptr<AwaitableFlag> flag;
+        uint16_t port{0};
+    };
+    auto ports = std::make_shared<std::vector<PortInfo>>();
+    ports->reserve(count);
 
     for (size_t i = 0; i < count; ++i) {
-        ports.emplace_back(
-            std::make_unique<AwaitableFlag>(context.get_executor()), 0
-        );
+        ports->push_back({std::make_unique<AwaitableFlag>(context.get_executor()), 0});
+    }
 
-        const auto channel = Get(i);
-        if (!channel.has_value() || !channel.value()) {
+    for (size_t i = 0; i < count; ++i) {
+        const auto channelOpt = Get(i);
+        if (!channelOpt.has_value() || !channelOpt.value()) {
             Debug::LogError("TransferChannelPool: Missing channel {} while starting seek flow", i);
             s_connectionState.store(ConnectionState::DISCONNECTED);
             co_return;
@@ -146,22 +152,23 @@ asio::awaitable<void> TransferChannelPool::Seek() {
 
         asio::co_spawn(
             context,
-            channel.value()->Seek(*ports[i].first, ports[i].second),
+            [channel = channelOpt.value(), ports, i]() -> asio::awaitable<void> {
+                co_await channel->Seek(*(*ports)[i].flag, (*ports)[i].port);
+            },
             asio::detached
         );
     }
 
-    asio::steady_timer timer(context);
     for (size_t i = 0; i < count; ++i) {
-        co_await ports[i].first->Wait();
+        co_await (*ports)[i].flag->Wait();
         if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
             Debug::LogWarning("TransferChannelPool: Seek aborted because primary connection dropped before port publish");
             s_connectionState.store(ConnectionState::DISCONNECTED);
             co_return;
         }
 
-        Debug::Log("TransferChannelPool: Publishing port {} for channel {}", ports[i].second, i);
-        ConnectionManager::Send(PC_PackageType::TRANSFER_CHANNEL_POOL_PORT_INFO, ports[i].second);
+        Debug::Log("TransferChannelPool: Publishing port {} for channel {}", (*ports)[i].port, i);
+        ConnectionManager::Send(PC_PackageType::TRANSFER_CHANNEL_POOL_PORT_INFO, static_cast<uint32_t>(i), (*ports)[i].port);
     }
 
     co_await WaitForAllChannelsConnected();
@@ -175,7 +182,7 @@ void TransferChannelPool::Reset() {
 
     Debug::Log("TransferChannelPool: Resetting {} channels", s_instance->m_count);
     s_connectionState.store(ConnectionState::DISCONNECTED);
-    s_instance->m_channelConnectionIncrement.store(0);
+    s_instance->m_waitingForConnections.store(false);
     s_instance->Clear();
     s_instance->InitializeChannels();
 }
@@ -183,7 +190,19 @@ void TransferChannelPool::Reset() {
 void TransferChannelPool::Clear() {
     Debug::Log("TransferChannelPool: Clearing pool state");
     ClearReservations();
-    m_channels.clear();
+
+    std::vector<std::shared_ptr<TransferChannel>> channelsToDisconnect;
+    {
+        std::lock_guard<std::mutex> lock(m_channelsMutex);
+        channelsToDisconnect = std::move(m_channels);
+        m_channels.clear();
+    }
+
+    for (const auto& channel : channelsToDisconnect) {
+        asio::co_spawn(ThreadPool::GetContext(), [channel]() -> asio::awaitable<void> {
+            co_await channel->Disconnect();
+        }, asio::detached);
+    }
 }
 
 void TransferChannelPool::ClearReservations() const {
@@ -195,6 +214,7 @@ void TransferChannelPool::ClearReservations() const {
 }
 
 void TransferChannelPool::InitializeChannels() {
+    std::lock_guard<std::mutex> lock(m_channelsMutex);
     m_channels.reserve(m_count);
     for (size_t i = 0; i < m_count; ++i) {
         m_channels.emplace_back(std::make_shared<TransferChannel>());
@@ -207,6 +227,7 @@ std::optional<std::shared_ptr<TransferChannel>> TransferChannelPool::Get(const s
         return std::nullopt;
     }
 
+    std::lock_guard<std::mutex> lock(s_instance->m_channelsMutex);
     const auto& channels = s_instance->m_channels;
     if (index >= channels.size()) {
         Debug::LogError(
@@ -232,15 +253,24 @@ asio::awaitable<BorrowedTransferChannel> TransferChannelPool::BorrowTransferChan
     const auto executor = co_await asio::this_coro::executor;
     asio::steady_timer timer(executor);
 
-    const auto& channels = s_instance->m_channels;
-
     while (true) {
-        for (size_t i = 0; i < channels.size(); ++i) {
+        size_t count = 0;
+        {
+            std::lock_guard<std::mutex> lock(s_instance->m_channelsMutex);
+            count = s_instance->m_channels.size();
+        }
+
+        for (size_t i = 0; i < count; ++i) {
             if (s_instance->IsReserved(i)) {
                 continue;
             }
 
-            const std::shared_ptr<TransferChannel> channel = channels[i];
+            const auto opt = Get(i);
+            if (!opt.has_value()) {
+                continue;
+            }
+            const std::shared_ptr<TransferChannel> channel = opt.value();
+
             if (channel->GetConnectionState() != ConnectionState::CONNECTED || channel->IsUsed(false)) {
                 continue;
             }
@@ -280,6 +310,7 @@ asio::awaitable<bool> TransferChannelPool::WaitForAllChannelsConnected() {
         if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
             Debug::LogWarning("TransferChannelPool: Channel wait aborted because primary connection is no longer connected");
             s_connectionState.store(ConnectionState::DISCONNECTED);
+            s_instance->m_waitingForConnections.store(false);
             co_return false;
         }
 
@@ -289,6 +320,7 @@ asio::awaitable<bool> TransferChannelPool::WaitForAllChannelsConnected() {
             if (!channel.has_value() || !channel.value()) {
                 Debug::LogError("TransferChannelPool: Channel {} unavailable while waiting for connections", i);
                 s_connectionState.store(ConnectionState::DISCONNECTED);
+                s_instance->m_waitingForConnections.store(false);
                 co_return false;
             }
 
@@ -300,6 +332,7 @@ asio::awaitable<bool> TransferChannelPool::WaitForAllChannelsConnected() {
 
         if (allConnected) {
             s_connectionState.store(ConnectionState::CONNECTED);
+            s_instance->m_waitingForConnections.store(false);
             Debug::Log("TransferChannelPool: All {} channels connected", s_instance->m_count);
             co_return true;
         }
@@ -307,6 +340,7 @@ asio::awaitable<bool> TransferChannelPool::WaitForAllChannelsConnected() {
         if (std::chrono::steady_clock::now() >= deadline) {
             Debug::LogError("TransferChannelPool: Timed out waiting for all transfer channels to connect");
             s_connectionState.store(ConnectionState::DISCONNECTED);
+            s_instance->m_waitingForConnections.store(false);
             co_return false;
         }
 

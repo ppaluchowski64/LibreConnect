@@ -89,7 +89,7 @@ asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(context, Disconnect(), asio::detached);
+        asio::co_spawn(context, [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
     }
 }
 
@@ -104,18 +104,18 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
         co_await CleanupConnection();
         m_socket = std::make_unique<SSLSocket>(context, *m_sslContext);
 
-        TCPAcceptor acceptor(context);
+        m_acceptor = std::make_unique<TCPAcceptor>(context);
         asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), 0);
 
-        acceptor.open(endpoint.protocol());
-        acceptor.set_option(asio::socket_base::reuse_address(true));
-        acceptor.bind(endpoint);
-        acceptor.listen();
+        m_acceptor->open(endpoint.protocol());
+        m_acceptor->set_option(asio::socket_base::reuse_address(true));
+        m_acceptor->bind(endpoint);
+        m_acceptor->listen();
 
-        port = acceptor.local_endpoint().port();
+        port = m_acceptor->local_endpoint().port();
         flag.Signal();
 
-        co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
+        co_await m_acceptor->async_accept(m_socket->lowest_layer(), asio::use_awaitable);
         co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
         Debug::Log("Accepted TLS connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
@@ -123,7 +123,7 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(context, Disconnect(), asio::detached);
+        asio::co_spawn(context, [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
     }
 }
 
@@ -194,7 +194,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
     }
 
     m_receive.store(false);
@@ -253,7 +253,7 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
 
     } catch (const std::exception& e) {
         Debug::LogError("Directory transfer failed");
-        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
     }
 
     m_send.store(false);
@@ -519,7 +519,7 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
         co_return false;
     }
 
@@ -535,7 +535,7 @@ asio::awaitable<bool> TransferChannel::SendBuffer(const size_t size) {
         m_progress.fetch_add(size);
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
         co_return false;
     }
 
@@ -569,7 +569,7 @@ asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
 
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
-        asio::co_spawn(ThreadPool::GetContext(), Disconnect(), asio::detached);
+        asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
         co_return false;
     }
 
@@ -592,6 +592,7 @@ asio::awaitable<void> TransferChannel::CleanupConnection() {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
     co_await CleanupSSLSocket(m_socket.get());
     m_socket.reset();
+    m_acceptor.reset();
 }
 
 void TransferChannel::FileHeader::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {

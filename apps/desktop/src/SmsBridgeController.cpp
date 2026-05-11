@@ -565,10 +565,11 @@ bool SmsBridgeController::event(QEvent* event)
     return QObject::event(event);
 }
 
-void SmsBridgeController::requestMmsContentFetches(const QVector<MessageState>& messages)
+void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messages)
 {
-    for (const MessageState& message : messages) {
-        for (const MessageState::AttachmentState& attachment : message.attachments) {
+    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
+    for (MessageState& message : messages) {
+        for (MessageState::AttachmentState& attachment : message.attachments) {
             if (attachment.target.isEmpty() ||
                 !attachment.loading ||
                 !attachment.fileUrl.isEmpty() ||
@@ -576,7 +577,29 @@ void SmsBridgeController::requestMmsContentFetches(const QVector<MessageState>& 
                 continue;
             }
 
-            queueMmsContentFetch(attachment.target);
+            const std::optional<std::filesystem::path> pathOpt = module->GetMMSContentPath(attachment.target.toStdString());
+            if (pathOpt.has_value()) {
+                const QString fileUrl = pathToLocalFileUrl(pathOpt.value());
+                const QString filePath = QUrl(fileUrl).toLocalFile();
+
+                MessageState::AttachmentState cachedAttachment;
+                cachedAttachment.target = attachment.target;
+                cachedAttachment.loading = false;
+                cachedAttachment.failed = false;
+                cachedAttachment.filePath = filePath;
+                cachedAttachment.fileUrl = fileUrl;
+                cachedAttachment.previewable = isPreviewableImagePath(filePath);
+                m_mmsAttachmentCache.insert(attachment.target, cachedAttachment);
+
+                // Update the current attachment as well
+                attachment.filePath = filePath;
+                attachment.fileUrl = fileUrl;
+                attachment.previewable = cachedAttachment.previewable;
+                attachment.loading = false;
+                attachment.failed = false;
+            } else {
+                queueMmsContentFetch(attachment.target);
+            }
         }
     }
 }

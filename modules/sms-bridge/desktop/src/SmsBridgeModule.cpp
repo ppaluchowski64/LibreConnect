@@ -40,8 +40,7 @@ namespace {
             return {};
         }
 
-        const std::filesystem::path sessionPath = categoryPath /
-            std::filesystem::path(boost::uuids::to_string(boost::uuids::random_generator()()));
+        const std::filesystem::path sessionPath = categoryPath / boost::uuids::to_string(ConnectionManager::GetPeerUUID());
         std::error_code ec;
         std::filesystem::create_directories(sessionPath, ec);
         if (ec) {
@@ -74,13 +73,49 @@ void SmsBridgeModule::FetchMMSContent(const std::string& target) const {
     asio::co_spawn(m_context, FetchMMSContentAwaitable(target), asio::detached);
 }
 
+std::optional<std::filesystem::path> SmsBridgeModule::GetMMSContentPath(const std::string& target) const {
+    const std::filesystem::path sessionDirectory = CreateFileShareTempSessionDirectory(MMS_CONTENT_TEMP_CATEGORY);
+    if (sessionDirectory.empty()) {
+        return std::nullopt;
+    }
+
+    const std::string targetHash = std::to_string(std::hash<std::string>{}(target));
+    const std::filesystem::path hashedDir = sessionDirectory / targetHash;
+
+    if (std::filesystem::exists(hashedDir)) {
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(hashedDir, ec)) {
+            if (!ec && entry.is_regular_file()) {
+                return entry.path();
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
 asio::awaitable<void> SmsBridgeModule::FetchMMSContentAwaitable(std::string target) const {
-    const std::filesystem::path destinationDirectory = CreateFileShareTempSessionDirectory(MMS_CONTENT_TEMP_CATEGORY);
-    if (destinationDirectory.empty()) {
+    const std::filesystem::path sessionDirectory = CreateFileShareTempSessionDirectory(MMS_CONTENT_TEMP_CATEGORY);
+    if (sessionDirectory.empty()) {
         Debug::LogError("SmsBridgeModule: FetchMMSContentAwaitable failed to create destination directory. Target: {}", target);
         const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, std::filesystem::path{});
         ConnectionManager::SendEvent(event);
         co_return;
+    }
+
+    const std::string targetHash = std::to_string(std::hash<std::string>{}(target));
+    const std::filesystem::path hashedDir = sessionDirectory / targetHash;
+
+    if (std::filesystem::exists(hashedDir)) {
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(hashedDir, ec)) {
+            if (!ec && entry.is_regular_file()) {
+                Debug::Log("SmsBridgeModule: Found cached MMS attachment: {}", entry.path().string());
+                const std::unique_ptr<QEvent> event = std::make_unique<MMSContentReceivedEvent>(target, entry.path());
+                ConnectionManager::SendEvent(event);
+                co_return;
+            }
+        }
     }
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST, target);
@@ -107,7 +142,9 @@ asio::awaitable<void> SmsBridgeModule::FetchMMSContentAwaitable(std::string targ
 
     if (opt.has_value()) {
         const auto& channel = opt.value();
-        destinationFile = destinationDirectory / std::filesystem::path(fileName).filename();
+        std::error_code ec;
+        std::filesystem::create_directories(hashedDir, ec);
+        destinationFile = hashedDir / std::filesystem::path(fileName).filename();
         co_await channel->ReceiveFile(destinationFile);
     } else {
         Debug::LogError("FileShareModule: Transfer channel {} doesn't exists", index);
