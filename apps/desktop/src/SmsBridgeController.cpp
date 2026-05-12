@@ -568,7 +568,8 @@ bool SmsBridgeController::event(QEvent* event)
 void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messages)
 {
     auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
-    for (MessageState& message : messages) {
+    for (auto messageIt = messages.rbegin(); messageIt != messages.rend(); ++messageIt) {
+        MessageState& message = *messageIt;
         for (MessageState::AttachmentState& attachment : message.attachments) {
             if (attachment.target.isEmpty() ||
                 !attachment.loading ||

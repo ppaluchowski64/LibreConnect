@@ -11,6 +11,8 @@ Page {
     property bool restoringContactsScroll: false
     property real preservedContactsContentY: 0
     property bool stickMessagesToBottom: true
+    property bool pendingConversationScrollToBottom: false
+    property int pendingMessagesBottomSettlePasses: 0
 
     function sendCurrentMessage() {
         const message = composerField.text.trim()
@@ -58,6 +60,12 @@ Page {
         Qt.callLater(root.scrollMessagesToBottom)
     }
 
+    function settleMessagesAtBottom(passCount) {
+        pendingMessagesBottomSettlePasses = passCount
+        root.scrollMessagesToBottom()
+        messagesBottomSettleTimer.restart()
+    }
+
     background: Rectangle {
         color: Theme.panelColor
     }
@@ -66,10 +74,18 @@ Page {
         target: smsBridgeController
 
         function onMessagesChanged() {
-            root.stickMessagesToBottom = true
-            root.scrollMessagesToBottomLater()
+            if (root.pendingConversationScrollToBottom && messagesList.count > 0) {
+                root.settleMessagesAtBottom(8)
+                root.pendingConversationScrollToBottom = false
+            }
             root.restoreContactsScroll()
             Qt.callLater(root.restoreContactsScroll)
+        }
+
+        function onSelectedConversationChanged() {
+            root.stickMessagesToBottom = true
+            root.pendingConversationScrollToBottom = true
+            root.settleMessagesAtBottom(8)
         }
 
         function onContactsChanged() {
@@ -83,6 +99,21 @@ Page {
         interval: 4000
         repeat: false
         onTriggered: root.restoringContactsScroll = false
+    }
+
+    Timer {
+        id: messagesBottomSettleTimer
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (root.pendingMessagesBottomSettlePasses <= 0) {
+                stop()
+                return
+            }
+
+            root.pendingMessagesBottomSettlePasses -= 1
+            root.scrollMessagesToBottom()
+        }
     }
 
     RowLayout {
@@ -269,11 +300,6 @@ Page {
                                 root.stickMessagesToBottom = root.messagesAtBottom()
                             }
                         }
-                        onContentHeightChanged: {
-                            if (root.stickMessagesToBottom) {
-                                root.scrollMessagesToBottomLater()
-                            }
-                        }
 
                         delegate: Item {
                             required property var modelData
@@ -412,8 +438,10 @@ Page {
 
                         onCountChanged: {
                             if (count > 0) {
-                                root.stickMessagesToBottom = true
-                                root.scrollMessagesToBottomLater()
+                                if (root.pendingConversationScrollToBottom || root.stickMessagesToBottom) {
+                                    root.settleMessagesAtBottom(8)
+                                }
+                                root.pendingConversationScrollToBottom = false
                             }
                         }
                     }
