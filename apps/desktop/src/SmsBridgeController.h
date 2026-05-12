@@ -110,6 +110,7 @@ private:
     QVariantList buildMessagesVariant(const QString& key) const;
     void applyCachedMmsContent(QVector<MessageState>& messages) const;
     void requestMmsContentFetches(QVector<MessageState>& messages);
+    bool useCachedMmsContent(const QString& target);
     void queueMmsContentFetch(const QString& target);
     void startNextMmsContentFetch();
     ContactState* findContact(const QString& key);

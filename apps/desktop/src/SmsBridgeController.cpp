@@ -567,7 +567,6 @@ bool SmsBridgeController::event(QEvent* event)
 
 void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messages)
 {
-    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
     for (auto messageIt = messages.rbegin(); messageIt != messages.rend(); ++messageIt) {
         MessageState& message = *messageIt;
         for (MessageState::AttachmentState& attachment : message.attachments) {
@@ -578,26 +577,13 @@ void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messag
                 continue;
             }
 
-            const std::optional<std::filesystem::path> pathOpt = module->GetMMSContentPath(attachment.target.toStdString());
-            if (pathOpt.has_value()) {
-                const QString fileUrl = pathToLocalFileUrl(pathOpt.value());
-                const QString filePath = QUrl(fileUrl).toLocalFile();
-
-                MessageState::AttachmentState cachedAttachment;
-                cachedAttachment.target = attachment.target;
-                cachedAttachment.loading = false;
-                cachedAttachment.failed = false;
-                cachedAttachment.filePath = filePath;
-                cachedAttachment.fileUrl = fileUrl;
-                cachedAttachment.previewable = isPreviewableImagePath(filePath);
-                m_mmsAttachmentCache.insert(attachment.target, cachedAttachment);
-
-                // Update the current attachment as well
-                attachment.filePath = filePath;
-                attachment.fileUrl = fileUrl;
+            if (useCachedMmsContent(attachment.target)) {
+                const MessageState::AttachmentState& cachedAttachment = m_mmsAttachmentCache[attachment.target];
+                attachment.filePath = cachedAttachment.filePath;
+                attachment.fileUrl = cachedAttachment.fileUrl;
                 attachment.previewable = cachedAttachment.previewable;
-                attachment.loading = false;
-                attachment.failed = false;
+                attachment.loading = cachedAttachment.loading;
+                attachment.failed = cachedAttachment.failed;
             } else {
                 queueMmsContentFetch(attachment.target);
             }
@@ -605,9 +591,68 @@ void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messag
     }
 }
 
+bool SmsBridgeController::useCachedMmsContent(const QString& target)
+{
+    if (target.isEmpty()) {
+        return false;
+    }
+
+    if (m_mmsAttachmentCache.contains(target)) {
+        return true;
+    }
+
+    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
+    const std::optional<std::filesystem::path> pathOpt = module->GetMMSContentPath(target.toStdString());
+    if (!pathOpt.has_value()) {
+        return false;
+    }
+
+    const QString fileUrl = pathToLocalFileUrl(pathOpt.value());
+    if (fileUrl.isEmpty()) {
+        return false;
+    }
+
+    const QString filePath = QUrl(fileUrl).toLocalFile();
+    MessageState::AttachmentState cachedAttachment;
+    cachedAttachment.target = target;
+    cachedAttachment.loading = false;
+    cachedAttachment.failed = false;
+    cachedAttachment.filePath = filePath;
+    cachedAttachment.fileUrl = fileUrl;
+    cachedAttachment.previewable = isPreviewableImagePath(filePath);
+    m_mmsAttachmentCache.insert(target, cachedAttachment);
+    return true;
+}
+
 void SmsBridgeController::queueMmsContentFetch(const QString& target)
 {
     if (target.isEmpty() || m_requestedMmsContentTargets.contains(target)) {
+        return;
+    }
+
+    if (useCachedMmsContent(target)) {
+        bool changed = false;
+        for (auto conversationIt = m_messagesByContact.begin(); conversationIt != m_messagesByContact.end(); ++conversationIt) {
+            for (MessageState& message : conversationIt.value()) {
+                for (MessageState::AttachmentState& attachment : message.attachments) {
+                    if (attachment.target != target) {
+                        continue;
+                    }
+
+                    const MessageState::AttachmentState& cachedAttachment = m_mmsAttachmentCache[target];
+                    attachment.filePath = cachedAttachment.filePath;
+                    attachment.fileUrl = cachedAttachment.fileUrl;
+                    attachment.previewable = cachedAttachment.previewable;
+                    attachment.loading = cachedAttachment.loading;
+                    attachment.failed = cachedAttachment.failed;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            updateSelectedMessages();
+        }
         return;
     }
 
