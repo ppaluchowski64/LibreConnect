@@ -61,7 +61,6 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE AND NOT ANDROID))
             network-component-pc
             system-component-pc
             concurrentqueue::concurrentqueue
-            nlohmann_json::nlohmann_json
     )
 
     if (UNIX AND NOT APPLE)

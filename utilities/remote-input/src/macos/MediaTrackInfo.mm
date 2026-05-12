@@ -3,20 +3,20 @@
 
 #import <Foundation/Foundation.h>
 
-#include <nlohmann/json.hpp>
-
 #include <optional>
 #include <string>
 #include <vector>
-#include <thread>
 #include <mutex>
-#include <atomic>
-#include <sstream>
 #include <chrono>
 
-using json = nlohmann::json;
-
 namespace {
+    struct ExtractedData {
+        TrackMetadata info;
+        long long timestampEpochMicros = 0;
+        long long elapsedTimeMicros = 0;
+        double playbackRate = 0.0;
+    };
+
     NSString* GetHelperPath(NSString* name, NSString* extension) {
         NSString* path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
 
@@ -50,47 +50,40 @@ namespace {
         return nil;
     }
 
-    struct ExtractedData {
-        TrackMetadata info;
-        long long timestampEpochMicros = 0;
-        long long elapsedTimeMicros = 0;
-        double playbackRate = 0.0;
-    };
-
-    std::optional<ExtractedData> ParseMetadata(const json& j) {
-        if (j.is_null())
+    std::optional<ExtractedData> ParseMetadata(NSDictionary* j) {
+        if (![j isKindOfClass:[NSDictionary class]])
             return std::nullopt;
 
         ExtractedData data{};
 
-        if (j.contains("title") && !j["title"].is_null())
-            data.info.title = j["title"];
+        if (j[@"title"] && j[@"title"] != [NSNull null])
+            data.info.title = [j[@"title"] UTF8String];
 
-        if (j.contains("artist") && !j["artist"].is_null())
-            data.info.artist = j["artist"];
+        if (j[@"artist"] && j[@"artist"] != [NSNull null])
+            data.info.artist = [j[@"artist"] UTF8String];
 
-        if (j.contains("album") && !j["album"].is_null())
-            data.info.album = j["album"];
+        if (j[@"album"] && j[@"album"] != [NSNull null])
+            data.info.album = [j[@"album"] UTF8String];
 
-        if (j.contains("durationMicros") && !j["durationMicros"].is_null())
-            data.info.duration = static_cast<double>(j["durationMicros"].get<long long>()) / 1e6;
+        if (j[@"durationMicros"] && j[@"durationMicros"] != [NSNull null])
+            data.info.duration = [j[@"durationMicros"] doubleValue] / 1e6;
 
-        if (j.contains("elapsedTimeMicros") && !j["elapsedTimeMicros"].is_null()) {
-            data.elapsedTimeMicros = j["elapsedTimeMicros"].get<long long>();
+        if (j[@"elapsedTimeMicros"] && j[@"elapsedTimeMicros"] != [NSNull null]) {
+            data.elapsedTimeMicros = [j[@"elapsedTimeMicros"] longLongValue];
             data.info.position = static_cast<double>(data.elapsedTimeMicros) / 1e6;
         }
 
-        if (j.contains("playing") && !j["playing"].is_null())
-            data.info.playing = j["playing"];
+        if (j[@"playing"] && j[@"playing"] != [NSNull null])
+            data.info.playing = [j[@"playing"] boolValue];
 
-        if (j.contains("timestampEpochMicros") && !j["timestampEpochMicros"].is_null())
-            data.timestampEpochMicros = j["timestampEpochMicros"].get<long long>();
+        if (j[@"timestampEpochMicros"] && j[@"timestampEpochMicros"] != [NSNull null])
+            data.timestampEpochMicros = [j[@"timestampEpochMicros"] longLongValue];
 
-        if (j.contains("playbackRate") && !j["playbackRate"].is_null())
-            data.playbackRate = j["playbackRate"].get<double>();
+        if (j[@"playbackRate"] && j[@"playbackRate"] != [NSNull null])
+            data.playbackRate = [j[@"playbackRate"] doubleValue];
 
-        if (j.contains("artworkData") && !j["artworkData"].is_null()) {
-            NSData* art = [[NSData alloc] initWithBase64EncodedString:@(std::string(j["artworkData"]).c_str()) options:0];
+        if (j[@"artworkData"] && j[@"artworkData"] != [NSNull null]) {
+            NSData* art = [[NSData alloc] initWithBase64EncodedString:j[@"artworkData"] options:0];
 
             if (art) {
                 auto bytes = static_cast<const uint8_t*>([art bytes]);
@@ -136,7 +129,7 @@ namespace {
             MediaWorker() = default;
 
             void StartIfNeeded() {
-                if (m_running)
+                if (m_task && [m_task isRunning])
                     return;
 
                 NSString* script = GetHelperPath(@"mediaremote-adapter", @"pl");
@@ -149,62 +142,56 @@ namespace {
                 [m_task setLaunchPath:@"/usr/bin/perl"];
                 [m_task setArguments:@[script, framework, @"stream", @"--no-diff", @"--debounce=100", @"--micros"]];
 
-                m_pipe = [NSPipe pipe];
-                [m_task setStandardOutput:m_pipe];
+                NSPipe* pipe = [NSPipe pipe];
+                [m_task setStandardOutput:pipe];
                 [m_task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
 
-                if (![m_task launchAndReturnError:nil])
-                    return;
+                __block NSMutableData* lineBuffer = [[NSMutableData alloc] init];
 
-                m_running = true;
+                [[pipe fileHandleForReading] setReadabilityHandler:^(NSFileHandle* handle) {
+                    NSData* data = [handle availableData];
 
-                std::thread([this] {
-                    ProcessStream();
-                }).detach();
-            }
+                    if (data.length == 0) {
+                        [handle setReadabilityHandler:nil];
+                        return;
+                    }
 
-            void ProcessStream() {
-                NSFileHandle* handle = [m_pipe fileHandleForReading];
-                std::string buffer;
+                    [lineBuffer appendData:data];
 
-                while (m_running) {
-                    @autoreleasepool {
-                        NSData* data = [handle availableData];
+                    const char* bytes = (const char*)lineBuffer.bytes;
+                    NSUInteger len = lineBuffer.length;
+                    NSUInteger start = 0;
 
-                        if (!data || [data length] == 0) {
-                            m_running = false;
-                            break;
-                        }
+                    for (NSUInteger i = 0; i < len; i++) {
+                        if (bytes[i] == '\n') {
+                            NSUInteger lineLen = i - start;
 
-                        buffer.append(static_cast<const char*>([data bytes]), [data length]);
+                            if (lineLen > 0) {
+                                NSData* lineData = [lineBuffer subdataWithRange:NSMakeRange(start, lineLen)];
+                                NSDictionary* dict = [NSJSONSerialization JSONObjectWithData:lineData options:0 error:nil];
 
-                        size_t pos;
+                                if (dict && dict[@"payload"]) {
+                                    auto newState = ParseMetadata(dict[@"payload"]);
+                                    std::unique_lock lock(this->m_mutex);
+                                    this->m_state = newState;
+                                }
+                            }
 
-                        while ((pos = buffer.find('\n')) != std::string::npos) {
-                            std::string line = buffer.substr(0, pos);
-                            buffer.erase(0, pos + 1);
-
-                            if (line.empty())
-                                continue;
-
-                            try {
-                                auto j = json::parse(line);
-                                auto newState = ParseMetadata(j["payload"]);
-
-                                std::unique_lock lock(m_mutex);
-                                m_state = newState;
-
-                            } catch (...) {}
+                            start = i + 1;
                         }
                     }
-                }
+
+                    if (start > 0) {
+                        [lineBuffer replaceBytesInRange:NSMakeRange(0, start) withBytes:NULL length:0];
+                    }
+                }];
+
+                [m_task launchAndReturnError:nil];
             }
 
             std::mutex m_mutex;
             std::optional<ExtractedData> m_state;
-            std::atomic<bool> m_running{false};
             NSTask* m_task = nil;
-            NSPipe* m_pipe = nil;
     };
 }
 
@@ -219,15 +206,17 @@ void MediaTrackInfo::SetPosition(double seconds) {
     if (!script || !framework)
         return;
 
-    auto micros = static_cast<long long>(seconds * 1e6);
-    NSArray* args = @[script, framework, @"seek", [NSString stringWithFormat:@"%lld", micros]];
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        auto micros = static_cast<long long>(seconds * 1e6);
+        NSArray* args = @[script, framework, @"seek", [NSString stringWithFormat:@"%lld", micros]];
 
-    NSTask* task = [[NSTask alloc] init];
-    [task setLaunchPath:@"/usr/bin/perl"];
-    [task setArguments:args];
-    [task setStandardOutput:[NSFileHandle fileHandleWithNullDevice]];
-    [task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
+        NSTask* task = [[NSTask alloc] init];
+        [task setLaunchPath:@"/usr/bin/perl"];
+        [task setArguments:args];
+        [task setStandardOutput:[NSFileHandle fileHandleWithNullDevice]];
+        [task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
 
-    if ([task launchAndReturnError:nil])
-        [task waitUntilExit];
+        if ([task launchAndReturnError:nil])
+            [task waitUntilExit];
+    });
 }
