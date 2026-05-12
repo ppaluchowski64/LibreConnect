@@ -4,6 +4,7 @@
 #include <QGuiApplication>
 #include <QDateTime>
 #include <QLocale>
+#include <QMetaObject>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -585,15 +586,113 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     setDragExportInProgress(true);
     setTransferProgress(0.0);
 
+#ifdef __APPLE__
+    setStatusMessage(uniquePaths.size() == 1
+        ? QStringLiteral("Preparing file for Finder drag...")
+        : QStringLiteral("Preparing %1 entries for Finder drag...").arg(uniquePaths.size()));
+#elif defined(_WIN32)
     setStatusMessage(uniquePaths.size() == 1
         ? QStringLiteral("Drag started. Drop into Explorer to begin export.")
         : QStringLiteral("Drag started. Drop into Explorer to begin export."));
+#else
+    setStatusMessage(uniquePaths.size() == 1
+        ? QStringLiteral("Drag started. Drop into the file manager to begin export.")
+        : QStringLiteral("Drag started. Drop into the file manager to begin export."));
+#endif
 
     QObject* dragSource = QGuiApplication::focusObject();
     if (!dragSource) {
         dragSource = this;
     }
 
+#ifdef __APPLE__
+    std::vector<PlatformVirtualFileDrag::PromisedFile> promisedFiles;
+    promisedFiles.reserve(entries.size());
+    for (const FileEntry& entry : entries) {
+        const std::string fileName = entry.GetName().value_or(std::string());
+        if (fileName.empty()) {
+            continue;
+        }
+
+        promisedFiles.push_back(PlatformVirtualFileDrag::PromisedFile{
+            fileName,
+            [entry]() mutable -> std::filesystem::path {
+                auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+                if (module->GetModuleState() != ModuleState::Enabled) {
+                    module->Enable(true);
+                    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+                    while (module->GetModuleState() != ModuleState::Enabled && std::chrono::steady_clock::now() < deadline) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                    }
+                }
+
+                if (module->GetModuleState() != ModuleState::Enabled) {
+                    return {};
+                }
+
+                std::vector<FileEntry> singleEntry;
+                singleEntry.push_back(entry);
+                std::vector<std::filesystem::path> resolvedPaths = module->PrepareEntriesForExternalDrag(std::move(singleEntry));
+                if (resolvedPaths.empty()) {
+                    return {};
+                }
+
+                return resolvedPaths.front();
+            }
+        });
+    }
+
+    if (promisedFiles.empty()) {
+        setBusy(false);
+        setDragExportInProgress(false);
+        m_pendingAction = PendingAction::None;
+        m_activeEntryName.clear();
+        m_activeEntryPath.clear();
+        setTransferProgress(0.0);
+        setStatusMessage(QStringLiteral("Unable to prepare files for external drag."));
+        return;
+    }
+
+    QPointer<FileManagerController> self(this);
+    const bool dragStarted = PlatformVirtualFileDrag::StartPromisedFiles(
+        dragSource,
+        std::move(promisedFiles),
+        [self](const bool success, std::vector<std::filesystem::path> preparedPaths) mutable {
+            if (!self) {
+                CleanupPreparedDragPathsAsync(std::move(preparedPaths), 0);
+                return;
+            }
+
+            QMetaObject::invokeMethod(self.data(), [self, success, preparedPaths = std::move(preparedPaths)]() mutable {
+                if (!self) {
+                    CleanupPreparedDragPathsAsync(std::move(preparedPaths), 0);
+                    return;
+                }
+
+                CleanupPreparedDragPathsAsync(preparedPaths, success ? 30000 : 0);
+                self->setBusy(false);
+                self->setDragExportInProgress(false);
+                self->m_pendingAction = PendingAction::None;
+                self->m_activeEntryName.clear();
+                self->m_activeEntryPath.clear();
+                self->setTransferProgress(success ? 1.0 : 0.0);
+                self->setStatusMessage(success
+                    ? QStringLiteral("Exported files to Finder.")
+                    : QStringLiteral("Drag cancelled."));
+            }, Qt::QueuedConnection);
+        });
+
+    if (!dragStarted) {
+        setBusy(false);
+        setDragExportInProgress(false);
+        m_pendingAction = PendingAction::None;
+        m_activeEntryName.clear();
+        m_activeEntryPath.clear();
+        setTransferProgress(0.0);
+        setStatusMessage(QStringLiteral("Unable to start Finder drag."));
+    }
+    return;
+#else
     auto exportedCount = std::make_shared<int>(0);
     auto preparedPaths = std::make_shared<std::vector<std::filesystem::path>>();
     const bool dropped = PlatformVirtualFileDrag::Start(dragSource, [entries = std::move(entries), exportedCount, preparedPaths]() mutable -> std::vector<std::filesystem::path> {
@@ -649,6 +748,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     setStatusMessage(*exportedCount == 1
         ? QStringLiteral("Exported 1 entry. Temporary files will be cleaned automatically.")
         : QStringLiteral("Exported %1 entries. Temporary files will be cleaned automatically.").arg(*exportedCount));
+#endif
 }
 
 void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)

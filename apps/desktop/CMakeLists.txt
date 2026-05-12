@@ -1,4 +1,11 @@
 if (APPLE AND NOT IOS)
+    file(GLOB_RECURSE MACOS_SOURCE_FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/*.m
+    )
+    set(EXTRA_SOURCES_appLibreConnect_desktop
+            ${MACOS_SOURCE_FILES}
+    )
     set(EXCLUDED_SOURCES_appLibreConnect_desktop
             ${CMAKE_CURRENT_SOURCE_DIR}/src/VirtualCameraController.cpp
     )
@@ -27,6 +34,9 @@ if (APPLE AND NOT IOS)
             MACOSX_BUNDLE_GUI_IDENTIFIER "com.libreconnect.desktop"
             MACOSX_BUNDLE_BUNDLE_VERSION "1.0"
             MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    )
+    target_link_libraries(appLibreConnect_desktop PRIVATE
+            "-framework AppKit"
     )
 endif()
 

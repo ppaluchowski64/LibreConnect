@@ -95,6 +95,11 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
             ${RootPath}/src/*.cc
     )
 
+    set(EXTRA_SOURCES_VAR "EXTRA_SOURCES_${ExecutableName}")
+    if (DEFINED ${EXTRA_SOURCES_VAR})
+        list(APPEND SOURCE_FILES ${${EXTRA_SOURCES_VAR}})
+    endif()
+
     file(GLOB_RECURSE HEADER_FILES
             ${RootPath}/inc/*.h
             ${RootPath}/inc/*.hpp
