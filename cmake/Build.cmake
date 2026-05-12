@@ -233,6 +233,13 @@ function(DeployQT Target)
         )
 
         add_custom_command(TARGET ${Target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${Target}>/Contents/Resources"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MAC_ICON}" "$<TARGET_BUNDLE_DIR:${Target}>/Contents/Resources/libreconnect_logo.icns"
+                COMMENT "Copying macOS app icon for ${Target}..."
+                VERBATIM
+        )
+
+        add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND "$ENV{QT_DIR_DESKTOP}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${Target}>" -qmldir=$ENV{QT_DIR_DESKTOP}/qml -dmg
                 COMMENT "Running macdeployqt on ${Target}..."
                 VERBATIM
