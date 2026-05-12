@@ -186,6 +186,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
+          submodules: recursive
 
       - name: Download Windows build artifact
         uses: actions/download-artifact@v4
@@ -274,6 +275,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
+          submodules: recursive
 
       - name: Download Ubuntu build artifact
         uses: actions/download-artifact@v4
@@ -333,6 +335,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
+          submodules: recursive
 
       - name: Download Ubuntu ARM build artifact
         uses: actions/download-artifact@v4
