@@ -113,7 +113,7 @@ Page {
                 Text {
                     Layout.fillWidth: true
                     text: smsBridgeController.connected
-                          ? (smsBridgeController.ready ? "Phone connected" : "Connecting SMS bridge...")
+                          ? (smsBridgeController.ready ? (smsBridgeController.busy ? "Syncing..." : "Synced") : "Connecting SMS bridge...")
                           : "Phone disconnected"
                     color: smsBridgeController.connected ? Theme.successColor : Theme.mutedTextColor
                     font.family: Theme.fontFamily
@@ -155,7 +155,11 @@ Page {
 
                                 Text {
                                     width: parent.width - unreadBadge.width - 8
-                                    text: modelData.name.length > 0 ? modelData.name : modelData.number
+                                    text: {
+                                        if (modelData.name.length === 0) return "Unknown contact"
+                                        if (Theme.streamerMode && modelData.name === modelData.number) return "Unknown contact"
+                                        return modelData.name
+                                    }
                                     color: modelData.selected ? Theme.selectedTextColor : Theme.textColor
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 14
@@ -212,9 +216,12 @@ Page {
 
                 Text {
                     Layout.fillWidth: true
-                    text: smsBridgeController.selectedContactName.length > 0
-                          ? smsBridgeController.selectedContactName
-                          : "Select a conversation"
+                    text: {
+                        if (smsBridgeController.selectedContactName.length === 0) return "Select a conversation"
+                        if (Theme.streamerMode && smsBridgeController.selectedContactName === smsBridgeController.selectedContactNumber)
+                            return "Unknown contact"
+                        return smsBridgeController.selectedContactName
+                    }
                     color: Theme.textColor
                     font.family: Theme.fontFamily
                     font.pixelSize: 22
@@ -225,7 +232,7 @@ Page {
                 Text {
                     Layout.fillWidth: true
                     text: smsBridgeController.selectedContactNumber
-                    visible: text.length > 0
+                    visible: text.length > 0 && !Theme.streamerMode
                     color: Theme.mutedTextColor
                     font.family: Theme.fontFamily
                     font.pixelSize: 13

@@ -113,7 +113,7 @@ Page {
                         spacing: 4
 
                         Text {
-                            text: deviceName
+                            text: Theme.streamerMode ? "Nearby Device" : deviceName
                             font.family: Theme.fontFamily
                             font.pixelSize: 18
                             font.bold: true

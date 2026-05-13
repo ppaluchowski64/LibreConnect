@@ -187,7 +187,7 @@ void SmsBridgeController::refreshConversations()
 
     ensureModuleEnabled();
     m_contactsRefreshInFlight = true;
-    setBusy(true);
+    updateBusyState();
     setStatusMessage(QStringLiteral("Fetching conversations from phone..."));
 
     auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
@@ -253,6 +253,7 @@ void SmsBridgeController::sendMessage(const QString& text)
 
     m_messagesByContact[m_selectedContactKey].prepend(message);
     m_pendingMessageConversationById.insert(messageIdString, m_selectedContactKey);
+    updateBusyState();
 
     contact->preview = buildPreview(trimmed);
     contact->lastTimestamp = message.timestamp;
@@ -288,7 +289,7 @@ bool SmsBridgeController::event(QEvent* event)
             m_messageFetchesInFlight.clear();
             m_contactsRefreshInFlight = false;
             setReady(false);
-            setBusy(false);
+            updateBusyState();
             setStatusMessage(QStringLiteral("Connect to a mobile device to load messages."));
         }
 
@@ -309,7 +310,7 @@ bool SmsBridgeController::event(QEvent* event)
         m_messageFetchesInFlight.clear();
         m_contactsRefreshInFlight = false;
         setReady(false);
-        setBusy(false);
+        updateBusyState();
         setStatusMessage(QStringLiteral("Phone disconnected."));
         return true;
     }
@@ -348,7 +349,7 @@ bool SmsBridgeController::event(QEvent* event)
         }
 
         m_contactsRefreshInFlight = false;
-        setBusy(false);
+        updateBusyState();
         setStatusMessage(QStringLiteral("Conversations loaded. Fetching selected thread..."));
         emit contactsChanged();
         updateSelectedMessages();
@@ -367,6 +368,7 @@ bool SmsBridgeController::event(QEvent* event)
         const int equivalentIndex = findEquivalentContactIndex(key);
         const QString conversationKey = equivalentIndex >= 0 ? m_contacts.at(equivalentIndex).key : key;
         m_messageFetchesInFlight.remove(conversationKey);
+        updateBusyState();
 
         // Message fetch payloads only carry the number; keep any existing contact name.
         ensureContactExists(conversationKey, QString(), number);
@@ -413,6 +415,7 @@ bool SmsBridgeController::event(QEvent* event)
         const auto* sendResultEvent = static_cast<SendSmsResultEvent*>(event);
         const QString id = QString::fromStdString(boost::uuids::to_string(sendResultEvent->GetMessageUUID()));
         const QString conversationKey = m_pendingMessageConversationById.take(id);
+        updateBusyState();
         if (conversationKey.isEmpty()) {
             return true;
         }
@@ -559,6 +562,7 @@ bool SmsBridgeController::event(QEvent* event)
             updateSelectedMessages();
         }
         startNextMmsContentFetch();
+        updateBusyState();
         return true;
     }
 
@@ -658,6 +662,7 @@ void SmsBridgeController::queueMmsContentFetch(const QString& target)
 
     m_requestedMmsContentTargets.insert(target);
     m_pendingMmsContentTargets.push_back(target);
+    updateBusyState();
     startNextMmsContentFetch();
 }
 
@@ -897,8 +902,14 @@ void SmsBridgeController::ensureModuleEnabled()
     }
 }
 
-void SmsBridgeController::setBusy(const bool busy)
+void SmsBridgeController::updateBusyState()
 {
+    const bool busy = m_contactsRefreshInFlight ||
+                      !m_messageFetchesInFlight.isEmpty() ||
+                      !m_pendingMessageConversationById.isEmpty() ||
+                      !m_pendingMmsContentTargets.isEmpty() ||
+                      !m_activeMmsContentTarget.isEmpty();
+
     if (m_busy == busy) {
         return;
     }
@@ -992,6 +1003,7 @@ void SmsBridgeController::requestSelectedConversationMessages(const bool forceRe
 
     m_messageFetchesInFlight.insert(m_selectedContactKey);
     selected->loading = true;
+    updateBusyState();
     emit contactsChanged();
 
     auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();

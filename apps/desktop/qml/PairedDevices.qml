@@ -259,7 +259,7 @@ Page {
                                 spacing: 4
 
                                 Text {
-                                    text: rowItem.modelData.deviceName
+                                    text: Theme.streamerMode ? "Paired Device" : rowItem.modelData.deviceName
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 18
                                     font.bold: true
@@ -267,7 +267,7 @@ Page {
                                 }
 
                                 Text {
-                                    text: rowItem.modelData.deviceType + "  |  " + rowItem.modelData.deviceId
+                                    text: rowItem.modelData.deviceType + (Theme.streamerMode ? "" : "  |  " + rowItem.modelData.deviceId)
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 12
                                     color: Theme.mutedTextColor

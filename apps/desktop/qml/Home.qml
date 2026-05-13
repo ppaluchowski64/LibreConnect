@@ -426,9 +426,11 @@ Page {
                             spacing: 3
 
                             Text {
-                                text: root.activeDeviceName && root.activeDeviceName.length > 0
-                                      ? root.activeDeviceName
-                                      : "Connected Device"
+                                text: Theme.streamerMode
+                                      ? "Connected Device"
+                                      : (root.activeDeviceName && root.activeDeviceName.length > 0
+                                         ? root.activeDeviceName
+                                         : "Connected Device")
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 18
                                 wrapMode: Text.WordWrap

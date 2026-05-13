@@ -28,6 +28,7 @@ Window {
     readonly property int fixedWindowWidth: 740
     readonly property int fixedWindowHeight: 420
     readonly property bool isMacOS: Qt.platform.os === "osx"
+    readonly property bool isLinux: Qt.platform.os === "linux"
     title: currentWindowTitleSuffix.length > 0
            ? baseWindowTitle + " - " + currentWindowTitleSuffix
            : baseWindowTitle
@@ -79,11 +80,15 @@ Window {
     }
 
     function applyFixedWindowSize() {
-        flags = standardWindowFlags
+        if (flags !== standardWindowFlags) {
+            flags = standardWindowFlags
+        }
+
         minimumWidth = fixedWindowWidth
         minimumHeight = fixedWindowHeight
         maximumWidth = fixedWindowWidth
         maximumHeight = fixedWindowHeight
+        
         homeMode = false
         width = fixedWindowWidth
         height = fixedWindowHeight
@@ -91,19 +96,28 @@ Window {
 
     function applyHomeWindowSize() {
         const enteringHomeMode = !homeMode
-        flags = standardWindowFlags & ~Qt.WindowMaximizeButtonHint
-        flags = standardWindowFlags
+
+        if (!isLinux && enteringHomeMode) {
+            flags = standardWindowFlags & ~Qt.WindowMaximizeButtonHint
+        }
+        
+        if (flags !== standardWindowFlags) {
+            flags = standardWindowFlags
+        }
+
         maximumWidth = 16777215
         maximumHeight = 16777215
         minimumWidth = 0
         minimumHeight = 0
-        minimumWidth = 860
-        minimumHeight = 560
+        
         homeMode = true
         if (enteringHomeMode) {
             width = 1280
             height = 720
         }
+
+        minimumWidth = 860
+        minimumHeight = 560
     }
 
     function showInitial() {

@@ -97,7 +97,7 @@ private:
 
     void refreshState();
     void ensureModuleEnabled();
-    void setBusy(bool busy);
+    void updateBusyState();
     void setReady(bool ready);
     void setStatusMessage(const QString& statusMessage);
     void ensureContactExists(const QString& key, const QString& displayName, const QString& dialNumber);
