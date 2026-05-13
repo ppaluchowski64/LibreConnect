@@ -102,12 +102,25 @@ IPAddress PrimaryConnection::GetPeerAddress() const {
     return endpoint.address();
 }
 
+uuid PrimaryConnection::GetPeerUUID() {
+    std::lock_guard<std::mutex> lock(m_peerDataMutex);
+    if (!m_peerData.has_value()) {
+        return {};
+    }
+
+    return m_peerData.value().deviceID;
+}
+
 bool PrimaryConnection::HasPendingPackages() const {
     return m_packageIn.size_approx() > 0;
 }
 
 void PrimaryConnection::MarkHeartbeatReceived() {
     m_heartbeatReceived.store(true);
+}
+
+ConnectionState PrimaryConnection::GetConnectionState() const {
+    return m_connectionState.load();
 }
 
 asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext_> sslContext, const InitialConnectionData data) {
@@ -140,9 +153,15 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
         m_connectionState.store(ConnectionState::CONNECTED);
         m_heartbeatReceived.store(false);
+
+        {
+            std::lock_guard<std::mutex> lock(m_peerDataMutex);
+            m_peerData.emplace(data.deviceInfo);
+        }
+
+
 #if defined(DESKTOP_DEVICE)
         m_signalSender.ConnectionSignal(data.deviceInfo.deviceID);
-        m_connectedUUID.emplace(data.deviceInfo.deviceID);
 #endif
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
@@ -217,7 +236,6 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         m_heartbeatReceived.store(false);
 #if defined(DESKTOP_DEVICE)
         m_signalSender.ConnectionSignal(data.deviceInfo.deviceID);
-        m_connectedUUID.emplace(data.deviceInfo.deviceID);
 #endif
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -226,6 +244,11 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
+
+        {
+            std::lock_guard<std::mutex> lock(m_peerDataMutex);
+            m_peerData.emplace(data.deviceInfo);
+        }
 
         if (data.initialConnectionMode != InitialConnectionMode::CONNECTION_WITHOUT_PAIR) {
             SavePairData(data);
@@ -264,9 +287,9 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     m_connectionState.store(ConnectionState::DISCONNECTED);
 
 #if defined(DESKTOP_DEVICE)
-    if (m_connectedUUID.has_value()) {
-        m_signalSender.DisconnectionSignal(m_connectedUUID.value());
-        m_connectedUUID = std::nullopt;
+    if (m_peerData.has_value()) {
+        m_signalSender.DisconnectionSignal(m_peerData.value().deviceID);
+        m_peerData = std::nullopt;
     }
 #endif
 

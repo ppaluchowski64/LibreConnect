@@ -8,6 +8,11 @@ Page {
 
     required property var smsBridgeController
     readonly property string windowTitleSuffix: "Messages"
+    property bool restoringContactsScroll: false
+    property real preservedContactsContentY: 0
+    property bool stickMessagesToBottom: true
+    property bool pendingConversationScrollToBottom: false
+    property int pendingMessagesBottomSettlePasses: 0
 
     function sendCurrentMessage() {
         const message = composerField.text.trim()
@@ -19,6 +24,48 @@ Page {
         composerField.text = ""
     }
 
+    function preserveContactsScroll() {
+        preservedContactsContentY = contactsList.contentY
+        restoringContactsScroll = true
+        contactsScrollRestoreTimer.restart()
+    }
+
+    function restoreContactsScroll() {
+        if (!restoringContactsScroll) {
+            return
+        }
+
+        const maxContentY = Math.max(0, contactsList.contentHeight - contactsList.height)
+        contactsList.contentY = Math.max(0, Math.min(preservedContactsContentY, maxContentY))
+    }
+
+    function selectConversation(number, name) {
+        preserveContactsScroll()
+        smsBridgeController.selectConversation(number, name)
+        restoreContactsScroll()
+    }
+
+    function messagesAtBottom() {
+        const maxContentY = Math.max(0, messagesList.contentHeight - messagesList.height)
+        return messagesList.contentY >= maxContentY - 8
+    }
+
+    function scrollMessagesToBottom() {
+        if (messagesList.count > 0) {
+            messagesList.positionViewAtEnd()
+        }
+    }
+
+    function scrollMessagesToBottomLater() {
+        Qt.callLater(root.scrollMessagesToBottom)
+    }
+
+    function settleMessagesAtBottom(passCount) {
+        pendingMessagesBottomSettlePasses = passCount
+        root.scrollMessagesToBottom()
+        messagesBottomSettleTimer.restart()
+    }
+
     background: Rectangle {
         color: Theme.panelColor
     }
@@ -27,9 +74,45 @@ Page {
         target: smsBridgeController
 
         function onMessagesChanged() {
-            if (messagesList.count > 0) {
-                messagesList.positionViewAtEnd()
+            if (root.pendingConversationScrollToBottom && messagesList.count > 0) {
+                root.settleMessagesAtBottom(8)
+                root.pendingConversationScrollToBottom = false
             }
+            root.restoreContactsScroll()
+            Qt.callLater(root.restoreContactsScroll)
+        }
+
+        function onSelectedConversationChanged() {
+            root.stickMessagesToBottom = true
+            root.pendingConversationScrollToBottom = true
+            root.settleMessagesAtBottom(8)
+        }
+
+        function onContactsChanged() {
+            root.restoreContactsScroll()
+            Qt.callLater(root.restoreContactsScroll)
+        }
+    }
+
+    Timer {
+        id: contactsScrollRestoreTimer
+        interval: 4000
+        repeat: false
+        onTriggered: root.restoringContactsScroll = false
+    }
+
+    Timer {
+        id: messagesBottomSettleTimer
+        interval: 50
+        repeat: true
+        onTriggered: {
+            if (root.pendingMessagesBottomSettlePasses <= 0) {
+                stop()
+                return
+            }
+
+            root.pendingMessagesBottomSettlePasses -= 1
+            root.scrollMessagesToBottom()
         }
     }
 
@@ -68,6 +151,7 @@ Page {
                         width: 92
                         height: 36
                         font.pixelSize: 13
+                        enabled: !smsBridgeController.busy
                         onClicked: smsBridgeController.refreshConversations()
                     }
                 }
@@ -89,6 +173,8 @@ Page {
                     clip: true
                     spacing: 6
                     model: smsBridgeController.contacts
+                    onCountChanged: root.restoreContactsScroll()
+                    onContentHeightChanged: root.restoreContactsScroll()
 
                     delegate: Rectangle {
                         required property var modelData
@@ -101,7 +187,7 @@ Page {
 
                         MouseArea {
                             anchors.fill: parent
-                            onClicked: smsBridgeController.selectConversation(modelData.number, modelData.name)
+                            onClicked: root.selectConversation(modelData.number, modelData.name)
                         }
 
                         Column {
@@ -145,7 +231,7 @@ Page {
 
                             Text {
                                 width: parent.width
-                                text: modelData.preview
+                                text: modelData.loading ? "Loading..." : modelData.preview
                                 color: modelData.selected ? Theme.selectedTextColor : Theme.mutedTextColor
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 12
@@ -208,6 +294,12 @@ Page {
                         model: smsBridgeController.messages
                         spacing: 6
                         clip: true
+                        onMovementEnded: root.stickMessagesToBottom = root.messagesAtBottom()
+                        onContentYChanged: {
+                            if (moving || dragging) {
+                                root.stickMessagesToBottom = root.messagesAtBottom()
+                            }
+                        }
 
                         delegate: Item {
                             required property var modelData
@@ -223,11 +315,15 @@ Page {
                                     id: bubble
                                     readonly property real maxBubbleWidth: parent.width * 0.72
                                     readonly property real minBubbleWidth: 56
+                                    readonly property bool hasAttachments: modelData.attachments && modelData.attachments.length > 0
                                     width: Math.min(
                                         maxBubbleWidth,
                                         Math.max(
                                             minBubbleWidth,
-                                            Math.max(bubbleText.implicitWidth, metaRow.implicitWidth) + 16
+                                            Math.max(
+                                                hasAttachments ? 220 : 0,
+                                                Math.max(bubbleText.implicitWidth, metaRow.implicitWidth)
+                                            ) + 16
                                         )
                                     )
                                     radius: 12
@@ -246,10 +342,69 @@ Page {
                                             id: bubbleText
                                             width: parent.width
                                             text: modelData.body
+                                            visible: text.length > 0
                                             wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                                             color: modelData.incoming ? Theme.textColor : Theme.selectedTextColor
                                             font.family: Theme.fontFamily
                                             font.pixelSize: 14
+                                        }
+
+                                        Repeater {
+                                            model: modelData.attachments ? modelData.attachments : []
+
+                                            delegate: Column {
+                                                id: attachmentDelegate
+                                                required property var modelData
+                                                property bool imageFailed: false
+                                                readonly property bool showImage: modelData.previewable
+                                                                                  && modelData.fileUrl.length > 0
+                                                                                  && !imageFailed
+                                                width: bubbleContent.width
+                                                spacing: 4
+
+                                                Rectangle {
+                                                    width: parent.width
+                                                    height: attachmentDelegate.showImage ? 160 : 34
+                                                    radius: 8
+                                                    color: Theme.backgroundColor
+                                                    border.width: 1
+                                                    border.color: Theme.panelBorderColor
+                                                    clip: true
+
+                                                    Image {
+                                                        id: attachmentPreview
+                                                        anchors.fill: parent
+                                                        anchors.margins: 4
+                                                        source: attachmentDelegate.showImage ? modelData.fileUrl : ""
+                                                        fillMode: Image.PreserveAspectFit
+                                                        asynchronous: true
+                                                        visible: attachmentDelegate.showImage && status !== Image.Error
+                                                        onStatusChanged: {
+                                                            if (status === Image.Error) {
+                                                                attachmentDelegate.imageFailed = true
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: modelData.loading
+                                                              ? "Loading attachment..."
+                                                              : (modelData.failed ? "Attachment unavailable" : "Open attachment")
+                                                        visible: !attachmentDelegate.showImage
+                                                        color: Theme.mutedTextColor
+                                                        font.family: Theme.fontFamily
+                                                        font.pixelSize: 12
+                                                    }
+
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        enabled: modelData.fileUrl.length > 0
+                                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                        onClicked: Qt.openUrlExternally(modelData.fileUrl)
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         Row {
@@ -283,7 +438,10 @@ Page {
 
                         onCountChanged: {
                             if (count > 0) {
-                                positionViewAtEnd()
+                                if (root.pendingConversationScrollToBottom || root.stickMessagesToBottom) {
+                                    root.settleMessagesAtBottom(8)
+                                }
+                                root.pendingConversationScrollToBottom = false
                             }
                         }
                     }

@@ -53,6 +53,7 @@ private:
     asio::awaitable<bool> SendBuffer(size_t size);
 
     std::unique_ptr<SSLSocket> m_socket;
+    std::unique_ptr<TCPAcceptor> m_acceptor;
     std::shared_ptr<SSLContext_> m_sslContext;
     std::vector<uint8_t> m_bufferIn;
     std::vector<uint8_t> m_bufferOut;

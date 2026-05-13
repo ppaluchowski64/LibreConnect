@@ -3,6 +3,7 @@
 
 #include <QEvent>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 #include <utility>
@@ -56,7 +57,7 @@ public:
 
 private:
     bool m_success;
-    uuid m_messageUUID;
+    boost::uuids::uuid m_messageUUID;
 
 };
 
@@ -81,6 +82,23 @@ private:
     std::string m_sender;
     std::string m_body;
     int64_t m_timestamp = 0;
+};
+
+class MMSContentReceivedEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(SmsBridgeEventBase+4);
+    explicit MMSContentReceivedEvent(const std::string& target, const std::filesystem::path& destination) : QEvent(Type), m_target(target), m_destination(destination) {}
+
+    std::string GetTarget() const { return m_target; }
+    std::filesystem::path GetDestination() const { return m_destination; }
+
+    MMSContentReceivedEvent* clone() const override {
+        return new MMSContentReceivedEvent(*this);
+    }
+
+private:
+    std::string m_target;
+    std::filesystem::path m_destination;
 };
 
 #endif // SMSBRIDGEEVENTS_H

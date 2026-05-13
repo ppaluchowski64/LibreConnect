@@ -53,8 +53,10 @@ public:
     std::optional<std::unique_ptr<Package<PC_PackageType>>> GetPackage();
     std::shared_ptr<AwaitableFlag> GetReceiveFlag() const;
     IPAddress GetPeerAddress() const;
+    uuid GetPeerUUID();
     bool HasPendingPackages() const;
     void MarkHeartbeatReceived();
+    ConnectionState GetConnectionState() const;
 
 
 private:
@@ -78,9 +80,11 @@ private:
     std::shared_ptr<SSLContext_> m_sslContext;
     std::unique_ptr<SSLSocket> m_socket;
 
+    std::mutex m_peerDataMutex;
+    std::optional<DeviceInfo> m_peerData;
+
 #if defined(DESKTOP_DEVICE)
     SignalSender m_signalSender;
-    std::optional<uuid> m_connectedUUID;
 #endif
 
     AwaitableFlag m_sendFlag;

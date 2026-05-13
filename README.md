@@ -85,6 +85,7 @@ LibreConnect is built to solve everyday cross-device friction:
 ### Fetched at configure/build time
 
 - [Debug-Log](https://github.com/ddj4747/Debug-Log) (CMake `FetchContent`)
+- [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) (CMake `FetchContent`, macOS only)
 
 ## Prerequisites
 

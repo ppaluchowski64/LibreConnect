@@ -287,17 +287,37 @@ bool NotificationEmitter::RequestPermission() {
             }];
     };
 
+    bool completed = false;
     if ([NSThread isMainThread]) {
         requestAuthorization();
+        NSDate* deadline = [NSDate dateWithTimeIntervalSinceNow:120.0];
+        while ([deadline timeIntervalSinceNow] > 0.0) {
+            if (dispatch_semaphore_wait(semaphore, DISPATCH_TIME_NOW) == 0) {
+                completed = true;
+                break;
+            }
+
+            @autoreleasepool {
+                [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode
+                                         beforeDate:[NSDate dateWithTimeIntervalSinceNow:0.05]];
+            }
+        }
     } else {
         dispatch_sync(dispatch_get_main_queue(), requestAuthorization);
+
+        const long waitResult = dispatch_semaphore_wait(
+            semaphore,
+            dispatch_time(DISPATCH_TIME_NOW, kPermissionWaitTimeoutNanoseconds)
+        );
+        if (waitResult != 0) {
+            NSLog(@"LibreConnect NotificationEmitter: requestAuthorization timed out");
+            return false;
+        }
+
+        completed = true;
     }
 
-    const long waitResult = dispatch_semaphore_wait(
-        semaphore,
-        dispatch_time(DISPATCH_TIME_NOW, kPermissionWaitTimeoutNanoseconds)
-    );
-    if (waitResult != 0) {
+    if (!completed) {
         NSLog(@"LibreConnect NotificationEmitter: requestAuthorization timed out");
         return false;
     }

@@ -95,6 +95,11 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
             ${RootPath}/src/*.cc
     )
 
+    set(EXTRA_SOURCES_VAR "EXTRA_SOURCES_${ExecutableName}")
+    if (DEFINED ${EXTRA_SOURCES_VAR})
+        list(APPEND SOURCE_FILES ${${EXTRA_SOURCES_VAR}})
+    endif()
+
     file(GLOB_RECURSE HEADER_FILES
             ${RootPath}/inc/*.h
             ${RootPath}/inc/*.hpp
@@ -233,6 +238,13 @@ function(DeployQT Target)
         )
 
         add_custom_command(TARGET ${Target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_DIR:${Target}>/Contents/Resources"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different "${MAC_ICON}" "$<TARGET_BUNDLE_DIR:${Target}>/Contents/Resources/libreconnect_logo.icns"
+                COMMENT "Copying macOS app icon for ${Target}..."
+                VERBATIM
+        )
+
+        add_custom_command(TARGET ${Target} POST_BUILD
                 COMMAND "$ENV{QT_DIR_DESKTOP}/bin/macdeployqt6" "$<TARGET_BUNDLE_DIR:${Target}>" -qmldir=$ENV{QT_DIR_DESKTOP}/qml -dmg
                 COMMENT "Running macdeployqt on ${Target}..."
                 VERBATIM
@@ -344,4 +356,41 @@ function(LinkFFMPEGLibs target)
             endif()
         endforeach()
     endif ()
+endfunction()
+
+function(BundleMediaRemoteAdapter target)
+    if (APPLE AND NOT IOS)
+        add_dependencies(${target} MediaRemoteAdapter)
+
+        set(SCRIPT_FILE "${MEDIAREMOTE_ADAPTER_SOURCE_DIR}/bin/mediaremote-adapter.pl")
+        set_source_files_properties(${SCRIPT_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+        target_sources(${target} PRIVATE ${SCRIPT_FILE})
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_BUNDLE_DIR:MediaRemoteAdapter>
+                $<TARGET_BUNDLE_DIR:${target}>/Contents/Frameworks/MediaRemoteAdapter.framework
+                COMMENT "Bundling MediaRemoteAdapter.framework into ${target}"
+        )
+    endif()
+endfunction()
+
+function(LinkMediaRemoteAdapter target)
+    if (APPLE AND NOT IOS)
+        add_dependencies(${target} MediaRemoteAdapter)
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${MEDIAREMOTE_ADAPTER_SOURCE_DIR}/bin/mediaremote-adapter.pl
+                $<TARGET_FILE_DIR:${target}>/mediaremote-adapter.pl
+                COMMENT "Copying mediaremote-adapter.pl for ${target}"
+        )
+
+        add_custom_command(TARGET ${target} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                $<TARGET_BUNDLE_DIR:MediaRemoteAdapter>
+                $<TARGET_FILE_DIR:${target}>/MediaRemoteAdapter.framework
+                COMMENT "Copying MediaRemoteAdapter.framework for ${target}"
+        )
+    endif()
 endfunction()

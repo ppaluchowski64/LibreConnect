@@ -473,6 +473,16 @@ IPAddress ConnectionManager::GetPeerAddress() {
     return s_instance->m_primaryConnection->GetPeerAddress();
 }
 
+uuid ConnectionManager::GetPeerUUID() {
+    std::call_once(s_flag, Initialize);
+    return s_instance->m_primaryConnection->GetPeerUUID();
+}
+
+ConnectionState ConnectionManager::GetConnectionState() {
+    std::call_once(s_flag, Initialize);
+    return s_instance->m_primaryConnection->GetConnectionState();
+}
+
 std::shared_ptr<SSLContext_> ConnectionManager::GetSSLContextClient() {
     std::call_once(s_flag, Initialize);
     return s_instance->m_sslContextClient;

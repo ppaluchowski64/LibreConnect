@@ -3,6 +3,8 @@
 #include <QPointer>
 #include <QUuid>
 #include <QDateTime>
+#include <QImageReader>
+#include <QUrl>
 #include <algorithm>
 
 #include <boost/uuid/uuid_io.hpp>
@@ -14,6 +16,112 @@
 
 namespace {
 constexpr int POLL_INTERVAL_MS = 400;
+
+bool parseTimestampedMessage(
+    const QString& rawMessage,
+    const QString& prefix,
+    const bool trimTrailingSection,
+    int& messageType,
+    qint64& timestamp,
+    QString& body
+)
+{
+    if (!rawMessage.startsWith(prefix)) {
+        return false;
+    }
+
+    const int prefixLength = prefix.size();
+    const int firstSeparator = rawMessage.indexOf(QLatin1Char('|'), prefixLength);
+    const int secondSeparator = firstSeparator < 0 ? -1 : rawMessage.indexOf(QLatin1Char('|'), firstSeparator + 1);
+    const int lastSeparator = trimTrailingSection ? rawMessage.lastIndexOf(QLatin1Char('|')) : -1;
+
+    if (firstSeparator <= prefixLength || secondSeparator <= firstSeparator) {
+        body = rawMessage.mid(prefixLength);
+        return true;
+    }
+
+    bool typeOk = false;
+    bool timestampOk = false;
+    const int parsedType = rawMessage.mid(prefixLength, firstSeparator - prefixLength).toInt(&typeOk);
+    const qint64 parsedTimestamp = rawMessage.mid(firstSeparator + 1, secondSeparator - firstSeparator - 1).toLongLong(&timestampOk);
+
+    const int bodyEnd = trimTrailingSection && lastSeparator > secondSeparator
+        ? lastSeparator
+        : rawMessage.size();
+    body = rawMessage.mid(secondSeparator + 1, bodyEnd - secondSeparator - 1);
+
+    if (typeOk) {
+        messageType = parsedType;
+    }
+
+    if (timestampOk && parsedTimestamp > 0) {
+        timestamp = parsedTimestamp;
+    }
+
+    return true;
+}
+
+QStringList extractMmsAttachmentTargets(const QString& rawMessage)
+{
+    if (!rawMessage.startsWith(QStringLiteral("mms|"))) {
+        return {};
+    }
+
+    const int firstSeparator = rawMessage.indexOf(QLatin1Char('|'), 4);
+    const int secondSeparator = firstSeparator < 0 ? -1 : rawMessage.indexOf(QLatin1Char('|'), firstSeparator + 1);
+    const int lastSeparator = rawMessage.lastIndexOf(QLatin1Char('|'));
+    if (firstSeparator <= 4 || secondSeparator <= firstSeparator || lastSeparator <= secondSeparator) {
+        return {};
+    }
+
+    const QString attachmentsSection = rawMessage.mid(lastSeparator + 1).trimmed();
+    if (attachmentsSection.isEmpty()) {
+        return {};
+    }
+
+    QStringList targets;
+    for (const QString& candidate : attachmentsSection.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+        const QString trimmed = candidate.trimmed();
+        if (!trimmed.isEmpty()) {
+            targets.push_back(trimmed);
+        }
+    }
+
+    return targets;
+}
+
+struct ContactSummary {
+    QString name;
+    QString preview;
+    qint64 lastTimestamp = 0;
+};
+
+ContactSummary parseContactSummary(const QString& rawName)
+{
+    ContactSummary summary;
+    summary.name = rawName.trimmed();
+
+    if (!rawName.startsWith(QStringLiteral("summary|"))) {
+        return summary;
+    }
+
+    const int timestampStart = QStringLiteral("summary|").size();
+    const int nameSeparator = rawName.indexOf(QLatin1Char('|'), timestampStart);
+    const int previewSeparator = nameSeparator < 0 ? -1 : rawName.indexOf(QLatin1Char('|'), nameSeparator + 1);
+    if (nameSeparator < 0 || previewSeparator < 0) {
+        return summary;
+    }
+
+    bool timestampOk = false;
+    const qint64 timestamp = rawName.mid(timestampStart, nameSeparator - timestampStart).toLongLong(&timestampOk);
+    summary.name = rawName.mid(nameSeparator + 1, previewSeparator - nameSeparator - 1).trimmed();
+    summary.preview = rawName.mid(previewSeparator + 1).trimmed();
+    if (timestampOk) {
+        summary.lastTimestamp = timestamp;
+    }
+
+    return summary;
+}
 }
 
 SmsBridgeController::SmsBridgeController(QObject* parent)
@@ -72,7 +180,13 @@ void SmsBridgeController::refreshConversations()
         return;
     }
 
+    if (m_contactsRefreshInFlight) {
+        setStatusMessage(QStringLiteral("Conversation refresh is already running."));
+        return;
+    }
+
     ensureModuleEnabled();
+    m_contactsRefreshInFlight = true;
     setBusy(true);
     setStatusMessage(QStringLiteral("Fetching conversations from phone..."));
 
@@ -87,30 +201,24 @@ void SmsBridgeController::selectConversation(const QString& phoneNumber, const Q
         return;
     }
 
-    m_selectedContactKey = key;
+    const int equivalentIndex = findEquivalentContactIndex(key);
+    const QString selectedKey = equivalentIndex >= 0 ? m_contacts.at(equivalentIndex).key : key;
+
+    m_selectedContactKey = selectedKey;
     if (!contactName.trimmed().isEmpty()) {
         m_selectedContactName = contactName.trimmed();
     } else {
-        const ContactState* contact = findContact(key);
+        const ContactState* contact = findContact(selectedKey);
         m_selectedContactName = contact == nullptr ? phoneNumber : contact->name;
     }
 
-    if (ContactState* contact = findContact(key)) {
+    if (ContactState* contact = findContact(selectedKey)) {
         contact->unread = 0;
     }
 
     emitConversationChanged();
     emit contactsChanged();
-
-    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
-    const ContactState* selected = findContact(key);
-    if (selected != nullptr && !selected->number.isEmpty()) {
-        module->GetTargetMessages(selected->number.toStdString());
-        if (ContactState* selectedMutable = findContact(key)) {
-            selectedMutable->loading = true;
-        }
-        emit contactsChanged();
-    }
+    requestSelectedConversationMessages();
 }
 
 void SmsBridgeController::sendMessage(const QString& text)
@@ -172,6 +280,13 @@ bool SmsBridgeController::event(QEvent* event)
             ensureModuleEnabled();
             refreshConversations();
         } else {
+            m_requestedMmsContentTargets.clear();
+            m_retriedMmsContentTargets.clear();
+            m_pendingMmsContentTargets.clear();
+            m_activeMmsContentTarget.clear();
+            m_mmsAttachmentCache.clear();
+            m_messageFetchesInFlight.clear();
+            m_contactsRefreshInFlight = false;
             setReady(false);
             setBusy(false);
             setStatusMessage(QStringLiteral("Connect to a mobile device to load messages."));
@@ -186,6 +301,13 @@ bool SmsBridgeController::event(QEvent* event)
             emit connectedChanged();
             emit canSendChanged();
         }
+        m_requestedMmsContentTargets.clear();
+        m_retriedMmsContentTargets.clear();
+        m_pendingMmsContentTargets.clear();
+        m_activeMmsContentTarget.clear();
+        m_mmsAttachmentCache.clear();
+        m_messageFetchesInFlight.clear();
+        m_contactsRefreshInFlight = false;
         setReady(false);
         setBusy(false);
         setStatusMessage(QStringLiteral("Phone disconnected."));
@@ -194,10 +316,10 @@ bool SmsBridgeController::event(QEvent* event)
 
     if (event->type() == FetchContactListResultEvent::Type) {
         const auto* contactsEvent = static_cast<FetchContactListResultEvent*>(event);
-        auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
 
         for (const auto& entry : contactsEvent->GetContacts()) {
-            const QString name = QString::fromStdString(entry.first).trimmed();
+            const ContactSummary summary = parseContactSummary(QString::fromStdString(entry.first));
+            const QString name = summary.name;
             const QString number = QString::fromStdString(entry.second).trimmed();
             const QString key = normalizeNumber(number);
             if (key.isEmpty()) {
@@ -205,11 +327,16 @@ bool SmsBridgeController::event(QEvent* event)
             }
 
             ensureContactExists(key, name, number);
-            if (ContactState* contact = findContact(key)) {
-                contact->loading = true;
+            const int contactIndex = findEquivalentContactIndex(key);
+            ContactState* contact = contactIndex < 0 ? findContact(key) : &m_contacts[contactIndex];
+            if (contact != nullptr) {
+                if (!summary.preview.isEmpty()) {
+                    contact->preview = buildPreview(summary.preview);
+                }
+                if (summary.lastTimestamp > 0) {
+                    contact->lastTimestamp = summary.lastTimestamp;
+                }
             }
-
-            module->GetTargetMessages(number.toStdString());
         }
 
         sortContacts();
@@ -220,10 +347,12 @@ bool SmsBridgeController::event(QEvent* event)
             emit canSendChanged();
         }
 
+        m_contactsRefreshInFlight = false;
         setBusy(false);
-        setStatusMessage(QStringLiteral("Conversations loaded."));
+        setStatusMessage(QStringLiteral("Conversations loaded. Fetching selected thread..."));
         emit contactsChanged();
         updateSelectedMessages();
+        requestSelectedConversationMessages(true);
         return true;
     }
 
@@ -235,32 +364,41 @@ bool SmsBridgeController::event(QEvent* event)
             return true;
         }
 
+        const int equivalentIndex = findEquivalentContactIndex(key);
+        const QString conversationKey = equivalentIndex >= 0 ? m_contacts.at(equivalentIndex).key : key;
+        m_messageFetchesInFlight.remove(conversationKey);
+
         // Message fetch payloads only carry the number; keep any existing contact name.
-        ensureContactExists(key, QString(), number);
+        ensureContactExists(conversationKey, QString(), number);
         QVector<MessageState> parsed;
         const auto& rawMessages = messagesEvent->GetMessages();
         parsed.reserve(static_cast<qsizetype>(rawMessages.size()));
         for (int index = static_cast<int>(rawMessages.size()) - 1; index >= 0; --index) {
             parsed.push_back(parseMessage(
                 QString::fromStdString(rawMessages.at(static_cast<size_t>(index))),
-                key,
+                conversationKey,
                 index,
                 ++m_timestampCounter
             ));
         }
+        applyCachedMmsContent(parsed);
+        requestMmsContentFetches(parsed);
 
-        m_messagesByContact.insert(key, parsed);
+        m_messagesByContact.insert(conversationKey, parsed);
 
-        if (ContactState* contact = findContact(key)) {
+        if (ContactState* contact = findContact(conversationKey)) {
             contact->loading = false;
             if (!parsed.isEmpty()) {
-                contact->preview = buildPreview(parsed.back().body);
-                contact->lastTimestamp = parsed.back().timestamp;
+                const MessageState& latestMessage = parsed.back();
+                contact->preview = latestMessage.body.simplified().isEmpty() && !latestMessage.attachments.isEmpty()
+                    ? QStringLiteral("MMS attachment")
+                    : buildPreview(latestMessage.body);
+                contact->lastTimestamp = latestMessage.timestamp;
             } else if (contact->preview.isEmpty()) {
                 contact->preview = QStringLiteral("No messages yet");
             }
 
-            if (m_selectedContactKey == key) {
+            if (m_selectedContactKey == conversationKey) {
                 contact->unread = 0;
             }
         }
@@ -339,7 +477,218 @@ bool SmsBridgeController::event(QEvent* event)
         return true;
     }
 
+    if (event->type() == MMSContentReceivedEvent::Type) {
+        const auto* mmsContentEvent = static_cast<MMSContentReceivedEvent*>(event);
+        const QString target = QString::fromStdString(mmsContentEvent->GetTarget());
+        const std::filesystem::path destination = mmsContentEvent->GetDestination();
+        const QString fileUrl = pathToLocalFileUrl(destination);
+        const QString filePath = fileUrl.isEmpty() ? QString() : QUrl(fileUrl).toLocalFile();
+        const bool hasCachedAttachment = m_mmsAttachmentCache.contains(target);
+        const bool shouldRetry = fileUrl.isEmpty() && !target.isEmpty() && !m_retriedMmsContentTargets.contains(target);
+        if (m_activeMmsContentTarget == target) {
+            m_activeMmsContentTarget.clear();
+        }
+        if (fileUrl.isEmpty()) {
+            m_requestedMmsContentTargets.remove(target);
+            if (!hasCachedAttachment && shouldRetry) {
+                m_retriedMmsContentTargets.insert(target);
+                queueMmsContentFetch(target);
+            } else if (!hasCachedAttachment) {
+                m_mmsAttachmentCache.remove(target);
+            }
+        } else {
+            m_requestedMmsContentTargets.remove(target);
+            m_retriedMmsContentTargets.remove(target);
+            MessageState::AttachmentState cachedAttachment;
+            cachedAttachment.target = target;
+            cachedAttachment.loading = false;
+            cachedAttachment.failed = false;
+            cachedAttachment.filePath = filePath;
+            cachedAttachment.fileUrl = fileUrl;
+            cachedAttachment.previewable = isPreviewableImagePath(filePath);
+            m_mmsAttachmentCache.insert(target, cachedAttachment);
+        }
+
+        bool changed = false;
+        for (auto conversationIt = m_messagesByContact.begin(); conversationIt != m_messagesByContact.end(); ++conversationIt) {
+            for (MessageState& message : conversationIt.value()) {
+                for (MessageState::AttachmentState& attachment : message.attachments) {
+                    if (attachment.target != target) {
+                        continue;
+                    }
+
+                    if (fileUrl.isEmpty()) {
+                        if (hasCachedAttachment) {
+                            const MessageState::AttachmentState& cachedAttachment = m_mmsAttachmentCache[target];
+                            attachment.loading = false;
+                            attachment.failed = false;
+                            attachment.filePath = cachedAttachment.filePath;
+                            attachment.fileUrl = cachedAttachment.fileUrl;
+                            attachment.previewable = cachedAttachment.previewable;
+                            changed = true;
+                            continue;
+                        }
+
+                        if (shouldRetry) {
+                            attachment.loading = shouldRetry;
+                            attachment.failed = false;
+                            changed = true;
+                            continue;
+                        }
+
+                        attachment.loading = false;
+                        attachment.failed = true;
+                        attachment.filePath = QString();
+                        attachment.fileUrl = QString();
+                        attachment.previewable = false;
+                        changed = true;
+                        continue;
+                    }
+
+                    attachment.loading = false;
+                    attachment.failed = false;
+                    attachment.filePath = filePath;
+                    attachment.fileUrl = fileUrl;
+                    attachment.previewable = isPreviewableImagePath(filePath);
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            updateSelectedMessages();
+        }
+        startNextMmsContentFetch();
+        return true;
+    }
+
     return QObject::event(event);
+}
+
+void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messages)
+{
+    for (auto messageIt = messages.rbegin(); messageIt != messages.rend(); ++messageIt) {
+        MessageState& message = *messageIt;
+        for (MessageState::AttachmentState& attachment : message.attachments) {
+            if (attachment.target.isEmpty() ||
+                !attachment.loading ||
+                !attachment.fileUrl.isEmpty() ||
+                m_requestedMmsContentTargets.contains(attachment.target)) {
+                continue;
+            }
+
+            if (useCachedMmsContent(attachment.target)) {
+                const MessageState::AttachmentState& cachedAttachment = m_mmsAttachmentCache[attachment.target];
+                attachment.filePath = cachedAttachment.filePath;
+                attachment.fileUrl = cachedAttachment.fileUrl;
+                attachment.previewable = cachedAttachment.previewable;
+                attachment.loading = cachedAttachment.loading;
+                attachment.failed = cachedAttachment.failed;
+            } else {
+                queueMmsContentFetch(attachment.target);
+            }
+        }
+    }
+}
+
+bool SmsBridgeController::useCachedMmsContent(const QString& target)
+{
+    if (target.isEmpty()) {
+        return false;
+    }
+
+    if (m_mmsAttachmentCache.contains(target)) {
+        return true;
+    }
+
+    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
+    const std::optional<std::filesystem::path> pathOpt = module->GetMMSContentPath(target.toStdString());
+    if (!pathOpt.has_value()) {
+        return false;
+    }
+
+    const QString fileUrl = pathToLocalFileUrl(pathOpt.value());
+    if (fileUrl.isEmpty()) {
+        return false;
+    }
+
+    const QString filePath = QUrl(fileUrl).toLocalFile();
+    MessageState::AttachmentState cachedAttachment;
+    cachedAttachment.target = target;
+    cachedAttachment.loading = false;
+    cachedAttachment.failed = false;
+    cachedAttachment.filePath = filePath;
+    cachedAttachment.fileUrl = fileUrl;
+    cachedAttachment.previewable = isPreviewableImagePath(filePath);
+    m_mmsAttachmentCache.insert(target, cachedAttachment);
+    return true;
+}
+
+void SmsBridgeController::queueMmsContentFetch(const QString& target)
+{
+    if (target.isEmpty() || m_requestedMmsContentTargets.contains(target)) {
+        return;
+    }
+
+    if (useCachedMmsContent(target)) {
+        bool changed = false;
+        for (auto conversationIt = m_messagesByContact.begin(); conversationIt != m_messagesByContact.end(); ++conversationIt) {
+            for (MessageState& message : conversationIt.value()) {
+                for (MessageState::AttachmentState& attachment : message.attachments) {
+                    if (attachment.target != target) {
+                        continue;
+                    }
+
+                    const MessageState::AttachmentState& cachedAttachment = m_mmsAttachmentCache[target];
+                    attachment.filePath = cachedAttachment.filePath;
+                    attachment.fileUrl = cachedAttachment.fileUrl;
+                    attachment.previewable = cachedAttachment.previewable;
+                    attachment.loading = cachedAttachment.loading;
+                    attachment.failed = cachedAttachment.failed;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed) {
+            updateSelectedMessages();
+        }
+        return;
+    }
+
+    m_requestedMmsContentTargets.insert(target);
+    m_pendingMmsContentTargets.push_back(target);
+    startNextMmsContentFetch();
+}
+
+void SmsBridgeController::startNextMmsContentFetch()
+{
+    if (!m_activeMmsContentTarget.isEmpty() || m_pendingMmsContentTargets.isEmpty()) {
+        return;
+    }
+
+    m_activeMmsContentTarget = m_pendingMmsContentTargets.takeFirst();
+    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
+    module->FetchMMSContent(m_activeMmsContentTarget.toStdString());
+}
+
+void SmsBridgeController::applyCachedMmsContent(QVector<MessageState>& messages) const
+{
+    for (MessageState& message : messages) {
+        for (MessageState::AttachmentState& attachment : message.attachments) {
+            const auto cachedIt = m_mmsAttachmentCache.constFind(attachment.target);
+            if (cachedIt == m_mmsAttachmentCache.constEnd()) {
+                continue;
+            }
+
+            const MessageState::AttachmentState& cachedAttachment = cachedIt.value();
+            attachment.filePath = cachedAttachment.filePath;
+            attachment.fileUrl = cachedAttachment.fileUrl;
+            attachment.previewable = cachedAttachment.previewable;
+            attachment.loading = cachedAttachment.loading;
+            attachment.failed = cachedAttachment.failed;
+        }
+    }
 }
 
 QString SmsBridgeController::normalizeNumber(const QString& number)
@@ -380,6 +729,38 @@ QString SmsBridgeController::normalizeNumber(const QString& number)
     return trimmed.simplified().toLower();
 }
 
+QString SmsBridgeController::digitsOnly(const QString& number)
+{
+    QString result;
+    result.reserve(number.size());
+    for (const QChar c : number) {
+        if (c.isDigit()) {
+            result.append(c);
+        }
+    }
+    return result;
+}
+
+bool SmsBridgeController::areEquivalentPhoneKeys(const QString& lhs, const QString& rhs)
+{
+    if (lhs == rhs) {
+        return true;
+    }
+
+    const QString lhsDigits = digitsOnly(lhs);
+    const QString rhsDigits = digitsOnly(rhs);
+    if (lhsDigits.isEmpty() || rhsDigits.isEmpty()) {
+        return false;
+    }
+
+    const qsizetype shorterLength = std::min(lhsDigits.size(), rhsDigits.size());
+    if (shorterLength < 7) {
+        return false;
+    }
+
+    return lhsDigits.endsWith(rhsDigits) || rhsDigits.endsWith(lhsDigits);
+}
+
 SmsBridgeController::MessageState SmsBridgeController::parseMessage(
     const QString& rawMessage,
     const QString& key,
@@ -391,28 +772,36 @@ SmsBridgeController::MessageState SmsBridgeController::parseMessage(
     parsed.timestamp = defaultTimestamp;
 
     int smsType = 1;
-    if (rawMessage.startsWith(QStringLiteral("v2|"))) {
-        const int firstSeparator = rawMessage.indexOf(QLatin1Char('|'), 3);
-        const int secondSeparator = firstSeparator < 0 ? -1 : rawMessage.indexOf(QLatin1Char('|'), firstSeparator + 1);
-
-        if (firstSeparator > 0 && secondSeparator > firstSeparator) {
-            bool typeOk = false;
-            bool timestampOk = false;
-            smsType = rawMessage.mid(3, firstSeparator - 3).toInt(&typeOk);
-            const qint64 parsedTimestamp = rawMessage.mid(firstSeparator + 1, secondSeparator - firstSeparator - 1).toLongLong(&timestampOk);
-            parsed.body = rawMessage.mid(secondSeparator + 1);
-
-            if (typeOk && timestampOk && parsedTimestamp > 0) {
-                parsed.timestamp = parsedTimestamp;
-            }
-        } else {
-            parsed.body = rawMessage.mid(3);
-        }
+    if (parseTimestampedMessage(
+            rawMessage,
+            QStringLiteral("v2|"),
+            false,
+            smsType,
+            parsed.timestamp,
+            parsed.body
+        ) || parseTimestampedMessage(
+            rawMessage,
+            QStringLiteral("mms|"),
+            true,
+            smsType,
+            parsed.timestamp,
+            parsed.body
+        )) {
     } else if (!rawMessage.isEmpty() && rawMessage.at(0).isDigit()) {
         smsType = rawMessage.at(0).digitValue();
         parsed.body = rawMessage.mid(1);
     } else {
         parsed.body = rawMessage;
+    }
+
+    const QStringList attachmentTargets = extractMmsAttachmentTargets(rawMessage);
+    parsed.attachments.reserve(attachmentTargets.size());
+    for (const QString& target : attachmentTargets) {
+        MessageState::AttachmentState attachment;
+        attachment.target = target;
+        attachment.loading = true;
+        attachment.failed = false;
+        parsed.attachments.push_back(attachment);
     }
 
     parsed.id = QStringLiteral("%1:%2:%3").arg(key).arg(parsed.timestamp).arg(index);
@@ -439,6 +828,41 @@ QString SmsBridgeController::buildPreview(const QString& body)
 QString SmsBridgeController::generateLocalMessageId()
 {
     return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+QString SmsBridgeController::pathToLocalFileUrl(const std::filesystem::path& path)
+{
+    if (path.empty()) {
+        return QString();
+    }
+
+#ifdef _WIN32
+    const QString localPath = QString::fromStdWString(path.wstring());
+#else
+    const QString localPath = QString::fromStdString(path.string());
+#endif
+    return QUrl::fromLocalFile(localPath).toString();
+}
+
+bool SmsBridgeController::isPreviewableImagePath(const QString& path)
+{
+    if (path.isEmpty()) {
+        return false;
+    }
+
+    const QString lower = path.toLower();
+    const bool imageExtension = lower.endsWith(QStringLiteral(".jpg")) ||
+                                lower.endsWith(QStringLiteral(".jpeg")) ||
+                                lower.endsWith(QStringLiteral(".png")) ||
+                                lower.endsWith(QStringLiteral(".gif")) ||
+                                lower.endsWith(QStringLiteral(".bmp")) ||
+                                lower.endsWith(QStringLiteral(".webp"));
+    if (!imageExtension) {
+        return false;
+    }
+
+    QImageReader reader(path);
+    return reader.canRead();
 }
 
 void SmsBridgeController::refreshState()
@@ -506,16 +930,32 @@ void SmsBridgeController::setStatusMessage(const QString& statusMessage)
 
 void SmsBridgeController::ensureContactExists(const QString& key, const QString& displayName, const QString& dialNumber)
 {
-    ContactState* existing = findContact(key);
+    int existingIndex = findContactIndex(key);
+    if (existingIndex < 0) {
+        existingIndex = findEquivalentContactIndex(key);
+    }
+
+    ContactState* existing = existingIndex < 0 ? nullptr : &m_contacts[existingIndex];
     if (existing != nullptr) {
-        if (!displayName.trimmed().isEmpty()) {
-            existing->name = displayName.trimmed();
+        const QString trimmedDisplayName = displayName.trimmed();
+        const QString trimmedDialNumber = dialNumber.trimmed();
+        const bool displayNameLooksLikeNumber = areEquivalentPhoneKeys(trimmedDisplayName, key);
+        const bool existingNameLooksLikeNumber = areEquivalentPhoneKeys(existing->name, existing->key);
+
+        if (!trimmedDisplayName.isEmpty() && (!displayNameLooksLikeNumber || existingNameLooksLikeNumber)) {
+            existing->name = trimmedDisplayName;
         } else if (existing->name.isEmpty()) {
             existing->name = dialNumber;
         }
 
-        if (!dialNumber.trimmed().isEmpty()) {
-            existing->number = dialNumber.trimmed();
+        if (!trimmedDialNumber.isEmpty() &&
+            (existing->number.isEmpty() ||
+             (!existing->number.startsWith(QLatin1Char('+')) && trimmedDialNumber.startsWith(QLatin1Char('+'))))) {
+            existing->number = trimmedDialNumber;
+        }
+
+        if (m_selectedContactKey == key && existing->key != key) {
+            m_selectedContactKey = existing->key;
         }
         return;
     }
@@ -531,10 +971,48 @@ void SmsBridgeController::ensureContactExists(const QString& key, const QString&
     m_contacts.push_back(created);
 }
 
+void SmsBridgeController::requestSelectedConversationMessages(const bool forceRefresh)
+{
+    if (!m_connected || m_selectedContactKey.isEmpty()) {
+        return;
+    }
+
+    if (!forceRefresh && m_messagesByContact.contains(m_selectedContactKey)) {
+        return;
+    }
+
+    if (m_messageFetchesInFlight.contains(m_selectedContactKey)) {
+        return;
+    }
+
+    ContactState* selected = findContact(m_selectedContactKey);
+    if (selected == nullptr || selected->number.isEmpty()) {
+        return;
+    }
+
+    m_messageFetchesInFlight.insert(m_selectedContactKey);
+    selected->loading = true;
+    emit contactsChanged();
+
+    auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
+    module->GetTargetMessages(selected->number.toStdString());
+}
+
 int SmsBridgeController::findContactIndex(const QString& key) const
 {
     for (int i = 0; i < m_contacts.size(); ++i) {
         if (m_contacts.at(i).key == key) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+int SmsBridgeController::findEquivalentContactIndex(const QString& key) const
+{
+    for (int i = 0; i < m_contacts.size(); ++i) {
+        if (areEquivalentPhoneKeys(m_contacts.at(i).key, key)) {
             return i;
         }
     }
@@ -578,6 +1056,19 @@ QVariantList SmsBridgeController::buildMessagesVariant(const QString& key) const
         QVariantMap map;
         map.insert(QStringLiteral("id"), message.id);
         map.insert(QStringLiteral("body"), message.body);
+        QVariantList attachments;
+        attachments.reserve(message.attachments.size());
+        for (const MessageState::AttachmentState& attachment : message.attachments) {
+            QVariantMap attachmentMap;
+            attachmentMap.insert(QStringLiteral("target"), attachment.target);
+            attachmentMap.insert(QStringLiteral("filePath"), attachment.filePath);
+            attachmentMap.insert(QStringLiteral("fileUrl"), attachment.fileUrl);
+            attachmentMap.insert(QStringLiteral("previewable"), attachment.previewable);
+            attachmentMap.insert(QStringLiteral("loading"), attachment.loading);
+            attachmentMap.insert(QStringLiteral("failed"), attachment.failed);
+            attachments.push_back(attachmentMap);
+        }
+        map.insert(QStringLiteral("attachments"), attachments);
         map.insert(QStringLiteral("incoming"), message.incoming);
         map.insert(QStringLiteral("pending"), message.pending);
         map.insert(QStringLiteral("failed"), message.failed);

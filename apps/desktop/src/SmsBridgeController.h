@@ -2,11 +2,15 @@
 
 #include <QObject>
 #include <QEvent>
+#include <QStringList>
 #include <QTimer>
 #include <QVariantList>
 #include <QString>
 #include <QHash>
+#include <QSet>
 #include <QVector>
+#include <filesystem>
+#include <vector>
 
 class SmsBridgeController : public QObject
 {
@@ -64,8 +68,18 @@ private:
     };
 
     struct MessageState {
+        struct AttachmentState {
+            QString target;
+            QString filePath;
+            QString fileUrl;
+            bool previewable = false;
+            bool loading = true;
+            bool failed = false;
+        };
+
         QString id;
         QString body;
+        QVector<AttachmentState> attachments;
         bool incoming = true;
         bool pending = false;
         bool failed = false;
@@ -73,9 +87,13 @@ private:
     };
 
     static QString normalizeNumber(const QString& number);
+    static QString digitsOnly(const QString& number);
+    static bool areEquivalentPhoneKeys(const QString& lhs, const QString& rhs);
     static MessageState parseMessage(const QString& rawMessage, const QString& key, int index, qint64 defaultTimestamp);
     static QString buildPreview(const QString& body);
     static QString generateLocalMessageId();
+    static QString pathToLocalFileUrl(const std::filesystem::path& path);
+    static bool isPreviewableImagePath(const QString& path);
 
     void refreshState();
     void ensureModuleEnabled();
@@ -83,11 +101,18 @@ private:
     void setReady(bool ready);
     void setStatusMessage(const QString& statusMessage);
     void ensureContactExists(const QString& key, const QString& displayName, const QString& dialNumber);
+    void requestSelectedConversationMessages(bool forceRefresh = false);
     int findContactIndex(const QString& key) const;
+    int findEquivalentContactIndex(const QString& key) const;
     void sortContacts();
     void emitConversationChanged();
     void updateSelectedMessages();
     QVariantList buildMessagesVariant(const QString& key) const;
+    void applyCachedMmsContent(QVector<MessageState>& messages) const;
+    void requestMmsContentFetches(QVector<MessageState>& messages);
+    bool useCachedMmsContent(const QString& target);
+    void queueMmsContentFetch(const QString& target);
+    void startNextMmsContentFetch();
     ContactState* findContact(const QString& key);
     const ContactState* findContact(const QString& key) const;
 
@@ -101,5 +126,12 @@ private:
     QString m_selectedContactKey;
     QString m_selectedContactName;
     QHash<QString, QString> m_pendingMessageConversationById;
+    QHash<QString, MessageState::AttachmentState> m_mmsAttachmentCache;
+    QSet<QString> m_requestedMmsContentTargets;
+    QSet<QString> m_retriedMmsContentTargets;
+    QStringList m_pendingMmsContentTargets;
+    QString m_activeMmsContentTarget;
+    QSet<QString> m_messageFetchesInFlight;
+    bool m_contactsRefreshInFlight = false;
     qint64 m_timestampCounter = 0;
 };

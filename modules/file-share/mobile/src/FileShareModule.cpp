@@ -4,6 +4,7 @@
 #include <HashHelpers.h>
 #include <FileShareEvents.h>
 #include <PermissionManager.h>
+#include <TransferChannelPool.h>
 
 #include <QDesktopServices>
 #include <QUrl>
@@ -20,43 +21,6 @@
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 constexpr size_t DIRECTORY_REQUEST_WAIT_POLL_MS = 5;
-
-FileShareModule::FileShareModule() = default;
-
-asio::awaitable<FileShareModule::AcquiredTransferChannel> FileShareModule::AcquireTransferChannel(const bool reserveIncomingPost) const {
-    asio::steady_timer timer(m_context);
-
-    while (true) {
-        if (reserveIncomingPost) {
-            std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-            for (size_t i = 0; i < m_transferChannels.size(); ++i) {
-                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                if (m_reservedIncomingPostChannels.find(i) != m_reservedIncomingPostChannels.end()) {
-                    continue;
-                }
-
-                if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
-                    m_reservedIncomingPostChannels.insert(i);
-                    const auto reservationGuard = std::shared_ptr<void>(nullptr, [this, i](void*) {
-                        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-                        m_reservedIncomingPostChannels.erase(i);
-                    });
-                    co_return AcquiredTransferChannel{i, std::move(channel), reservationGuard};
-                }
-            }
-        } else {
-            for (size_t i = 0; i < m_transferChannels.size(); ++i) {
-                const std::shared_ptr<TransferChannel> channel = m_transferChannels[i];
-                if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
-                    co_return AcquiredTransferChannel{i, std::move(channel), nullptr};
-                }
-            }
-        }
-
-        timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
-        co_await timer.async_wait();
-    }
-}
 
 std::shared_future<DirectoryResult> FileShareModule::GetOrCreateDirectoryScanFuture(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_directoryScanMutex);
@@ -138,14 +102,15 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
     Debug::Log("FileShareModule: Post entry accepted. Channel: {}", channelIndex);
 
-    if (channelIndex >= m_transferChannels.size()) {
+    const auto opt = TransferChannelPool::Get(channelIndex);
+    if (!opt.has_value()) {
         Debug::LogError("FileShareModule: Transfer channel index {} is out of range", channelIndex);
         ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
         co_return;
     }
 
-    const std::shared_ptr<TransferChannel> channel = m_transferChannels[channelIndex];
+    const auto& channel = opt.value();
     if (channel->GetConnectionState() != ConnectionState::CONNECTED) {
         Debug::LogError("FileShareModule: Transfer channel {} is not connected", channelIndex);
         ProcessError(ModuleFailReason::InternalError);
@@ -258,13 +223,11 @@ void FileShareModule::EnableResponseCallbacks() {
            if (state == ModuleState::Enabled) {
                // Reconnect flow: peer requested enable while we are already enabled.
                m_peerModuleEnabled.store(true);
-               m_transferChannelInitializationIndex.store(0);
                ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
                ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
                return;
            }
 
-           m_transferChannelInitializationIndex.store(0);
 	       Enable(true);
 	    });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [instance, this](PC_Package&& package) mutable {
@@ -305,7 +268,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         CleanupDirectoryScanFutureIfReady(pathStr);
 
-	    const AcquiredTransferChannel acquiredChannel = co_await AcquireTransferChannel();
+	    const BorrowedTransferChannel acquiredChannel = co_await TransferChannelPool::BorrowTransferChannel();
         const size_t transferChannelIndex = acquiredChannel.index;
         const std::shared_ptr<TransferChannel> channel = acquiredChannel.channel;
 
@@ -345,7 +308,7 @@ void FileShareModule::EnableResponseCallbacks() {
         }
         Debug::Log("FileShareModule: Prepared fetch transfer. RequestID: {}, Path: {}, IsDirectory: {}, Size: {}", requestID, path.string(), isDirectory, totalSize);
 
-        const AcquiredTransferChannel acquiredChannel = co_await AcquireTransferChannel();
+        const BorrowedTransferChannel acquiredChannel = co_await TransferChannelPool::BorrowTransferChannel();
         const size_t transferChannelIndex = acquiredChannel.index;
         const std::shared_ptr<TransferChannel> channel = acquiredChannel.channel;
         asio::steady_timer timer(m_context);
@@ -392,7 +355,7 @@ void FileShareModule::EnableResponseCallbacks() {
 
         const std::filesystem::path destinationPath = std::filesystem::path(destination) / fileName;
 
-        const AcquiredTransferChannel acquiredChannel = co_await AcquireTransferChannel(true);
+        const BorrowedTransferChannel acquiredChannel = co_await TransferChannelPool::BorrowTransferChannel(true);
         const size_t transferChannelIndex = acquiredChannel.index;
         const std::shared_ptr<TransferChannel> channel = acquiredChannel.channel;
         asio::steady_timer timer(m_context);
@@ -427,34 +390,6 @@ void FileShareModule::EnableResponseCallbacks() {
         Debug::Log("FileShareModule: Incoming post transfer finished. RequestID: {}, Success: {}, Bytes: {}/{}", requestID, success, transferred, totalTransferSize);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
         ConnectionManager::SendEvent(event);
-    });
-	    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
-	        const ModuleState state = GetModuleState();
-	        if (state != ModuleState::Enabling && state != ModuleState::Enabled) {
-	            Debug::LogWarning(
-	                "FileShareModule: Ignoring transfer port info in state {}",
-	                static_cast<int>(state)
-	            );
-	            co_return;
-        }
-
-        const IPAddress ip  = ConnectionManager::GetPeerAddress();
-        const uint16_t port = package->GetValue<uint16_t>();
-        const TCPEndpoint endpoint(ip, port);
-        const size_t index = m_transferChannelInitializationIndex.fetch_add(1);
-
-        if (index >= m_transferChannels.size()) {
-            Debug::LogWarning(
-                "FileShareModule: Received extra transfer port info for index {} (channels: {}), ignoring",
-                index,
-                m_transferChannels.size()
-            );
-            co_return;
-        }
-
-        const std::shared_ptr<TransferChannel> channel = m_transferChannels[index];
-
-        co_await channel->Connect(endpoint);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, [instance, this](PC_Package&& package) mutable {
         const bool newState = package->GetValue<bool>();
@@ -499,7 +434,6 @@ void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
-    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::CONNECTION_CHANNEL_CONNECTION_PORT_INFO);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
@@ -508,15 +442,6 @@ void FileShareModule::DisableResponseCallbacks() {
 
 void FileShareModule::OnInitialize() {
     ClearDirectoryScanFutures();
-    {
-        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-        m_reservedIncomingPostChannels.clear();
-    }
-    m_transferChannels.reserve(TRANSFER_CHANNELS_COUNT);
-    std::shared_ptr<SSLContext_> sslContext = ConnectionManager::GetSSLContextClient();
-    for (int i = 0; i < TRANSFER_CHANNELS_COUNT; ++i) {
-        m_transferChannels.emplace_back(std::make_shared<TransferChannel>());
-    }
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
@@ -535,7 +460,6 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         co_return;
     }
 
-    m_transferChannelInitializationIndex.store(0);
     ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
 
     asio::steady_timer timer(m_context);
@@ -552,26 +476,12 @@ asio::awaitable<void> FileShareModule::OnEnable() {
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
     ClearDirectoryScanFutures();
-    {
-        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-        m_reservedIncomingPostChannels.clear();
-    }
-    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
-    for (size_t i = 0; i < m_transferChannels.size(); ++i) {
-        asio::co_spawn(m_context, m_transferChannels[i]->Disconnect(), asio::detached);
-    }
-
     co_return;
 }
 
 asio::awaitable<void> FileShareModule::OnShutdown() {
     m_peerModuleEnabled.store(false);
     ClearDirectoryScanFutures();
-    {
-        std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
-        m_reservedIncomingPostChannels.clear();
-    }
-    m_transferChannels.clear();
     co_return;
 }
 

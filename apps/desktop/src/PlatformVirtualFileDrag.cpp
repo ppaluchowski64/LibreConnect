@@ -3,16 +3,20 @@
 #ifdef _WIN32
 #include "WindowsVirtualFileDrag.h"
 #else
+#ifndef __APPLE__
 #include "DeferredFileDragMimeData.h"
+#endif
 
 #include <QDrag>
 #include <QGuiApplication>
+#include <QMimeData>
 #include <QString>
 #include <QUrl>
 #endif
 
 #include <utility>
 
+#ifndef __APPLE__
 bool PlatformVirtualFileDrag::Start(QObject* dragSource, ResolvePathsFn resolver)
 {
 #ifdef _WIN32
@@ -51,3 +55,12 @@ bool PlatformVirtualFileDrag::Start(QObject* dragSource, ResolvePathsFn resolver
     return action != Qt::IgnoreAction;
 #endif
 }
+
+bool PlatformVirtualFileDrag::StartPromisedFiles(QObject* dragSource, std::vector<PromisedFile> files, PromiseCompletionFn completion)
+{
+    Q_UNUSED(dragSource);
+    Q_UNUSED(files);
+    Q_UNUSED(completion);
+    return false;
+}
+#endif

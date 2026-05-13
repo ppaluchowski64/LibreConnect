@@ -92,6 +92,19 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(debug-log)
 
+if (APPLE AND NOT IOS)
+    FetchContent_Declare(
+            mediaremote-adapter
+            GIT_REPOSITORY https://github.com/ungive/mediaremote-adapter.git
+            GIT_TAG master
+    )
+
+    FetchContent_MakeAvailable(mediaremote-adapter)
+    FetchContent_GetProperties(mediaremote-adapter
+            SOURCE_DIR MEDIAREMOTE_ADAPTER_SOURCE_DIR
+    )
+endif ()
+
 if (WIN32)
     add_library(WinToast STATIC vendor/WinToast/inc/wintoastlib.h vendor/WinToast/src/wintoastlib.cpp)
     target_include_directories(WinToast PUBLIC vendor/WinToast/inc/)
@@ -166,7 +179,7 @@ endif ()
 add_subdirectory("utilities/virtual-microphone")
 add_subdirectory("utilities/notifications-handler")
 
-BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager)
+BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager file-system)
 
 if (ANDROID OR IOS)
 
@@ -296,6 +309,7 @@ if (ENABLE_TESTS)
     BuildTestProgram(SystemVolumeControllerTest remote-input/SystemVolumeControllerTest.cpp remote-input)
     if (NOT ANDROID AND NOT IOS)
         BuildTestProgram(MediaTrackInfoTest remote-input/MediaTrackInfoTest.cpp remote-input)
+        LinkMediaRemoteAdapter(MediaTrackInfoTest)
     endif ()
 
     BuildTestProgram(NotificationEmitterTest-emitter notification-emitter-test/emitter.cpp notifications-handler Debug-Log)
