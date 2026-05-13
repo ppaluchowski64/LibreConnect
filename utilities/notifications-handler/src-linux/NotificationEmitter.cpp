@@ -17,12 +17,18 @@ int64_t NotificationEmitter::Emit(
     const std::optional<std::filesystem::path>& mainImagePath,
     const std::vector<ButtonAction>& buttons) {
 
-    if (QThread::currentThread() != QGuiApplication::instance()->thread()) {
-        std::promise<int> promise;
+    QCoreApplication* app = QCoreApplication::instance();
+    if (!app) {
+        Debug::LogError("NotificationEmitter: QCoreApplication instance is null");
+        return 0;
+    }
+
+    if (QThread::currentThread() != app->thread()) {
+        std::promise<int64_t> promise;
         auto future = promise.get_future();
 
         QMetaObject::invokeMethod(
-            QGuiApplication::instance(),
+            app,
             [p = std::move(promise), notificationName, notificationContent, appIconPath, mainImagePath, buttons]() mutable {
                 p.set_value(NotificationEmitter::Emit(notificationName, notificationContent, appIconPath, mainImagePath, buttons));
             },
@@ -33,57 +39,51 @@ int64_t NotificationEmitter::Emit(
     }
 
     const QDBusConnection bus = QDBusConnection::sessionBus();
-    if (!bus.isConnected()) return 0;
+    if (!bus.isConnected()) {
+        Debug::LogError("NotificationEmitter: D-Bus session bus is not connected");
+        return 0;
+    }
 
-    QDBusInterface interface(
+    QDBusMessage msg = QDBusMessage::createMethodCall(
         "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications",
         "org.freedesktop.Notifications",
-        bus
+        "Notify"
     );
 
-    if (!interface.isValid()) return 0;
-
     QString appName = "LibreConnect";
-    uint retID = 0;
-    QString icon = appIconPath.has_value() ?  QString::fromStdString(appIconPath.value().string()) : "";
+    uint32_t replacesID = 0;
+    QString icon = appIconPath.has_value() ? QString::fromStdString(appIconPath.value().string()) : QString();
     QString title = QString::fromStdWString(notificationName);
     QString body = QString::fromStdWString(notificationContent);
 
     QStringList actions;
+    int actionIdx = 0;
     for (const auto& btn : buttons) {
-        const boost::uuids::uuid uuid = boost::uuids::random_generator()();
-        const std::string strID= boost::uuids::to_string(uuid);
-
-        QString id    = QString::fromStdString(strID);
-        QString label = QString::fromStdWString(btn.text);
-        actions << id << label;
+        actions << QString::number(actionIdx++) << QString::fromStdWString(btn.text);
     }
 
     QVariantMap hints;
     if (mainImagePath.has_value()) {
         hints["image-path"] = QString::fromStdString(mainImagePath.value().string());
     }
-    int timeout = -1;
+    int32_t timeout = -1;
 
-    const QDBusMessage msg = interface.call(
-        "Notify",
-        appName,
-        retID,
-        icon,
-        title,
-        body,
-        actions,
-        hints,
-        timeout
-    );
+    msg << appName << replacesID << icon << title << body << actions << hints << timeout;
 
-    if (msg.type() == QDBusMessage::ErrorMessage) {
-        Debug::LogError(msg.errorMessage().toStdString());
+    const QDBusMessage reply = bus.call(msg);
+
+    if (reply.type() == QDBusMessage::ErrorMessage) {
+        Debug::LogError("NotificationEmitter: D-Bus call failed: {}", reply.errorMessage().toStdString());
         return 0;
     }
 
-    return static_cast<int64_t>(msg.arguments().at(0).toUInt());
+    if (reply.arguments().isEmpty()) {
+        Debug::LogError("NotificationEmitter: D-Bus reply has no arguments");
+        return 0;
+    }
+
+    return static_cast<int64_t>(reply.arguments().at(0).toUInt());
 }
 
 bool NotificationEmitter::RequestPermission() {
@@ -97,9 +97,12 @@ bool NotificationEmitter::IsPermissionGranted() {
 void NotificationEmitter::Remove(const int64_t id) {
     if (id <= 0) return;
 
-    if (QThread::currentThread() != QGuiApplication::instance()->thread()) {
+    QCoreApplication* app = QCoreApplication::instance();
+    if (!app) return;
+
+    if (QThread::currentThread() != app->thread()) {
         QMetaObject::invokeMethod(
-            QGuiApplication::instance(),
+            app,
             [id]() { NotificationEmitter::Remove(id); },
             Qt::QueuedConnection
         );
@@ -109,13 +112,13 @@ void NotificationEmitter::Remove(const int64_t id) {
     const QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected()) return;
 
-    QDBusInterface interface(
+    QDBusMessage msg = QDBusMessage::createMethodCall(
         "org.freedesktop.Notifications",
         "/org/freedesktop/Notifications",
         "org.freedesktop.Notifications",
-        bus
+        "CloseNotification"
     );
 
-    if (!interface.isValid()) return;
-    interface.call("CloseNotification", static_cast<uint>(id));
+    msg << static_cast<uint32_t>(id);
+    bus.call(msg);
 }

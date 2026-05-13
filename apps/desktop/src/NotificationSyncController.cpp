@@ -1,5 +1,6 @@
 #include "NotificationSyncController.h"
 
+#include <NotificationSyncModule.h>
 #include <ModulesManager.h>
 #include <ConnectionManager.h>
 #include <Events.h>
@@ -307,36 +308,32 @@ bool NotificationSyncController::event(QEvent* event)
 
 void NotificationSyncController::upsertNotification(const NotificationItem& item)
 {
-    bool changed = false;
-    for (NotificationItem& existing : m_notifications) {
-        if (existing.key != item.key) {
-            continue;
-        }
+    auto it = std::find_if(m_notifications.begin(), m_notifications.end(), [&item](const NotificationItem& existing) {
+        return existing.key == item.key;
+    });
 
-        if (existing.appName != item.appName ||
-            existing.title != item.title ||
-            existing.content != item.content ||
-            existing.timestamp != item.timestamp ||
-            existing.dismissable != item.dismissable ||
-            existing.iconPath != item.iconPath) {
-            existing = item;
+    bool changed = false;
+    if (it != m_notifications.end()) {
+        if (it->appName != item.appName ||
+            it->title != item.title ||
+            it->content != item.content ||
+            it->timestamp != item.timestamp ||
+            it->dismissable != item.dismissable ||
+            it->iconPath != item.iconPath) {
+            *it = item;
             changed = true;
         }
-
-        if (changed) {
-            std::sort(m_notifications.begin(), m_notifications.end(), [](const NotificationItem& lhs, const NotificationItem& rhs) {
-                return lhs.timestamp > rhs.timestamp;
-            });
-            emit notificationsChanged();
-        }
-        return;
+    } else {
+        m_notifications.push_back(item);
+        changed = true;
     }
 
-    m_notifications.push_back(item);
-    std::sort(m_notifications.begin(), m_notifications.end(), [](const NotificationItem& lhs, const NotificationItem& rhs) {
-        return lhs.timestamp > rhs.timestamp;
-    });
-    emit notificationsChanged();
+    if (changed) {
+        std::sort(m_notifications.begin(), m_notifications.end(), [](const NotificationItem& lhs, const NotificationItem& rhs) {
+            return lhs.timestamp > rhs.timestamp;
+        });
+        emit notificationsChanged();
+    }
 }
 
 void NotificationSyncController::removeNotificationByKey(const QString& key)

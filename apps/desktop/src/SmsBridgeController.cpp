@@ -251,7 +251,7 @@ void SmsBridgeController::sendMessage(const QString& text)
     message.failed = false;
     message.timestamp = QDateTime::currentMSecsSinceEpoch();
 
-    m_messagesByContact[m_selectedContactKey].push_back(message);
+    m_messagesByContact[m_selectedContactKey].prepend(message);
     m_pendingMessageConversationById.insert(messageIdString, m_selectedContactKey);
 
     contact->preview = buildPreview(trimmed);
@@ -373,11 +373,11 @@ bool SmsBridgeController::event(QEvent* event)
         QVector<MessageState> parsed;
         const auto& rawMessages = messagesEvent->GetMessages();
         parsed.reserve(static_cast<qsizetype>(rawMessages.size()));
-        for (int index = static_cast<int>(rawMessages.size()) - 1; index >= 0; --index) {
+        for (const auto& rawMessage : rawMessages) {
             parsed.push_back(parseMessage(
-                QString::fromStdString(rawMessages.at(static_cast<size_t>(index))),
+                QString::fromStdString(rawMessage),
                 conversationKey,
-                index,
+                static_cast<int>(parsed.size()),
                 ++m_timestampCounter
             ));
         }
@@ -389,7 +389,7 @@ bool SmsBridgeController::event(QEvent* event)
         if (ContactState* contact = findContact(conversationKey)) {
             contact->loading = false;
             if (!parsed.isEmpty()) {
-                const MessageState& latestMessage = parsed.back();
+                const MessageState& latestMessage = parsed.front();
                 contact->preview = latestMessage.body.simplified().isEmpty() && !latestMessage.attachments.isEmpty()
                     ? QStringLiteral("MMS attachment")
                     : buildPreview(latestMessage.body);
@@ -457,7 +457,7 @@ bool SmsBridgeController::event(QEvent* event)
         message.timestamp = receivedTimestamp > 0
             ? static_cast<qint64>(receivedTimestamp)
             : QDateTime::currentMSecsSinceEpoch();
-        m_messagesByContact[key].push_back(message);
+        m_messagesByContact[key].prepend(message);
 
         if (ContactState* contact = findContact(key)) {
             contact->preview = buildPreview(body);
@@ -567,7 +567,7 @@ bool SmsBridgeController::event(QEvent* event)
 
 void SmsBridgeController::requestMmsContentFetches(QVector<MessageState>& messages)
 {
-    for (auto messageIt = messages.rbegin(); messageIt != messages.rend(); ++messageIt) {
+    for (auto messageIt = messages.begin(); messageIt != messages.end(); ++messageIt) {
         MessageState& message = *messageIt;
         for (MessageState::AttachmentState& attachment : message.attachments) {
             if (attachment.target.isEmpty() ||
