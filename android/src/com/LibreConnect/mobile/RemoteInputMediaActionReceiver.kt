@@ -9,6 +9,7 @@ import java.io.File
 
 class RemoteInputMediaActionReceiver : BroadcastReceiver() {
     external fun onRemoteInputMediaActionCPP(action: String)
+    external fun onRemoteInputMediaSeekCPP(positionSeconds: Double)
 
     companion object {
         private const val TAG = "RemoteInputMediaRcvr"
@@ -60,6 +61,12 @@ class RemoteInputMediaActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
         if (context == null) return
         if (!ensureNativeLoaded(context)) return
+
+        val seekPositionSeconds = RemoteInputNotification.extractSeekPositionSeconds(intent)
+        if (seekPositionSeconds != null) {
+            onRemoteInputMediaSeekCPP(seekPositionSeconds)
+            return
+        }
 
         val action = RemoteInputNotification.extractAction(intent) ?: return
         onRemoteInputMediaActionCPP(action)
