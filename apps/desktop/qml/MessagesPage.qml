@@ -113,7 +113,7 @@ Page {
                 Text {
                     Layout.fillWidth: true
                     text: smsBridgeController.connected
-                          ? (smsBridgeController.ready ? "Phone connected" : "Connecting SMS bridge...")
+                          ? (smsBridgeController.ready ? (smsBridgeController.busy ? "Syncing..." : "Synced") : "Connecting SMS bridge...")
                           : "Phone disconnected"
                     color: smsBridgeController.connected ? Theme.successColor : Theme.mutedTextColor
                     font.family: Theme.fontFamily
