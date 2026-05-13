@@ -53,7 +53,6 @@ std::string FormatElapsedTime(const long long elapsedSeconds) {
 }
 
 MediaInfoSnapshot GetMediaInfoSnapshot() {
-#ifdef _WIN32
     if (const auto track = MediaTrackInfo::GetCurrentTrack(); track.has_value()) {
         MediaInfoSnapshot snapshot;
         snapshot.title = track->title;
@@ -73,7 +72,6 @@ MediaInfoSnapshot GetMediaInfoSnapshot() {
 
         return snapshot;
     }
-#endif
 
     return {};
 }
@@ -237,11 +235,7 @@ void RemoteInputModule::EnableResponseCallbacks() {
 
         const double seconds = std::max(0.0, package->GetValue<double>());
         asio::post(instance->m_moduleStrand, [seconds]() {
-#ifdef _WIN32
             MediaTrackInfo::SetPosition(seconds);
-#else
-            (void)seconds;
-#endif
         });
     });
 }

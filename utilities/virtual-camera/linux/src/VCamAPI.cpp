@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <vector>
 #include <nlohmann/json.hpp>
 #include <unistd.h>
