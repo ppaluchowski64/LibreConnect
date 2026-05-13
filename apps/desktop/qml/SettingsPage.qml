@@ -31,20 +31,28 @@ Page {
         color: "transparent"
     }
 
-    ColumnLayout {
+    ScrollView {
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 16
+        contentWidth: availableWidth
+        clip: true
 
-        Text {
-            Layout.fillWidth: true
-            text: "Settings"
-            font.family: Theme.fontFamily
-            font.pixelSize: 30
-            font.bold: true
-            color: Theme.textColor
-            verticalAlignment: Text.AlignVCenter
-        }
+        ColumnLayout {
+            width: parent.width - 36
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 18
+            anchors.bottomMargin: 18
+            spacing: 16
+
+            Text {
+                Layout.fillWidth: true
+                text: "Settings"
+                font.family: Theme.fontFamily
+                font.pixelSize: 30
+                font.bold: true
+                color: Theme.textColor
+                verticalAlignment: Text.AlignVCenter
+            }
 
         Rectangle {
             id: themeCard
@@ -307,6 +315,51 @@ Page {
         }
 
         Rectangle {
+            id: streamerModeCard
+            Layout.fillWidth: true
+            implicitHeight: streamerModeColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: streamerModeColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+
+                    Text {
+                        text: "Streamer Mode"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: Theme.textColor
+                        Layout.fillWidth: true
+                    }
+
+                    Switch {
+                        id: streamerModeToggle
+                        checked: Theme.streamerMode
+                        onClicked: Theme.setStreamerMode(checked)
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "Hide sensitive info from the UI to protect your privacy while streaming or sharing your screen."
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+            }
+        }
+
+        Rectangle {
             Layout.fillWidth: true
             implicitHeight: notificationCardColumn.implicitHeight + 32
             radius: 12
@@ -461,11 +514,8 @@ Page {
                 }
             }
         }
-
-        Item {
-            Layout.fillHeight: true
-        }
     }
+}
 
     Dialog {
         id: notificationPermissionDialog

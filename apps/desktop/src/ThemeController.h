@@ -27,6 +27,7 @@ class ThemeController : public QObject
     Q_PROPERTY(QColor destructiveFillHoverColor READ destructiveFillHoverColor NOTIFY paletteChanged)
     Q_PROPERTY(QColor dangerColor READ dangerColor CONSTANT)
     Q_PROPERTY(QString fontFamily READ fontFamily CONSTANT)
+    Q_PROPERTY(bool streamerMode READ streamerMode WRITE setStreamerMode NOTIFY streamerModeChanged)
 
 public:
     explicit ThemeController(QObject* parent = nullptr);
@@ -34,6 +35,10 @@ public:
     QString mode() const;
     Q_INVOKABLE
     void setMode(const QString& mode);
+
+    bool streamerMode() const { return m_streamerMode; }
+    Q_INVOKABLE
+    void setStreamerMode(bool enabled);
 
     bool dark() const;
 
@@ -57,11 +62,13 @@ public:
 signals:
     void modeChanged();
     void paletteChanged();
+    void streamerModeChanged();
 
 private:
     bool isSystemDark() const;
     QString normalizeMode(const QString& mode) const;
 
     QString m_mode;
+    bool m_streamerMode = false;
     QSettings m_settings;
 };

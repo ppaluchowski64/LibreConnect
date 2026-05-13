@@ -8,6 +8,7 @@ ThemeController::ThemeController(QObject* parent)
     , m_settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"))
 {
     m_mode = normalizeMode(m_settings.value(QStringLiteral("theme/mode"), QStringLiteral("system")).toString());
+    m_streamerMode = m_settings.value(QStringLiteral("ui/streamerMode"), false).toBool();
 
     QObject::connect(qApp->styleHints(), &QStyleHints::colorSchemeChanged, this, [this]() {
         emit paletteChanged();
@@ -30,6 +31,17 @@ void ThemeController::setMode(const QString& mode)
     m_settings.setValue(QStringLiteral("theme/mode"), m_mode);
     emit modeChanged();
     emit paletteChanged();
+}
+
+void ThemeController::setStreamerMode(bool enabled)
+{
+    if (m_streamerMode == enabled) {
+        return;
+    }
+
+    m_streamerMode = enabled;
+    m_settings.setValue(QStringLiteral("ui/streamerMode"), m_streamerMode);
+    emit streamerModeChanged();
 }
 
 bool ThemeController::dark() const
