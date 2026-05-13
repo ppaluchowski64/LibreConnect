@@ -322,7 +322,7 @@ VMIC_API VMicResult VMic_StartStream(VMicHandle handle) {
     spa_pod_builder b = SPA_POD_BUILDER_INIT(buffer, sizeof(buffer));
     const spa_pod* params[1];
 
-    const spa_audio_info_raw info = SPA_AUDIO_INFO_RAW_INIT(
+    spa_audio_info_raw info = SPA_AUDIO_INFO_RAW_INIT(
         .format = spaFmt,
         .rate = context->format.sampleRate,
         .channels = context->format.channels

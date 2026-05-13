@@ -17,7 +17,22 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT ANDROID))
         target_sources(virtual-microphone PRIVATE ${SOURCE_FILES})
         target_include_directories(virtual-microphone PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/windows/inc/)
     elseif (APPLE)
+        file(GLOB_RECURSE SOURCE_FILES
+                ${CMAKE_CURRENT_SOURCE_DIR}/macos/src/*.cpp
+                ${CMAKE_CURRENT_SOURCE_DIR}/macos/src/*.cxx
+                ${CMAKE_CURRENT_SOURCE_DIR}/macos/src/*.cc
+                ${CMAKE_CURRENT_SOURCE_DIR}/macos/src/*.def
+        )
 
+        target_sources(virtual-microphone PRIVATE ${SOURCE_FILES})
+        target_include_directories(virtual-microphone PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/macos/inc/)
+
+        target_link_libraries(virtual-microphone PRIVATE
+                "-framework CoreAudio"
+                "-framework AudioToolbox"
+                "-framework AudioUnit"
+                "-framework CoreFoundation"
+        )
     elseif (UNIX)
         set(PKG_CONFIG_EXECUTABLE "/usr/bin/pkg-config")
         find_package(PkgConfig REQUIRED)
@@ -58,9 +73,7 @@ if (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT ANDROID))
 #    )
 #
 else ()
-    add_library(virtual-microphone STATIC
-            linux/src/VMicAPI.cpp)
-
+    add_library(virtual-microphone STATIC)
     target_include_directories(virtual-microphone PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/global-inc/)
 endif ()
 

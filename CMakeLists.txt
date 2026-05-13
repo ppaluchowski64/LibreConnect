@@ -287,10 +287,7 @@ if (ENABLE_TESTS)
         BuildTestProgram(VirtualCameraTest virtual-camera/VirtualCameraTest.cpp virtual-camera Debug-Log)
     endif ()
 
-    if (WIN32 OR (UNIX AND NOT APPLE))
-        BuildTestProgram(VirtualMicrophoneTest virtual-microphone/VirtualMicrophoneTest.cpp virtual-microphone Debug-Log)
-    endif ()
-
+    BuildTestProgram(VirtualMicrophoneTest virtual-microphone/VirtualMicrophoneTest.cpp virtual-microphone Debug-Log)
     BuildTestProgram(FileEntryTest file-system/FileEntryTest.cpp file-system)
     BuildTestProgram(FileSystemTest file-system/FileSystemTest.cpp file-system)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)

@@ -27,7 +27,7 @@ int main(const int argc, char** argv) {
         return -1;
     }
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(__APPLE__)
     {
         char id[255];
         const VMicResult createDevice = VMic_CreateDevice("TestDevice2", id, kSampleRate);
