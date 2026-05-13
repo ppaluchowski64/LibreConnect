@@ -10,9 +10,6 @@ Page {
     readonly property string windowTitleSuffix: "Messages"
     property bool restoringContactsScroll: false
     property real preservedContactsContentY: 0
-    property bool stickMessagesToBottom: true
-    property bool pendingConversationScrollToBottom: false
-    property int pendingMessagesBottomSettlePasses: 0
 
     function sendCurrentMessage() {
         const message = composerField.text.trim()
@@ -45,27 +42,6 @@ Page {
         restoreContactsScroll()
     }
 
-    function messagesAtBottom() {
-        const maxContentY = Math.max(0, messagesList.contentHeight - messagesList.height)
-        return messagesList.contentY >= maxContentY - 8
-    }
-
-    function scrollMessagesToBottom() {
-        if (messagesList.count > 0) {
-            messagesList.positionViewAtEnd()
-        }
-    }
-
-    function scrollMessagesToBottomLater() {
-        Qt.callLater(root.scrollMessagesToBottom)
-    }
-
-    function settleMessagesAtBottom(passCount) {
-        pendingMessagesBottomSettlePasses = passCount
-        root.scrollMessagesToBottom()
-        messagesBottomSettleTimer.restart()
-    }
-
     background: Rectangle {
         color: Theme.panelColor
     }
@@ -74,18 +50,11 @@ Page {
         target: smsBridgeController
 
         function onMessagesChanged() {
-            if (root.pendingConversationScrollToBottom && messagesList.count > 0) {
-                root.settleMessagesAtBottom(8)
-                root.pendingConversationScrollToBottom = false
-            }
             root.restoreContactsScroll()
             Qt.callLater(root.restoreContactsScroll)
         }
 
         function onSelectedConversationChanged() {
-            root.stickMessagesToBottom = true
-            root.pendingConversationScrollToBottom = true
-            root.settleMessagesAtBottom(8)
         }
 
         function onContactsChanged() {
@@ -99,21 +68,6 @@ Page {
         interval: 4000
         repeat: false
         onTriggered: root.restoringContactsScroll = false
-    }
-
-    Timer {
-        id: messagesBottomSettleTimer
-        interval: 50
-        repeat: true
-        onTriggered: {
-            if (root.pendingMessagesBottomSettlePasses <= 0) {
-                stop()
-                return
-            }
-
-            root.pendingMessagesBottomSettlePasses -= 1
-            root.scrollMessagesToBottom()
-        }
     }
 
     RowLayout {
@@ -294,12 +248,7 @@ Page {
                         model: smsBridgeController.messages
                         spacing: 6
                         clip: true
-                        onMovementEnded: root.stickMessagesToBottom = root.messagesAtBottom()
-                        onContentYChanged: {
-                            if (moving || dragging) {
-                                root.stickMessagesToBottom = root.messagesAtBottom()
-                            }
-                        }
+                        verticalLayoutDirection: ListView.BottomToTop
 
                         delegate: Item {
                             required property var modelData
@@ -433,15 +382,6 @@ Page {
                                         }
                                     }
                                 }
-                            }
-                        }
-
-                        onCountChanged: {
-                            if (count > 0) {
-                                if (root.pendingConversationScrollToBottom || root.stickMessagesToBottom) {
-                                    root.settleMessagesAtBottom(8)
-                                }
-                                root.pendingConversationScrollToBottom = false
                             }
                         }
                     }
