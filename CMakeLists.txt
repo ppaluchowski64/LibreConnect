@@ -92,6 +92,19 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(debug-log)
 
+if (APPLE AND NOT IOS)
+    FetchContent_Declare(
+            mediaremote-adapter
+            GIT_REPOSITORY https://github.com/ungive/mediaremote-adapter.git
+            GIT_TAG master
+    )
+
+    FetchContent_MakeAvailable(mediaremote-adapter)
+    FetchContent_GetProperties(mediaremote-adapter
+            SOURCE_DIR MEDIAREMOTE_ADAPTER_SOURCE_DIR
+    )
+endif ()
+
 if (WIN32)
     add_library(WinToast STATIC vendor/WinToast/inc/wintoastlib.h vendor/WinToast/src/wintoastlib.cpp)
     target_include_directories(WinToast PUBLIC vendor/WinToast/inc/)
@@ -157,10 +170,6 @@ if (APPLE)
         endif ()
     endif ()
 endif()
-
-if (APPLE AND NOT IOS)
-    add_subdirectory(vendor/mediaremote-adapter)
-endif ()
 
 add_subdirectory("utilities/remote-input")
 if (NOT (APPLE AND NOT IOS))
@@ -292,7 +301,6 @@ if (ENABLE_TESTS)
     BuildTestProgram(TextClipboardTest clipboard-sync/TextClipboardTest.cpp clipboard)
     BuildTestProgram(KeyboardTest remote-input/KeyboardTest.cpp remote-input)
     BuildTestProgram(MediaRemoteTest remote-input/MediaRemoteTest.cpp remote-input)
-    LinkMediaRemoteAdapter(MediaRemoteTest)
     BuildTestProgram(SystemVolumeControllerTest remote-input/SystemVolumeControllerTest.cpp remote-input)
     if (NOT ANDROID AND NOT IOS)
         BuildTestProgram(MediaTrackInfoTest remote-input/MediaTrackInfoTest.cpp remote-input)
