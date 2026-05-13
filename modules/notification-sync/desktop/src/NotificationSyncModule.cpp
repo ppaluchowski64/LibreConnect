@@ -133,9 +133,6 @@ asio::awaitable<void> NotificationSyncModule::FetchNotificationList() {
 }
 
 void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket& packet, const bool emitDesktopNotification) {
-    const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
-
-    Debug::Log("Processing notification packet");
     try {
         NotificationRecord notificationRecord;
 
@@ -148,11 +145,12 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
         notificationRecord.buttons = packet.buttons;
 
         if (!packet.iconImage.empty()) {
-            notificationRecord.iconPath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
+            static thread_local boost::uuids::random_generator generator;
+            notificationRecord.iconPath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(generator()) + ".png");
             std::ofstream stream(notificationRecord.iconPath.value(), std::ios::binary);
 
             if (!stream) {
-                Debug::LogError("Could not open image file stream");
+                Debug::LogError("Could not open image file stream for icon");
                 ProcessError(ModuleFailReason::InternalError);
                 return;
             }
@@ -164,11 +162,12 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
         }
 
         if (!packet.mainImage.empty()) {
-            notificationRecord.mainImagePath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(boost::uuids::random_generator()()) + ".png");
+            static thread_local boost::uuids::random_generator generator;
+            notificationRecord.mainImagePath = std::filesystem::temp_directory_path() / (boost::uuids::to_string(generator()) + ".png");
             std::ofstream stream(notificationRecord.mainImagePath.value(), std::ios::binary);
 
             if (!stream) {
-                Debug::LogError("Could not open image file stream");
+                Debug::LogError("Could not open image file stream for main image");
                 ProcessError(ModuleFailReason::InternalError);
                 return;
             }
@@ -186,8 +185,8 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
             std::vector<NotificationEmitter::ButtonAction> notificationEmitterButtonActions;
             notificationEmitterButtonActions.reserve(notificationRecord.buttons.size());
 
-            std::weak_ptr<NotificationSyncModule> weakInstance = instance;
-            std::shared_ptr<int64_t> emittedNotificationID = std::make_shared<int64_t>();
+            std::weak_ptr<NotificationSyncModule> weakInstance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
+            std::shared_ptr<int64_t> emittedNotificationID = std::make_shared<int64_t>(notificationID);
             for (const auto& button : notificationRecord.buttons) {
                 std::wstring buttonWString = boost::nowide::widen(button);
 
@@ -201,29 +200,17 @@ void NotificationSyncModule::ProcessNotificationPacket(const NotificationPacket&
                 );
             }
 
-#ifdef MACOS_DEVICE
-            notificationID = NotificationEmitter::Emit(
-                boost::nowide::widen(notificationRecord.title),
-                boost::nowide::widen(notificationRecord.appName),
-                boost::nowide::widen(notificationRecord.content),
-                notificationRecord.iconPath,
-                notificationRecord.mainImagePath,
-                notificationEmitterButtonActions
-            );
-#else
-            notificationID = NotificationEmitter::Emit(
+            int64_t resultID = NotificationEmitter::Emit(
                 boost::nowide::widen(notificationRecord.title),
                 boost::nowide::widen(notificationRecord.content),
                 notificationRecord.iconPath,
                 notificationRecord.mainImagePath,
                 notificationEmitterButtonActions
             );
-#endif
 
-            if (notificationID < 0) {
-                notificationID = g_fallbackNotificationId.fetch_sub(1, std::memory_order_relaxed);
-            } else {
-                *emittedNotificationID = notificationID;
+            if (resultID > 0) {
+                notificationID = resultID;
+                *emittedNotificationID = resultID;
             }
         }
 

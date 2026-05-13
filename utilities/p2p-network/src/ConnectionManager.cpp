@@ -410,7 +410,7 @@ asio::awaitable<void> ConnectionManager::CoProcessPackages() {
                             }
 
                             co_return;
-                        }(), asio::detached);
+                        }, asio::detached);
                         packageOptional = m_primaryConnection->GetPackage();
                         continue;
                     }
