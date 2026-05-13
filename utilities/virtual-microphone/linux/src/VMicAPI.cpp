@@ -52,7 +52,12 @@ static void onProcess(void *userdata) {
     uint8_t* dst = static_cast<uint8_t*>(buf->datas[0].data);
     if (!dst) return;
 
+#if PW_CHECK_VERSION(0, 3, 50)
     const uint32_t reqFrames = b->requested ? b->requested : 1024;
+#else
+    constexpr uint32_t reqFrames = 1024;
+#endif
+
     const uint32_t bytesPerFrame = context->format.channels * (context->format.bitDepth / 8);
     const uint32_t reqBytes = reqFrames * bytesPerFrame;
 
