@@ -350,7 +350,7 @@ function(BundleMediaRemoteAdapter target)
     if (APPLE AND NOT IOS)
         add_dependencies(${target} MediaRemoteAdapter)
 
-        set(SCRIPT_FILE "${CMAKE_SOURCE_DIR}/vendor/mediaremote-adapter/bin/mediaremote-adapter.pl")
+        set(SCRIPT_FILE "${MEDIAREMOTE_ADAPTER_SOURCE_DIR}/bin/mediaremote-adapter.pl")
         set_source_files_properties(${SCRIPT_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
         target_sources(${target} PRIVATE ${SCRIPT_FILE})
 
@@ -369,7 +369,7 @@ function(LinkMediaRemoteAdapter target)
 
         add_custom_command(TARGET ${target} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_SOURCE_DIR}/vendor/mediaremote-adapter/bin/mediaremote-adapter.pl
+                ${MEDIAREMOTE_ADAPTER_SOURCE_DIR}/bin/mediaremote-adapter.pl
                 $<TARGET_FILE_DIR:${target}>/mediaremote-adapter.pl
                 COMMENT "Copying mediaremote-adapter.pl for ${target}"
         )

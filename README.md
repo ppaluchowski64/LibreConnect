@@ -122,6 +122,7 @@ conandata.yml            # Dependency versions
 ### Fetched at configure/build time
 
 - [Debug-Log](https://github.com/ddj4747/Debug-Log) (CMake `FetchContent`)
+- [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) (CMake `FetchContent`, macOS only)
 
 ## Prerequisites
 
