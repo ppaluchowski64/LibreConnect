@@ -113,7 +113,7 @@ def sign_apk(_apk_path: str):
             "--key-pass", f"pass:{KEY_PASSWORD}",
             "--out", name,
             _apk_path,
-        ], check=True, shell=True)
+        ], check=True)
         return name
     except subprocess.CalledProcessError as e:
         messagebox.showerror("Signing Error", f"Failed to sign APK.\n{e}")

@@ -276,6 +276,7 @@ def install_linux_dependencies():
             "ocl-icd-opencl-dev",
             "opencl-headers",
             "libx11-dev",
+            "libpipewire-0.3-dev"
         ]
 
         cmd = ["sudo", "apt-get", "install", "-y"] + packages

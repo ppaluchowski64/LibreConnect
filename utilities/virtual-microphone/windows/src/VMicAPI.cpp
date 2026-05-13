@@ -3,8 +3,7 @@
 #include <vector>
 #include <iostream>
 
-#include "VMicApi.h" // Ensure this points to your header file
-
+#include "VMicAPI.h"
 #include <windows.h>
 #include <objbase.h>
 #include <audioclient.h>

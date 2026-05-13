@@ -39,6 +39,7 @@ VMIC_API const char* VMic_GetLastError(VMicHandle handle);
 
 #ifdef __cplusplus
 }
+
 #endif
 
 #endif // VMIC_API_H

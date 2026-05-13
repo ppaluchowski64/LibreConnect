@@ -27,6 +27,13 @@ int main(const int argc, char** argv) {
         return -1;
     }
 
+#ifndef WIN32
+    {
+        char id[255];
+        const VMicResult createDevice = VMic_CreateDevice("TestDevice2", id, kSampleRate);
+    }
+#endif
+
     uint32_t deviceCount = 0;
     const VMicResult countResult = VMic_GetAvailableDevices(nullptr, &deviceCount);
     if (countResult != VMIC_SUCCESS) {
