@@ -14,6 +14,7 @@
 #include <QProcess>
 #include <QThread>
 #include <QMetaObject>
+#include <DebugLog.h>
 
 #ifdef __ANDROID__
     #include <QJniObject>
@@ -29,6 +30,11 @@ static std::mutex clipboardMutex;
     static QProcess* wlpasteProcess = nullptr;
 
     bool TextClipboard::IsWayland() {
+        if (QGuiApplication::instance()) {
+            if (QGuiApplication::platformName() == "wayland")
+                return true;
+        }
+
         const char* session = std::getenv("XDG_SESSION_TYPE");
 
         if (session && std::strcmp(session, "wayland") == 0)
@@ -38,8 +44,15 @@ static std::mutex clipboardMutex;
     }
 
     bool TextClipboard::HasWlClipboard() {
-        return std::system("/bin/sh -c 'command -v wl-copy >/dev/null 2>&1'") == 0 &&
-               std::system("/bin/sh -c 'command -v wl-paste >/dev/null 2>&1'") == 0;
+        static bool hasWl = []() {
+            const bool found = std::system("/bin/sh -c 'command -v wl-copy >/dev/null 2>&1'") == 0 &&
+                               std::system("/bin/sh -c 'command -v wl-paste >/dev/null 2>&1'") == 0;
+            if (!found && IsWayland()) {
+                Debug::LogWarning("Wayland detected but wl-copy/wl-paste not found. Clipboard sync might not work in background.");
+            }
+            return found;
+        }();
+        return hasWl;
     }
 #endif
 
@@ -75,6 +88,7 @@ bool TextClipboard::Set(const std::string& text) {
                 if (FILE* pipe = popen("wl-copy", "w")) {
                     fwrite(text.c_str(), 1, text.size(), pipe);
                     pclose(pipe);
+                    return;
                 }
             }
         #endif
@@ -112,8 +126,25 @@ std::string TextClipboard::Get() {
 
     return text.toString().toStdString();
 #else
-    if (!QGuiApplication::instance())
+    if (!QGuiApplication::instance()) {
+        #if defined(__linux__) && !defined(__ANDROID__)
+            if (IsWayland() && HasWlClipboard()) {
+                std::string result;
+                char buffer[256];
+
+                if (FILE* pipe = popen("wl-paste -n", "r")) {
+                    while (fgets(buffer, sizeof(buffer), pipe)) {
+                        result += buffer;
+                    }
+
+                    pclose(pipe);
+                }
+
+                return result;
+            }
+        #endif
         return {};
+    }
 
     auto getLogic = []() -> std::string {
         #if defined(__linux__) && !defined(__ANDROID__)
@@ -165,8 +196,13 @@ bool TextClipboard::Has() {
         context.object<jobject>()
     );
 #else
-    if (!QGuiApplication::instance())
+    if (!QGuiApplication::instance()) {
+        #if defined(__linux__) && !defined(__ANDROID__)
+            if (IsWayland() && HasWlClipboard())
+                return std::system("/bin/sh -c 'wl-paste -n >/dev/null 2>&1'") == 0;
+        #endif
         return false;
+    }
 
     auto hasLogic = []() -> bool {
         #if defined(__linux__) && !defined(__ANDROID__)
@@ -197,96 +233,124 @@ void TextClipboard::AddClipboardUpdateListener(std::function<void()>&& callback)
         return;
 
 #ifndef __ANDROID__
-    if (!QGuiApplication::instance())
+    if (!QGuiApplication::instance()) {
+        #if defined(__linux__) && !defined(__ANDROID__)
+            if (!(IsWayland() && HasWlClipboard()))
+        #endif
         return;
+    }
 #endif
 
-    RemoveClipboardUpdateListener();
+    auto setupLogic = [cb = std::move(callback)]() mutable {
+        RemoveClipboardUpdateListener();
 
-    auto wrapper = [cb = std::move(callback)]() {
-        std::string currentText = TextClipboard::Get();
+        auto wrapper = [cb = std::move(cb)]() {
+            std::string currentText = TextClipboard::Get();
 
-        {
-            std::lock_guard lock(clipboardMutex);
-            if (currentText == lastText) {
+            {
+                std::lock_guard lock(clipboardMutex);
+                if (currentText == lastText) {
+                    return;
+                }
+            }
+
+            cb();
+        };
+
+        #ifdef __ANDROID__
+            {
+                std::lock_guard lock(clipboardMutex);
+                currentCallback = std::move(wrapper);
+            }
+            const QJniObject context = QNativeInterface::QAndroidApplication::context();
+            if (context.isValid()) {
+                QJniObject::callStaticMethod<void>(
+                    "com/LibreConnect/mobile/ClipboardBridge",
+                    "setClipboardListenerEnabled",
+                    "(Landroid/content/Context;Z)V",
+                    context.object<jobject>(),
+                    true
+                );
+            }
+            return;
+        #endif
+
+        #if defined(__linux__) && !defined(__ANDROID__)
+            if (IsWayland() && HasWlClipboard()) {
+                wlpasteProcess = new QProcess();
+
+                QObject::connect(wlpasteProcess, &QProcess::readyReadStandardOutput, [wrapper]() {
+                    wlpasteProcess->readAllStandardOutput();
+                    wrapper();
+                });
+
+                wlpasteProcess->start("wl-paste", QStringList() << "--watch" << "echo" << "1");
+                Debug::Log("TextClipboard: Started wl-paste --watch for Wayland clipboard sync");
                 return;
             }
-        }
+        #endif
 
-        cb();
+        clipboardConnection = QObject::connect(
+            QGuiApplication::clipboard(),
+            &QClipboard::dataChanged,
+            std::move(wrapper)
+        );
     };
 
-    #ifdef __ANDROID__
-        {
-            std::lock_guard lock(clipboardMutex);
-            currentCallback = std::move(wrapper);
-        }
-        const QJniObject context = QNativeInterface::QAndroidApplication::context();
-        if (context.isValid()) {
-            QJniObject::callStaticMethod<void>(
-                "com/LibreConnect/mobile/ClipboardBridge",
-                "setClipboardListenerEnabled",
-                "(Landroid/content/Context;Z)V",
-                context.object<jobject>(),
-                true
-            );
-        }
-        return;
-    #endif
-
-    #if defined(__linux__) && !defined(__ANDROID__)
-        if (IsWayland() && HasWlClipboard()) {
-            wlpasteProcess = new QProcess();
-
-            QObject::connect(wlpasteProcess, &QProcess::readyReadStandardOutput, [wrapper]() {
-                wlpasteProcess->readAllStandardOutput();
-                wrapper();
-            });
-
-            wlpasteProcess->start("wl-paste", QStringList() << "--watch" << "echo" << "1");
-            return;
-        }
-    #endif
-
-    clipboardConnection = QObject::connect(
-        QGuiApplication::clipboard(),
-        &QClipboard::dataChanged,
-        wrapper
-    );
+#ifdef __ANDROID__
+    setupLogic();
+#else
+    if (QGuiApplication::instance() && QThread::currentThread() != QGuiApplication::instance()->thread())
+        QMetaObject::invokeMethod(QGuiApplication::instance(), std::move(setupLogic), Qt::BlockingQueuedConnection);
+    else
+        setupLogic();
+#endif
 }
 
 void TextClipboard::RemoveClipboardUpdateListener() {
-    #ifdef __ANDROID__
-        {
-            std::lock_guard lock(clipboardMutex);
-            currentCallback = nullptr;
-        }
+    auto removeLogic = []() {
+        #ifdef __ANDROID__
+            {
+                std::lock_guard lock(clipboardMutex);
+                currentCallback = nullptr;
+            }
 
-        const QJniObject context = QNativeInterface::QAndroidApplication::context();
-        if (context.isValid()) {
-            QJniObject::callStaticMethod<void>(
-                "com/LibreConnect/mobile/ClipboardBridge",
-                "setClipboardListenerEnabled",
-                "(Landroid/content/Context;Z)V",
-                context.object<jobject>(),
-                false
-            );
-        }
-    #endif
+            const QJniObject context = QNativeInterface::QAndroidApplication::context();
+            if (context.isValid()) {
+                QJniObject::callStaticMethod<void>(
+                    "com/LibreConnect/mobile/ClipboardBridge",
+                    "setClipboardListenerEnabled",
+                    "(Landroid/content/Context;Z)V",
+                    context.object<jobject>(),
+                    false
+                );
+            }
+        #endif
 
-    #if defined(__linux__) && !defined(__ANDROID__)
-        if (wlpasteProcess) {
-            wlpasteProcess->kill();
-            wlpasteProcess->waitForFinished();
-            delete wlpasteProcess;
-            wlpasteProcess = nullptr;
-        }
-    #endif
+        #if defined(__linux__) && !defined(__ANDROID__)
+            if (wlpasteProcess) {
+                wlpasteProcess->kill();
+                wlpasteProcess->waitForFinished();
+                delete wlpasteProcess;
+                wlpasteProcess = nullptr;
+                Debug::Log("TextClipboard: Stopped wl-paste --watch");
+            }
+        #endif
 
-    if (clipboardConnection) {
-        QObject::disconnect(clipboardConnection);
-        clipboardConnection = QMetaObject::Connection();
-    }
+        if (clipboardConnection) {
+            QObject::disconnect(clipboardConnection);
+            clipboardConnection = QMetaObject::Connection();
+        }
+    };
+
+#ifdef __ANDROID__
+    removeLogic();
+#else
+    if (QGuiApplication::instance() && QThread::currentThread() != QGuiApplication::instance()->thread())
+        QMetaObject::invokeMethod(QGuiApplication::instance(), removeLogic, Qt::BlockingQueuedConnection);
+    else
+        removeLogic();
+#endif
 }
 
 #ifdef __ANDROID__
