@@ -6,8 +6,8 @@
 
 #include <string>
 #include <vector>
-#include <cstdint>
 #include <optional>
+#include <chrono>
 
 namespace {
     void EnsureWinRtInitialized() {
@@ -43,9 +43,15 @@ std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
         info.album = winrt::to_string(props.AlbumTitle());
 
         info.duration = static_cast<double>(timeline.EndTime().count()) / 10000000.0;
-        info.position = static_cast<double>(timeline.Position().count()) / 10000000.0;
-
         info.playing = (playback.PlaybackStatus() == winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
+
+        double rawPos = static_cast<double>(timeline.Position().count()) / 10000000.0;
+        int64_t lastUpdate = timeline.LastUpdatedTime().time_since_epoch().count() / 10;
+
+        info.position = CalculateInterpolatedPosition(rawPos, lastUpdate, info.playing);
+
+        if (info.duration > 0.0 && info.position > info.duration)
+            info.position = info.duration;
 
         if (auto thumb = props.Thumbnail()) {
             auto stream = thumb.OpenReadAsync().get();

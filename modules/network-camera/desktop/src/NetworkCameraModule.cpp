@@ -940,4 +940,3 @@ const char* NetworkCameraModule::GetModuleName() const {
 ModuleType NetworkCameraModule::GetModuleType() const {
     return ModuleType::NetworkCamera;
 }
-

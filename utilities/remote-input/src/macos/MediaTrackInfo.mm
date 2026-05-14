@@ -10,11 +10,10 @@
 #include <chrono>
 
 namespace {
-    struct ExtractedData {
+    struct CachedState {
         TrackMetadata info;
-        long long timestampEpochMicros = 0;
-        long long elapsedTimeMicros = 0;
-        double playbackRate = 0.0;
+        long long timestamp = 0;
+        long long rawPosMicros = 0;
     };
 
     NSString* GetHelperPath(NSString* name, NSString* extension) {
@@ -50,50 +49,6 @@ namespace {
         return nil;
     }
 
-    std::optional<ExtractedData> ParseMetadata(NSDictionary* j) {
-        if (![j isKindOfClass:[NSDictionary class]])
-            return std::nullopt;
-
-        ExtractedData data{};
-
-        if (j[@"title"] && j[@"title"] != [NSNull null])
-            data.info.title = [j[@"title"] UTF8String];
-
-        if (j[@"artist"] && j[@"artist"] != [NSNull null])
-            data.info.artist = [j[@"artist"] UTF8String];
-
-        if (j[@"album"] && j[@"album"] != [NSNull null])
-            data.info.album = [j[@"album"] UTF8String];
-
-        if (j[@"durationMicros"] && j[@"durationMicros"] != [NSNull null])
-            data.info.duration = [j[@"durationMicros"] doubleValue] / 1e6;
-
-        if (j[@"elapsedTimeMicros"] && j[@"elapsedTimeMicros"] != [NSNull null]) {
-            data.elapsedTimeMicros = [j[@"elapsedTimeMicros"] longLongValue];
-            data.info.position = static_cast<double>(data.elapsedTimeMicros) / 1e6;
-        }
-
-        if (j[@"playing"] && j[@"playing"] != [NSNull null])
-            data.info.playing = [j[@"playing"] boolValue];
-
-        if (j[@"timestampEpochMicros"] && j[@"timestampEpochMicros"] != [NSNull null])
-            data.timestampEpochMicros = [j[@"timestampEpochMicros"] longLongValue];
-
-        if (j[@"playbackRate"] && j[@"playbackRate"] != [NSNull null])
-            data.playbackRate = [j[@"playbackRate"] doubleValue];
-
-        if (j[@"artworkData"] && j[@"artworkData"] != [NSNull null]) {
-            NSData* art = [[NSData alloc] initWithBase64EncodedString:j[@"artworkData"] options:0];
-
-            if (art) {
-                auto bytes = static_cast<const uint8_t*>([art bytes]);
-                data.info.cover.assign(bytes, bytes + [art length]);
-            }
-        }
-
-        return data;
-    }
-
     class MediaWorker {
         public:
             static MediaWorker& Get() {
@@ -101,28 +56,11 @@ namespace {
                 return instance;
             }
 
-            std::optional<TrackMetadata> GetState() {
+            std::optional<CachedState> GetRawState() {
                 std::unique_lock lock(m_mutex);
                 StartIfNeeded();
 
-                if (!m_state)
-                    return std::nullopt;
-
-                TrackMetadata info = m_state->info;
-
-                if (info.playing && m_state->playbackRate > 0.0) {
-                    auto now = std::chrono::duration_cast<std::chrono::microseconds>(
-                        std::chrono::system_clock::now().time_since_epoch()
-                    ).count();
-
-                    long long diff = now - m_state->timestampEpochMicros;
-                    info.position = static_cast<double>(m_state->elapsedTimeMicros + (diff * m_state->playbackRate)) / 1e6;
-                }
-
-                if (info.duration > 0.0 && info.position > info.duration)
-                    info.position = info.duration;
-
-                return info;
+                return m_state;
             }
 
         private:
@@ -171,9 +109,41 @@ namespace {
                                 NSDictionary* dict = [NSJSONSerialization JSONObjectWithData:lineData options:0 error:nil];
 
                                 if (dict && dict[@"payload"]) {
-                                    auto newState = ParseMetadata(dict[@"payload"]);
+                                    NSDictionary* p = dict[@"payload"];
+                                    CachedState next{};
+
+                                    if (p[@"title"] && p[@"title"] != [NSNull null])
+                                        next.info.title = [p[@"title"] UTF8String];
+
+                                    if (p[@"artist"] && p[@"artist"] != [NSNull null])
+                                        next.info.artist = [p[@"artist"] UTF8String];
+
+                                    if (p[@"album"] && p[@"album"] != [NSNull null])
+                                        next.info.album = [p[@"album"] UTF8String];
+
+                                    if (p[@"durationMicros"] && p[@"durationMicros"] != [NSNull null])
+                                        next.info.duration = [p[@"durationMicros"] doubleValue] / 1e6;
+
+                                    if (p[@"elapsedTimeMicros"] && p[@"elapsedTimeMicros"] != [NSNull null])
+                                        next.rawPosMicros = [p[@"elapsedTimeMicros"] longLongValue];
+
+                                    if (p[@"playing"] && p[@"playing"] != [NSNull null])
+                                        next.info.playing = [p[@"playing"] boolValue];
+
+                                    if (p[@"timestampEpochMicros"] && p[@"timestampEpochMicros"] != [NSNull null])
+                                        next.timestamp = [p[@"timestampEpochMicros"] longLongValue];
+
+                                    if (p[@"artworkData"] && p[@"artworkData"] != [NSNull null]) {
+                                        NSData* art = [[NSData alloc] initWithBase64EncodedString:p[@"artworkData"] options:0];
+
+                                        if (art) {
+                                            auto artBytes = static_cast<const uint8_t*>([art bytes]);
+                                            next.info.cover.assign(artBytes, artBytes + [art length]);
+                                        }
+                                    }
+
                                     std::unique_lock lock(this->m_mutex);
-                                    this->m_state = newState;
+                                    this->m_state = next;
                                 }
                             }
 
@@ -190,13 +160,31 @@ namespace {
             }
 
             std::mutex m_mutex;
-            std::optional<ExtractedData> m_state;
+            std::optional<CachedState> m_state;
             NSTask* m_task = nil;
     };
 }
 
 std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
-    return MediaWorker::Get().GetState();
+    auto stateOpt = MediaWorker::Get().GetRawState();
+
+    if (!stateOpt)
+        return std::nullopt;
+
+    TrackMetadata info = stateOpt->info;
+
+    double rawPos = static_cast<double>(stateOpt->rawPosMicros) / 1000000.0;
+
+    info.position = CalculateInterpolatedPosition(
+        rawPos,
+        stateOpt->timestamp,
+        info.playing
+    );
+
+    if (info.duration > 0.0 && info.position > info.duration)
+        info.position = info.duration;
+
+    return info;
 }
 
 void MediaTrackInfo::SetPosition(double seconds) {

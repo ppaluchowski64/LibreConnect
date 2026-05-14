@@ -3,15 +3,16 @@
 #include <vector>
 #include <cstdlib>
 #include <chrono>
+#ifdef _WIN32
 #include <cstdint>
 #include <cstring>
+#endif
 #include <filesystem>
 #include <memory>
 #include <string>
 #include <thread>
 #include <utility>
 
-#include <QCoreApplication>
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QByteArray>
@@ -41,9 +42,9 @@ QString PathToQString(const std::filesystem::path& path)
 std::filesystem::path QStringToPath(const QString& value)
 {
 #ifdef _WIN32
-    return std::filesystem::path(value.toStdWString());
+    return {value.toStdWString()};
 #else
-    return std::filesystem::path(value.toStdString());
+    return {value.toStdString()};
 #endif
 }
 
@@ -54,7 +55,7 @@ auto InvokeOnGuiThreadSync(Fn&& fn) -> decltype(fn())
 
     QCoreApplication* app = QGuiApplication::instance();
     if (!app) {
-        return ReturnType{};
+        return {};
     }
 
     if (QThread::currentThread() == app->thread()) {
@@ -76,7 +77,7 @@ auto InvokeOnGuiThreadSync(Fn&& fn) -> decltype(fn())
 std::filesystem::path NormalizePath(const std::filesystem::path& path)
 {
     std::error_code ec;
-    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, ec);
+    std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(path, ec);
     if (!ec) {
         return canonicalPath;
     }
@@ -282,12 +283,17 @@ std::filesystem::path FileSystemManager::GetTemporaryStoragePath()
 
 std::filesystem::path FileSystemManager::GetTemporaryStoragePath(const std::string& category)
 {
-    const std::filesystem::path basePath = GetTemporaryStoragePath();
+    std::filesystem::path basePath = GetTemporaryStoragePath();
     if (basePath.empty() || category.empty()) {
         return basePath;
     }
 
-    const std::filesystem::path categoryPath = basePath / std::filesystem::u8path(category);
+#if defined(__cpp_lib_char8_t)
+    std::filesystem::path categoryPath = basePath / std::filesystem::path(reinterpret_cast<const char8_t*>(category.c_str()));
+#else
+    std::filesystem::path categoryPath = basePath / std::filesystem::u8path(category);
+#endif
+
     std::error_code ec;
     std::filesystem::create_directories(categoryPath, ec);
     if (ec) {
