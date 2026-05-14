@@ -35,6 +35,14 @@ JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_RemoteInputMediaActionReceiv
         RemoteInputModule::SendMediaInput(MediaSignal::VolumeUp);
     }
 }
+
+JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_RemoteInputMediaActionReceiver_onRemoteInputMediaSeekCPP(
+    JNIEnv* /*env*/,
+    jobject /*receiver*/,
+    jdouble positionSeconds
+) {
+    RemoteInputModule::SetMediaPosition(static_cast<double>(positionSeconds));
+}
 }
 
 #endif

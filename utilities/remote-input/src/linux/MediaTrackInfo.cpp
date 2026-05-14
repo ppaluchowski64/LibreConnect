@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <chrono>
 
 namespace {
     QString GetActiveMprisPlayer() {
@@ -55,14 +56,21 @@ std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
     QDBusReply<QVariant> statusReply = props.call("Get", "org.mpris.MediaPlayer2.Player", "PlaybackStatus");
     QDBusReply<QVariant> posReply = props.call("Get", "org.mpris.MediaPlayer2.Player", "Position");
 
+    int64_t now = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+
     if (!metaReply.isValid())
         return std::nullopt;
 
     TrackMetadata info{};
     info.playing = (statusReply.isValid() && statusReply.value().toString() == "Playing");
 
+    double rawPos = 0.0;
+
     if (posReply.isValid())
-        info.position = static_cast<double>(posReply.value().toLongLong()) / 1000000.0;
+        rawPos = static_cast<double>(posReply.value().toLongLong()) / 1000000.0;
+
+    info.position = CalculateInterpolatedPosition(rawPos, now, info.playing);
 
     auto arg = metaReply.value().value<QDBusArgument>();
     QVariantMap metadata;
@@ -78,6 +86,9 @@ std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
 
     if (metadata.contains("mpris:length"))
         info.duration = static_cast<double>(metadata.value("mpris:length").toLongLong()) / 1000000.0;
+
+    if (info.duration > 0.0 && info.position > info.duration)
+        info.position = info.duration;
 
     if (metadata.contains("mpris:artUrl")) {
         QString artUrl = metadata.value("mpris:artUrl").toString();
