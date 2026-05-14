@@ -42,6 +42,38 @@ Page {
         restoreContactsScroll()
     }
 
+    function formatDateSeparator(t) {
+        const d = new Date(t)
+        const now = new Date()
+        const yesterday = new Date()
+        yesterday.setDate(now.getDate() - 1)
+
+        const isSameDay = (t1, t2) => {
+            const d1 = new Date(t1)
+            const d2 = new Date(t2)
+            return d1.getFullYear() === d2.getFullYear() &&
+                   d1.getMonth() === d2.getMonth() &&
+                   d1.getDate() === d2.getDate()
+        }
+
+        if (isSameDay(t, now.getTime())) {
+            return "Today"
+        } else if (isSameDay(t, yesterday.getTime())) {
+            return "Yesterday"
+        } else {
+            return Qt.formatDateTime(d, "MMMM d, yyyy")
+        }
+    }
+
+    function isSameDay(t1, t2) {
+        if (!t1 || !t2) return false
+        const d1 = new Date(t1)
+        const d2 = new Date(t2)
+        return d1.getFullYear() === d2.getFullYear() &&
+               d1.getMonth() === d2.getMonth() &&
+               d1.getDate() === d2.getDate()
+    }
+
     background: Rectangle {
         color: Theme.panelColor
     }
@@ -250,147 +282,220 @@ Page {
 
                     ListView {
                         id: messagesList
-                        anchors.fill: parent
-                        anchors.margins: 10
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.leftMargin: 10
+                        anchors.topMargin: 10
+                        anchors.bottomMargin: 10
+                        anchors.rightMargin: scrollGutter.visible ? 28 : 10
                         model: smsBridgeController.messages
                         spacing: 6
                         clip: true
                         verticalLayoutDirection: ListView.BottomToTop
 
+                        ScrollBar.vertical: ScrollBar {
+                            id: messagesScrollBar
+                            parent: scrollGutter
+                            anchors.fill: parent
+                            policy: ScrollBar.AlwaysOn
+                            active: true
+                            opacity: 1.0
+                            visible: scrollGutter.visible
+                        }
+
                         delegate: Item {
+                            id: messageDelegate
+                            required property int index
                             required property var modelData
                             width: ListView.view.width
-                            height: bubble.implicitHeight + 2
 
-                            Row {
-                                width: parent.width
-                                spacing: 0
-                                layoutDirection: modelData.incoming ? Qt.LeftToRight : Qt.RightToLeft
+                            readonly property bool showDaySeparator: {
+                                if (index === messagesList.count - 1) return true
+                                const nextMessage = messagesList.model[index + 1]
+                                if (!nextMessage) return true
+                                return !root.isSameDay(modelData.timestamp, nextMessage.timestamp)
+                            }
 
-                                Rectangle {
-                                    id: bubble
-                                    readonly property real maxBubbleWidth: parent.width * 0.72
-                                    readonly property real minBubbleWidth: 56
-                                    readonly property bool hasAttachments: modelData.attachments && modelData.attachments.length > 0
-                                    width: Math.min(
-                                        maxBubbleWidth,
-                                        Math.max(
-                                            minBubbleWidth,
-                                            Math.max(
-                                                hasAttachments ? 220 : 0,
-                                                Math.max(bubbleText.implicitWidth, metaRow.implicitWidth)
-                                            ) + 16
-                                        )
-                                    )
-                                    radius: 12
-                                    color: modelData.incoming ? Theme.buttonColor : Theme.selectedColor
-                                    border.width: modelData.failed ? 1 : 0
-                                    border.color: Theme.dangerColor
-                                    implicitHeight: bubbleContent.implicitHeight + 16
+                            height: (showDaySeparator ? 46 : 0) + bubble.implicitHeight + 2
 
-                                    Column {
-                                        id: bubbleContent
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        spacing: 4
+                            Column {
+                                anchors.fill: parent
+                                spacing: 10
+
+                                Item {
+                                    width: parent.width
+                                    height: messageDelegate.showDaySeparator ? 36 : 0
+                                    visible: messageDelegate.showDaySeparator
+
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: dayText.implicitWidth + 24
+                                        height: 26
+                                        radius: 13
+                                        color: Theme.backgroundColor
+                                        border.color: Theme.panelBorderColor
+                                        border.width: 1
 
                                         Text {
-                                            id: bubbleText
-                                            width: parent.width
-                                            text: modelData.body
-                                            visible: text.length > 0
-                                            wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                                            color: modelData.incoming ? Theme.textColor : Theme.selectedTextColor
+                                            id: dayText
+                                            anchors.centerIn: parent
+                                            text: root.formatDateSeparator(modelData.timestamp)
                                             font.family: Theme.fontFamily
-                                            font.pixelSize: 14
+                                            font.pixelSize: 11
+                                            font.bold: true
+                                            color: Theme.subtleTextColor
                                         }
+                                    }
+                                }
 
-                                        Repeater {
-                                            model: modelData.attachments ? modelData.attachments : []
+                                Row {
+                                    width: parent.width
+                                    spacing: 0
+                                    layoutDirection: modelData.incoming ? Qt.LeftToRight : Qt.RightToLeft
 
-                                            delegate: Column {
-                                                id: attachmentDelegate
-                                                required property var modelData
-                                                property bool imageFailed: false
-                                                readonly property bool showImage: modelData.previewable
-                                                                                  && modelData.fileUrl.length > 0
-                                                                                  && !imageFailed
-                                                width: bubbleContent.width
-                                                spacing: 4
+                                    Rectangle {
+                                        id: bubble
+                                        readonly property real maxBubbleWidth: parent.width * 0.72
+                                        readonly property real minBubbleWidth: 56
+                                        readonly property bool hasAttachments: modelData.attachments && modelData.attachments.length > 0
+                                        width: Math.min(
+                                            maxBubbleWidth,
+                                            Math.max(
+                                                minBubbleWidth,
+                                                Math.max(
+                                                    hasAttachments ? 220 : 0,
+                                                    Math.max(bubbleText.implicitWidth, metaRow.implicitWidth)
+                                                ) + 16
+                                            )
+                                        )
+                                        radius: 12
+                                        color: modelData.incoming ? Theme.buttonColor : Theme.selectedColor
+                                        border.width: modelData.failed ? 1 : 0
+                                        border.color: Theme.dangerColor
+                                        implicitHeight: bubbleContent.implicitHeight + 16
 
-                                                Rectangle {
-                                                    width: parent.width
-                                                    height: attachmentDelegate.showImage ? 160 : 34
-                                                    radius: 8
-                                                    color: Theme.backgroundColor
-                                                    border.width: 1
-                                                    border.color: Theme.panelBorderColor
-                                                    clip: true
+                                        Column {
+                                            id: bubbleContent
+                                            anchors.fill: parent
+                                            anchors.margins: 8
+                                            spacing: 4
 
-                                                    Image {
-                                                        id: attachmentPreview
-                                                        anchors.fill: parent
-                                                        anchors.margins: 4
-                                                        source: attachmentDelegate.showImage ? modelData.fileUrl : ""
-                                                        fillMode: Image.PreserveAspectFit
-                                                        asynchronous: true
-                                                        visible: attachmentDelegate.showImage && status !== Image.Error
-                                                        onStatusChanged: {
-                                                            if (status === Image.Error) {
-                                                                attachmentDelegate.imageFailed = true
+                                            Text {
+                                                id: bubbleText
+                                                width: parent.width
+                                                text: modelData.body
+                                                visible: text.length > 0
+                                                wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                                                color: modelData.incoming ? Theme.textColor : Theme.selectedTextColor
+                                                font.family: Theme.fontFamily
+                                                font.pixelSize: 14
+                                            }
+
+                                            Repeater {
+                                                model: modelData.attachments ? modelData.attachments : []
+
+                                                delegate: Column {
+                                                    id: attachmentDelegate
+                                                    required property var modelData
+                                                    property bool imageFailed: false
+                                                    readonly property bool showImage: modelData.previewable
+                                                                                      && modelData.fileUrl.length > 0
+                                                                                      && !imageFailed
+                                                    width: bubbleContent.width
+                                                    spacing: 4
+
+                                                    Rectangle {
+                                                        width: parent.width
+                                                        height: attachmentDelegate.showImage ? 160 : 34
+                                                        radius: 8
+                                                        color: Theme.backgroundColor
+                                                        border.width: 1
+                                                        border.color: Theme.panelBorderColor
+                                                        clip: true
+
+                                                        Image {
+                                                            id: attachmentPreview
+                                                            anchors.fill: parent
+                                                            anchors.margins: 4
+                                                            source: attachmentDelegate.showImage ? modelData.fileUrl : ""
+                                                            fillMode: Image.PreserveAspectFit
+                                                            asynchronous: true
+                                                            visible: attachmentDelegate.showImage && status !== Image.Error
+                                                            onStatusChanged: {
+                                                                if (status === Image.Error) {
+                                                                    attachmentDelegate.imageFailed = true
+                                                                }
                                                             }
                                                         }
-                                                    }
 
-                                                    Text {
-                                                        anchors.centerIn: parent
-                                                        text: modelData.loading
-                                                              ? "Loading attachment..."
-                                                              : (modelData.failed ? "Attachment unavailable" : "Open attachment")
-                                                        visible: !attachmentDelegate.showImage
-                                                        color: Theme.mutedTextColor
-                                                        font.family: Theme.fontFamily
-                                                        font.pixelSize: 12
-                                                    }
+                                                        Text {
+                                                            anchors.centerIn: parent
+                                                            text: modelData.loading
+                                                                  ? "Loading attachment..."
+                                                                  : (modelData.failed ? "Attachment unavailable" : "Open attachment")
+                                                            visible: !attachmentDelegate.showImage
+                                                            color: Theme.mutedTextColor
+                                                            font.family: Theme.fontFamily
+                                                            font.pixelSize: 12
+                                                        }
 
-                                                    MouseArea {
-                                                        anchors.fill: parent
-                                                        enabled: modelData.fileUrl.length > 0
-                                                        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                                        onClicked: Qt.openUrlExternally(modelData.fileUrl)
+                                                        MouseArea {
+                                                            anchors.fill: parent
+                                                            enabled: modelData.fileUrl.length > 0
+                                                            cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                                                            onClicked: Qt.openUrlExternally(modelData.fileUrl)
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }
 
-                                        Row {
-                                            id: metaRow
-                                            width: parent.width
-                                            spacing: 6
-                                            visible: timeText.text.length > 0 || statusText.text.length > 0
+                                            Row {
+                                                id: metaRow
+                                                width: parent.width
+                                                spacing: 6
+                                                visible: timeText.text.length > 0 || statusText.text.length > 0
 
-                                            Text {
-                                                id: timeText
-                                                text: modelData.timestamp > 0
-                                                      ? Qt.formatDateTime(new Date(modelData.timestamp), "HH:mm")
-                                                      : ""
-                                                color: Theme.mutedTextColor
-                                                font.family: Theme.fontFamily
-                                                font.pixelSize: 11
-                                            }
+                                                Text {
+                                                    id: timeText
+                                                    text: modelData.timestamp > 0
+                                                          ? Qt.formatDateTime(new Date(modelData.timestamp), "HH:mm")
+                                                          : ""
+                                                    color: Theme.mutedTextColor
+                                                    font.family: Theme.fontFamily
+                                                    font.pixelSize: 11
+                                                }
 
-                                            Text {
-                                                id: statusText
-                                                text: modelData.failed ? "Failed to send" : (modelData.pending ? "Sending..." : "")
-                                                color: modelData.failed ? Theme.dangerColor : Theme.mutedTextColor
-                                                font.family: Theme.fontFamily
-                                                font.pixelSize: 11
+                                                Text {
+                                                    id: statusText
+                                                    text: modelData.failed ? "Failed to send" : (modelData.pending ? "Sending..." : "")
+                                                    color: modelData.failed ? Theme.dangerColor : Theme.mutedTextColor
+                                                    font.family: Theme.fontFamily
+                                                    font.pixelSize: 11
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+
+                    Rectangle {
+                        id: scrollGutter
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.right: parent.right
+                        anchors.topMargin: 10
+                        anchors.bottomMargin: 10
+                        anchors.rightMargin: 8
+                        width: 14
+                        radius: 7
+                        color: Theme.backgroundColor
+                        border.color: Theme.panelBorderColor
+                        border.width: 1
+                        visible: messagesList.contentHeight > messagesList.height + 1
                     }
                 }
 
