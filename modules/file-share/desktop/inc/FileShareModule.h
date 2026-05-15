@@ -27,6 +27,7 @@ public:
     void PasteEntryFromClipboard(const std::filesystem::path& destination) const;
     void OpenEntry(const FileEntry& entry) const;
     void FetchEntryIcon(const FileEntry& entry, FileIconDensity density) const;
+    void DeleteEntries(std::vector<FileEntry> entries) const;
 
 private:
     bool TryBeginDirectoryRequest(const std::string& path) const;
@@ -38,6 +39,7 @@ private:
     asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;
     asio::awaitable<std::vector<std::filesystem::path>> PrepareEntriesForExternalDragAwaitable(std::vector<FileEntry> entries) const;
     static asio::awaitable<void> FetchEntryIconAwaitable(FileEntry entry, FileIconDensity density);
+    asio::awaitable<void> DeleteEntriesAwaitable(std::vector<FileEntry> entries) const;
 
     mutable std::mutex m_directoryRequestMutex;
     mutable std::unordered_set<std::string> m_inFlightDirectoryRequests;

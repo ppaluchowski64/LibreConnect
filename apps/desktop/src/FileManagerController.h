@@ -53,6 +53,8 @@ public:
     Q_INVOKABLE void beginExternalDrag(const QStringList& remotePaths);
     Q_INVOKABLE void uploadLocalEntry(const QUrl& localPathUrl);
     Q_INVOKABLE void requestEntryIcon(const QString& remotePath);
+    Q_INVOKABLE void deleteEntry(const QString& remotePath);
+    Q_INVOKABLE void deleteEntries(const QStringList& remotePaths);
 
 protected:
     bool event(QEvent* event) override;
@@ -75,7 +77,8 @@ private:
         Open,
         Copy,
         Upload,
-        DragExport
+        DragExport,
+        Delete
     };
 
     void refreshModuleState();
@@ -109,6 +112,7 @@ private:
     QString m_pendingLocalPath;
     QString m_activeEntryPath;
     QString m_activeEntryName;
+    QStringList m_pendingDeletePaths;
     QStringList m_pendingCopyPaths;
     QStringList m_pendingOpenQueue;
     QList<QStringList> m_pendingCopyQueue;

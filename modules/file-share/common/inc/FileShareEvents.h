@@ -107,4 +107,22 @@ private:
     bool m_success;
 };
 
+class EntriesDeleteResultEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(FileShareEventBase+5);
+    explicit EntriesDeleteResultEvent(std::vector<FileEntry> entries, const bool success) : QEvent(Type), m_entries(std::move(entries)), m_success(success) {}
+
+    std::vector<FileEntry> GetEntries() const { return m_entries; }
+    std::vector<FileEntry>&& TakeEntries() { return std::move(m_entries); }
+    bool Success() const { return m_success; }
+
+    EntriesDeleteResultEvent* clone() const override {
+        return new EntriesDeleteResultEvent(*this);
+    }
+
+private:
+    std::vector<FileEntry> m_entries;
+    bool m_success;
+};
+
 #endif // FILE_SHARE_EVENTS_H

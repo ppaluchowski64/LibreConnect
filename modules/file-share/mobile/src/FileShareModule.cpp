@@ -428,6 +428,39 @@ void FileShareModule::EnableResponseCallbacks() {
 
         co_return;
     });
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DELETE_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID = package->GetValue<size_t>();
+        const std::vector<FileEntry> entries = package->GetValue<std::vector<FileEntry>>();
+        Debug::Log("FileShareModule: Received delete entries request. RequestID: {}, Count: {}", requestID, entries.size());
+
+        bool allSuccess = true;
+        for (const auto& entry : entries) {
+            if (!entry.GetPath().has_value() || !entry.GetName().has_value()) {
+                allSuccess = false;
+                continue;
+            }
+
+            const std::filesystem::path path = std::filesystem::path(entry.GetPath().value()) / entry.GetName().value();
+            std::error_code ec;
+            if (std::filesystem::exists(path, ec)) {
+                std::filesystem::remove_all(path, ec);
+                if (ec) {
+                    Debug::LogError("FileShareModule: Failed to delete {}: {}", path.string(), ec.message());
+                    allSuccess = false;
+                }
+            } else if (ec) {
+                Debug::LogError("FileShareModule: Failed to check existence of {}: {}", path.string(), ec.message());
+                allSuccess = false;
+            }
+        }
+
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::FILE_SHARE_DELETE_ENTRIES_RESPONSE,
+            allSuccess
+        );
+        co_return;
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {
@@ -438,6 +471,7 @@ void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DELETE_ENTRIES_REQUEST);
 }
 
 void FileShareModule::OnInitialize() {
