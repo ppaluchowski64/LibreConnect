@@ -540,7 +540,8 @@ Page {
                     parent: Overlay.overlay
                     x: 0
                     y: 0
-                    modal: false
+                    modal: true
+                    dim: false
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                     padding: 8
                     onOpened: {

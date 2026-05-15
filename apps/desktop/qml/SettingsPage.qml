@@ -176,6 +176,7 @@ Page {
                         popup: Popup {
                             id: themePopup
                             modal: true
+                            closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
                             dim: false
                             x: 0
                             y: Math.round(themeCombo.height + 4)
@@ -281,6 +282,7 @@ Page {
                     popup: Popup {
                         id: themePopupCompact
                         modal: true
+                        closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
                         dim: false
                         x: 0
                         y: Math.round(themeComboCompact.height + 4)

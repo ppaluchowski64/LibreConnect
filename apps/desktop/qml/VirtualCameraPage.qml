@@ -154,6 +154,7 @@ Page {
                         popup: Popup {
                             id: cameraPopup
                             modal: true
+                            closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
                             dim: false
                             x: 0
                             y: Math.round(cameraCombo.height + 4)
