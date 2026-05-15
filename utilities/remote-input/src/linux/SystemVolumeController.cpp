@@ -7,14 +7,22 @@
 int SystemVolumeController::GetVolume() {
     long min = 0, max = 0, volume = 0;
 
-    snd_mixer_t* handle;
+    snd_mixer_t* handle = nullptr;
+
+    if (snd_mixer_open(&handle, 0) < 0)
+        return 0;
+
+    if (snd_mixer_attach(handle, "default") < 0) {
+        snd_mixer_close(handle);
+        return 0;
+    }
+
+    if (snd_mixer_selem_register(handle, nullptr, nullptr) < 0 || snd_mixer_load(handle) < 0) {
+        snd_mixer_close(handle);
+        return 0;
+    }
+
     snd_mixer_selem_id_t* sid;
-
-    snd_mixer_open(&handle, 0);
-    snd_mixer_attach(handle, "default");
-    snd_mixer_selem_register(handle, nullptr, nullptr);
-    snd_mixer_load(handle);
-
     snd_mixer_selem_id_alloca(&sid);
     snd_mixer_selem_id_set_index(sid, 0);
     snd_mixer_selem_id_set_name(sid, "Master");
@@ -34,14 +42,22 @@ void SystemVolumeController::SetVolume(int percentage) {
     if (percentage < 0) percentage = 0;
     if (percentage > 100) percentage = 100;
 
-    snd_mixer_t* handle;
+    snd_mixer_t* handle = nullptr;
+
+    if (snd_mixer_open(&handle, 0) < 0)
+        return;
+
+    if (snd_mixer_attach(handle, "default") < 0) {
+        snd_mixer_close(handle);
+        return;
+    }
+
+    if (snd_mixer_selem_register(handle, nullptr, nullptr) < 0 || snd_mixer_load(handle) < 0) {
+        snd_mixer_close(handle);
+        return;
+    }
+
     snd_mixer_selem_id_t* sid;
-
-    snd_mixer_open(&handle, 0);
-    snd_mixer_attach(handle, "default");
-    snd_mixer_selem_register(handle, nullptr, nullptr);
-    snd_mixer_load(handle);
-
     snd_mixer_selem_id_alloca(&sid);
     snd_mixer_selem_id_set_index(sid, 0);
     snd_mixer_selem_id_set_name(sid, "Master");
