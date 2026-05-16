@@ -2,13 +2,18 @@
 #include <QQmlApplicationEngine>
 #include <QtQml>
 #include <QQmlContext>
+#include <QStandardPaths>
 #include <ModulesManager.h>
+#include <DebugLog.h>
 #include "MobileConnectionController.h"
 #include "AndroidAdvertiser.h"
 #include "MobileThemeController.h"
 #include "MobileNotificationSyncController.h"
 #include "MobileClipboardSyncController.h"
 #include "MobileRemoteInputController.h"
+
+extern void StartBackendIfNeeded();
+extern void ConfigureStorage(const std::string& storageRootPath);
 
 void LibreConnectLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -41,8 +46,13 @@ int main(int argc, char *argv[])
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnectMobile");
 
+    const QString storagePath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    ConfigureStorage(storagePath.toStdString());
+    StartBackendIfNeeded();
+
     ModulesManager::Initialize();
     MobileThemeController themeController;
+
 
     qmlRegisterType<MobileConnectionController>(
         "LibreConnect.mobile", 1, 0, "MobileConnectionController"
