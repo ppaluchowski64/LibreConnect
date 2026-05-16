@@ -19,8 +19,6 @@
 #include <ThreadPool.h>
 #include <Events.h>
 
-namespace
-{
 std::mutex g_backendMutex;
 bool g_backendRunning = false;
 bool g_findMyHandlersRegistered = false;
@@ -358,6 +356,7 @@ void StartBackendIfNeeded()
 
     Debug::Log("MainServiceBackendBridge: starting backend");
     ThreadPool::Start();
+    ModulesManager::Initialize();
     ConnectionManager::StartAcceptingConnections();
     if (!g_findMyHandlersRegistered) {
         ConnectionManager::AddResponseHandler(PC_PackageType::FIND_MY_PHONE_START_RINGING, [](PC_Package&&) {
@@ -415,10 +414,9 @@ void ConfigureStorage(const std::string& storageRootPath)
     std::error_code ec;
     std::filesystem::create_directories(storageRoot, ec);
 
-    std::filesystem::current_path(storageRoot, ec);
-
     const Debug::Settings settings{
         .rootPath = storageRoot.string(),
+        .applicationName = "LibreConnectNative",
         .maxFileSize = 64 * 1024 * 1024ULL,
         .maxLogFilesAmount = 5,
         .deleteLogsAfter = 60 * 60 * 24 * 7
@@ -430,7 +428,6 @@ void ConfigureStorage(const std::string& storageRootPath)
 
     g_storageRoot = storageRootPath;
     g_storageConfigured = true;
-}
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeConfigureStorage(
