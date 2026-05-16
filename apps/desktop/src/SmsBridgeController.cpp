@@ -11,6 +11,7 @@
 
 #include <ConnectionManager.h>
 #include <Events.h>
+#include <ExternalFileOpener.h>
 #include <ModulesManager.h>
 #include <SmsBridgeEvents.h>
 
@@ -263,6 +264,11 @@ void SmsBridgeController::sendMessage(const QString& text)
     emit contactsChanged();
     updateSelectedMessages();
     setStatusMessage(QStringLiteral("Sending message..."));
+}
+
+void SmsBridgeController::openAttachment(const QString& filePath) const
+{
+    ExternalFileOpener::OpenLocalFile(filePath);
 }
 
 bool SmsBridgeController::event(QEvent* event)

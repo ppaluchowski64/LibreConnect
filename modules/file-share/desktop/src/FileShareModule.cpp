@@ -1,11 +1,9 @@
 #include <FileShareModule.h>
 #include <FileEntry.h>
 #include <FileSystemManager.h>
+#include <ExternalFileOpener.h>
 #include <HashHelpers.h>
 #include <FileShareEvents.h>
-
-#include <QDesktopServices>
-#include <QUrl>
 
 #include <chrono>
 #include <future>
@@ -18,15 +16,6 @@ constexpr const char* CLIPBOARD_TEMP_CATEGORY = "clipboard";
 constexpr const char* DRAG_TEMP_CATEGORY = "drag";
 constexpr const char* OPEN_TEMP_CATEGORY = "open";
 constexpr const char* ICON_TEMP_CATEGORY = "icons";
-
-QString PathToQString(const std::filesystem::path& path)
-{
-#ifdef _WIN32
-    return QString::fromStdWString(path.wstring());
-#else
-    return QString::fromStdString(path.string());
-#endif
-}
 
 std::filesystem::path EnsureFileShareTempRoot()
 {
@@ -491,7 +480,9 @@ asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry)
     const std::string entryName = entry.GetName().value_or(std::string());
     const std::filesystem::path openedPath = destinationDirectory /
         std::filesystem::path(reinterpret_cast<const char8_t*>(entryName.data()));
-    QDesktopServices::openUrl(QUrl::fromLocalFile(PathToQString(openedPath)));
+    if (!ExternalFileOpener::OpenLocalFile(openedPath)) {
+        Debug::LogError("FileShareModule: Failed to open fetched entry {}", openedPath.string());
+    }
 }
 
 asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry entry, const FileIconDensity density) {
