@@ -80,7 +80,8 @@
 
         <activity
                 android:name=".ShareReceiverActivity"
-                android:label="LibreConnect"
+                android:label="@string/share_receiver_label"
+                android:description="@string/share_receiver_description"
                 android:theme="@style/Theme.Transparent"
                 android:taskAffinity=""
                 android:excludeFromRecents="true"

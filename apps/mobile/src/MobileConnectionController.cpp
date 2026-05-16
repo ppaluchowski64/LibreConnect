@@ -10,6 +10,7 @@
 #include <QRandomGenerator>
 #include <QTimer>
 
+#include <memory>
 #include <vector>
 
 #include <boost/uuid/uuid_io.hpp>
@@ -602,6 +603,24 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         const bool smsReadGranted = PermissionManager::IsReadSmsPermissionGranted();
         const bool smsSendGranted = PermissionManager::IsSendSmsPermissionGranted();
         const bool contactsGranted = PermissionManager::IsReadContactsPermissionGranted();
+        const bool smsPermissionsGranted =
+            smsReceiveGranted &&
+            smsReadGranted &&
+            smsSendGranted &&
+            contactsGranted;
+        bool requestAffectsSmsPermissions = false;
+        switch (request) {
+        case PermissionRequest::Sms:
+        case PermissionRequest::SmsReceive:
+        case PermissionRequest::SmsRead:
+        case PermissionRequest::SmsSend:
+        case PermissionRequest::Contacts:
+        case PermissionRequest::All:
+            requestAffectsSmsPermissions = true;
+            break;
+        default:
+            break;
+        }
 
         QMetaObject::invokeMethod(
             qApp,
@@ -615,7 +634,9 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
              smsReceiveGranted,
              smsReadGranted,
              smsSendGranted,
-             contactsGranted]() {
+             contactsGranted,
+             smsPermissionsGranted,
+             requestAffectsSmsPermissions]() {
                 if (!weakThis) {
                     return;
                 }
@@ -635,6 +656,15 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
                 weakThis->setPermissionsBusy(false);
                 if (weakThis->connected()) {
                     weakThis->sendPermissionSnapshotToPeer();
+                }
+                if (requestAffectsSmsPermissions) {
+                    std::unique_ptr<QEvent> event;
+                    if (smsPermissionsGranted) {
+                        event = std::make_unique<ModuleRequestedPermissionGranted>(PermissionType::Sms);
+                    } else {
+                        event = std::make_unique<ModuleRequestedPermissionRejected>(PermissionType::Sms);
+                    }
+                    ConnectionManager::SendEvent(event);
                 }
             },
             Qt::QueuedConnection

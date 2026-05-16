@@ -81,7 +81,7 @@ void PostSharedFile(std::string path)
             co_return;
         }
 
-        module->PostEntry(path, std::filesystem::path{});
+        module->PostEntry(path, std::filesystem::path{}, true);
     }, asio::detached);
 }
 

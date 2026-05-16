@@ -1,14 +1,17 @@
 package com.LibreConnect.mobile
+import android.Manifest
 import android.app.PendingIntent
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.annotation.Keep
 import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.NotificationCompat
+import kotlin.math.roundToInt
 
 @Keep
 class NotificationBridge(private val context: Context) {
@@ -111,5 +114,91 @@ class NotificationBridge(private val context: Context) {
 
     companion object {
         private const val CHANNEL_ID = "LibreConnect.mobile"
+        private const val TRANSFER_CHANNEL_ID = "LibreConnect.transfer"
+        private const val TRANSFER_NOTIFICATION_TAG = "transfer_result"
+
+        @JvmStatic
+        fun postTransferProgressNotification(
+            context: Context,
+            key: String,
+            title: String,
+            content: String,
+            bytesTransferred: Long,
+            totalBytes: Long
+        ) {
+            if (!canPostNotifications(context)) {
+                return
+            }
+
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            createTransferChannel(manager)
+
+            val progress = if (totalBytes > 0L) {
+                ((bytesTransferred.coerceIn(0L, totalBytes).toDouble() / totalBytes.toDouble()) * 100.0).roundToInt()
+            } else {
+                0
+            }
+
+            val notification = NotificationCompat.Builder(context, TRANSFER_CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setSmallIcon(android.R.drawable.stat_sys_upload)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setProgress(100, progress, totalBytes <= 0L)
+                .build()
+
+            manager.notify(TRANSFER_NOTIFICATION_TAG, notificationIdForKey(key), notification)
+        }
+
+        @JvmStatic
+        fun postTransferNotification(
+            context: Context,
+            key: String,
+            title: String,
+            content: String,
+            success: Boolean
+        ) {
+            if (!canPostNotifications(context)) {
+                return
+            }
+
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            createTransferChannel(manager)
+
+            val notification = NotificationCompat.Builder(context, TRANSFER_CHANNEL_ID)
+                .setContentTitle(title)
+                .setContentText(content)
+                .setSmallIcon(if (success) android.R.drawable.stat_sys_upload_done else android.R.drawable.stat_notify_error)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setAutoCancel(true)
+                .setOngoing(false)
+                .build()
+
+            manager.notify(TRANSFER_NOTIFICATION_TAG, notificationIdForKey(key), notification)
+        }
+
+        private fun canPostNotifications(context: Context): Boolean {
+            return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        }
+
+        private fun createTransferChannel(manager: NotificationManager) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    TRANSFER_CHANNEL_ID,
+                    "LibreConnect Transfers",
+                    NotificationManager.IMPORTANCE_HIGH
+                )
+                manager.createNotificationChannel(channel)
+            }
+        }
+
+        private fun notificationIdForKey(key: String): Int {
+            val hash = key.hashCode()
+            return if (hash == Int.MIN_VALUE) 0 else kotlin.math.abs(hash)
+        }
     }
 }

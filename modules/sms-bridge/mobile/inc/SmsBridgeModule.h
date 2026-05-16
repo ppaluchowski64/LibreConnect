@@ -3,7 +3,15 @@
 
 #include <BaseModule.h>
 
+#include <memory>
+
+class SmsPermissionChangeGate;
+class SmsPermissionEventListener;
+
 class SmsBridgeModule : public BaseModule {
+public:
+    ~SmsBridgeModule() override;
+
 protected:
     void EnableResponseCallbacks() override;
     void DisableResponseCallbacks() override;
@@ -15,6 +23,11 @@ protected:
 
     const char* GetModuleName() const override;
     ModuleType GetModuleType() const override;
+
+private:
+    std::shared_ptr<SmsPermissionChangeGate> m_smsPermissionGate;
+    std::shared_ptr<SmsPermissionEventListener> m_smsPermissionEventListener;
+    bool m_smsPermissionRequestAnnounced = false;
 };
 
 

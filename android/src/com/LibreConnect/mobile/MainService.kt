@@ -302,6 +302,35 @@ class MainService : Service() {
 
         @Suppress("unused")
         @JvmStatic
+        fun postTransferProgressNotification(
+            key: String,
+            title: String,
+            content: String,
+            bytesTransferred: Long,
+            totalBytes: Long
+        ): Boolean {
+            val service = activeService ?: return false
+            NotificationBridge.postTransferProgressNotification(
+                service.applicationContext,
+                key,
+                title,
+                content,
+                bytesTransferred,
+                totalBytes
+            )
+            return true
+        }
+
+        @Suppress("unused")
+        @JvmStatic
+        fun postTransferNotification(key: String, title: String, content: String, success: Boolean): Boolean {
+            val service = activeService ?: return false
+            NotificationBridge.postTransferNotification(service.applicationContext, key, title, content, success)
+            return true
+        }
+
+        @Suppress("unused")
+        @JvmStatic
         fun queryAvailableCameraConfigurations(context: Context): String {
             return CameraFrameReceiver.queryAvailableCameraConfigurations(context)
         }
