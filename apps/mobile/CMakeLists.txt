@@ -8,6 +8,7 @@ BuildQTExecutable(appLibreConnect_mobile
         modules-manager
         network-camera-module
         find-my
+        notifications-handler
 )
 
 LinkVirtualCameraLibs(appLibreConnect_mobile)

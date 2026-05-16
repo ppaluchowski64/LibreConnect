@@ -40,7 +40,7 @@ std::filesystem::path EnsureFileShareTempCategoryPath(const std::string& categor
         return {};
     }
 
-    const std::filesystem::path categoryPath = root / std::filesystem::u8path(category);
+    const std::filesystem::path categoryPath = root / std::filesystem::path(reinterpret_cast<const char8_t*>(category.data()));
     std::error_code ec;
     std::filesystem::create_directories(categoryPath, ec);
     if (ec) {
@@ -241,7 +241,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
     const std::filesystem::path path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
-    const std::filesystem::path entryNamePath = std::filesystem::u8path(entryName);
+    const std::filesystem::path entryNamePath = std::filesystem::path(reinterpret_cast<const char8_t*>(entryName.data()));
     if (type == FileType::Directory) {
         filePath /= entryNamePath;
         std::filesystem::create_directories(filePath);
@@ -299,7 +299,7 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
             if (destinationDirectory.empty()) {
                 continue;
             }
-            std::filesystem::path entryDestination = destinationDirectory / std::filesystem::u8path(name);
+            std::filesystem::path entryDestination = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
 
             paths.push_back(entryDestination);
             futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, destinationDirectory.string()), asio::use_future));
@@ -355,7 +355,7 @@ asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntr
         if (destinationDirectory.empty()) {
             continue;
         }
-        const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::u8path(name);
+        const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
 
         try {
             co_await FetchEntryAwaitable(entry, destinationDirectory.string());
@@ -488,8 +488,9 @@ asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry)
 
     co_await FetchEntryAwaitable(entry, destinationDirectory.string());
 
+    const std::string entryName = entry.GetName().value_or(std::string());
     const std::filesystem::path openedPath = destinationDirectory /
-        std::filesystem::u8path(entry.GetName().value_or(std::string()));
+        std::filesystem::path(reinterpret_cast<const char8_t*>(entryName.data()));
     QDesktopServices::openUrl(QUrl::fromLocalFile(PathToQString(openedPath)));
 }
 
@@ -551,6 +552,33 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
 
     Debug::Log("FileShareModule: FetchEntryIcon saved icon to {}", entryDestination.string());
     const std::unique_ptr<QEvent> event = std::make_unique<FetchEntryIconResultEvent>(entry, entryDestination, true);
+    ConnectionManager::SendEvent(event);
+}
+
+void FileShareModule::DeleteEntries(std::vector<FileEntry> entries) const {
+    asio::co_spawn(m_context, DeleteEntriesAwaitable(std::move(entries)), asio::detached);
+}
+
+asio::awaitable<void> FileShareModule::DeleteEntriesAwaitable(std::vector<FileEntry> entries) const {
+    Debug::Log("FileShareModule: Delete entries requested. Count: {}", entries.size());
+    if (entries.empty()) {
+        const std::unique_ptr<QEvent> event = std::make_unique<EntriesDeleteResultEvent>(std::move(entries), true);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DELETE_ENTRIES_REQUEST, entries);
+    bool success = false;
+
+    if (!response.has_value()) {
+        Debug::LogError("FileShareModule: Delete entries request failed (timeout or rejected)");
+        ProcessError(ModuleFailReason::Timeout);
+    } else {
+        response.value()->GetValue(success);
+        Debug::Log("FileShareModule: Delete entries request completed. Success: {}", success);
+    }
+
+    const std::unique_ptr<QEvent> event = std::make_unique<EntriesDeleteResultEvent>(std::move(entries), success);
     ConnectionManager::SendEvent(event);
 }
 

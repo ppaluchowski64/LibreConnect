@@ -1,6 +1,10 @@
 package com.LibreConnect.mobile
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.database.Cursor
 import android.media.AudioAttributes
 import android.media.AudioManager
@@ -15,12 +19,15 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.util.Log
 import androidx.annotation.Keep
+import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
 
 @Keep
 object FindMyPhone {
     private const val TAG = "FindMyPhone"
+    private const val CHANNEL_ID = "LibreConnect.FindMyPhone"
+    private const val NOTIFICATION_ID = 9999
 
     private val alertThread: HandlerThread by lazy {
         HandlerThread("LibreConnectFindMyPhone").apply { start() }
@@ -32,6 +39,69 @@ object FindMyPhone {
     private var mediaPlayer: MediaPlayer? = null
     private var vibrator: Vibrator? = null
     private var originalVolume: Int = -1
+
+    private fun createNotificationChannel(context: Context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Find My Phone",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "High priority notification for Find My Phone feature"
+                enableLights(true)
+                lightColor = android.graphics.Color.RED
+                enableVibration(true)
+                lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun showNotification(context: Context) {
+        createNotificationChannel(context)
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        val contentPendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val stopIntent = Intent(context, NotificationActionReceiver::class.java).apply {
+            putExtra("notification_key", "find_my_phone")
+            putExtra("notification_option", "Stop")
+        }
+        val stopPendingIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_ID,
+            stopIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("Find My Phone")
+            .setContentText("Your phone is ringing!")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setContentIntent(contentPendingIntent)
+            .setFullScreenIntent(contentPendingIntent, true)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+
+        notificationManager.notify(NOTIFICATION_ID, builder.build())
+    }
+
+    private fun cancelNotification(context: Context) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(NOTIFICATION_ID)
+    }
 
     private fun runOnAlertThread(action: () -> Unit) {
         alertHandler.post {
@@ -174,6 +244,8 @@ object FindMyPhone {
                 return
             }
 
+            showNotification(context)
+
             vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             val pattern = longArrayOf(0, 500, 500)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -204,6 +276,7 @@ object FindMyPhone {
 
     private fun stopAlertInternal(context: Context) {
         stopPlaybackInternal()
+        cancelNotification(context)
 
         if (originalVolume != -1) {
             val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager

@@ -21,6 +21,7 @@
 
 #ifdef ANDROID_DEVICE
 #include <FindMyBridge.h>
+#include <NotificationBridge.h>
 #include <PermissionManager.h>
 #include <QJniObject>
 #include <QtCore/qcoreapplication_platform.h>
@@ -79,6 +80,13 @@ MobileConnectionController::MobileConnectionController(QObject* parent)
     refreshPairedDevices();
     refreshLocalIdentity();
     updatePermissionsFromSystem();
+
+#ifdef ANDROID_DEVICE
+    NotificationBridge::AddNotificationActionHandler("find_my_phone", "Stop", [this](){
+        stopFindMyPhoneAlertInternal(true);
+    });
+#endif
+
     m_findMyPhoneRingtoneUri = m_settings.value(QString::fromLatin1(kFindMyPhoneRingtoneSetting), QString()).toString().trimmed();
     setFindMyPhoneAlertActive(m_settings.value(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false).toBool());
     refreshFindMyPhoneRingtones();

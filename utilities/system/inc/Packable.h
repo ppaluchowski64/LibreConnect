@@ -64,8 +64,8 @@ struct is_packable_vector<std::vector<T>> : std::bool_constant<SerializableValue
 
 template <typename T>
 concept Serializable =
-    SerializableValue<T> ||
-    is_packable_vector<T>::value;
+    SerializableValue<std::remove_cvref_t<T>> ||
+    is_packable_vector<std::remove_cvref_t<T>>::value;
 
 template <Primitive T>
 inline void SerializeObject(T object, std::vector<uint8_t>& buffer, size_t& offset);

@@ -20,6 +20,10 @@ Page {
     readonly property int selectedCount: selectedRemotePaths.length
     readonly property string windowTitleSuffix: "File Manager"
 
+    readonly property color destructiveFill: Theme.destructiveFillColor
+    readonly property color destructiveFillHover: Theme.destructiveFillHoverColor
+    readonly property color destructiveText: Theme.dangerColor
+
     FileManagerController {
         id: fileManagerController
         onCurrentRemotePathChanged: root.rebuildPathSegments()
@@ -306,6 +310,87 @@ Page {
         }
     }
 
+    Dialog {
+        id: deleteConfirmDialog
+        title: ""
+        modal: true
+        closePolicy: Popup.CloseOnEscape
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 12
+            width: 360
+
+            Text {
+                text: fileContextMenu.targetPaths.length > 1
+                      ? "Delete " + fileContextMenu.targetPaths.length + " entries?"
+                      : "Delete " + (root.entryByPath(fileContextMenu.targetPath) ? root.entryByPath(fileContextMenu.targetPath).name : "entry") + "?"
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                color: Theme.textColor
+                width: parent.width
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: "This action cannot be undone. The selected files and folders will be permanently removed from the connected device."
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                wrapMode: Text.WordWrap
+                width: parent.width
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                ThemedButton {
+                    text: "Cancel"
+                    width: 160
+                    height: 42
+                    font.pixelSize: 14
+                    onClicked: deleteConfirmDialog.close()
+                }
+
+                Rectangle {
+                    width: 160
+                    height: 42
+                    radius: 8
+                    color: deleteConfirmMouse.containsMouse ? root.destructiveFillHover : root.destructiveFill
+                    border.color: Theme.panelBorderColor
+                    border.width: 1
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Delete"
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 14
+                        color: root.destructiveText
+                    }
+
+                    MouseArea {
+                        id: deleteConfirmMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            deleteConfirmDialog.close()
+                            fileManagerController.deleteEntries(fileContextMenu.targetPaths)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Popup {
         id: fileContextMenu
         property var targetPaths: []
@@ -426,6 +511,37 @@ Page {
                     onClicked: {
                         fileContextMenu.close()
                         fileManagerController.downloadEntries(fileContextMenu.targetPaths)
+                    }
+                }
+            }
+
+            Rectangle {
+                id: deleteRow
+                readonly property bool enabledItem: fileContextMenu.targetPaths.length > 0
+                width: parent.width
+                height: 34
+                radius: 6
+                color: deleteMouse.containsMouse && deleteRow.enabledItem ? Theme.buttonColor : "transparent"
+
+                Text {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    text: fileContextMenu.targetPaths.length > 1 ? "Delete Selected" : "Delete"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    color: deleteRow.enabledItem ? root.destructiveText : Theme.subtleTextColor
+                    verticalAlignment: Text.AlignVCenter
+                }
+
+                MouseArea {
+                    id: deleteMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: deleteRow.enabledItem
+                    onClicked: {
+                        fileContextMenu.close()
+                        deleteConfirmDialog.open()
                     }
                 }
             }
