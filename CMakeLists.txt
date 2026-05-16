@@ -193,6 +193,8 @@ if (ANDROID OR IOS)
     BuildApplicationModule(network-microphone-module modules/network-microphone/common modules/network-microphone/mobile
             common-module
             virtual-microphone
+            srtp-stream
+            ffmpeg_headers
     )
 
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/mobile
@@ -247,6 +249,8 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     BuildApplicationModule(network-microphone-module modules/network-microphone/common modules/network-microphone/desktop
             common-module
             virtual-microphone
+            srtp-stream
+            ffmpeg_headers
     )
 
     BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/desktop

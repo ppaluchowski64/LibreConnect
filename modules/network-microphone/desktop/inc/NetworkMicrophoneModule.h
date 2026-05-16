@@ -3,6 +3,9 @@
 
 #include <BaseModule.h>
 #include <VMicTypes.h>
+#include <SRTP_Stream.h>
+#include <memory>
+#include <vector>
 
 class NetworkMicrophoneModule : public BaseModule {
 public:
@@ -17,8 +20,10 @@ private:
     std::mutex m_mutex;
 
     std::string m_deviceID;
-    std::string m_localKey;
-    std::string m_remoteKey;
+    std::vector<uint8_t> m_localKey;
+    std::vector<uint8_t> m_remoteKey;
+    
+    std::shared_ptr<SRTP::Stream> m_audioStream;
     VMicHandle m_handle{};
 
 protected:

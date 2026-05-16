@@ -59,6 +59,7 @@ void NetworkMicrophoneModule::GetAudioDeviceList() {
 asio::awaitable<void> NetworkMicrophoneModule::InitializeStream() {
     char id[255];
     std::memcpy(id, m_deviceID.c_str(), m_deviceID.size());
+    id[m_deviceID.size()] = '\0';
 
     constexpr VMicFormat format{
         .sampleRate = 48000,
@@ -68,21 +69,50 @@ asio::awaitable<void> NetworkMicrophoneModule::InitializeStream() {
 
     const VMicResult result = VMic_OpenDevice(&m_handle, id, &format);
     if (result != VMIC_SUCCESS) {
-        // error
+        Debug::LogError("NetworkMicrophoneModule: Failed to open virtual microphone device: {}", static_cast<int>(result));
+        throw std::runtime_error("Failed to open virtual microphone device");
     }
+
+    m_audioStream = std::make_shared<SRTP::Stream>(
+        m_context,
+        m_localKey,
+        m_remoteKey,
+        48000
+    );
+
+    const UDPEndpoint endpoint = m_audioStream->Bind();
+    Debug::Log("NetworkMicrophoneModule: SRTP stream bound to port {}", endpoint.port());
+
+    ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_START_STREAM, endpoint.port());
+    co_return;
 }
 
 asio::awaitable<void> NetworkMicrophoneModule::StartStream() {
     const VMicResult result = VMic_StartStream(m_handle);
     if (result != VMIC_SUCCESS) {
-        // error
+        Debug::LogError("NetworkMicrophoneModule: Failed to start virtual microphone stream: {}", static_cast<int>(result));
+        co_return;
     }
 
     std::shared_ptr<NetworkMicrophoneModule> instance = std::dynamic_pointer_cast<NetworkMicrophoneModule>(shared_from_this());
     asio::co_spawn(m_context, [instance]() -> asio::awaitable<void> {
-        while (instance->GetModuleState() == ModuleState::Enabled || instance->GetModuleState() == ModuleState::Enabling) {
+        std::vector<uint8_t> payload;
+        try {
+            while (instance->GetModuleState() == ModuleState::Enabled) {
+                co_await instance->m_audioStream->AsyncReceive(payload);
+                
+                if (payload.empty()) continue;
 
+                // TODO: Integrate Opus decoder here.
+
+                const uint32_t framesCount = static_cast<uint32_t>(payload.size() / 4);
+                VMic_PushSamples(instance->m_handle, payload.data(), framesCount);
+            }
+        } catch (const std::exception& e) {
+            Debug::LogError("NetworkMicrophoneModule: Stream loop error: {}", e.what());
         }
+
+        Debug::Log("NetworkMicrophoneModule: Stream loop stopped");
     }, asio::detached);
 }
 
@@ -92,7 +122,7 @@ void NetworkMicrophoneModule::EnableResponseCallbacks() {
         Debug::Log("NetworkMicrophoneModule: Received enable request");
         if (instance->GetModuleState() == ModuleState::Enabled) {
             Debug::Log("NetworkMicrophoneModule: Already enabled, sending state confirmation");
-            ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
+            ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, true);
             return;
         }
         instance->Enable(true);
@@ -119,34 +149,54 @@ void NetworkMicrophoneModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED);
 }
 
-void NetworkMicrophoneModule::OnInitialize() {
-
-}
+void NetworkMicrophoneModule::OnInitialize() {}
 
 asio::awaitable<void> NetworkMicrophoneModule::OnEnable() {
-    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
-
+    m_localKey = SRTP::Stream::GenerateKey();
+    
     {
-        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST, std::string(m_localKey));
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
+            PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST, 
+            m_localKey
+        );
+        
         if (!response.has_value()) {
+            Debug::LogError("NetworkMicrophoneModule: Failed to exchange keys with peer");
             co_return;
         }
 
         response.value()->GetValue(m_remoteKey);
     }
 
-    co_await InitializeStream();
-    ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_START_STREAM);
-    co_await StartStream();
+    try {
+        co_await InitializeStream();
+        co_await StartStream();
+        ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, true);
+    } catch (const std::exception& e) {
+        Debug::LogError("NetworkMicrophoneModule: Failed to enable module: {}", e.what());
+    }
 
     co_return;
 }
 
 asio::awaitable<void> NetworkMicrophoneModule::OnDisable() {
+    if (m_handle) {
+        VMic_StopStream(m_handle);
+        VMic_Close(m_handle);
+        m_handle = nullptr;
+    }
+
+    if (m_audioStream) {
+        m_audioStream->Close();
+        m_audioStream.reset();
+    }
+
+    ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, false);
     co_return;
 }
 
 asio::awaitable<void> NetworkMicrophoneModule::OnShutdown() {
+    co_await OnDisable();
     co_return;
 }
 
