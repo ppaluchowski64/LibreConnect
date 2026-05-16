@@ -366,9 +366,11 @@ std::shared_ptr<void> TransferChannelPool::TryReserve(const size_t index) const 
 
     m_reservedIncomingPostChannels.insert(index);
     Debug::Log("TransferChannelPool: Reserved channel {}", index);
-    return std::shared_ptr<void>(nullptr, [this, index](void*) {
+    const std::shared_ptr<bool> reservationGuard(new bool(true), [this, index](bool* token) {
+        delete token;
         std::lock_guard<std::mutex> lock(m_incomingPostReservationMutex);
         m_reservedIncomingPostChannels.erase(index);
         Debug::Log("TransferChannelPool: Released reservation for channel {}", index);
     });
+    return reservationGuard;
 }

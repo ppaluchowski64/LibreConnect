@@ -604,12 +604,27 @@ void FileShareModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [this, instance](PC_Package&& package) mutable {
+        (void)package;
         m_peerModuleEnabled.store(true);
+        if (GetModuleState() == ModuleState::Enabled) {
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
+            return;
+        }
+
         Enable(true);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [this, instance](PC_Package&& package) mutable {
+        (void)package;
         m_peerModuleEnabled.store(false);
+        if (GetModuleState() == ModuleState::Disabled) {
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, false);
+            return;
+        }
+
         Disable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, [this, instance](PC_Package&& package) mutable {
+        m_peerModuleEnabled.store(package->GetValue<bool>());
     });
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [this, instance](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID         = package->GetValue<size_t>();
@@ -677,6 +692,7 @@ void FileShareModule::EnableResponseCallbacks() {
 void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
 }
 
@@ -701,7 +717,6 @@ void FileShareModule::OnInitialize() {
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
-    m_peerModuleEnabled.store(false);
     asio::steady_timer timer(m_context);
 
     ConnectionState state = TransferChannelPool::GetConnectionState();
@@ -718,11 +733,14 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         state = TransferChannelPool::GetConnectionState();
     }
 
-    TransferChannelPool::GetConnectionState();
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
 }
 
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, false);
     {
         std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
         m_inFlightDirectoryRequests.clear();

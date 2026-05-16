@@ -17,14 +17,14 @@
 class FileShareModule final : public BaseModule {
 public:
     FileShareModule() = default;
-    void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const;
+    void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination, bool notifyTransferProgress = false) const;
 
 private:
     std::shared_future<DirectoryResult> GetOrCreateDirectoryScanFuture(const std::string& path);
     void CleanupDirectoryScanFutureIfReady(const std::string& path);
     void ClearDirectoryScanFutures();
 
-    asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
+    asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination, bool notifyTransferProgress) const;
     std::vector<uint8_t> GetEntryIcon(const std::string& file, FileIconDensity density);
 
     std::mutex m_directoryScanMutex;
