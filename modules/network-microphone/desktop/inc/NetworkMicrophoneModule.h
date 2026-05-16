@@ -2,6 +2,7 @@
 #define NETWORK_MICROPHONE_MODULE_H
 
 #include <BaseModule.h>
+#include <VMicTypes.h>
 
 class NetworkMicrophoneModule : public BaseModule {
 public:
@@ -10,9 +11,15 @@ public:
     void GetAudioDeviceList();
 
 private:
-    std::mutex m_mutex;
-    std::string m_deviceID;
+    asio::awaitable<void> InitializeStream();
+    asio::awaitable<void> StartStream();
 
+    std::mutex m_mutex;
+
+    std::string m_deviceID;
+    std::string m_localKey;
+    std::string m_remoteKey;
+    VMicHandle m_handle{};
 
 protected:
     void EnableResponseCallbacks() override;

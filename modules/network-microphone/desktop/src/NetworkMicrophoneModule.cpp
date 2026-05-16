@@ -56,12 +56,67 @@ void NetworkMicrophoneModule::GetAudioDeviceList() {
     });
 }
 
-void NetworkMicrophoneModule::EnableResponseCallbacks() {
+asio::awaitable<void> NetworkMicrophoneModule::InitializeStream() {
+    char id[255];
+    std::memcpy(id, m_deviceID.c_str(), m_deviceID.size());
 
+    constexpr VMicFormat format{
+        .sampleRate = 48000,
+        .bitDepth = 16,
+        .channels = 2
+    };
+
+    const VMicResult result = VMic_OpenDevice(&m_handle, id, &format);
+    if (result != VMIC_SUCCESS) {
+        // error
+    }
+}
+
+asio::awaitable<void> NetworkMicrophoneModule::StartStream() {
+    const VMicResult result = VMic_StartStream(m_handle);
+    if (result != VMIC_SUCCESS) {
+        // error
+    }
+
+    std::shared_ptr<NetworkMicrophoneModule> instance = std::dynamic_pointer_cast<NetworkMicrophoneModule>(shared_from_this());
+    asio::co_spawn(m_context, [instance]() -> asio::awaitable<void> {
+        while (instance->GetModuleState() == ModuleState::Enabled || instance->GetModuleState() == ModuleState::Enabling) {
+
+        }
+    }, asio::detached);
+}
+
+void NetworkMicrophoneModule::EnableResponseCallbacks() {
+    std::shared_ptr<NetworkMicrophoneModule> instance = std::dynamic_pointer_cast<NetworkMicrophoneModule>(shared_from_this());
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_ENABLE, [instance](PC_Package&& package) mutable {
+        Debug::Log("NetworkMicrophoneModule: Received enable request");
+        if (instance->GetModuleState() == ModuleState::Enabled) {
+            Debug::Log("NetworkMicrophoneModule: Already enabled, sending state confirmation");
+            ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, true);
+            return;
+        }
+        instance->Enable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_DISABLE, [instance](PC_Package&& package) mutable {
+        Debug::Log("NetworkMicrophoneModule: Received disable request");
+        if (instance->GetModuleState() == ModuleState::Disabled) {
+            Debug::Log("NetworkMicrophoneModule: Already disabled, sending state confirmation");
+            ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, false);
+            return;
+        }
+        instance->Disable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, [instance](PC_Package&& package) mutable {
+        const bool peerEnabled = package->GetValue<bool>();
+        Debug::Log("NetworkMicrophoneModule: Peer module state changed: {}", peerEnabled);
+        instance->m_peerModuleEnabled.store(peerEnabled);
+    });
 }
 
 void NetworkMicrophoneModule::DisableResponseCallbacks() {
-
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_ENABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED);
 }
 
 void NetworkMicrophoneModule::OnInitialize() {
@@ -69,6 +124,21 @@ void NetworkMicrophoneModule::OnInitialize() {
 }
 
 asio::awaitable<void> NetworkMicrophoneModule::OnEnable() {
+    ConnectionManager::Send(PC_PackageType::NETWORK_CAMERA_MODULE_ENABLE);
+
+    {
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST, std::string(m_localKey));
+        if (!response.has_value()) {
+            co_return;
+        }
+
+        response.value()->GetValue(m_remoteKey);
+    }
+
+    co_await InitializeStream();
+    ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_START_STREAM);
+    co_await StartStream();
+
     co_return;
 }
 
