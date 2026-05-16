@@ -443,9 +443,9 @@ Page {
 
                                                         MouseArea {
                                                             anchors.fill: parent
-                                                            enabled: modelData.fileUrl.length > 0
+                                                            enabled: modelData.filePath.length > 0
                                                             cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
-                                                            onClicked: Qt.openUrlExternally(modelData.fileUrl)
+                                                            onClicked: smsBridgeController.openAttachment(modelData.filePath)
                                                         }
                                                     }
                                                 }

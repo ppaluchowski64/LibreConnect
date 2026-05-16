@@ -115,7 +115,7 @@ Page {
                 border.color: Theme.panelBorderColor
             }
 
-            TextField {
+            TextArea {
                 id: keyboardProxy
                 width: 1
                 height: 1
@@ -124,9 +124,10 @@ Page {
                 anchors.left: parent.left
                 anchors.margins: 1
                 focus: false
-                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                inputMethodHints: Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText | Qt.ImhMultiLine
+                wrapMode: Text.NoWrap
                 property string previousText: ""
-                property bool suppressAcceptedOnce: false
+                property bool ignoreChange: false
 
                 function sendDelta(previousValue, nextValue) {
                     let prefix = 0
@@ -159,45 +160,29 @@ Page {
                     }
                 }
 
-                onTextEdited: {
+                onTextChanged: {
+                    if (ignoreChange) return
                     sendDelta(previousText, text)
                     previousText = text
 
                     // Keep internal buffer small while preserving delta behavior.
                     if (text.length > 96) {
+                        ignoreChange = true
                         text = ""
                         previousText = ""
+                        ignoreChange = false
                     }
-                }
-
-                onAccepted: {
-                    if (suppressAcceptedOnce) {
-                        suppressAcceptedOnce = false
-                        return
-                    }
-
-                    remoteInputController.sendQtKeyEvent(Qt.Key_Return, "", 0)
-                    keyboardProxy.forceActiveFocus()
-                    Qt.callLater(function() { Qt.inputMethod.show() })
                 }
 
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function(event) {
-                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                        keyboardProxy.suppressAcceptedOnce = true
-                        remoteInputController.sendQtKeyEvent(Qt.Key_Return, "", 0)
-                        keyboardProxy.forceActiveFocus()
-                        Qt.callLater(function() { keyboardProxy.suppressAcceptedOnce = false })
-                        Qt.callLater(function() { Qt.inputMethod.show() })
-                        event.accepted = true
-                        return
-                    }
-
                     if (event.key === Qt.Key_Backspace) {
                         remoteInputController.sendQtKeyEvent(Qt.Key_Backspace, "", 0)
                         if (keyboardProxy.text.length > 0) {
+                            ignoreChange = true
                             keyboardProxy.text = keyboardProxy.text.slice(0, -1)
                             keyboardProxy.previousText = keyboardProxy.text
+                            ignoreChange = false
                         }
                         event.accepted = true
                         return

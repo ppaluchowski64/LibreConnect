@@ -175,6 +175,11 @@ void DeviceConnectionController::connectTo(const QString& ipAddress,
 
 void DeviceConnectionController::disconnect()
 {
+    if (m_pending) {
+        m_pending = false;
+        emit pendingChanged();
+    }
+
     ConnectionManager::Disconnect();
 }
 
@@ -485,6 +490,10 @@ void DeviceConnectionController::handleError(const std::string& message, QEvent:
 void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
 {
     if (IsBenignScannerShutdownError(ev->GetErrorCode())) {
+        if (m_pending) {
+            m_pending = false;
+            emit pendingChanged();
+        }
         return;
     }
 

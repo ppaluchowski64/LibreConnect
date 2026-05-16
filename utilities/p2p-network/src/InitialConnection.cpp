@@ -1,5 +1,7 @@
 #include <InitialConnection.h>
 #include <asio/buffer.hpp>
+#include <asio/error.hpp>
+#include <asio/ssl/error.hpp>
 #include <Events.h>
 #include <ConnectionManager.h>
 #include <ThreadPool.h>
@@ -200,6 +202,10 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
     } catch (std::system_error& error) {
         Debug::Log("InitialConnection: CoConnect Error - {}", error.what());
         HandleAsioError(error.code());
+
+        const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(error.code());
+        ConnectionManager::SendEvent(event);
+
         Disconnect();
     }
 
@@ -344,6 +350,12 @@ asio::awaitable<void> InitialConnection::CoSend() {
         m_sendInFlight = false;
         Debug::Log("InitialConnection: CoSend Error - {}", error.what());
         HandleAsioError(error.code());
+
+        if (!m_finalHandshakeCompleted && !m_receivedTerminalHandshakeReason) {
+            const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(error.code());
+            ConnectionManager::SendEvent(event);
+        }
+
         self->Disconnect();
     }
 
@@ -515,16 +527,19 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         Debug::Log("InitialConnection: CoReceive Error - {}", error.what());
         HandleAsioError(error.code());
 
-        if (!m_finalHandshakeCompleted &&
-            !m_receivedTerminalHandshakeReason &&
-            m_requestedConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
-            (error.code() == asio::error::eof ||
-             error.code() == asio::error::connection_reset ||
-             error.code() == asio::error::connection_aborted ||
-             error.code() == asio::error::shut_down ||
-             error.code() == asio::ssl::error::stream_truncated)) {
-            const std::error_code pairError = std::make_error_code(std::errc::permission_denied);
-            const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(pairError);
+        if (!m_finalHandshakeCompleted && !m_receivedTerminalHandshakeReason) {
+            std::error_code reportCode = error.code();
+
+            if (m_requestedConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
+                (reportCode == asio::error::eof ||
+                 reportCode == asio::error::connection_reset ||
+                 reportCode == asio::error::connection_aborted ||
+                 reportCode == asio::error::shut_down ||
+                 reportCode == asio::ssl::error::stream_truncated)) {
+                reportCode = std::make_error_code(std::errc::permission_denied);
+            }
+
+            const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(reportCode);
             ConnectionManager::SendEvent(event);
         }
 
