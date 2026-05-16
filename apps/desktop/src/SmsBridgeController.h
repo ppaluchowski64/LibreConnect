@@ -98,6 +98,7 @@ private:
 
     void refreshState();
     void ensureModuleEnabled();
+    void clearConversationState();
     void updateBusyState();
     void setReady(bool ready);
     void setStatusMessage(const QString& statusMessage);
