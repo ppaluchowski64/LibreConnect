@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="fatal_error_msg">Fatal error while loading native libraries.</string>
+    <string name="share_receiver_label">Send to download folder</string>
+    <string name="share_receiver_description">Send to download folder</string>
 </resources>
