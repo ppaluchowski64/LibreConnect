@@ -190,6 +190,11 @@ if (ANDROID OR IOS)
             virtual-camera
     )
 
+    BuildApplicationModule(network-microphone-module modules/network-microphone/common modules/network-microphone/mobile
+            common-module
+            virtual-microphone
+    )
+
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/mobile
             common-module
             file-system
@@ -237,6 +242,11 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             file-system
             xxHash::xxhash
+    )
+
+    BuildApplicationModule(network-microphone-module modules/network-microphone/common modules/network-microphone/desktop
+            common-module
+            virtual-microphone
     )
 
     BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/desktop

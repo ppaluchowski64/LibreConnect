@@ -44,7 +44,8 @@ enum class ModuleType : uint8_t {
     NetworkFileSystem,
     ClipboardSync,
     RemoteInput,
-    SmsBridge
+    SmsBridge,
+    NetworkMicrophone
 };
 
 enum class PermissionType : uint16_t {

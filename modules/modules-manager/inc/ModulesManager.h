@@ -19,7 +19,6 @@
 #include <NetworkCameraModule.h>
 #endif
 
-
 template<class>
 inline constexpr bool always_false = false;
 
