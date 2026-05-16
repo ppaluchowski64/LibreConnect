@@ -123,6 +123,15 @@ ConnectionState PrimaryConnection::GetConnectionState() const {
     return m_connectionState.load();
 }
 
+std::string PrimaryConnection::GetPeerDeviceName() {
+    std::lock_guard<std::mutex> lock(m_peerDataMutex);
+    if (!m_peerData.has_value()) {
+        return {};
+    }
+
+    return m_peerData.value().deviceName;
+}
+
 asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext_> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
     m_sslContext = sslContext;

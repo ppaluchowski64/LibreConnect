@@ -483,6 +483,11 @@ ConnectionState ConnectionManager::GetConnectionState() {
     return s_instance->m_primaryConnection->GetConnectionState();
 }
 
+std::string ConnectionManager::GetPeerDeviceName() {
+    std::call_once(s_flag, Initialize);
+    return s_instance->m_primaryConnection->GetPeerDeviceName();
+}
+
 std::shared_ptr<SSLContext_> ConnectionManager::GetSSLContextClient() {
     std::call_once(s_flag, Initialize);
     return s_instance->m_sslContextClient;

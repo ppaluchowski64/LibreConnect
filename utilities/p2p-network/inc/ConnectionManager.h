@@ -44,6 +44,7 @@ public:
     static IPAddress GetPeerAddress();
     static uuid GetPeerUUID();
     static ConnectionState GetConnectionState();
+    static std::string GetPeerDeviceName();
 
     template <Serializable... Args>
     static void Send(PC_PackageType type, Args&&... args) {
