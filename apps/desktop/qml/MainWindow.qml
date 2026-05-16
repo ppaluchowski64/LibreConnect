@@ -200,6 +200,10 @@ Window {
         showFeature("cameras")
     }
 
+    function showVirtualMicrophone() {
+        showFeature("microphone")
+    }
+
     function showMessages() {
         showFeature("messages")
     }

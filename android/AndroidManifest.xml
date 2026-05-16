@@ -36,6 +36,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <uses-permission android:name="android.permission.SEND_SMS"/>
     <uses-permission android:name="android.permission.RECEIVE_SMS"/>
@@ -114,7 +115,7 @@
                  android:label="LibreConnect Main Service"
                  android:exported="true"
                  android:stopWithTask="false"
-                 android:foregroundServiceType="connectedDevice|camera"
+                 android:foregroundServiceType="connectedDevice|camera|microphone"
                  tools:ignore="ForegroundServicePermission">
         </service>
 

@@ -314,6 +314,11 @@ asio::awaitable<bool> PermissionManager::RequestCameraAccessPermission() {
     co_return co_await RequestPermission(QString("android.permission.CAMERA"));
 }
 
+asio::awaitable<bool> PermissionManager::RequestMicrophoneAccessPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+    co_return co_await RequestPermission(QString("android.permission.RECORD_AUDIO"));
+}
+
 asio::awaitable<bool> PermissionManager::RequestReceiveSmsPermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
     co_return co_await RequestPermission(QString("android.permission.RECEIVE_SMS"));
@@ -458,6 +463,10 @@ bool PermissionManager::IsNotificationEmitPermissionGranted() {
 
 bool PermissionManager::IsCameraAccessPermissionGranted() {
     return CheckAndroidPermission(QString("android.permission.CAMERA")) == kAndroidPermissionGranted;
+}
+
+bool PermissionManager::IsMicrophoneAccessPermissionGranted() {
+    return CheckAndroidPermission(QString("android.permission.RECORD_AUDIO")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsFileAccessPermissionGranted() {

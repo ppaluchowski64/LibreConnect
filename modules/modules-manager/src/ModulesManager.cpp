@@ -179,6 +179,9 @@ void ModulesManager::Initialize() {
         case PermissionType::Camera:
             granted = co_await PermissionManager::RequestCameraAccessPermission();
             break;
+        case PermissionType::Microphone:
+            granted = co_await PermissionManager::RequestMicrophoneAccessPermission();
+            break;
         case PermissionType::Notifications:
             granted = co_await PermissionManager::RequestNotificationEmitPermission();
             if (granted) {
@@ -239,6 +242,7 @@ void ModulesManager::Initialize() {
         case PermissionType::FileSystem:
         case PermissionType::Battery:
         case PermissionType::Sms:
+        case PermissionType::Microphone:
         default:
             granted = false;
             break;

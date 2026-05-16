@@ -98,9 +98,15 @@ asio::awaitable<void> NetworkMicrophoneModule::StartStream() {
     asio::co_spawn(m_context, [instance]() -> asio::awaitable<void> {
         std::vector<uint8_t> payload;
         try {
+            asio::steady_timer timer(instance->m_context.get_executor());
+            while (instance->GetModuleState() == ModuleState::Enabling) {
+                timer.expires_after(std::chrono::milliseconds(10));
+                co_await timer.async_wait();
+            }
+
             while (instance->GetModuleState() == ModuleState::Enabled) {
                 co_await instance->m_audioStream->AsyncReceive(payload);
-                
+
                 if (payload.empty()) continue;
 
                 // TODO: Integrate Opus decoder here.
@@ -149,7 +155,13 @@ void NetworkMicrophoneModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED);
 }
 
-void NetworkMicrophoneModule::OnInitialize() {}
+void NetworkMicrophoneModule::OnInitialize() {
+    const VMicResult result = VMic_Initialize();
+    if (result != VMIC_SUCCESS && result != VMIC_ERROR_DEVICE_ALREADY_INITIALIZED) {
+        const std::unique_ptr<QEvent> event = std::make_unique<VirtualMicrophoneErrorEvent>(result);
+        ConnectionManager::SendEvent(event);
+    }
+}
 
 asio::awaitable<void> NetworkMicrophoneModule::OnEnable() {
     m_localKey = SRTP::Stream::GenerateKey();
@@ -167,11 +179,11 @@ asio::awaitable<void> NetworkMicrophoneModule::OnEnable() {
 
         response.value()->GetValue(m_remoteKey);
     }
+    ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_ENABLE);
 
     try {
         co_await InitializeStream();
         co_await StartStream();
-        ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, true);
     } catch (const std::exception& e) {
         Debug::LogError("NetworkMicrophoneModule: Failed to enable module: {}", e.what());
     }
@@ -180,6 +192,8 @@ asio::awaitable<void> NetworkMicrophoneModule::OnEnable() {
 }
 
 asio::awaitable<void> NetworkMicrophoneModule::OnDisable() {
+    ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_DISABLE);
+
     if (m_handle) {
         VMic_StopStream(m_handle);
         VMic_Close(m_handle);
@@ -197,6 +211,7 @@ asio::awaitable<void> NetworkMicrophoneModule::OnDisable() {
 
 asio::awaitable<void> NetworkMicrophoneModule::OnShutdown() {
     co_await OnDisable();
+    VMic_Shutdown();
     co_return;
 }
 

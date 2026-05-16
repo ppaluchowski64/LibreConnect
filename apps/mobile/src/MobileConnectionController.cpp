@@ -188,6 +188,11 @@ void MobileConnectionController::requestCameraPermission()
     runPermissionRequest(PermissionRequest::Camera);
 }
 
+void MobileConnectionController::requestMicrophonePermission()
+{
+    runPermissionRequest(PermissionRequest::Microphone);
+}
+
 void MobileConnectionController::requestNotificationSendPermission()
 {
     runPermissionRequest(PermissionRequest::NotificationSend);
@@ -501,6 +506,7 @@ void MobileConnectionController::updatePermissionsFromSystem()
 #ifdef ANDROID_DEVICE
     setPermissionSnapshot(
         PermissionManager::IsCameraAccessPermissionGranted(),
+        PermissionManager::IsMicrophoneAccessPermissionGranted(),
         PermissionManager::IsNotificationEmitPermissionGranted(),
         PermissionManager::IsNotificationAccessPermissionGranted(),
         PermissionManager::IsFileAccessPermissionGranted(),
@@ -512,7 +518,7 @@ void MobileConnectionController::updatePermissionsFromSystem()
         PermissionManager::IsReadContactsPermissionGranted()
     );
 #else
-    setPermissionSnapshot(true, true, true, true, true, true, true, true, true, true);
+    setPermissionSnapshot(true, true, true, true, true, true, true, true, true, true, true);
 #endif
 }
 
@@ -549,6 +555,9 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         case PermissionRequest::Camera:
             co_await PermissionManager::RequestCameraAccessPermission();
             break;
+        case PermissionRequest::Microphone:
+            co_await PermissionManager::RequestMicrophoneAccessPermission();
+            break;
         case PermissionRequest::Notifications:
             co_await requestNotifications();
             break;
@@ -584,6 +593,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
             break;
         case PermissionRequest::All:
             co_await PermissionManager::RequestCameraAccessPermission();
+            co_await PermissionManager::RequestMicrophoneAccessPermission();
             co_await requestNotifications();
             co_await PermissionManager::RequestManagingExternalStoragePermission();
             co_await PermissionManager::RequestDisablingBatteryOptimizations();
@@ -594,6 +604,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         }
 
         const bool cameraGranted = PermissionManager::IsCameraAccessPermissionGranted();
+        const bool microphoneGranted = PermissionManager::IsMicrophoneAccessPermissionGranted();
         const bool notificationSendGranted = PermissionManager::IsNotificationEmitPermissionGranted();
         const bool notificationListenerGranted = PermissionManager::IsNotificationAccessPermissionGranted();
         const bool fileGranted = PermissionManager::IsFileAccessPermissionGranted();
@@ -626,6 +637,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
             qApp,
             [weakThis,
              cameraGranted,
+             microphoneGranted,
              notificationSendGranted,
              notificationListenerGranted,
              fileGranted,
@@ -643,6 +655,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
 
                 weakThis->setPermissionSnapshot(
                     cameraGranted,
+                    microphoneGranted,
                     notificationSendGranted,
                     notificationListenerGranted,
                     fileGranted,
@@ -703,6 +716,7 @@ void MobileConnectionController::sendPermissionStatusToPeer(const PermissionType
 void MobileConnectionController::sendPermissionSnapshotToPeer()
 {
     sendPermissionStatusToPeer(PermissionType::Camera, m_cameraPermissionGranted);
+    sendPermissionStatusToPeer(PermissionType::Microphone, m_microphonePermissionGranted);
     sendPermissionStatusToPeer(PermissionType::Notifications, notificationsPermissionGranted());
     sendPermissionStatusToPeer(PermissionType::FileSystem, m_filePermissionGranted && m_allFilesPermissionGranted);
     sendPermissionStatusToPeer(PermissionType::Battery, m_batteryPermissionGranted);
@@ -711,6 +725,7 @@ void MobileConnectionController::sendPermissionSnapshotToPeer()
 
 void MobileConnectionController::setPermissionSnapshot(
     const bool cameraGranted,
+    const bool microphoneGranted,
     const bool notificationSendGranted,
     const bool notificationListenerGranted,
     const bool fileGranted,
@@ -724,6 +739,7 @@ void MobileConnectionController::setPermissionSnapshot(
 {
     const bool changed =
         m_cameraPermissionGranted != cameraGranted ||
+        m_microphonePermissionGranted != microphoneGranted ||
         m_notificationSendPermissionGranted != notificationSendGranted ||
         m_notificationListenerPermissionGranted != notificationListenerGranted ||
         m_filePermissionGranted != fileGranted ||
@@ -735,6 +751,7 @@ void MobileConnectionController::setPermissionSnapshot(
         m_contactsPermissionGranted != contactsGranted;
 
     m_cameraPermissionGranted = cameraGranted;
+    m_microphonePermissionGranted = microphoneGranted;
     m_notificationSendPermissionGranted = notificationSendGranted;
     m_notificationListenerPermissionGranted = notificationListenerGranted;
     m_filePermissionGranted = fileGranted;

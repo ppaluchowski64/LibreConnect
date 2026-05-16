@@ -1,6 +1,7 @@
 #include <NetworkMicrophoneModule.h>
 #include <DebugLog.h>
 #include <ConnectionManager.h>
+#include <PermissionManager.h>
 
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
@@ -21,7 +22,7 @@ namespace {
         }
 
         if (enabled) {
-            receiver.callMethod<jboolean>("start", "(Lkotlin/jvm/functions/Function1;)Z", nullptr);
+            receiver.callMethod<jboolean>("start", "()Z");
         } else {
             receiver.callMethod<void>("stop");
         }
@@ -55,11 +56,29 @@ void NetworkMicrophoneModule::EnableResponseCallbacks() {
     std::shared_ptr<NetworkMicrophoneModule> instance = std::dynamic_pointer_cast<NetworkMicrophoneModule>(shared_from_this());
     
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_ENABLE, [instance](PC_Package&& package) mutable {
+        Debug::Log("NetworkMicrophoneModule: Received enable request");
+        if (instance->GetModuleState() == ModuleState::Enabled) {
+            Debug::Log("NetworkMicrophoneModule: Already enabled, sending state confirmation");
+            ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, true);
+            return;
+        }
         instance->Enable(true);
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_DISABLE, [instance](PC_Package&& package) mutable {
+        Debug::Log("NetworkMicrophoneModule: Received disable request");
+        if (instance->GetModuleState() == ModuleState::Disabled) {
+            Debug::Log("NetworkMicrophoneModule: Already disabled, sending state confirmation");
+            ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, false);
+            return;
+        }
         instance->Disable(true);
+    });
+
+    ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, [instance](PC_Package&& package) mutable {
+        const bool peerEnabled = package->GetValue<bool>();
+        Debug::Log("NetworkMicrophoneModule: Peer module state changed: {}", peerEnabled);
+        instance->m_peerModuleEnabled.store(peerEnabled);
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_START_STREAM, [instance](PC_Package&& package) mutable {
@@ -68,15 +87,17 @@ void NetworkMicrophoneModule::EnableResponseCallbacks() {
     });
 
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST, [instance](PC_Package&& package) mutable {
+        const size_t requestID = package->GetValue<size_t>();
         instance->m_remoteKey = package->GetValue<std::vector<uint8_t>>();
         instance->m_localKey = SRTP::Stream::GenerateKey();
-        ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST, instance->m_localKey);
+        ConnectionManager::SendRequestResponse(requestID, PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST, instance->m_localKey);
     });
 }
 
 void NetworkMicrophoneModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_START_STREAM);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::NETWORK_MICROPHONE_MODULE_REMOTE_KEY_REQUEST);
 }
@@ -84,12 +105,24 @@ void NetworkMicrophoneModule::DisableResponseCallbacks() {
 void NetworkMicrophoneModule::OnInitialize() {}
 
 asio::awaitable<void> NetworkMicrophoneModule::OnEnable() {
+    Debug::Log("NetworkMicrophoneModule: OnEnable() called");
+    ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Microphone);
+    if (!co_await PermissionManager::RequestMicrophoneAccessPermission()) {
+        Debug::Log("NetworkMicrophoneModule: Permission denied");
+        ConnectionManager::Send(PC_PackageType::PERMISSION_REJECTED, PermissionType::Microphone);
+        Disable();
+        co_return;
+    }
+    Debug::Log("NetworkMicrophoneModule: Permission granted, enabling capture");
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Microphone);
+
     SetMicrophoneCaptureEnabled(true);
     ConnectionManager::Send(PC_PackageType::NETWORK_MICROPHONE_MODULE_STATE_CHANGED, true);
     co_return;
 }
 
 asio::awaitable<void> NetworkMicrophoneModule::OnDisable() {
+    Debug::Log("NetworkMicrophoneModule: OnDisable() called");
     SetMicrophoneCaptureEnabled(false);
     if (m_audioStream) {
         m_audioStream->Close();

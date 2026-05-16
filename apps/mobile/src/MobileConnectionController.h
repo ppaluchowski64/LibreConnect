@@ -27,6 +27,7 @@ class MobileConnectionController : public QObject
     Q_PROPERTY(bool permissionsOnboardingRequired READ permissionsOnboardingRequired NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool permissionsBusy READ permissionsBusy NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool cameraPermissionGranted READ cameraPermissionGranted NOTIFY permissionsStateChanged)
+    Q_PROPERTY(bool microphonePermissionGranted READ microphonePermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool notificationSendPermissionGranted READ notificationSendPermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool notificationListenerPermissionGranted READ notificationListenerPermissionGranted NOTIFY permissionsStateChanged)
     Q_PROPERTY(bool filePermissionGranted READ filePermissionGranted NOTIFY permissionsStateChanged)
@@ -57,6 +58,7 @@ public:
     bool permissionsOnboardingRequired() const { return m_connected && !m_permissionsOnboardingCompleted; }
     bool permissionsBusy() const { return m_permissionsBusy; }
     bool cameraPermissionGranted() const { return m_cameraPermissionGranted; }
+    bool microphonePermissionGranted() const { return m_microphonePermissionGranted; }
     bool notificationSendPermissionGranted() const { return m_notificationSendPermissionGranted; }
     bool notificationListenerPermissionGranted() const { return m_notificationListenerPermissionGranted; }
     bool filePermissionGranted() const { return m_filePermissionGranted; }
@@ -78,6 +80,7 @@ public:
     Q_INVOKABLE void refreshLocalIdentity();
     Q_INVOKABLE void refreshPermissionStatuses();
     Q_INVOKABLE void requestCameraPermission();
+    Q_INVOKABLE void requestMicrophonePermission();
     Q_INVOKABLE void requestNotificationPermissions();
     Q_INVOKABLE void requestNotificationSendPermission();
     Q_INVOKABLE void requestNotificationListenerPermission();
@@ -117,6 +120,7 @@ protected:
 private:
     enum class PermissionRequest {
         Camera,
+        Microphone,
         Notifications,
         NotificationSend,
         NotificationListener,
@@ -142,6 +146,7 @@ private:
     void sendPermissionSnapshotToPeer();
     void setPermissionSnapshot(
         bool cameraGranted,
+        bool microphoneGranted,
         bool notificationSendGranted,
         bool notificationListenerGranted,
         bool fileGranted,
@@ -176,6 +181,7 @@ private:
     bool m_permissionsOnboardingCompleted = false;
     bool m_permissionsBusy = false;
     bool m_cameraPermissionGranted = false;
+    bool m_microphonePermissionGranted = false;
     bool m_notificationSendPermissionGranted = false;
     bool m_notificationListenerPermissionGranted = false;
     bool m_filePermissionGranted = false;

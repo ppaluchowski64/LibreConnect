@@ -19,6 +19,7 @@
 #include "PermissionStateController.h"
 #include "FileManagerController.h"
 #include "TemporaryStorageController.h"
+#include "VirtualMicrophoneController.h"
 #ifndef MACOS_DEVICE
 #include "VirtualCameraController.h"
 #endif
@@ -94,6 +95,7 @@ int main(int argc, char *argv[])
     qmlRegisterType<PermissionStateController>("LibreConnect.desktop", 1, 0, "PermissionStateController");
     qmlRegisterType<FileManagerController>("LibreConnect.desktop", 1, 0, "FileManagerController");
     qmlRegisterType<TemporaryStorageController>("LibreConnect.desktop", 1, 0, "TemporaryStorageController");
+    qmlRegisterType<VirtualMicrophoneController>("LibreConnect.desktop", 1, 0, "VirtualMicrophoneController");
 #ifndef MACOS_DEVICE
     qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
 #endif

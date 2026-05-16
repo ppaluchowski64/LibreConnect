@@ -4,9 +4,11 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import java.util.concurrent.atomic.AtomicBoolean
 
 object MicrophoneReceiver {
+    private const val TAG = "LibreConnectNative"
     private const val SAMPLE_RATE = 48000
     private const val CHANNELS = AudioFormat.CHANNEL_IN_STEREO
     private const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
@@ -19,37 +21,62 @@ object MicrophoneReceiver {
     private var captureThread: Thread? = null
 
     @SuppressLint("MissingPermission")
-    fun start(onSamplesCaptured: (ByteArray) -> Unit): Boolean {
-        if (isRunning.get()) return true
+    fun start(): Boolean {
+        Log.d(TAG, "MicrophoneReceiver: start() called")
+        if (isRunning.get()) {
+            Log.d(TAG, "MicrophoneReceiver: already running")
+            return true
+        }
 
         val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNELS, ENCODING)
         val bufferSize = maxOf(minBufferSize, FRAME_SIZE_BYTES * 4)
+        Log.d(TAG, "MicrophoneReceiver: minBufferSize=$minBufferSize, bufferSize=$bufferSize")
 
         try {
             audioRecord = AudioRecord(
                 MediaRecorder.AudioSource.MIC,
                 SAMPLE_RATE, CHANNELS, ENCODING, bufferSize
             )
+            Log.d(TAG, "MicrophoneReceiver: AudioRecord created")
         } catch (e: Exception) {
+            Log.e(TAG, "MicrophoneReceiver: Failed to create AudioRecord", e)
             return false
         }
 
         if (audioRecord?.state != AudioRecord.STATE_INITIALIZED) {
+            Log.e(TAG, "MicrophoneReceiver: AudioRecord not initialized")
             audioRecord?.release()
             audioRecord = null
             return false
         }
 
         isRunning.set(true)
-        audioRecord?.startRecording()
+        try {
+            audioRecord?.startRecording()
+            Log.d(TAG, "MicrophoneReceiver: startRecording() successful")
+        } catch (e: Exception) {
+            Log.e(TAG, "MicrophoneReceiver: startRecording() failed", e)
+            isRunning.set(false)
+            return false
+        }
 
         captureThread = Thread {
+            Log.d(TAG, "MicrophoneReceiver: Capture thread started")
             val buffer = ByteArray(FRAME_SIZE_BYTES)
-            while (isRunning.get()) {
-                val read = audioRecord?.read(buffer, 0, FRAME_SIZE_BYTES) ?: -1
-                if (read == FRAME_SIZE_BYTES) {
-                    onSamplesCaptured(buffer.clone())
+            try {
+                while (isRunning.get()) {
+                    val read = audioRecord?.read(buffer, 0, FRAME_SIZE_BYTES) ?: -1
+                    if (read == FRAME_SIZE_BYTES) {
+                        MainService.onAudioCaptured(buffer.clone())
+                    } else if (read < 0) {
+                        Log.e(TAG, "MicrophoneReceiver: Error reading from AudioRecord: $read")
+                        break
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "MicrophoneReceiver: Exception in capture thread", e)
+            } finally {
+                Log.d(TAG, "MicrophoneReceiver: Capture thread exiting")
             }
         }.apply { 
             name = "MicrophoneCaptureThread"
@@ -60,13 +87,18 @@ object MicrophoneReceiver {
     }
 
     fun stop() {
+        Log.d(TAG, "MicrophoneReceiver: stop() called")
         isRunning.set(false)
         captureThread?.join(500)
         try {
             audioRecord?.stop()
-        } catch (e: Exception) {}
+            Log.d(TAG, "MicrophoneReceiver: audioRecord.stop() successful")
+        } catch (e: Exception) {
+            Log.e(TAG, "MicrophoneReceiver: audioRecord.stop() failed", e)
+        }
         audioRecord?.release()
         audioRecord = null
         captureThread = null
+        Log.d(TAG, "MicrophoneReceiver: stopped and released")
     }
 }

@@ -15,6 +15,7 @@ Page {
         && page.conn.contactsPermissionGranted
     readonly property bool allPermissionsGranted:
         page.conn.cameraPermissionGranted
+        && page.conn.microphonePermissionGranted
         && page.conn.notificationSendPermissionGranted
         && page.conn.notificationListenerPermissionGranted
         && page.conn.allFilesPermissionGranted
@@ -46,7 +47,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Grant permissions for camera, notifications, all-files access, and SMS features. You can skip and grant them later."
+                text: "Grant permissions for camera, microphone, notifications, all-files access, and SMS features. You can skip and grant them later."
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -72,6 +73,22 @@ Page {
                             enabled: !page.conn.cameraPermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestCameraPermission()
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Microphone"
+                            color: Theme.textColor
+                            font.pixelSize: 15
+                        }
+                        Button {
+                            text: page.conn.microphonePermissionGranted ? "Granted" : "Grant"
+                            enabled: !page.conn.microphonePermissionGranted && !page.conn.permissionsBusy
+                            Material.elevation: 1
+                            onClicked: page.conn.requestMicrophonePermission()
                         }
                     }
 
