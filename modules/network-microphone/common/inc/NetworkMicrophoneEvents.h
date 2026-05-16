@@ -3,6 +3,7 @@
 
 #include <QEvent>
 #include <MicrophoneTypes.h>
+#include <VMicTypes.h>
 
 constexpr static int EventBase = QEvent::User + 600;
 

@@ -290,6 +290,7 @@ BuildStaticLibrary(modules-manager modules/modules-manager
         notification-sync-module
         clipboard-sync-module
         remote-input-module
+        network-microphone-module
         sms-bridge-module
         system-info-share-module
 )

@@ -26,6 +26,7 @@ class MainService : Service() {
     external fun nativeStartBackend()
     external fun nativeStopBackend()
     external fun nativeShareLogs()
+    external fun nativeOnAudioCaptured(samples: ByteArray)
     external fun nativeOnCameraEncodedSample(
         encodedSample: ByteBuffer,
         size: Int,

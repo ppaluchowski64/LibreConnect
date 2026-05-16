@@ -441,6 +441,21 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDisp
     RequestClipboardSync(JStringToStdString(env, clipboardText));
 }
 
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeOnAudioCaptured(
+    JNIEnv* env,
+    jobject,
+    jbyteArray samples)
+{
+    jsize len = env->GetArrayLength(samples);
+    std::vector<uint8_t> pcm(len);
+    env->GetByteArrayRegion(samples, 0, len, reinterpret_cast<jbyte*>(pcm.data()));
+
+    auto& module = ModulesManager::GetModuleReference<NetworkMicrophoneModule>();
+    if (module->GetModuleState() == ModuleState::Enabled) {
+        module->ProcessAndSendAudio(pcm);
+    }
+}
+
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeShareLogs(
     JNIEnv* env,
     jobject obj)
