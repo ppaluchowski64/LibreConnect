@@ -5,8 +5,12 @@
 #include <HashHelpers.h>
 #include <FileShareEvents.h>
 
+#include <QSettings>
+#include <QStandardPaths>
+
 #include <chrono>
 #include <future>
+#include <mutex>
 #include <stdexcept>
 
 namespace
@@ -16,6 +20,8 @@ constexpr const char* CLIPBOARD_TEMP_CATEGORY = "clipboard";
 constexpr const char* DRAG_TEMP_CATEGORY = "drag";
 constexpr const char* OPEN_TEMP_CATEGORY = "open";
 constexpr const char* ICON_TEMP_CATEGORY = "icons";
+std::mutex g_incomingPostDirectoryMutex;
+std::filesystem::path g_incomingPostDirectory;
 
 std::filesystem::path EnsureFileShareTempRoot()
 {
@@ -74,10 +80,31 @@ std::filesystem::path CreateHashedSubdirectory(const std::filesystem::path& base
     return hashedDirectory;
 }
 
+std::filesystem::path DefaultIncomingPostDirectory()
+{
+    QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+    const QString savedDownloadDir = settings.value(QStringLiteral("fileManager/localDownloadDirectory")).toString();
+    if (!savedDownloadDir.isEmpty()) {
+        return savedDownloadDir.toStdString();
+    }
+
+    const QString defaultDownloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (!defaultDownloadDir.isEmpty()) {
+        return defaultDownloadDir.toStdString();
+    }
+
+    return QStandardPaths::writableLocation(QStandardPaths::HomeLocation).toStdString();
+}
+
 }
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
+
+void FileShareModule::SetIncomingPostDirectory(const std::filesystem::path& path) {
+    std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+    g_incomingPostDirectory = path;
+}
 
 bool FileShareModule::TryBeginDirectoryRequest(const std::string& path) const {
     std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
@@ -593,7 +620,25 @@ void FileShareModule::EnableResponseCallbacks() {
         Debug::Log("FileShareModule: Received transfer post request. RequestID: {}, Destination: {}, Name: {}, IsDirectory: {}, Size: {}",
             requestID, destination, fileName, isDirectory, totalTransferSize);
 
-        const std::filesystem::path destinationPath = std::filesystem::path(destination) / fileName;
+        std::filesystem::path destinationDirectory(destination);
+        if (destinationDirectory.empty()) {
+            std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+            destinationDirectory = g_incomingPostDirectory;
+        }
+
+        if (destinationDirectory.empty()) {
+            Debug::LogError("FileShareModule: Incoming post request has no destination directory");
+            co_return;
+        }
+
+        std::error_code createError;
+        std::filesystem::create_directories(destinationDirectory, createError);
+        if (createError || !std::filesystem::is_directory(destinationDirectory)) {
+            Debug::LogError("FileShareModule: Incoming post destination is invalid: {}", destinationDirectory.string());
+            co_return;
+        }
+
+        const std::filesystem::path destinationPath = destinationDirectory / fileName;
 
         const BorrowedTransferChannel acquiredChannel = co_await TransferChannelPool::BorrowTransferChannel(true);
         const uint8_t transferChannelIndex = static_cast<uint8_t>(acquiredChannel.index);
@@ -645,6 +690,13 @@ void FileShareModule::OnInitialize() {
     const std::filesystem::path tempPath = EnsureFileShareTempRoot();
     if (!tempPath.empty()) {
         std::filesystem::create_directories(tempPath);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+        if (g_incomingPostDirectory.empty()) {
+            g_incomingPostDirectory = DefaultIncomingPostDirectory();
+        }
     }
 }
 
