@@ -49,6 +49,19 @@ void RequestClipboardSync(std::string localClipboardText = {})
     module->RequestSyncWithPeer(std::move(localClipboardText));
 }
 
+void SendLocalClipboard(std::string localClipboardText = {})
+{
+    StartBackendIfNeeded();
+    Debug::Log("MainServiceBackendBridge: local clipboard send requested");
+    auto& module = ModulesManager::GetModuleReference<ClipboardSyncModule>();
+    if (localClipboardText.empty()) {
+        module->SendLocalClipboard();
+        return;
+    }
+
+    module->SendLocalClipboard(std::move(localClipboardText));
+}
+
 void ReleaseFindMyPhoneJniState(JNIEnv* env)
 {
     if (!env) {
@@ -442,6 +455,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDisp
     jstring clipboardText)
 {
     RequestClipboardSync(JStringToStdString(env, clipboardText));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDispatcher_nativeSendClipboardWithText(
+    JNIEnv* env,
+    jclass,
+    jstring clipboardText)
+{
+    SendLocalClipboard(JStringToStdString(env, clipboardText));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeShareLogs(

@@ -11,6 +11,9 @@ public:
     void RequestSyncWithPeer() const;
     void RequestSyncWithPeer(std::string localClipboardText) const;
 
+    void SendLocalClipboard() const;
+    void SendLocalClipboard(std::string localClipboardText) const;
+
 protected:
     void EnableResponseCallbacks() override;
     void DisableResponseCallbacks() override;

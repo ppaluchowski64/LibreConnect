@@ -12,23 +12,14 @@ object ClipboardSyncDispatcher {
     private external fun nativeRequestClipboardSyncWithText(text: String)
 
     @JvmStatic
+    private external fun nativeSendClipboardWithText(text: String)
+
+    @JvmStatic
     fun requestManualSync(context: Context, clipboardTextOverride: String? = null) {
         val appContext = context.applicationContext
         val clipboardText = clipboardTextOverride ?: ClipboardBridge.getClipboardText(appContext)
 
-        val serviceIntent = Intent(appContext, MainService::class.java).apply {
-            action = MainService.ACTION_START_BACKEND
-        }
-
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                appContext.startForegroundService(serviceIntent)
-            } else {
-                appContext.startService(serviceIntent)
-            }
-        } catch (t: Throwable) {
-            Log.w(TAG, "Failed to start backend service before clipboard sync", t)
-        }
+        ensureBackendStarted(appContext)
 
         if (!MainService.ensureNativeLoaded(appContext)) {
             Log.e(TAG, "Failed to load native library for clipboard sync request")
@@ -36,5 +27,35 @@ object ClipboardSyncDispatcher {
         }
 
         nativeRequestClipboardSyncWithText(clipboardText)
+    }
+
+    @JvmStatic
+    fun requestSendOnlySync(context: Context, clipboardText: String) {
+        val appContext = context.applicationContext
+
+        ensureBackendStarted(appContext)
+
+        if (!MainService.ensureNativeLoaded(appContext)) {
+            Log.e(TAG, "Failed to load native library for clipboard send request")
+            return
+        }
+
+        nativeSendClipboardWithText(clipboardText)
+    }
+
+    private fun ensureBackendStarted(context: Context) {
+        val serviceIntent = Intent(context, MainService::class.java).apply {
+            action = MainService.ACTION_START_BACKEND
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to start backend service before clipboard operation", t)
+        }
     }
 }

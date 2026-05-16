@@ -1,5 +1,6 @@
 package com.LibreConnect.mobile
 
+import android.app.PendingIntent
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -22,16 +23,25 @@ class ClipboardTileService : TileService() {
         Log.i(TAG, "Clipboard tile clicked")
         refreshTile()
         unlockAndRun {
-            startActivityAndCollapse(ClipboardActionActivity.createLaunchIntent(this))
+            val intent = ClipboardActionActivity.createLaunchIntent(this)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                val pendingIntent = PendingIntent.getActivity(
+                    this,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+                )
+                startActivityAndCollapse(pendingIntent)
+            } else {
+                @Suppress("DEPRECATION")
+                startActivityAndCollapse(intent)
+            }
         }
     }
 
     private fun refreshTile() {
         val tile = qsTile ?: return
-        tile.state = Tile.STATE_ACTIVE
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.subtitle = "Send clipboard"
-        }
+        tile.state = Tile.STATE_INACTIVE
         tile.updateTile()
     }
 

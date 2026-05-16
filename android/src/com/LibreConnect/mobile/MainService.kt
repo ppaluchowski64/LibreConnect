@@ -176,7 +176,7 @@ class MainService : Service() {
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.stat_notify_sync),
-                    "Sync Clipboard",
+                    "Send Clipboard",
                     clipboardPendingIntent
                 ).build()
             )
