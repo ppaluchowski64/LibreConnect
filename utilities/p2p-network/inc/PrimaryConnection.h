@@ -57,6 +57,7 @@ public:
     bool HasPendingPackages() const;
     void MarkHeartbeatReceived();
     ConnectionState GetConnectionState() const;
+    std::string GetPeerDeviceName();
 
 
 private:
