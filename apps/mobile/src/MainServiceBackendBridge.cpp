@@ -12,6 +12,7 @@
 #include <ConnectionManager.h>
 #include <ModulesManager.h>
 #include <ClipboardSyncModule.h>
+#include <FileShareModule.h>
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <SystemInfo.h>
@@ -60,6 +61,30 @@ void SendLocalClipboard(std::string localClipboardText = {})
     }
 
     module->SendLocalClipboard(std::move(localClipboardText));
+}
+
+void PostSharedFile(std::string path)
+{
+    if (path.empty()) {
+        Debug::LogWarning("MainServiceBackendBridge: shared file post skipped because path is empty");
+        return;
+    }
+
+    StartBackendIfNeeded();
+    Debug::Log("MainServiceBackendBridge: shared file post requested for {}", path);
+    asio::co_spawn(ThreadPool::GetContext(), [path = std::move(path)]() -> asio::awaitable<void> {
+        auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+        if (module->GetModuleState() != ModuleState::Enabled) {
+            co_await module->EnableAwaitable(true);
+        }
+
+        if (module->GetModuleState() != ModuleState::Enabled) {
+            Debug::LogWarning("MainServiceBackendBridge: shared file post skipped because file module is not enabled");
+            co_return;
+        }
+
+        module->PostEntry(path, std::filesystem::path{});
+    }, asio::detached);
 }
 
 void ReleaseFindMyPhoneJniState(JNIEnv* env)
@@ -463,6 +488,14 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDisp
     jstring clipboardText)
 {
     SendLocalClipboard(JStringToStdString(env, clipboardText));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_SharedFileDispatcher_nativePostSharedFile(
+    JNIEnv* env,
+    jclass,
+    jstring path)
+{
+    PostSharedFile(JStringToStdString(env, path));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeShareLogs(

@@ -70,12 +70,6 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
     FileEntry entry(path);
 
-    if (!std::filesystem::is_directory(destination)) {
-        Debug::LogError("FileShareModule: Destination should be a directory ({})", destination.string());
-        ProcessError(ModuleFailReason::IncorrectConfig);
-        co_return;
-    }
-
     const bool isDirectory = std::filesystem::is_directory(path);
     size_t totalTransferSize = 0;
 

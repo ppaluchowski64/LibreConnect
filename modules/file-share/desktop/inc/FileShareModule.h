@@ -17,6 +17,8 @@ class FileShareModule final : public BaseModule {
 public:
     FileShareModule() = default;
 
+    static void SetIncomingPostDirectory(const std::filesystem::path& path);
+
     void FetchDirectoryEntries(const std::string& path) const;
     void FetchDirectoryEntries(const FileEntry& entry) const;
     void FetchEntry(const FileEntry& entry, const std::string& destination) const;

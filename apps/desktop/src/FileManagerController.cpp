@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QLocale>
 #include <QMetaObject>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -253,9 +254,14 @@ FileManagerController::FileManagerController(QObject* parent)
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
 
     const QString defaultDownloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
-    m_localDownloadDirectory = defaultDownloadDir.isEmpty()
+    QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+    const QString savedDownloadDir = settings.value(QStringLiteral("fileManager/localDownloadDirectory")).toString();
+    m_localDownloadDirectory = !savedDownloadDir.isEmpty()
+        ? savedDownloadDir
+        : defaultDownloadDir.isEmpty()
         ? QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
         : defaultDownloadDir;
+    FileShareModule::SetIncomingPostDirectory(m_localDownloadDirectory.toStdString());
 
     m_pollTimer.setInterval(250);
     connect(&m_pollTimer, &QTimer::timeout, this, &FileManagerController::refreshModuleState);
@@ -272,6 +278,9 @@ void FileManagerController::setLocalDownloadDirectory(const QUrl& directoryUrl)
     }
 
     m_localDownloadDirectory = localPath;
+    QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+    settings.setValue(QStringLiteral("fileManager/localDownloadDirectory"), m_localDownloadDirectory);
+    FileShareModule::SetIncomingPostDirectory(m_localDownloadDirectory.toStdString());
     emit localDownloadDirectoryChanged();
 }
 
