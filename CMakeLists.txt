@@ -59,6 +59,8 @@ elseif (WIN32 OR (UNIX AND NOT APPLE))
 elseif (APPLE AND NOT IOS)
     find_package(GTest     REQUIRED)
     find_package(benchmark REQUIRED)
+
+    add_library(ffmpeg_headers INTERFACE)
 endif()
 
 find_package(OpenSSL          REQUIRED)
@@ -194,7 +196,6 @@ if (ANDROID OR IOS)
             common-module
             virtual-microphone
             srtp-stream
-            ffmpeg_headers
     )
 
     BuildApplicationModule(file-share-module modules/file-share/common modules/file-share/mobile
@@ -250,7 +251,6 @@ elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
             common-module
             virtual-microphone
             srtp-stream
-            ffmpeg_headers
     )
 
     BuildApplicationModule(notification-sync-module modules/notification-sync/common modules/notification-sync/desktop
