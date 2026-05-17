@@ -81,6 +81,14 @@ void ClipboardSyncModule::RequestSyncWithPeer(std::string localClipboardText) co
     ConnectionManager::Send(PC_PackageType::CLIPBOARD_SYNC_MODULE_REQUEST_SYNC);
 }
 
+void ClipboardSyncModule::SendLocalClipboard() const {
+    SendLocalClipboardSnapshot();
+}
+
+void ClipboardSyncModule::SendLocalClipboard(std::string localClipboardText) const {
+    SendClipboardText(std::move(localClipboardText));
+}
+
 void ClipboardSyncModule::EnableResponseCallbacks() {
     const std::shared_ptr<ClipboardSyncModule> instance = std::static_pointer_cast<ClipboardSyncModule>(shared_from_this());
 

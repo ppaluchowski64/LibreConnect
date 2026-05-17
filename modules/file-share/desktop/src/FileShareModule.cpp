@@ -1,14 +1,16 @@
 #include <FileShareModule.h>
 #include <FileEntry.h>
 #include <FileSystemManager.h>
+#include <ExternalFileOpener.h>
 #include <HashHelpers.h>
 #include <FileShareEvents.h>
 
-#include <QDesktopServices>
-#include <QUrl>
+#include <QSettings>
+#include <QStandardPaths>
 
 #include <chrono>
 #include <future>
+#include <mutex>
 #include <stdexcept>
 
 namespace
@@ -18,15 +20,8 @@ constexpr const char* CLIPBOARD_TEMP_CATEGORY = "clipboard";
 constexpr const char* DRAG_TEMP_CATEGORY = "drag";
 constexpr const char* OPEN_TEMP_CATEGORY = "open";
 constexpr const char* ICON_TEMP_CATEGORY = "icons";
-
-QString PathToQString(const std::filesystem::path& path)
-{
-#ifdef _WIN32
-    return QString::fromStdWString(path.wstring());
-#else
-    return QString::fromStdString(path.string());
-#endif
-}
+std::mutex g_incomingPostDirectoryMutex;
+std::filesystem::path g_incomingPostDirectory;
 
 std::filesystem::path EnsureFileShareTempRoot()
 {
@@ -40,7 +35,7 @@ std::filesystem::path EnsureFileShareTempCategoryPath(const std::string& categor
         return {};
     }
 
-    const std::filesystem::path categoryPath = root / std::filesystem::u8path(category);
+    const std::filesystem::path categoryPath = root / std::filesystem::path(reinterpret_cast<const char8_t*>(category.data()));
     std::error_code ec;
     std::filesystem::create_directories(categoryPath, ec);
     if (ec) {
@@ -85,10 +80,31 @@ std::filesystem::path CreateHashedSubdirectory(const std::filesystem::path& base
     return hashedDirectory;
 }
 
+std::filesystem::path DefaultIncomingPostDirectory()
+{
+    QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+    const QString savedDownloadDir = settings.value(QStringLiteral("fileManager/localDownloadDirectory")).toString();
+    if (!savedDownloadDir.isEmpty()) {
+        return savedDownloadDir.toStdString();
+    }
+
+    const QString defaultDownloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+    if (!defaultDownloadDir.isEmpty()) {
+        return defaultDownloadDir.toStdString();
+    }
+
+    return QStandardPaths::writableLocation(QStandardPaths::HomeLocation).toStdString();
+}
+
 }
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
+
+void FileShareModule::SetIncomingPostDirectory(const std::filesystem::path& path) {
+    std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+    g_incomingPostDirectory = path;
+}
 
 bool FileShareModule::TryBeginDirectoryRequest(const std::string& path) const {
     std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
@@ -241,7 +257,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
 
     const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
     const std::filesystem::path path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
-    const std::filesystem::path entryNamePath = std::filesystem::u8path(entryName);
+    const std::filesystem::path entryNamePath = std::filesystem::path(reinterpret_cast<const char8_t*>(entryName.data()));
     if (type == FileType::Directory) {
         filePath /= entryNamePath;
         std::filesystem::create_directories(filePath);
@@ -299,7 +315,7 @@ void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) con
             if (destinationDirectory.empty()) {
                 continue;
             }
-            std::filesystem::path entryDestination = destinationDirectory / std::filesystem::u8path(name);
+            std::filesystem::path entryDestination = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
 
             paths.push_back(entryDestination);
             futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, destinationDirectory.string()), asio::use_future));
@@ -355,7 +371,7 @@ asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntr
         if (destinationDirectory.empty()) {
             continue;
         }
-        const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::u8path(name);
+        const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
 
         try {
             co_await FetchEntryAwaitable(entry, destinationDirectory.string());
@@ -488,9 +504,12 @@ asio::awaitable<void> FileShareModule::OpenEntryAwaitable(const FileEntry entry)
 
     co_await FetchEntryAwaitable(entry, destinationDirectory.string());
 
+    const std::string entryName = entry.GetName().value_or(std::string());
     const std::filesystem::path openedPath = destinationDirectory /
-        std::filesystem::u8path(entry.GetName().value_or(std::string()));
-    QDesktopServices::openUrl(QUrl::fromLocalFile(PathToQString(openedPath)));
+        std::filesystem::path(reinterpret_cast<const char8_t*>(entryName.data()));
+    if (!ExternalFileOpener::OpenLocalFile(openedPath)) {
+        Debug::LogError("FileShareModule: Failed to open fetched entry {}", openedPath.string());
+    }
 }
 
 asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry entry, const FileIconDensity density) {
@@ -554,16 +573,58 @@ asio::awaitable<void> FileShareModule::FetchEntryIconAwaitable(const FileEntry e
     ConnectionManager::SendEvent(event);
 }
 
+void FileShareModule::DeleteEntries(std::vector<FileEntry> entries) const {
+    asio::co_spawn(m_context, DeleteEntriesAwaitable(std::move(entries)), asio::detached);
+}
+
+asio::awaitable<void> FileShareModule::DeleteEntriesAwaitable(std::vector<FileEntry> entries) const {
+    Debug::Log("FileShareModule: Delete entries requested. Count: {}", entries.size());
+    if (entries.empty()) {
+        const std::unique_ptr<QEvent> event = std::make_unique<EntriesDeleteResultEvent>(std::move(entries), true);
+        ConnectionManager::SendEvent(event);
+        co_return;
+    }
+
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DELETE_ENTRIES_REQUEST, entries);
+    bool success = false;
+
+    if (!response.has_value()) {
+        Debug::LogError("FileShareModule: Delete entries request failed (timeout or rejected)");
+        ProcessError(ModuleFailReason::Timeout);
+    } else {
+        response.value()->GetValue(success);
+        Debug::Log("FileShareModule: Delete entries request completed. Success: {}", success);
+    }
+
+    const std::unique_ptr<QEvent> event = std::make_unique<EntriesDeleteResultEvent>(std::move(entries), success);
+    ConnectionManager::SendEvent(event);
+}
+
 void FileShareModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [this, instance](PC_Package&& package) mutable {
+        (void)package;
         m_peerModuleEnabled.store(true);
+        if (GetModuleState() == ModuleState::Enabled) {
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
+            return;
+        }
+
         Enable(true);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [this, instance](PC_Package&& package) mutable {
+        (void)package;
         m_peerModuleEnabled.store(false);
+        if (GetModuleState() == ModuleState::Disabled) {
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, false);
+            return;
+        }
+
         Disable(true);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, [this, instance](PC_Package&& package) mutable {
+        m_peerModuleEnabled.store(package->GetValue<bool>());
     });
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [this, instance](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID         = package->GetValue<size_t>();
@@ -574,7 +635,25 @@ void FileShareModule::EnableResponseCallbacks() {
         Debug::Log("FileShareModule: Received transfer post request. RequestID: {}, Destination: {}, Name: {}, IsDirectory: {}, Size: {}",
             requestID, destination, fileName, isDirectory, totalTransferSize);
 
-        const std::filesystem::path destinationPath = std::filesystem::path(destination) / fileName;
+        std::filesystem::path destinationDirectory(destination);
+        if (destinationDirectory.empty()) {
+            std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+            destinationDirectory = g_incomingPostDirectory;
+        }
+
+        if (destinationDirectory.empty()) {
+            Debug::LogError("FileShareModule: Incoming post request has no destination directory");
+            co_return;
+        }
+
+        std::error_code createError;
+        std::filesystem::create_directories(destinationDirectory, createError);
+        if (createError || !std::filesystem::is_directory(destinationDirectory)) {
+            Debug::LogError("FileShareModule: Incoming post destination is invalid: {}", destinationDirectory.string());
+            co_return;
+        }
+
+        const std::filesystem::path destinationPath = destinationDirectory / fileName;
 
         const BorrowedTransferChannel acquiredChannel = co_await TransferChannelPool::BorrowTransferChannel(true);
         const uint8_t transferChannelIndex = static_cast<uint8_t>(acquiredChannel.index);
@@ -613,6 +692,7 @@ void FileShareModule::EnableResponseCallbacks() {
 void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
 }
 
@@ -627,10 +707,16 @@ void FileShareModule::OnInitialize() {
     if (!tempPath.empty()) {
         std::filesystem::create_directories(tempPath);
     }
+
+    {
+        std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+        if (g_incomingPostDirectory.empty()) {
+            g_incomingPostDirectory = DefaultIncomingPostDirectory();
+        }
+    }
 }
 
 asio::awaitable<void> FileShareModule::OnEnable() {
-    m_peerModuleEnabled.store(false);
     asio::steady_timer timer(m_context);
 
     ConnectionState state = TransferChannelPool::GetConnectionState();
@@ -647,11 +733,14 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         state = TransferChannelPool::GetConnectionState();
     }
 
-    TransferChannelPool::GetConnectionState();
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
 }
 
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, false);
     {
         std::lock_guard<std::mutex> lock(m_directoryRequestMutex);
         m_inFlightDirectoryRequests.clear();

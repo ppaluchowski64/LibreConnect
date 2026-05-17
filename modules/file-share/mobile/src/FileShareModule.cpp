@@ -7,6 +7,7 @@
 #include <TransferChannelPool.h>
 
 #include <QDesktopServices>
+#include <QString>
 #include <QUrl>
 #include <magic_enum/magic_enum.hpp>
 
@@ -21,6 +22,167 @@
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
 constexpr size_t DIRECTORY_REQUEST_WAIT_POLL_MS = 5;
+
+namespace
+{
+QString DisplayNameForEntry(const FileEntry& entry)
+{
+    if (entry.GetName().has_value() && !entry.GetName().value().empty()) {
+        return QString::fromStdString(entry.GetName().value());
+    }
+
+    if (entry.GetPath().has_value() && !entry.GetPath().value().empty()) {
+        const std::filesystem::path path(entry.GetPath().value());
+        const std::string filename = path.filename().string();
+        if (!filename.empty()) {
+            return QString::fromStdString(filename);
+        }
+    }
+
+    return QStringLiteral("file");
+}
+
+QString NotificationKeyForEntry(const FileEntry& entry)
+{
+    if (entry.GetPath().has_value() && !entry.GetPath().value().empty()) {
+        return QString::fromStdString(entry.GetPath().value());
+    }
+
+    return DisplayNameForEntry(entry);
+}
+
+void PostTransferProgressNotification(const FileEntry& entry, const size_t bytesTransferred, const size_t totalBytes)
+{
+#ifdef ANDROID_DEVICE
+    const QJniObject key = QJniObject::fromString(NotificationKeyForEntry(entry));
+    const QJniObject title = QJniObject::fromString(QStringLiteral("Sending shared file"));
+    const QJniObject content = QJniObject::fromString(DisplayNameForEntry(entry));
+
+    const QJniEnvironment env;
+    bool posted = false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        QJniObject::callStaticMethod<void>(
+            "com/LibreConnect/mobile/NotificationBridge",
+            "postTransferProgressNotification",
+            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJ)V",
+            context.object<jobject>(),
+            key.object<jstring>(),
+            title.object<jstring>(),
+            content.object<jstring>(),
+            static_cast<jlong>(bytesTransferred),
+            static_cast<jlong>(totalBytes)
+        );
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            Debug::LogWarning("FileShareModule: Transfer progress notification failed in Android bridge");
+        } else {
+            posted = true;
+        }
+    }
+
+    if (!posted) {
+        posted = QJniObject::callStaticMethod<jboolean>(
+            "com/LibreConnect/mobile/MainService",
+            "postTransferProgressNotification",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJ)Z",
+            key.object<jstring>(),
+            title.object<jstring>(),
+            content.object<jstring>(),
+            static_cast<jlong>(bytesTransferred),
+            static_cast<jlong>(totalBytes)
+        );
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            Debug::LogWarning("FileShareModule: Transfer progress notification failed in MainService bridge");
+            posted = false;
+        }
+    }
+
+    if (!posted) {
+        Debug::LogWarning("FileShareModule: Transfer progress notification skipped: no Android context is available");
+    }
+#else
+    (void)entry;
+    (void)bytesTransferred;
+    (void)totalBytes;
+#endif
+}
+
+void PostTransferNotification(const FileEntry& entry, const bool success)
+{
+#ifdef ANDROID_DEVICE
+    const QJniObject key = QJniObject::fromString(NotificationKeyForEntry(entry));
+    const QJniObject title = QJniObject::fromString(success
+        ? QStringLiteral("Transfer finished")
+        : QStringLiteral("Transfer failed"));
+    const QJniObject content = QJniObject::fromString(DisplayNameForEntry(entry));
+
+    const QJniEnvironment env;
+    bool posted = false;
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        QJniObject::callStaticMethod<void>(
+            "com/LibreConnect/mobile/NotificationBridge",
+            "postTransferNotification",
+            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V",
+            context.object<jobject>(),
+            key.object<jstring>(),
+            title.object<jstring>(),
+            content.object<jstring>(),
+            static_cast<jboolean>(success)
+        );
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            Debug::LogWarning("FileShareModule: Transfer notification failed in Android bridge");
+        } else {
+            posted = true;
+        }
+    }
+
+    if (!posted) {
+        posted = QJniObject::callStaticMethod<jboolean>(
+            "com/LibreConnect/mobile/MainService",
+            "postTransferNotification",
+            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Z",
+            key.object<jstring>(),
+            title.object<jstring>(),
+            content.object<jstring>(),
+            static_cast<jboolean>(success)
+        );
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            Debug::LogWarning("FileShareModule: Transfer notification failed in MainService bridge");
+            posted = false;
+        }
+    }
+
+    if (!posted) {
+        Debug::LogWarning("FileShareModule: Transfer notification skipped: no Android context is available");
+    }
+#else
+    (void)entry;
+    (void)success;
+#endif
+}
+
+void SendTransferResult(const FileEntry& entry, const bool success, const bool notifyTransferProgress)
+{
+    if (notifyTransferProgress) {
+        PostTransferNotification(entry, success);
+    }
+    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
+    ConnectionManager::SendEvent(event);
+}
+}
 
 std::shared_future<DirectoryResult> FileShareModule::GetOrCreateDirectoryScanFuture(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_directoryScanMutex);
@@ -56,11 +218,11 @@ void FileShareModule::ClearDirectoryScanFutures() {
     m_directoryScanFutures.clear();
 }
 
-void FileShareModule::PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination) const {
-    asio::co_spawn(m_context, PostEntryAwaitable(path, destination), asio::detached);
+void FileShareModule::PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination, const bool notifyTransferProgress) const {
+    asio::co_spawn(m_context, PostEntryAwaitable(path, destination, notifyTransferProgress), asio::detached);
 }
 
-asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem::path path, const std::filesystem::path destination) const {
+asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem::path path, const std::filesystem::path destination, const bool notifyTransferProgress) const {
     Debug::Log("FileShareModule: Post entry requested. Source: {}, Destination: {}", path.string(), destination.string());
     if (!std::filesystem::exists(path)) {
         Debug::LogError("FileShareModule: File {} does not exist", path.string());
@@ -69,12 +231,6 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     }
 
     FileEntry entry(path);
-
-    if (!std::filesystem::is_directory(destination)) {
-        Debug::LogError("FileShareModule: Destination should be a directory ({})", destination.string());
-        ProcessError(ModuleFailReason::IncorrectConfig);
-        co_return;
-    }
 
     const bool isDirectory = std::filesystem::is_directory(path);
     size_t totalTransferSize = 0;
@@ -94,8 +250,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, destination.string(), path.filename().string(), size_t{totalTransferSize}, isDirectory);
     if (!response.has_value()) {
         ProcessError(ModuleFailReason::Timeout);
-        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
-        ConnectionManager::SendEvent(event);
+        SendTransferResult(entry, false, notifyTransferProgress);
         co_return;
     }
 
@@ -114,8 +269,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     if (channel->GetConnectionState() != ConnectionState::CONNECTED) {
         Debug::LogError("FileShareModule: Transfer channel {} is not connected", channelIndex);
         ProcessError(ModuleFailReason::InternalError);
-        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
-        ConnectionManager::SendEvent(event);
+        SendTransferResult(entry, false, notifyTransferProgress);
         co_return;
     }
 
@@ -126,11 +280,17 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
 
         asio::steady_timer timer(m_context);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferProgressEvent>(entry, totalTransferSize, 0, TransferOperation::Post);
+        if (notifyTransferProgress) {
+            PostTransferProgressNotification(entry, 0, totalTransferSize);
+        }
 
         while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
             const size_t progress = channel->FetchTransferProgress();
             reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
             ConnectionManager::SendEvent(event);
+            if (notifyTransferProgress) {
+                PostTransferProgressNotification(entry, progress, totalTransferSize);
+            }
 
             timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
             co_await timer.async_wait();
@@ -140,8 +300,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
     const size_t transferred = channel->FetchTransferProgress();
     const bool success = totalTransferSize == transferred;
     Debug::Log("FileShareModule: Post entry transfer finished. Success: {}, Bytes: {}/{}", success, transferred, totalTransferSize);
-    const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
-    ConnectionManager::SendEvent(event);
+    SendTransferResult(entry, success, notifyTransferProgress);
 }
 
 std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, const FileIconDensity density) {
@@ -218,24 +377,32 @@ std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, cons
 void FileShareModule::EnableResponseCallbacks() {
     const std::shared_ptr<BaseModule> instance = shared_from_this();
 
-	ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [instance, this](PC_Package&& package) mutable {
-           const ModuleState state = GetModuleState();
-           if (state == ModuleState::Enabled) {
-               // Reconnect flow: peer requested enable while we are already enabled.
-               m_peerModuleEnabled.store(true);
-               ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
-               ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
-               return;
-           }
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_ENABLE, [instance, this](PC_Package&& package) mutable {
+        (void)package;
+        const ModuleState state = GetModuleState();
+        if (state == ModuleState::Enabled) {
+            // Reconnect flow: peer requested enable while we are already enabled.
+            m_peerModuleEnabled.store(true);
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_ENABLE);
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
+            return;
+        }
 
-	       Enable(true);
-	    });
-    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [instance, this](PC_Package&& package) mutable {
-       Disable(true);
+        Enable(true);
     });
-	ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
-	    const size_t requestID    = package->GetValue<size_t>();
-	    const std::string pathStr = package->GetValue<std::string>();
+    ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE, [instance, this](PC_Package&& package) mutable {
+        (void)package;
+        m_peerModuleEnabled.store(false);
+        if (GetModuleState() == ModuleState::Disabled) {
+            ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, false);
+            return;
+        }
+
+        Disable(true);
+    });
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID    = package->GetValue<size_t>();
+        const std::string pathStr = package->GetValue<std::string>();
         Debug::Log("FileShareModule: Received directory entries request. RequestID: {}, Path: {}", requestID, pathStr);
 
         const std::shared_future<DirectoryResult> scanFuture = GetOrCreateDirectoryScanFuture(pathStr);
@@ -341,8 +508,7 @@ void FileShareModule::EnableResponseCallbacks() {
         const size_t transferred = channel->FetchTransferProgress();
         const bool success = totalSize == transferred;
         Debug::Log("FileShareModule: Incoming fetch transfer finished. RequestID: {}, Success: {}, Bytes: {}/{}", requestID, success, transferred, totalSize);
-        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
-        ConnectionManager::SendEvent(event);
+        SendTransferResult(entry, success, false);
     });
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
         const size_t requestID         = package->GetValue<size_t>();
@@ -388,8 +554,7 @@ void FileShareModule::EnableResponseCallbacks() {
         const size_t transferred = channel->FetchTransferProgress();
         const bool success = totalTransferSize == transferred;
         Debug::Log("FileShareModule: Incoming post transfer finished. RequestID: {}, Success: {}, Bytes: {}/{}", requestID, success, transferred, totalTransferSize);
-        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
-        ConnectionManager::SendEvent(event);
+        SendTransferResult(entry, success, false);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, [instance, this](PC_Package&& package) mutable {
         const bool newState = package->GetValue<bool>();
@@ -428,6 +593,39 @@ void FileShareModule::EnableResponseCallbacks() {
 
         co_return;
     });
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DELETE_ENTRIES_REQUEST, [instance, this](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID = package->GetValue<size_t>();
+        const std::vector<FileEntry> entries = package->GetValue<std::vector<FileEntry>>();
+        Debug::Log("FileShareModule: Received delete entries request. RequestID: {}, Count: {}", requestID, entries.size());
+
+        bool allSuccess = true;
+        for (const auto& entry : entries) {
+            if (!entry.GetPath().has_value() || !entry.GetName().has_value()) {
+                allSuccess = false;
+                continue;
+            }
+
+            const std::filesystem::path path = std::filesystem::path(entry.GetPath().value()) / entry.GetName().value();
+            std::error_code ec;
+            if (std::filesystem::exists(path, ec)) {
+                std::filesystem::remove_all(path, ec);
+                if (ec) {
+                    Debug::LogError("FileShareModule: Failed to delete {}: {}", path.string(), ec.message());
+                    allSuccess = false;
+                }
+            } else if (ec) {
+                Debug::LogError("FileShareModule: Failed to check existence of {}: {}", path.string(), ec.message());
+                allSuccess = false;
+            }
+        }
+
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::FILE_SHARE_DELETE_ENTRIES_RESPONSE,
+            allSuccess
+        );
+        co_return;
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {
@@ -438,6 +636,7 @@ void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_FETCH_ENTRY_ICON_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_DELETE_ENTRIES_REQUEST);
 }
 
 void FileShareModule::OnInitialize() {
@@ -471,10 +670,14 @@ asio::awaitable<void> FileShareModule::OnEnable() {
         timer.expires_after(std::chrono::milliseconds(10));
         co_await timer.async_wait();
     }
+
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, true);
 }
 
 asio::awaitable<void> FileShareModule::OnDisable() {
     m_peerModuleEnabled.store(false);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
+    ConnectionManager::Send(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED, false);
     ClearDirectoryScanFutures();
     co_return;
 }

@@ -12,14 +12,13 @@
 #include <ConnectionManager.h>
 #include <ModulesManager.h>
 #include <ClipboardSyncModule.h>
+#include <FileShareModule.h>
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <SystemInfo.h>
 #include <ThreadPool.h>
 #include <Events.h>
 
-namespace
-{
 std::mutex g_backendMutex;
 bool g_backendRunning = false;
 bool g_findMyHandlersRegistered = false;
@@ -47,6 +46,43 @@ void RequestClipboardSync(std::string localClipboardText = {})
     }
 
     module->RequestSyncWithPeer(std::move(localClipboardText));
+}
+
+void SendLocalClipboard(std::string localClipboardText = {})
+{
+    StartBackendIfNeeded();
+    Debug::Log("MainServiceBackendBridge: local clipboard send requested");
+    auto& module = ModulesManager::GetModuleReference<ClipboardSyncModule>();
+    if (localClipboardText.empty()) {
+        module->SendLocalClipboard();
+        return;
+    }
+
+    module->SendLocalClipboard(std::move(localClipboardText));
+}
+
+void PostSharedFile(std::string path)
+{
+    if (path.empty()) {
+        Debug::LogWarning("MainServiceBackendBridge: shared file post skipped because path is empty");
+        return;
+    }
+
+    StartBackendIfNeeded();
+    Debug::Log("MainServiceBackendBridge: shared file post requested for {}", path);
+    asio::co_spawn(ThreadPool::GetContext(), [path = std::move(path)]() -> asio::awaitable<void> {
+        auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+        if (module->GetModuleState() != ModuleState::Enabled) {
+            co_await module->EnableAwaitable(true);
+        }
+
+        if (module->GetModuleState() != ModuleState::Enabled) {
+            Debug::LogWarning("MainServiceBackendBridge: shared file post skipped because file module is not enabled");
+            co_return;
+        }
+
+        module->PostEntry(path, std::filesystem::path{}, true);
+    }, asio::detached);
 }
 
 void ReleaseFindMyPhoneJniState(JNIEnv* env)
@@ -320,6 +356,7 @@ void StartBackendIfNeeded()
 
     Debug::Log("MainServiceBackendBridge: starting backend");
     ThreadPool::Start();
+    ModulesManager::Initialize();
     ConnectionManager::StartAcceptingConnections();
     if (!g_findMyHandlersRegistered) {
         ConnectionManager::AddResponseHandler(PC_PackageType::FIND_MY_PHONE_START_RINGING, [](PC_Package&&) {
@@ -377,10 +414,9 @@ void ConfigureStorage(const std::string& storageRootPath)
     std::error_code ec;
     std::filesystem::create_directories(storageRoot, ec);
 
-    std::filesystem::current_path(storageRoot, ec);
-
     const Debug::Settings settings{
         .rootPath = storageRoot.string(),
+        .applicationName = "LibreConnectNative",
         .maxFileSize = 64 * 1024 * 1024ULL,
         .maxLogFilesAmount = 5,
         .deleteLogsAfter = 60 * 60 * 24 * 7
@@ -392,7 +428,6 @@ void ConfigureStorage(const std::string& storageRootPath)
 
     g_storageRoot = storageRootPath;
     g_storageConfigured = true;
-}
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeConfigureStorage(
@@ -442,6 +477,37 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDisp
     jstring clipboardText)
 {
     RequestClipboardSync(JStringToStdString(env, clipboardText));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeOnAudioCaptured(
+    JNIEnv* env,
+    jobject,
+    jbyteArray samples)
+{
+    jsize len = env->GetArrayLength(samples);
+    std::vector<uint8_t> pcm(len);
+    env->GetByteArrayRegion(samples, 0, len, reinterpret_cast<jbyte*>(pcm.data()));
+
+    auto& module = ModulesManager::GetModuleReference<NetworkMicrophoneModule>();
+    if (module->GetModuleState() == ModuleState::Enabled) {
+        module->ProcessAndSendAudio(pcm);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_ClipboardSyncDispatcher_nativeSendClipboardWithText(
+    JNIEnv* env,
+    jclass,
+    jstring clipboardText)
+{
+    SendLocalClipboard(JStringToStdString(env, clipboardText));
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_SharedFileDispatcher_nativePostSharedFile(
+    JNIEnv* env,
+    jclass,
+    jstring path)
+{
+    PostSharedFile(JStringToStdString(env, path));
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeShareLogs(

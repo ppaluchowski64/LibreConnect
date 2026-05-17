@@ -1,6 +1,6 @@
 #include "VirtualCameraController.h"
-
 #include <ModulesManager.h>
+#include <regex>
 
 VirtualCameraController::VirtualCameraController(QObject* parent)
     : QObject(parent)
@@ -57,9 +57,12 @@ void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
         return;
     }
 
+    const std::string cleanedDescription = std::regex_replace(camera.description, std::regex(R"(\s\(\d+\)$)"), "");
+    const std::string cameraName = fmt::format("{}'s {}", ConnectionManager::GetPeerDeviceName(), cleanedDescription);
     const CameraFormat& format = camera.formats.at(m_selectedFormatIndex);
-    CameraSettings settings(
-        camera.description,
+
+    const CameraSettings settings(
+        cameraName,
         true,
         format.width,
         format.height,

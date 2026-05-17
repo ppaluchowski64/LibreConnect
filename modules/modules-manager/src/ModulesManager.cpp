@@ -4,6 +4,7 @@
 #include <DebugLog.h>
 #include <QPointer>
 #include <Events.h>
+#include <NetworkMicrophoneModule.h>
 
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
@@ -97,6 +98,7 @@ ModulesManager::ModulesManager() {
     m_remoteInputModule = std::make_shared<RemoteInputModule>();
     m_smsBridgeModule = std::make_shared<SmsBridgeModule>();
     m_systemInfoShareModule = std::make_shared<SystemInfoShareModule>();
+    m_networkMicrophoneModule = std::make_shared<NetworkMicrophoneModule>();
 
 #ifdef ANDROID_DEVICE
     SetMainServiceBackendEnabled(true);
@@ -140,6 +142,9 @@ void ModulesManager::Initialize() {
     if (s_instance->m_systemInfoShareModule->GetModuleState() != ModuleState::Uninitialized) return;
     s_instance->m_systemInfoShareModule->Initialize(true);
 
+    if (s_instance->m_networkMicrophoneModule->GetModuleState() != ModuleState::Uninitialized) return;
+    s_instance->m_networkMicrophoneModule->Initialize(true);
+
     ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REQUESTED, [](PC_Package&& package) {
         const PermissionType type = package->GetValue<PermissionType>();
         const std::unique_ptr<QEvent> event = std::make_unique<ModuleRequestedPermission>(type);
@@ -173,6 +178,9 @@ void ModulesManager::Initialize() {
         switch (type) {
         case PermissionType::Camera:
             granted = co_await PermissionManager::RequestCameraAccessPermission();
+            break;
+        case PermissionType::Microphone:
+            granted = co_await PermissionManager::RequestMicrophoneAccessPermission();
             break;
         case PermissionType::Notifications:
             granted = co_await PermissionManager::RequestNotificationEmitPermission();
@@ -234,6 +242,7 @@ void ModulesManager::Initialize() {
         case PermissionType::FileSystem:
         case PermissionType::Battery:
         case PermissionType::Sms:
+        case PermissionType::Microphone:
         default:
             granted = false;
             break;
@@ -276,6 +285,7 @@ void ModulesManager::Shutdown() {
         s_instance->m_remoteInputModule->Shutdown(true);
         s_instance->m_smsBridgeModule->Shutdown(true);
         s_instance->m_systemInfoShareModule->Shutdown(true);
+        s_instance->m_networkMicrophoneModule->Shutdown(true);
 
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REQUESTED);
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REJECTED);

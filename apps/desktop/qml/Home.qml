@@ -21,11 +21,14 @@ Page {
     readonly property color destructiveFillHover: Theme.destructiveFillHoverColor
     readonly property color destructiveText: Theme.dangerColor
     readonly property int smsPermissionType: 6
+    readonly property int microphonePermissionType: 8
     readonly property string windowTitleSuffix: {
         if (selectedFeature === "fileManager")
             return "File Manager"
         if (selectedFeature === "cameras")
             return "Virtual Camera"
+        if (selectedFeature === "microphone")
+            return "Virtual Microphone"
         if (selectedFeature === "messages")
             return "Messages"
         if (selectedFeature === "notificationHistory")
@@ -46,6 +49,18 @@ Page {
             return
         }
 
+        if (nextFeature === "microphone") {
+            if (!root.permissionStateController.microphoneGranted) {
+                microphonePermissionDialog.open()
+                return
+            }
+
+            if (virtualMicrophoneController.driverDownloadRecommended) {
+                virtualAudioCableDialog.open()
+                return
+            }
+        }
+
         if (selectedFeature === nextFeature) {
             if (windowRef && windowRef.updateWindowTitle !== undefined)
                 windowRef.updateWindowTitle()
@@ -64,6 +79,12 @@ Page {
                 pageUrl = "qrc:/LibreConnect/desktop/FileManagerPage.qml"
             } else if (selectedFeature === "cameras") {
                 pageUrl = "qrc:/LibreConnect/desktop/VirtualCameraPage.qml"
+            } else if (selectedFeature === "microphone") {
+                pageUrl = "qrc:/LibreConnect/desktop/VirtualMicrophonePage.qml"
+                pageProperties = {
+                    virtualMicrophoneController: virtualMicrophoneController,
+                    permissionStateController: root.permissionStateController
+                }
             } else if (selectedFeature === "messages") {
                 pageUrl = "qrc:/LibreConnect/desktop/MessagesPage.qml"
                 pageProperties = {
@@ -96,6 +117,10 @@ Page {
 
     background: Rectangle {
         color: Theme.backgroundColor
+    }
+
+    VirtualMicrophoneController {
+        id: virtualMicrophoneController
     }
 
     Dialog {
@@ -377,6 +402,134 @@ Page {
         }
     }
 
+    Dialog {
+        id: microphonePermissionDialog
+        title: ""
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        contentWidth: 360
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 14
+            width: microphonePermissionDialog.contentWidth
+
+            Text {
+                text: "Microphone Permission Required"
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: "Microphone access is disabled on the mobile app. Grant microphone permission to use Virtual Microphone."
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                ThemedButton {
+                    text: "Cancel"
+                    width: 120
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: microphonePermissionDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Prompt on Phone"
+                    width: 170
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: {
+                        root.permissionStateController.requestPermission(root.microphonePermissionType)
+                        microphonePermissionDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: virtualAudioCableDialog
+        title: ""
+        modal: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        contentWidth: 380
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+
+        contentItem: Column {
+            spacing: 14
+            width: virtualAudioCableDialog.contentWidth
+
+            Text {
+                text: "Virtual Audio Cable Required"
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 26
+                font.bold: true
+                wrapMode: Text.WordWrap
+            }
+
+            Text {
+                text: "No virtual audio cable device was detected. Install VB-Audio Virtual Cable, then refresh devices."
+                width: parent.width
+                color: Theme.textColor
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+
+                ThemedButton {
+                    text: "Cancel"
+                    width: 120
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: virtualAudioCableDialog.close()
+                }
+
+                ThemedButton {
+                    text: "Download"
+                    width: 150
+                    height: 40
+                    font.pixelSize: 14
+                    onClicked: {
+                        virtualMicrophoneController.openVirtualAudioCableDownload()
+                        virtualAudioCableDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 20
@@ -540,7 +693,8 @@ Page {
                     parent: Overlay.overlay
                     x: 0
                     y: 0
-                    modal: false
+                    modal: true
+                    dim: false
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
                     padding: 8
                     onOpened: {
@@ -667,6 +821,36 @@ Page {
                                 permissionPromptDialog.permissionTitle = "Camera Permission Required"
                                 permissionPromptDialog.permissionMessage = "Camera access is disabled on the mobile app. Grant camera permission to use the Cameras feature."
                                 permissionPromptDialog.open()
+                            }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 58
+
+                        readonly property bool microphoneFeatureEnabled: root.permissionStateController.microphoneGranted
+                                                                         && !virtualMicrophoneController.driverDownloadRecommended
+
+                        FeatureListButton {
+                            text: "Microphone"
+                            iconSource: "mic.svg"
+                            darkIconSource: "mic_dark.svg"
+                            anchors.fill: parent
+                            enabled: parent.microphoneFeatureEnabled
+                            onClicked: windowRef.showVirtualMicrophone()
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            visible: !parent.microphoneFeatureEnabled
+                            onClicked: {
+                                if (!root.permissionStateController.microphoneGranted) {
+                                    microphonePermissionDialog.open()
+                                    return
+                                }
+
+                                virtualAudioCableDialog.open()
                             }
                         }
                     }

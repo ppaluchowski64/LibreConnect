@@ -26,6 +26,7 @@ class MainService : Service() {
     external fun nativeStartBackend()
     external fun nativeStopBackend()
     external fun nativeShareLogs()
+    external fun nativeOnAudioCaptured(samples: ByteArray)
     external fun nativeOnCameraEncodedSample(
         encodedSample: ByteBuffer,
         size: Int,
@@ -176,7 +177,7 @@ class MainService : Service() {
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.stat_notify_sync),
-                    "Sync Clipboard",
+                    "Send Clipboard",
                     clipboardPendingIntent
                 ).build()
             )
@@ -301,6 +302,35 @@ class MainService : Service() {
 
         @Suppress("unused")
         @JvmStatic
+        fun postTransferProgressNotification(
+            key: String,
+            title: String,
+            content: String,
+            bytesTransferred: Long,
+            totalBytes: Long
+        ): Boolean {
+            val service = activeService ?: return false
+            NotificationBridge.postTransferProgressNotification(
+                service.applicationContext,
+                key,
+                title,
+                content,
+                bytesTransferred,
+                totalBytes
+            )
+            return true
+        }
+
+        @Suppress("unused")
+        @JvmStatic
+        fun postTransferNotification(key: String, title: String, content: String, success: Boolean): Boolean {
+            val service = activeService ?: return false
+            NotificationBridge.postTransferNotification(service.applicationContext, key, title, content, success)
+            return true
+        }
+
+        @Suppress("unused")
+        @JvmStatic
         fun queryAvailableCameraConfigurations(context: Context): String {
             return CameraFrameReceiver.queryAvailableCameraConfigurations(context)
         }
@@ -336,6 +366,12 @@ class MainService : Service() {
         @JvmStatic
         fun stopCameraFrameReceiver() {
             CameraFrameReceiver.stop()
+        }
+
+        @JvmStatic
+        fun onAudioCaptured(samples: ByteArray) {
+            Log.d("LibreConnectNative", "MainService: onAudioCaptured called, samples size=${samples.size}")
+            activeService?.nativeOnAudioCaptured(samples)
         }
 
         @JvmStatic

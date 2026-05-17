@@ -13,38 +13,26 @@ class ClipboardActionActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
-        Log.i(TAG, "Clipboard action activity created; waiting for foreground focus")
-    }
-
-    override fun onResume() {
-        super.onResume()
-        window?.decorView?.post {
-            dispatchClipboardSyncIfFocused("onResume")
-        }
+        Log.i(TAG, "Clipboard action activity created; waiting for focus")
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            dispatchClipboardSyncIfFocused("onWindowFocusChanged")
+            dispatchClipboardSync()
         }
     }
 
-    private fun dispatchClipboardSyncIfFocused(trigger: String) {
+    private fun dispatchClipboardSync() {
         if (syncDispatched || isFinishing) {
-            return
-        }
-
-        if (!hasWindowFocus()) {
-            Log.i(TAG, "Clipboard action activity is not focused yet ($trigger)")
             return
         }
 
         syncDispatched = true
 
         val clipboardText = ClipboardBridge.getClipboardText(this)
-        Log.i(TAG, "Dispatching clipboard sync from $trigger (${clipboardText.length} chars)")
-        ClipboardSyncDispatcher.requestManualSync(this, clipboardText)
+        Log.i(TAG, "Dispatching clipboard send (${clipboardText.length} chars)")
+        ClipboardSyncDispatcher.requestSendOnlySync(this, clipboardText)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             finishAndRemoveTask()

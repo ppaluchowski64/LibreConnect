@@ -29,6 +29,8 @@ bool PermissionStateController::isGranted(const int permissionType) const
         return m_accessibilityGranted;
     case PermissionType::DesktopNotifications:
         return m_desktopNotificationsGranted;
+    case PermissionType::Microphone:
+        return m_microphoneGranted;
     case PermissionType::Unknown:
     default:
         return false;
@@ -103,7 +105,8 @@ bool PermissionStateController::event(QEvent* event)
 void PermissionStateController::clearPermissionState()
 {
     const bool changed = m_cameraGranted || m_notificationsGranted || m_fileSystemGranted || m_batteryGranted ||
-                         m_smsGranted || m_accessibilityGranted || m_desktopNotificationsGranted;
+                         m_smsGranted || m_accessibilityGranted || m_desktopNotificationsGranted ||
+                         m_microphoneGranted;
     m_cameraGranted = false;
     m_notificationsGranted = false;
     m_fileSystemGranted = false;
@@ -111,6 +114,7 @@ void PermissionStateController::clearPermissionState()
     m_smsGranted = false;
     m_accessibilityGranted = false;
     m_desktopNotificationsGranted = false;
+    m_microphoneGranted = false;
 
     if (changed) {
         emit permissionStateChanged();
@@ -161,6 +165,12 @@ void PermissionStateController::setPermissionState(const PermissionType permissi
     case PermissionType::DesktopNotifications:
         if (m_desktopNotificationsGranted != granted) {
             m_desktopNotificationsGranted = granted;
+            changed = true;
+        }
+        break;
+    case PermissionType::Microphone:
+        if (m_microphoneGranted != granted) {
+            m_microphoneGranted = granted;
             changed = true;
         }
         break;

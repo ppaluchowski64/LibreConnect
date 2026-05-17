@@ -23,7 +23,7 @@ namespace {
             return {};
         }
 
-        const std::filesystem::path categoryPath = root / std::filesystem::u8path(category);
+        const std::filesystem::path categoryPath = root / std::filesystem::path(reinterpret_cast<const char8_t*>(category.data()));
         std::error_code ec;
         std::filesystem::create_directories(categoryPath, ec);
         if (ec) {

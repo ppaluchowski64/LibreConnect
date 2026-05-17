@@ -9,6 +9,7 @@
 #include <RemoteInputModule.h>
 #include <SmsBridgeModule.h>
 #include <SystemInfoShareModule.h>
+#include <NetworkMicrophoneModule.h>
 
 #include <QObject>
 #include <QEvent>
@@ -18,7 +19,6 @@
 #ifndef MACOS_DEVICE
 #include <NetworkCameraModule.h>
 #endif
-
 
 template<class>
 inline constexpr bool always_false = false;
@@ -61,6 +61,8 @@ public:
             return s_instance->m_smsBridgeModule;
         } else if constexpr (std::is_same_v<type, SystemInfoShareModule>) {
             return s_instance->m_systemInfoShareModule;
+        } else if constexpr (std::is_same_v<type, NetworkMicrophoneModule>) {
+            return s_instance->m_networkMicrophoneModule;
         } else {
             static_assert(always_false<std::shared_ptr<type>>, "Unknown module type");
         }
@@ -86,6 +88,7 @@ private:
     std::shared_ptr<RemoteInputModule> m_remoteInputModule;
     std::shared_ptr<SmsBridgeModule> m_smsBridgeModule;
     std::shared_ptr<SystemInfoShareModule> m_systemInfoShareModule;
+    std::shared_ptr<NetworkMicrophoneModule> m_networkMicrophoneModule;
 };
 
 #endif

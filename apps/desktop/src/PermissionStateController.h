@@ -18,6 +18,7 @@ class PermissionStateController : public QObject
     Q_PROPERTY(bool smsGranted READ smsGranted NOTIFY permissionStateChanged)
     Q_PROPERTY(bool accessibilityGranted READ accessibilityGranted NOTIFY permissionStateChanged)
     Q_PROPERTY(bool desktopNotificationsGranted READ desktopNotificationsGranted NOTIFY permissionStateChanged)
+    Q_PROPERTY(bool microphoneGranted READ microphoneGranted NOTIFY permissionStateChanged)
 
 public:
     explicit PermissionStateController(QObject* parent = nullptr);
@@ -30,6 +31,7 @@ public:
     bool smsGranted() const { return m_smsGranted; }
     bool accessibilityGranted() const { return m_accessibilityGranted; }
     bool desktopNotificationsGranted() const { return m_desktopNotificationsGranted; }
+    bool microphoneGranted() const { return m_microphoneGranted; }
 
     Q_INVOKABLE bool isGranted(int permissionType) const;
     Q_INVOKABLE void requestPermission(int permissionType);
@@ -54,4 +56,5 @@ private:
     bool m_smsGranted = false;
     bool m_accessibilityGranted = false;
     bool m_desktopNotificationsGranted = false;
+    bool m_microphoneGranted = false;
 };

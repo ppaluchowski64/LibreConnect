@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QLocale>
 #include <QMetaObject>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -253,9 +254,14 @@ FileManagerController::FileManagerController(QObject* parent)
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
 
     const QString defaultDownloadDir = QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
-    m_localDownloadDirectory = defaultDownloadDir.isEmpty()
+    QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+    const QString savedDownloadDir = settings.value(QStringLiteral("fileManager/localDownloadDirectory")).toString();
+    m_localDownloadDirectory = !savedDownloadDir.isEmpty()
+        ? savedDownloadDir
+        : defaultDownloadDir.isEmpty()
         ? QStandardPaths::writableLocation(QStandardPaths::HomeLocation)
         : defaultDownloadDir;
+    FileShareModule::SetIncomingPostDirectory(m_localDownloadDirectory.toStdString());
 
     m_pollTimer.setInterval(250);
     connect(&m_pollTimer, &QTimer::timeout, this, &FileManagerController::refreshModuleState);
@@ -272,6 +278,9 @@ void FileManagerController::setLocalDownloadDirectory(const QUrl& directoryUrl)
     }
 
     m_localDownloadDirectory = localPath;
+    QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+    settings.setValue(QStringLiteral("fileManager/localDownloadDirectory"), m_localDownloadDirectory);
+    FileShareModule::SetIncomingPostDirectory(m_localDownloadDirectory.toStdString());
     emit localDownloadDirectoryChanged();
 }
 
@@ -787,6 +796,69 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
     startNextQueuedUpload();
 }
 
+void FileManagerController::deleteEntry(const QString& remotePath)
+{
+    deleteEntries(QStringList{remotePath});
+}
+
+void FileManagerController::deleteEntries(const QStringList& remotePaths)
+{
+    if (remotePaths.isEmpty()) {
+        setStatusMessage(QStringLiteral("Select one or more files or folders to delete."));
+        return;
+    }
+
+    std::vector<FileEntry> entries;
+    entries.reserve(static_cast<size_t>(remotePaths.size()));
+
+    QStringList uniquePaths;
+    for (const QString& remotePath : remotePaths) {
+        const QString normalizedPath = normalizeRemotePath(remotePath);
+        if (normalizedPath.isEmpty() || uniquePaths.contains(normalizedPath)) {
+            continue;
+        }
+
+        auto lookup = m_entryLookup.find(normalizedPath.toStdString());
+        if (lookup == m_entryLookup.end()) {
+            continue;
+        }
+
+        uniquePaths.push_back(normalizedPath);
+        entries.push_back(lookup->second);
+    }
+
+    if (entries.empty()) {
+        setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+        return;
+    }
+
+    if (m_pendingAction != PendingAction::None || m_waitingForModule) {
+        setStatusMessage(QStringLiteral("Finish the current transfer before deleting files."));
+        return;
+    }
+
+    m_pendingDeletePaths = uniquePaths;
+    m_pendingAction = PendingAction::Delete;
+    m_waitingForModule = false;
+    m_activeEntryName = uniquePaths.size() == 1
+        ? QString::fromStdString(entries.front().GetName().value_or(std::string()))
+        : QStringLiteral("%1 entries").arg(uniquePaths.size());
+    setBusy(true);
+    setStatusMessage(uniquePaths.size() == 1
+        ? QStringLiteral("Deleting %1...").arg(m_activeEntryName)
+        : QStringLiteral("Deleting %1 entries...").arg(uniquePaths.size()));
+
+    auto& module = ModulesManager::GetModuleReference<FileShareModule>();
+    if (module->GetModuleState() != ModuleState::Enabled) {
+        m_waitingForModule = true;
+        module->Enable(true);
+        return;
+    }
+
+    m_pendingDeletePaths.clear();
+    module->DeleteEntries(std::move(entries));
+}
+
 void FileManagerController::requestEntryIcon(const QString& remotePath)
 {
     const QString normalizedPath = normalizeRemotePath(remotePath);
@@ -1043,6 +1115,32 @@ bool FileManagerController::event(QEvent* event)
         return true;
     }
 
+    if (event->type() == EntriesDeleteResultEvent::Type) {
+        auto* resultEvent = static_cast<EntriesDeleteResultEvent*>(event);
+        if (m_pendingAction != PendingAction::Delete) {
+            return true;
+        }
+
+        setBusy(false);
+        if (resultEvent->Success()) {
+            setStatusMessage(QStringLiteral("Deleted %1.").arg(m_activeEntryName));
+            refreshEntries();
+        } else {
+            setStatusMessage(QStringLiteral("Failed to delete %1.").arg(m_activeEntryName));
+        }
+
+        m_pendingEntryPath.clear();
+        m_pendingLocalPath.clear();
+        m_activeEntryPath.clear();
+        m_activeEntryName.clear();
+        m_pendingCopyPaths.clear();
+        m_pendingDeletePaths.clear();
+        m_waitingForModule = false;
+        m_pendingAction = PendingAction::None;
+        startNextQueuedAction();
+        return true;
+    }
+
     return QObject::event(event);
 }
 
@@ -1191,6 +1289,35 @@ void FileManagerController::startPendingActionIfReady()
             ? QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName)
             : QStringLiteral("Copying %1 entries to clipboard...").arg(entries.size()));
         module->CopyEntriesToClipboard(std::move(entries));
+        return;
+    }
+
+    if (m_pendingAction == PendingAction::Delete && !m_pendingDeletePaths.isEmpty()) {
+        std::vector<FileEntry> entries;
+        entries.reserve(static_cast<size_t>(m_pendingDeletePaths.size()));
+        for (const QString& path : m_pendingDeletePaths) {
+            auto lookup = m_entryLookup.find(path.toStdString());
+            if (lookup != m_entryLookup.end()) {
+                entries.push_back(lookup->second);
+            }
+        }
+
+        if (entries.empty()) {
+            m_waitingForModule = false;
+            m_pendingAction = PendingAction::None;
+            setBusy(false);
+            setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+            startNextQueuedAction();
+            return;
+        }
+
+        m_waitingForModule = false;
+        setBusy(true);
+        setStatusMessage(entries.size() == 1
+            ? QStringLiteral("Deleting %1...").arg(m_activeEntryName)
+            : QStringLiteral("Deleting %1 entries...").arg(entries.size()));
+        m_pendingDeletePaths.clear();
+        module->DeleteEntries(std::move(entries));
         return;
     }
 

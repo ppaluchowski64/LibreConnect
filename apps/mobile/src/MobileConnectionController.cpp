@@ -10,6 +10,7 @@
 #include <QRandomGenerator>
 #include <QTimer>
 
+#include <memory>
 #include <vector>
 
 #include <boost/uuid/uuid_io.hpp>
@@ -21,6 +22,7 @@
 
 #ifdef ANDROID_DEVICE
 #include <FindMyBridge.h>
+#include <NotificationBridge.h>
 #include <PermissionManager.h>
 #include <QJniObject>
 #include <QtCore/qcoreapplication_platform.h>
@@ -79,6 +81,13 @@ MobileConnectionController::MobileConnectionController(QObject* parent)
     refreshPairedDevices();
     refreshLocalIdentity();
     updatePermissionsFromSystem();
+
+#ifdef ANDROID_DEVICE
+    NotificationBridge::AddNotificationActionHandler("find_my_phone", "Stop", [this](){
+        stopFindMyPhoneAlertInternal(true);
+    });
+#endif
+
     m_findMyPhoneRingtoneUri = m_settings.value(QString::fromLatin1(kFindMyPhoneRingtoneSetting), QString()).toString().trimmed();
     setFindMyPhoneAlertActive(m_settings.value(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false).toBool());
     refreshFindMyPhoneRingtones();
@@ -177,6 +186,11 @@ void MobileConnectionController::refreshPermissionStatuses()
 void MobileConnectionController::requestCameraPermission()
 {
     runPermissionRequest(PermissionRequest::Camera);
+}
+
+void MobileConnectionController::requestMicrophonePermission()
+{
+    runPermissionRequest(PermissionRequest::Microphone);
 }
 
 void MobileConnectionController::requestNotificationSendPermission()
@@ -492,6 +506,7 @@ void MobileConnectionController::updatePermissionsFromSystem()
 #ifdef ANDROID_DEVICE
     setPermissionSnapshot(
         PermissionManager::IsCameraAccessPermissionGranted(),
+        PermissionManager::IsMicrophoneAccessPermissionGranted(),
         PermissionManager::IsNotificationEmitPermissionGranted(),
         PermissionManager::IsNotificationAccessPermissionGranted(),
         PermissionManager::IsFileAccessPermissionGranted(),
@@ -503,7 +518,7 @@ void MobileConnectionController::updatePermissionsFromSystem()
         PermissionManager::IsReadContactsPermissionGranted()
     );
 #else
-    setPermissionSnapshot(true, true, true, true, true, true, true, true, true, true);
+    setPermissionSnapshot(true, true, true, true, true, true, true, true, true, true, true);
 #endif
 }
 
@@ -540,6 +555,9 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         case PermissionRequest::Camera:
             co_await PermissionManager::RequestCameraAccessPermission();
             break;
+        case PermissionRequest::Microphone:
+            co_await PermissionManager::RequestMicrophoneAccessPermission();
+            break;
         case PermissionRequest::Notifications:
             co_await requestNotifications();
             break;
@@ -575,6 +593,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
             break;
         case PermissionRequest::All:
             co_await PermissionManager::RequestCameraAccessPermission();
+            co_await PermissionManager::RequestMicrophoneAccessPermission();
             co_await requestNotifications();
             co_await PermissionManager::RequestManagingExternalStoragePermission();
             co_await PermissionManager::RequestDisablingBatteryOptimizations();
@@ -585,6 +604,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         }
 
         const bool cameraGranted = PermissionManager::IsCameraAccessPermissionGranted();
+        const bool microphoneGranted = PermissionManager::IsMicrophoneAccessPermissionGranted();
         const bool notificationSendGranted = PermissionManager::IsNotificationEmitPermissionGranted();
         const bool notificationListenerGranted = PermissionManager::IsNotificationAccessPermissionGranted();
         const bool fileGranted = PermissionManager::IsFileAccessPermissionGranted();
@@ -594,11 +614,30 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         const bool smsReadGranted = PermissionManager::IsReadSmsPermissionGranted();
         const bool smsSendGranted = PermissionManager::IsSendSmsPermissionGranted();
         const bool contactsGranted = PermissionManager::IsReadContactsPermissionGranted();
+        const bool smsPermissionsGranted =
+            smsReceiveGranted &&
+            smsReadGranted &&
+            smsSendGranted &&
+            contactsGranted;
+        bool requestAffectsSmsPermissions = false;
+        switch (request) {
+        case PermissionRequest::Sms:
+        case PermissionRequest::SmsReceive:
+        case PermissionRequest::SmsRead:
+        case PermissionRequest::SmsSend:
+        case PermissionRequest::Contacts:
+        case PermissionRequest::All:
+            requestAffectsSmsPermissions = true;
+            break;
+        default:
+            break;
+        }
 
         QMetaObject::invokeMethod(
             qApp,
             [weakThis,
              cameraGranted,
+             microphoneGranted,
              notificationSendGranted,
              notificationListenerGranted,
              fileGranted,
@@ -607,13 +646,16 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
              smsReceiveGranted,
              smsReadGranted,
              smsSendGranted,
-             contactsGranted]() {
+             contactsGranted,
+             smsPermissionsGranted,
+             requestAffectsSmsPermissions]() {
                 if (!weakThis) {
                     return;
                 }
 
                 weakThis->setPermissionSnapshot(
                     cameraGranted,
+                    microphoneGranted,
                     notificationSendGranted,
                     notificationListenerGranted,
                     fileGranted,
@@ -627,6 +669,15 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
                 weakThis->setPermissionsBusy(false);
                 if (weakThis->connected()) {
                     weakThis->sendPermissionSnapshotToPeer();
+                }
+                if (requestAffectsSmsPermissions) {
+                    std::unique_ptr<QEvent> event;
+                    if (smsPermissionsGranted) {
+                        event = std::make_unique<ModuleRequestedPermissionGranted>(PermissionType::Sms);
+                    } else {
+                        event = std::make_unique<ModuleRequestedPermissionRejected>(PermissionType::Sms);
+                    }
+                    ConnectionManager::SendEvent(event);
                 }
             },
             Qt::QueuedConnection
@@ -665,6 +716,7 @@ void MobileConnectionController::sendPermissionStatusToPeer(const PermissionType
 void MobileConnectionController::sendPermissionSnapshotToPeer()
 {
     sendPermissionStatusToPeer(PermissionType::Camera, m_cameraPermissionGranted);
+    sendPermissionStatusToPeer(PermissionType::Microphone, m_microphonePermissionGranted);
     sendPermissionStatusToPeer(PermissionType::Notifications, notificationsPermissionGranted());
     sendPermissionStatusToPeer(PermissionType::FileSystem, m_filePermissionGranted && m_allFilesPermissionGranted);
     sendPermissionStatusToPeer(PermissionType::Battery, m_batteryPermissionGranted);
@@ -673,6 +725,7 @@ void MobileConnectionController::sendPermissionSnapshotToPeer()
 
 void MobileConnectionController::setPermissionSnapshot(
     const bool cameraGranted,
+    const bool microphoneGranted,
     const bool notificationSendGranted,
     const bool notificationListenerGranted,
     const bool fileGranted,
@@ -686,6 +739,7 @@ void MobileConnectionController::setPermissionSnapshot(
 {
     const bool changed =
         m_cameraPermissionGranted != cameraGranted ||
+        m_microphonePermissionGranted != microphoneGranted ||
         m_notificationSendPermissionGranted != notificationSendGranted ||
         m_notificationListenerPermissionGranted != notificationListenerGranted ||
         m_filePermissionGranted != fileGranted ||
@@ -697,6 +751,7 @@ void MobileConnectionController::setPermissionSnapshot(
         m_contactsPermissionGranted != contactsGranted;
 
     m_cameraPermissionGranted = cameraGranted;
+    m_microphonePermissionGranted = microphoneGranted;
     m_notificationSendPermissionGranted = notificationSendGranted;
     m_notificationListenerPermissionGranted = notificationListenerGranted;
     m_filePermissionGranted = fileGranted;

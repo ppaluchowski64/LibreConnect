@@ -172,6 +172,15 @@ bool ShouldShowPermissionRationale(const QString& permission) {
 }
 
 jint CheckAndroidPermission(const QString& permission) {
+    const jint result = QJniObject::callStaticMethod<jint>(
+        "org/qtproject/qt/android/bindings/QtActivity",
+        "checkPermission",
+        "(Ljava/lang/String;)I",
+        QJniObject::fromString(permission).object<jstring>()
+    );
+
+    Debug::Log("CheckingAndroidPermissions: permission {}, state {}", permission.toStdString(), result == kAndroidPermissionGranted);
+
     return QJniObject::callStaticMethod<jint>(
         "org/qtproject/qt/android/bindings/QtActivity",
         "checkPermission",
@@ -305,6 +314,11 @@ asio::awaitable<bool> PermissionManager::RequestCameraAccessPermission() {
     co_return co_await RequestPermission(QString("android.permission.CAMERA"));
 }
 
+asio::awaitable<bool> PermissionManager::RequestMicrophoneAccessPermission() {
+    auto permissionFlowLock = co_await AcquirePermissionFlowLock();
+    co_return co_await RequestPermission(QString("android.permission.RECORD_AUDIO"));
+}
+
 asio::awaitable<bool> PermissionManager::RequestReceiveSmsPermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
     co_return co_await RequestPermission(QString("android.permission.RECEIVE_SMS"));
@@ -428,7 +442,11 @@ asio::awaitable<bool> PermissionManager::RequestPermission(QString&& permission)
     }
 
     co_await WaitForReturnToApp();
-    co_return CheckAndroidPermission(permission) == kAndroidPermissionGranted;
+
+    const bool result = CheckAndroidPermission(permission) == kAndroidPermissionGranted;
+    Debug::Log("RequestPermission: permission {}, result {}", permission.toStdString(), result);
+
+    co_return result;
 }
 
 bool PermissionManager::IsNotificationAccessPermissionGranted() {
@@ -445,6 +463,10 @@ bool PermissionManager::IsNotificationEmitPermissionGranted() {
 
 bool PermissionManager::IsCameraAccessPermissionGranted() {
     return CheckAndroidPermission(QString("android.permission.CAMERA")) == kAndroidPermissionGranted;
+}
+
+bool PermissionManager::IsMicrophoneAccessPermissionGranted() {
+    return CheckAndroidPermission(QString("android.permission.RECORD_AUDIO")) == kAndroidPermissionGranted;
 }
 
 bool PermissionManager::IsFileAccessPermissionGranted() {

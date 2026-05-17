@@ -5,12 +5,111 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <utility>
 
 #ifdef ANDROID_DEVICE
 #include <PermissionManager.h>
+#include <QObject>
 #endif
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
+
+#ifdef ANDROID_DEVICE
+class SmsPermissionChangeGate {
+public:
+    explicit SmsPermissionChangeGate(asio::any_io_executor executor)
+        : m_executor(std::move(executor)), m_timer(m_executor)
+    {
+        m_timer.expires_at(asio::steady_timer::time_point::max());
+    }
+
+    uint64_t Generation() const
+    {
+        return m_generation.load(std::memory_order_acquire);
+    }
+
+    void Signal()
+    {
+        asio::post(m_executor, [this]() {
+            m_generation.fetch_add(1, std::memory_order_acq_rel);
+            m_timer.cancel();
+        });
+    }
+
+    asio::awaitable<void> WaitForChange(const uint64_t generation)
+    {
+        if (Generation() != generation) {
+            co_return;
+        }
+
+        m_timer.expires_at(asio::steady_timer::time_point::max());
+        asio::error_code ec;
+        co_await m_timer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
+    }
+
+private:
+    asio::any_io_executor m_executor;
+    asio::steady_timer m_timer;
+    std::atomic<uint64_t> m_generation{0};
+};
+
+class SmsPermissionEventListener final : public QObject {
+public:
+    explicit SmsPermissionEventListener(std::function<void()> onSmsPermissionChanged)
+        : m_onSmsPermissionChanged(std::move(onSmsPermissionChanged))
+    {
+    }
+
+protected:
+    bool event(QEvent* event) override
+    {
+        if (event->type() == ModuleRequestedPermission::Type) {
+            const auto* permissionEvent = static_cast<ModuleRequestedPermission*>(event);
+            if (permissionEvent->GetPermissionType() == PermissionType::Sms) {
+                m_onSmsPermissionChanged();
+                return true;
+            }
+        }
+
+        if (event->type() == ModuleRequestedPermissionGranted::Type) {
+            const auto* permissionEvent = static_cast<ModuleRequestedPermissionGranted*>(event);
+            if (permissionEvent->GetPermissionType() == PermissionType::Sms) {
+                m_onSmsPermissionChanged();
+                return true;
+            }
+        }
+
+        if (event->type() == ModuleRequestedPermissionRejected::Type) {
+            const auto* permissionEvent = static_cast<ModuleRequestedPermissionRejected*>(event);
+            if (permissionEvent->GetPermissionType() == PermissionType::Sms) {
+                m_onSmsPermissionChanged();
+                return true;
+            }
+        }
+
+        return QObject::event(event);
+    }
+
+private:
+    std::function<void()> m_onSmsPermissionChanged;
+};
+#else
+class SmsPermissionChangeGate {};
+class SmsPermissionEventListener {};
+#endif
+
+namespace {
+#ifdef ANDROID_DEVICE
+bool AreSmsBridgePermissionsGranted()
+{
+    return PermissionManager::IsReceiveSmsPermissionGranted() &&
+        PermissionManager::IsReadContactsPermissionGranted() &&
+        PermissionManager::IsReadSmsPermissionGranted() &&
+        PermissionManager::IsSendSmsPermissionGranted();
+}
+#endif
+}
 
 extern "C" {
     JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_SmsReceiver_onSmsReceivedCPP(JNIEnv* env, jobject, jstring sender, jstring body, jlong timestamp) {
@@ -30,6 +129,8 @@ extern "C" {
     }
 }
 
+
+SmsBridgeModule::~SmsBridgeModule() = default;
 
 void SmsBridgeModule::EnableResponseCallbacks() {
     const std::shared_ptr<SmsBridgeModule> instance = std::static_pointer_cast<SmsBridgeModule>(shared_from_this());
@@ -151,30 +252,55 @@ void SmsBridgeModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::SMS_BRIDGE_MODULE_MMS_FILE_CONTENT_REQUEST);
 }
 
-void SmsBridgeModule::OnInitialize() {}
+void SmsBridgeModule::OnInitialize() {
+#ifdef ANDROID_DEVICE
+    if (!m_smsPermissionGate) {
+        m_smsPermissionGate = std::make_shared<SmsPermissionChangeGate>(m_moduleStrand);
+    }
+
+    if (!m_smsPermissionEventListener) {
+        m_smsPermissionEventListener = std::make_shared<SmsPermissionEventListener>([this]() {
+            if (m_smsPermissionGate) {
+                m_smsPermissionGate->Signal();
+            }
+        });
+        ConnectionManager::AddEventListener(QPointer<QObject>(m_smsPermissionEventListener.get()));
+    }
+#endif
+}
 
 asio::awaitable<void> SmsBridgeModule::OnEnable() {
     asio::steady_timer timer(m_context.get_executor());
 
 #ifdef ANDROID_DEVICE
-    while (!ShouldAbortEnable()) {
-        const bool permissionsGranted =
-            PermissionManager::IsReceiveSmsPermissionGranted() &&
-            PermissionManager::IsReadContactsPermissionGranted() &&
-            PermissionManager::IsReadSmsPermissionGranted() &&
-            PermissionManager::IsSendSmsPermissionGranted();
+    while (!AreSmsBridgePermissionsGranted()) {
+        if (ShouldAbortEnable()) {
+            co_return;
+        }
 
-        if (permissionsGranted) {
+        if (!m_smsPermissionRequestAnnounced) {
+            ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Sms);
+            m_smsPermissionRequestAnnounced = true;
+        }
+
+        const uint64_t generation = m_smsPermissionGate ? m_smsPermissionGate->Generation() : 0;
+        if (AreSmsBridgePermissionsGranted()) {
             break;
         }
 
-        timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
-        co_await timer.async_wait();
+        if (!m_smsPermissionGate) {
+            Disable();
+            co_return;
+        }
+
+        co_await m_smsPermissionGate->WaitForChange(generation);
     }
 
     if (ShouldAbortEnable()) {
         co_return;
     }
+
+    ConnectionManager::Send(PC_PackageType::PERMISSION_GRANTED, PermissionType::Sms);
 #endif
 
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_ENABLE);
@@ -193,6 +319,12 @@ asio::awaitable<void> SmsBridgeModule::OnEnable() {
 }
 
 asio::awaitable<void> SmsBridgeModule::OnDisable() {
+#ifdef ANDROID_DEVICE
+    m_smsPermissionRequestAnnounced = false;
+    if (m_smsPermissionGate) {
+        m_smsPermissionGate->Signal();
+    }
+#endif
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_DISABLE);
     ConnectionManager::Send(PC_PackageType::SMS_BRIDGE_MODULE_STATE_CHANGED, false);
     co_return;

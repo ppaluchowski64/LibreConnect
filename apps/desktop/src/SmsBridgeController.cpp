@@ -11,6 +11,7 @@
 
 #include <ConnectionManager.h>
 #include <Events.h>
+#include <ExternalFileOpener.h>
 #include <ModulesManager.h>
 #include <SmsBridgeEvents.h>
 
@@ -265,6 +266,11 @@ void SmsBridgeController::sendMessage(const QString& text)
     setStatusMessage(QStringLiteral("Sending message..."));
 }
 
+void SmsBridgeController::openAttachment(const QString& filePath) const
+{
+    ExternalFileOpener::OpenLocalFile(filePath);
+}
+
 bool SmsBridgeController::event(QEvent* event)
 {
     if (event->type() == ConnectedEvent::Type) {
@@ -278,18 +284,12 @@ bool SmsBridgeController::event(QEvent* event)
         }
 
         if (m_connected) {
+            clearConversationState();
             ensureModuleEnabled();
             refreshConversations();
         } else {
-            m_requestedMmsContentTargets.clear();
-            m_retriedMmsContentTargets.clear();
-            m_pendingMmsContentTargets.clear();
-            m_activeMmsContentTarget.clear();
-            m_mmsAttachmentCache.clear();
-            m_messageFetchesInFlight.clear();
-            m_contactsRefreshInFlight = false;
+            clearConversationState();
             setReady(false);
-            updateBusyState();
             setStatusMessage(QStringLiteral("Connect to a mobile device to load messages."));
         }
 
@@ -302,15 +302,8 @@ bool SmsBridgeController::event(QEvent* event)
             emit connectedChanged();
             emit canSendChanged();
         }
-        m_requestedMmsContentTargets.clear();
-        m_retriedMmsContentTargets.clear();
-        m_pendingMmsContentTargets.clear();
-        m_activeMmsContentTarget.clear();
-        m_mmsAttachmentCache.clear();
-        m_messageFetchesInFlight.clear();
-        m_contactsRefreshInFlight = false;
+        clearConversationState();
         setReady(false);
-        updateBusyState();
         setStatusMessage(QStringLiteral("Phone disconnected."));
         return true;
     }
@@ -900,6 +893,43 @@ void SmsBridgeController::ensureModuleEnabled()
     if (state == ModuleState::Disabled) {
         module->Enable(true);
     }
+}
+
+void SmsBridgeController::clearConversationState()
+{
+    const bool shouldEmitContactsChanged = !m_contacts.isEmpty();
+    const bool shouldEmitMessagesChanged = !m_messagesByContact.isEmpty() || !m_selectedContactKey.isEmpty();
+    const bool shouldEmitSelectedChanged = !m_selectedContactKey.isEmpty() || !m_selectedContactName.isEmpty();
+    const bool shouldEmitCanSendChanged = !m_selectedContactKey.isEmpty();
+
+    m_contacts.clear();
+    m_messagesByContact.clear();
+    m_selectedContactKey.clear();
+    m_selectedContactName.clear();
+    m_pendingMessageConversationById.clear();
+    m_mmsAttachmentCache.clear();
+    m_requestedMmsContentTargets.clear();
+    m_retriedMmsContentTargets.clear();
+    m_pendingMmsContentTargets.clear();
+    m_activeMmsContentTarget.clear();
+    m_messageFetchesInFlight.clear();
+    m_contactsRefreshInFlight = false;
+    m_timestampCounter = 0;
+
+    if (shouldEmitContactsChanged) {
+        emit contactsChanged();
+    }
+    if (shouldEmitSelectedChanged) {
+        emit selectedConversationChanged();
+    }
+    if (shouldEmitMessagesChanged) {
+        emit messagesChanged();
+    }
+    if (shouldEmitCanSendChanged) {
+        emit canSendChanged();
+    }
+
+    updateBusyState();
 }
 
 void SmsBridgeController::updateBusyState()

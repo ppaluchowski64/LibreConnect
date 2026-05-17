@@ -42,6 +42,7 @@ public:
     Q_INVOKABLE void refreshConversations();
     Q_INVOKABLE void selectConversation(const QString& phoneNumber, const QString& contactName);
     Q_INVOKABLE void sendMessage(const QString& text);
+    Q_INVOKABLE void openAttachment(const QString& filePath) const;
 
 signals:
     void connectedChanged();
@@ -97,6 +98,7 @@ private:
 
     void refreshState();
     void ensureModuleEnabled();
+    void clearConversationState();
     void updateBusyState();
     void setReady(bool ready);
     void setStatusMessage(const QString& statusMessage);

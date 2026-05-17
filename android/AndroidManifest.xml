@@ -30,11 +30,13 @@
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
     <uses-permission android:name="android.permission.SEND_SMS"/>
     <uses-permission android:name="android.permission.RECEIVE_SMS"/>
@@ -69,13 +71,36 @@
 
         <activity
                 android:name=".ClipboardActionActivity"
-                android:theme="@android:style/Theme.Translucent.NoTitleBar"
+                android:theme="@style/Theme.Transparent"
                 android:taskAffinity=""
                 android:excludeFromRecents="true"
                 android:noHistory="true"
                 android:finishOnTaskLaunch="true"
                 android:stateNotNeeded="true"
                 android:exported="false" />
+
+        <activity
+                android:name=".ShareReceiverActivity"
+                android:label="@string/share_receiver_label"
+                android:description="@string/share_receiver_description"
+                android:theme="@style/Theme.Transparent"
+                android:taskAffinity=""
+                android:excludeFromRecents="true"
+                android:noHistory="true"
+                android:finishOnTaskLaunch="true"
+                android:stateNotNeeded="true"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
 
         <service android:name=".NotificationListener"
                  android:label="LibreConnect Notification Listener"
@@ -90,7 +115,7 @@
                  android:label="LibreConnect Main Service"
                  android:exported="true"
                  android:stopWithTask="false"
-                 android:foregroundServiceType="connectedDevice|camera"
+                 android:foregroundServiceType="connectedDevice|camera|microphone"
                  tools:ignore="ForegroundServicePermission">
         </service>
 

@@ -44,7 +44,8 @@ enum class ModuleType : uint8_t {
     NetworkFileSystem,
     ClipboardSync,
     RemoteInput,
-    SmsBridge
+    SmsBridge,
+    NetworkMicrophone
 };
 
 enum class PermissionType : uint16_t {
@@ -55,7 +56,8 @@ enum class PermissionType : uint16_t {
     Battery,
     Accessibility,
     Sms,
-    DesktopNotifications
+    DesktopNotifications,
+    Microphone
 };
 
 inline const char* ModuleFailReasonToString(const ModuleFailReason reason)
@@ -98,6 +100,8 @@ inline const char* ModuleTypeToString(const ModuleType type)
         return "RemoteInput";
     case ModuleType::SmsBridge:
         return "SmsBridge";
+    case ModuleType::NetworkMicrophone:
+        return "NetworkMicrophone";
     case ModuleType::Unknown:
     default:
         return "Unknown";
