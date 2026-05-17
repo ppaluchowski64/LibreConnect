@@ -20,7 +20,6 @@
 #include <RemoteInputEvents.h>
 
 #ifdef ANDROID_DEVICE
-#include <QJniEnvironment>
 #include <QJniObject>
 #include <QtCore/qcoreapplication_platform.h>
 #endif
@@ -709,39 +708,18 @@ void MobileRemoteInputController::updateAndroidMediaNotification() const
     const QString artist = m_trackArtist.isEmpty() ? QStringLiteral("Remote desktop") : m_trackArtist;
     const QString collection = m_trackCollection;
     const QString elapsed = m_elapsedTime;
-    jbyteArray coverBytes = nullptr;
-
-    QJniEnvironment env;
-    if (!m_coverBytes.isEmpty()) {
-        coverBytes = env->NewByteArray(m_coverBytes.size());
-        if (coverBytes != nullptr) {
-            env->SetByteArrayRegion(
-                coverBytes,
-                0,
-                m_coverBytes.size(),
-                reinterpret_cast<const jbyte*>(m_coverBytes.constData())
-            );
-        }
-    }
 
     QJniObject::callStaticMethod<void>(
         "com/LibreConnect/mobile/RemoteInputNotification",
         "show",
-        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZDD[B)V",
+        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V",
         context.object<jobject>(),
         QJniObject::fromString(title).object<jstring>(),
         QJniObject::fromString(artist).object<jstring>(),
         QJniObject::fromString(collection).object<jstring>(),
         QJniObject::fromString(elapsed).object<jstring>(),
-        static_cast<jboolean>(m_playing),
-        static_cast<jdouble>(m_positionSeconds),
-        static_cast<jdouble>(m_durationSeconds),
-        coverBytes
+        static_cast<jboolean>(m_playing)
     );
-
-    if (coverBytes != nullptr) {
-        env->DeleteLocalRef(coverBytes);
-    }
 #endif
 }
 
