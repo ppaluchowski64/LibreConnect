@@ -74,6 +74,7 @@ protected:
 private:
     static ModulesManager* s_instance;
     static std::mutex s_mutex;
+    static std::atomic_bool s_initialized;
 
 #ifdef ANDROID_DEVICE
     static void StartMainService();

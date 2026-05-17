@@ -45,6 +45,7 @@ bool RequestMacAccessibilityPermission() {
 
 ModulesManager* ModulesManager::s_instance{nullptr};
 std::mutex ModulesManager::s_mutex{};
+std::atomic_bool ModulesManager::s_initialized{};
 
 bool ModulesManager::event(QEvent* event) {
     if (event->type() == ConnectedEvent::Type) {
@@ -57,7 +58,10 @@ bool ModulesManager::event(QEvent* event) {
         Debug::Log("ModulesManager: ConnectedEvent reported success, ensuring modules are initialized");
         Initialize();
         TransferChannelPool::Reset();
+
+#ifdef DESKTOP_DEVICE
         asio::co_spawn(ThreadPool::GetContext(), TransferChannelPool::Connect(), asio::detached);
+#endif
         return true;
     }
 
@@ -109,6 +113,10 @@ ModulesManager::ModulesManager() {
 }
 
 void ModulesManager::Initialize() {
+    if (s_initialized.load()) {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(s_mutex);
 
     if (s_instance == nullptr) {
@@ -117,33 +125,41 @@ void ModulesManager::Initialize() {
         Debug::Log("ModulesManager: Instance created");
     }
 
-    if (s_instance->m_fileShareModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_fileShareModule->Initialize(true);
+    if (s_instance->m_fileShareModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_fileShareModule->Initialize(true);
+    }
 
 #ifndef MACOS_DEVICE
-    if (s_instance->m_networkCameraModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_networkCameraModule->Initialize(true);
+    if (s_instance->m_networkCameraModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_networkCameraModule->Initialize(true);
+    }
 #endif
 
 #ifndef IOS_DEVICE
-    if (s_instance->m_notificationSyncModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_notificationSyncModule->Initialize(true);
+    if (s_instance->m_notificationSyncModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_notificationSyncModule->Initialize(true);
+    }
 #endif
 
-    if (s_instance->m_clipboardSyncModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_clipboardSyncModule->Initialize(true);
+    if (s_instance->m_clipboardSyncModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_clipboardSyncModule->Initialize(true);
+    }
 
-    if (s_instance->m_remoteInputModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_remoteInputModule->Initialize(true);
+    if (s_instance->m_remoteInputModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_remoteInputModule->Initialize(true);
+    }
 
-    if (s_instance->m_smsBridgeModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_smsBridgeModule->Initialize(true);
+    if (s_instance->m_smsBridgeModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_smsBridgeModule->Initialize(true);
+    }
 
-    if (s_instance->m_systemInfoShareModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_systemInfoShareModule->Initialize(true);
+    if (s_instance->m_systemInfoShareModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_systemInfoShareModule->Initialize(true);
+    }
 
-    if (s_instance->m_networkMicrophoneModule->GetModuleState() != ModuleState::Uninitialized) return;
-    s_instance->m_networkMicrophoneModule->Initialize(true);
+    if (s_instance->m_networkMicrophoneModule->GetModuleState() == ModuleState::Uninitialized) {
+        s_instance->m_networkMicrophoneModule->Initialize(true);
+    }
 
     ConnectionManager::AddResponseHandler(PC_PackageType::PERMISSION_REQUESTED, [](PC_Package&& package) {
         const PermissionType type = package->GetValue<PermissionType>();
@@ -164,6 +180,35 @@ void ModulesManager::Initialize() {
     });
 
 #ifdef ANDROID_DEVICE
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::PERMISSION_SYNC_REQUEST, [](PC_Package&& package) -> asio::awaitable<void> {
+        auto sendStatus = [](const PermissionType type, const bool granted) {
+            ConnectionManager::Send(
+                granted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
+                type
+            );
+        };
+
+        const bool cameraGranted = PermissionManager::IsCameraAccessPermissionGranted();
+        const bool microphoneGranted = PermissionManager::IsMicrophoneAccessPermissionGranted();
+        const bool notificationsGranted = PermissionManager::IsNotificationEmitPermissionGranted() && PermissionManager::IsNotificationAccessPermissionGranted();
+        const bool fileSystemGranted = PermissionManager::IsFileAccessPermissionGranted() && PermissionManager::IsManagingExternalStoragePermissionGranted();
+        const bool batteryGranted = PermissionManager::IsBatteryOptimizationIgnored();
+        const bool smsGranted =
+            PermissionManager::IsReceiveSmsPermissionGranted() &&
+            PermissionManager::IsReadContactsPermissionGranted() &&
+            PermissionManager::IsReadSmsPermissionGranted() &&
+            PermissionManager::IsSendSmsPermissionGranted();
+
+        sendStatus(PermissionType::Camera, cameraGranted);
+        sendStatus(PermissionType::Microphone, microphoneGranted);
+        sendStatus(PermissionType::Notifications, notificationsGranted);
+        sendStatus(PermissionType::FileSystem, fileSystemGranted);
+        sendStatus(PermissionType::Battery, batteryGranted);
+        sendStatus(PermissionType::Sms, smsGranted);
+
+        co_return;
+    });
+
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::PERMISSION_REQUEST, [](PC_Package&& package) -> asio::awaitable<void> {
         const PermissionType type = package->GetValue<PermissionType>();
         bool granted = false;
@@ -264,9 +309,15 @@ void ModulesManager::Initialize() {
         co_return;
     });
 #endif
+
+    s_initialized.store(true);
 }
 
 void ModulesManager::Shutdown() {
+    if (!s_initialized.load()) {
+        return;
+    }
+
     std::lock_guard<std::mutex> lock(s_mutex);
     Debug::Log("ModulesManager: Shutdown called");
 
@@ -291,8 +342,11 @@ void ModulesManager::Shutdown() {
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_REJECTED);
         ConnectionManager::RemoveResponseHandler(PC_PackageType::PERMISSION_GRANTED);
 #ifdef ANDROID_DEVICE
+        ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::PERMISSION_SYNC_REQUEST);
         ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::PERMISSION_REQUEST);
 #endif
+
+        s_initialized.store(false);
     } else {
         Debug::Log("ModulesManager: Shutdown skipped (instance is null)");
     }

@@ -74,6 +74,7 @@ bool PermissionStateController::event(QEvent* event)
         }
 
         clearPermissionState();
+        ConnectionManager::Send(PC_PackageType::PERMISSION_SYNC_REQUEST);
         return true;
     }
 

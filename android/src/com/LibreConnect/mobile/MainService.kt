@@ -300,6 +300,11 @@ class MainService : Service() {
         @Volatile
         private var activeService: MainService? = null
 
+        @JvmStatic
+        fun getActiveContext(): Context? {
+            return activeService?.applicationContext
+        }
+
         @Suppress("unused")
         @JvmStatic
         fun postTransferProgressNotification(

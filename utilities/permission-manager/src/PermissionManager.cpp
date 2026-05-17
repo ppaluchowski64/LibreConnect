@@ -155,16 +155,8 @@ bool OpenAppPermissionSettings() {
 }
 
 bool ShouldShowPermissionRationale(const QString& permission) {
-    const QJniObject activity = QJniObject::callStaticObjectMethod(
-        "org/qtproject/qt/android/QtNative",
-        "activity",
-        "()Landroid/app/Activity;"
-    );
-    if (!activity.isValid()) {
-        return false;
-    }
-
-    return activity.callMethod<jboolean>(
+    return QJniObject::callStaticMethod<jboolean>(
+        "com/LibreConnect/mobile/AndroidPermissionBridge",
         "shouldShowRequestPermissionRationale",
         "(Ljava/lang/String;)Z",
         QJniObject::fromString(permission).object<jstring>()
@@ -173,7 +165,7 @@ bool ShouldShowPermissionRationale(const QString& permission) {
 
 jint CheckAndroidPermission(const QString& permission) {
     const jint result = QJniObject::callStaticMethod<jint>(
-        "org/qtproject/qt/android/bindings/QtActivity",
+        "com/LibreConnect/mobile/AndroidPermissionBridge",
         "checkPermission",
         "(Ljava/lang/String;)I",
         QJniObject::fromString(permission).object<jstring>()
@@ -181,17 +173,12 @@ jint CheckAndroidPermission(const QString& permission) {
 
     Debug::Log("CheckingAndroidPermissions: permission {}, state {}", permission.toStdString(), result == kAndroidPermissionGranted);
 
-    return QJniObject::callStaticMethod<jint>(
-        "org/qtproject/qt/android/bindings/QtActivity",
-        "checkPermission",
-        "(Ljava/lang/String;)I",
-        QJniObject::fromString(permission).object<jstring>()
-    );
+    return result;
 }
 
 bool RequestAndroidPermissionBlocking(const QString& permission, const int timeoutMs) {
     return QJniObject::callStaticMethod<jboolean>(
-        "org/qtproject/qt/android/bindings/QtActivity",
+        "com/LibreConnect/mobile/AndroidPermissionBridge",
         "requestPermissionBlocking",
         "(Ljava/lang/String;I)Z",
         QJniObject::fromString(permission).object<jstring>(),

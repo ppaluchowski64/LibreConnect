@@ -28,11 +28,11 @@ void TransferChannelPool::Initialize(const size_t count) {
     s_instance = new TransferChannelPool(count);
 
     ConnectionManager::AddResponseHandler(PC_PackageType::TRANSFER_CHANNEL_POOL_CONNECT, [](PC_Package&& package) {
-#ifdef DESKTOP_DEVICE
+#ifdef MOBILE_DEVICE
         Debug::Log("TransferChannelPool: Received peer connect request");
         asio::co_spawn(ThreadPool::GetContext(), Seek(), asio::detached);
 #else
-        Debug::LogWarning("TransferChannelPool: Ignoring peer connect request on mobile");
+        Debug::LogWarning("TransferChannelPool: Ignoring peer connect request on desktop");
 #endif
     });
 
@@ -67,7 +67,7 @@ void TransferChannelPool::Initialize(const size_t count) {
             co_await channel->Connect(TCPEndpoint(ConnectionManager::GetPeerAddress(), port));
         }, asio::detached);
 
-#ifdef MOBILE_DEVICE
+#ifdef DESKTOP_DEVICE
         if (!s_instance->m_waitingForConnections.exchange(true)) {
             Debug::Log("TransferChannelPool: Starting wait for all channels to connect");
             asio::co_spawn(ThreadPool::GetContext(), []() -> asio::awaitable<void> {
@@ -79,8 +79,8 @@ void TransferChannelPool::Initialize(const size_t count) {
 }
 
 asio::awaitable<void> TransferChannelPool::Connect() {
-#ifndef MOBILE_DEVICE
-    Debug::Log("TransferChannelPool: Desktop role waiting for peer connect request");
+#ifndef DESKTOP_DEVICE
+    Debug::Log("TransferChannelPool: Mobile role waiting for peer connect request");
     co_return;
 #else
     if (!s_instance) {
