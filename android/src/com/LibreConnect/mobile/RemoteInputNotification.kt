@@ -12,8 +12,6 @@ import android.media.MediaMetadata
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 
 object RemoteInputNotification {
     private const val CHANNEL_ID = "libreconnect_remote_input"
@@ -204,7 +202,7 @@ object RemoteInputNotification {
                     override fun onMediaButtonEvent(mediaButtonIntent: Intent): Boolean {
                         return super.onMediaButtonEvent(mediaButtonIntent)
                     }
-                }, Handler(Looper.getMainLooper()))
+                })
             }
             mediaSession = session
             return session
