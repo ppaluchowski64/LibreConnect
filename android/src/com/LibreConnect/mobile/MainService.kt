@@ -375,7 +375,6 @@ class MainService : Service() {
 
         @JvmStatic
         fun onAudioCaptured(samples: ByteArray) {
-            Log.d("LibreConnectNative", "MainService: onAudioCaptured called, samples size=${samples.size}")
             activeService?.nativeOnAudioCaptured(samples)
         }
 

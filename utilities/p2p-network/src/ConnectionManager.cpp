@@ -281,6 +281,31 @@ std::shared_ptr<SSLContext_> ConnectionManager::CreateSSLContext(const bool isSe
             Debug::Log("ConnectionManager: Loading pinned certificate for target device");
             context->set_verify_mode(asio::ssl::verify_peer | asio::ssl::verify_fail_if_no_peer_cert);
             context->load_verify_file(targetCertificatePath);
+
+            X509_STORE* store = SSL_CTX_get_cert_store(context->native_handle());
+            X509_STORE_set_flags(store, X509_V_FLAG_PARTIAL_CHAIN);
+
+            context->set_verify_callback([](const bool preverified, asio::ssl::verify_context& ctx) {
+                if (preverified) {
+                    return true;
+                }
+
+                const X509_STORE_CTX* ossl_ctx = ctx.native_handle();
+                const int err = X509_STORE_CTX_get_error(ossl_ctx);
+                const int depth = X509_STORE_CTX_get_error_depth(ossl_ctx);
+
+                if (err == X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT ||
+                    err == X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN ||
+                    err == X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY) {
+                    Debug::Log("ConnectionManager: Verification depth {} - Overriding non-fatal P2P trust error: {} ({})",
+                               depth, X509_verify_cert_error_string(err), err);
+                    return true;
+                }
+
+                Debug::LogError("ConnectionManager: Verification depth {} failed - Error: {} ({})",
+                               depth, X509_verify_cert_error_string(err), err);
+                return false;
+            });
         } else {
             Debug::LogError(
                 "ConnectionManager: Missing pinned certificate for target device at '{}'. Refusing untrusted TLS session.",

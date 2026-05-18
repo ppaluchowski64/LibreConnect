@@ -83,6 +83,12 @@ void CryptographicIdentityManager::GenerateCertificate(const std::string_view pr
     X509_set_version(certificate, 2);
     X509_set_pubkey(certificate, privateKey);
 
+    X509V3_CTX ctx;
+    X509V3_set_ctx(&ctx, certificate, certificate, nullptr, nullptr, 0);
+    X509_EXTENSION* ex = X509V3_EXT_conf_nid(nullptr, &ctx, NID_basic_constraints, "critical,CA:TRUE");
+    X509_add_ext(certificate, ex, -1);
+    X509_EXTENSION_free(ex);
+
     X509_NAME* name = X509_get_subject_name(certificate);
     X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, C_value, -1, -1, 0);
     X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC, O_value, -1, -1, 0);
