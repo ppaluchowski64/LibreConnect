@@ -3,9 +3,6 @@
 #include <algorithm>
 
 #include <QBuffer>
-#include <QDateTime>
-#include <QPointer>
-#include <QChar>
 #include <QDir>
 #include <QFile>
 #include <QImageReader>
@@ -20,23 +17,19 @@
 #include <RemoteInputEvents.h>
 
 #ifdef ANDROID_DEVICE
-#include <QJniEnvironment>
-#include <QJniObject>
-#include <QtCore/qcoreapplication_platform.h>
+    #include "MediaNotificationManager.h"
 #endif
 
 namespace {
 constexpr int INVALID_KEY = -1;
-QString AccessibilityPermissionMessage()
-{
+QString AccessibilityPermissionMessage() {
     return QStringLiteral(
         "Desktop accessibility permission is required for remote input. "
         "Allow LibreConnect in macOS System Settings > Privacy & Security > Accessibility."
     );
 }
 
-QString MimeTypeFromImageBytes(const QByteArray& bytes)
-{
+QString MimeTypeFromImageBytes(const QByteArray& bytes) {
     if (bytes.isEmpty()) {
         return QString();
     }
@@ -59,8 +52,7 @@ QString MimeTypeFromImageBytes(const QByteArray& bytes)
     return QStringLiteral("image/%1").arg(QString::fromLatin1(format));
 }
 
-QString ImageExtensionFromBytes(const QByteArray& bytes)
-{
+QString ImageExtensionFromBytes(const QByteArray& bytes) {
     if (bytes.isEmpty()) {
         return QStringLiteral("jpg");
     }
@@ -83,8 +75,7 @@ QString ImageExtensionFromBytes(const QByteArray& bytes)
     return QString::fromLatin1(format);
 }
 
-QString BuildCoverImageSource(const QByteArray& coverBytes)
-{
+QString BuildCoverImageSource(const QByteArray& coverBytes) {
     if (coverBytes.isEmpty()) {
         return QString();
     }
@@ -114,8 +105,7 @@ QString BuildCoverImageSource(const QByteArray& coverBytes)
 }
 
 MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
-    : QObject(parent)
-{
+    : QObject(parent) {
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
 
     m_pollTimer.setInterval(350);
@@ -126,16 +116,24 @@ MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
     connect(&m_mediaInfoTimer, &QTimer::timeout, this, &MobileRemoteInputController::requestNowPlayingUpdate);
     m_mediaInfoTimer.start();
 
+    #ifdef ANDROID_DEVICE
+        MediaNotificationManager::SetActionCallback([](MediaSignal signal) {
+            RemoteInputModule::SendMediaInput(signal);
+        });
+
+        MediaNotificationManager::SetSeekCallback([](double posSeconds) {
+            RemoteInputModule::SetMediaPosition(posSeconds);
+        });
+    #endif
+
     refreshState();
 }
 
-bool MobileRemoteInputController::hasTrackInfo() const
-{
+bool MobileRemoteInputController::hasTrackInfo() const {
     return !m_trackTitle.isEmpty() || !m_trackArtist.isEmpty() || !m_trackCollection.isEmpty() || !m_coverImageSource.isEmpty();
 }
 
-void MobileRemoteInputController::setSessionActive(const bool active)
-{
+void MobileRemoteInputController::setSessionActive(const bool active) {
     if (m_sessionActive == active) {
         return;
     }
@@ -149,8 +147,7 @@ void MobileRemoteInputController::setSessionActive(const bool active)
     }
 }
 
-void MobileRemoteInputController::sendMediaSignal(const int signal)
-{
+void MobileRemoteInputController::sendMediaSignal(const int signal) {
     if (!m_connected) {
         setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
         return;
@@ -186,8 +183,7 @@ void MobileRemoteInputController::sendMediaSignal(const int signal)
     updateAndroidMediaNotification();
 }
 
-void MobileRemoteInputController::seekTo(const double seconds)
-{
+void MobileRemoteInputController::seekTo(const double seconds) {
     if (!m_connected || !m_ready || m_durationSeconds <= 0.0) {
         return;
     }
@@ -196,8 +192,7 @@ void MobileRemoteInputController::seekTo(const double seconds)
     RemoteInputModule::SetMediaPosition(clampedSeconds);
 }
 
-void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString& text, const int modifiers)
-{
+void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString& text, const int modifiers) {
     if (!m_connected) {
         setStatusMessage(QStringLiteral("Connect to a desktop device to use remote keyboard."));
         return;
@@ -242,32 +237,28 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     }
 }
 
-void MobileRemoteInputController::presenterPreviousSlide()
-{
+void MobileRemoteInputController::presenterPreviousSlide() {
     sendQtKeyEvent(Qt::Key_PageUp, QString(), 0);
     if (m_connected && m_ready) {
         setStatusMessage(QStringLiteral("Previous slide command sent."));
     }
 }
 
-void MobileRemoteInputController::presenterNextSlide()
-{
+void MobileRemoteInputController::presenterNextSlide() {
     sendQtKeyEvent(Qt::Key_PageDown, QString(), 0);
     if (m_connected && m_ready) {
         setStatusMessage(QStringLiteral("Next slide command sent."));
     }
 }
 
-void MobileRemoteInputController::presenterStartSlideshow()
-{
+void MobileRemoteInputController::presenterStartSlideshow() {
     sendQtKeyEvent(Qt::Key_F5, QString(), 0);
     if (m_connected && m_ready) {
         setStatusMessage(QStringLiteral("Start slideshow command sent."));
     }
 }
 
-void MobileRemoteInputController::presenterEndSlideshow()
-{
+void MobileRemoteInputController::presenterEndSlideshow() {
     sendQtKeyEvent(Qt::Key_Escape, QString(), 0);
     if (m_connected && m_ready) {
         setStatusMessage(QStringLiteral("End slideshow command sent."));
@@ -283,8 +274,7 @@ void MobileRemoteInputController::setNowPlayingInfo(
     const double positionSeconds,
     const double durationSeconds,
     const std::vector<uint8_t>& coverBytes
-)
-{
+) {
     const double safePosition = std::max(0.0, positionSeconds);
     const double safeDuration = std::max(0.0, durationSeconds);
     const QString normalizedElapsed = elapsed.isEmpty() ? formatTime(safePosition) : elapsed;
@@ -332,8 +322,7 @@ void MobileRemoteInputController::setNowPlayingInfo(
     updateAndroidMediaNotification();
 }
 
-bool MobileRemoteInputController::event(QEvent* event)
-{
+bool MobileRemoteInputController::event(QEvent* event) {
     if (event->type() == ConnectedEvent::Type) {
         const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
         const bool connectedNow = connectedEvent->GetResult() == EventResult::SUCCESS;
@@ -418,8 +407,7 @@ bool MobileRemoteInputController::event(QEvent* event)
     return QObject::event(event);
 }
 
-void MobileRemoteInputController::refreshState()
-{
+void MobileRemoteInputController::refreshState() {
     auto& module = ModulesManager::GetModuleReference<RemoteInputModule>();
     const ModuleState state = module->GetModuleState();
 
@@ -454,8 +442,7 @@ void MobileRemoteInputController::refreshState()
     setStatusMessage(QStringLiteral("Remote input is unavailable."));
 }
 
-void MobileRemoteInputController::requestNowPlayingUpdate()
-{
+void MobileRemoteInputController::requestNowPlayingUpdate() {
     if (!m_sessionActive || !m_connected || !m_ready) {
         return;
     }
@@ -463,8 +450,7 @@ void MobileRemoteInputController::requestNowPlayingUpdate()
     RemoteInputModule::RequestMediaInfo();
 }
 
-bool MobileRemoteInputController::sendMappedKey(const int key, const bool requiresShift)
-{
+bool MobileRemoteInputController::sendMappedKey(const int key, const bool requiresShift) {
     if (key == INVALID_KEY) {
         return false;
     }
@@ -481,8 +467,7 @@ bool MobileRemoteInputController::sendMappedKey(const int key, const bool requir
     return true;
 }
 
-bool MobileRemoteInputController::sendCharacter(const QChar c)
-{
+bool MobileRemoteInputController::sendCharacter(const QChar c) {
     const KeyMapping mapping = mapCharacter(c);
     if (mapping.key == INVALID_KEY) {
         return false;
@@ -491,8 +476,7 @@ bool MobileRemoteInputController::sendCharacter(const QChar c)
     return sendMappedKey(mapping.key, mapping.requiresShift);
 }
 
-void MobileRemoteInputController::setStatusMessage(const QString& message)
-{
+void MobileRemoteInputController::setStatusMessage(const QString& message) {
     if (m_statusMessage == message) {
         return;
     }
@@ -501,8 +485,7 @@ void MobileRemoteInputController::setStatusMessage(const QString& message)
     emit statusMessageChanged();
 }
 
-void MobileRemoteInputController::setReadyState(const bool ready)
-{
+void MobileRemoteInputController::setReadyState(const bool ready) {
     if (m_ready == ready) {
         return;
     }
@@ -514,8 +497,7 @@ void MobileRemoteInputController::setReadyState(const bool ready)
     }
 }
 
-QString MobileRemoteInputController::formatTime(const double seconds)
-{
+QString MobileRemoteInputController::formatTime(const double seconds) {
     if (seconds <= 0.0) {
         return QString();
     }
@@ -537,8 +519,7 @@ QString MobileRemoteInputController::formatTime(const double seconds)
         .arg(secs, 2, 10, QChar('0'));
 }
 
-MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecialKey(const int qtKey)
-{
+MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecialKey(const int qtKey) {
     switch (qtKey) {
     case Qt::Key_Backspace:
         return { static_cast<int>(Key::Backspace), false };
@@ -600,8 +581,7 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecia
     }
 }
 
-MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapCharacter(const QChar c)
-{
+MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapCharacter(const QChar c) {
     if (c.isLetter()) {
         const QChar lower = c.toLower();
         if (lower < QChar('a') || lower > QChar('z')) {
@@ -692,72 +672,30 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapCharacte
     }
 }
 
-void MobileRemoteInputController::updateAndroidMediaNotification() const
-{
-#ifdef ANDROID_DEVICE
-    if (!m_sessionActive || !m_connected) {
-        hideAndroidMediaNotification();
-        return;
-    }
-
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    if (!context.isValid()) {
-        return;
-    }
-
-    const QString title = m_trackTitle.isEmpty() ? QStringLiteral("No media info") : m_trackTitle;
-    const QString artist = m_trackArtist.isEmpty() ? QStringLiteral("Remote desktop") : m_trackArtist;
-    const QString collection = m_trackCollection;
-    const QString elapsed = m_elapsedTime;
-    jbyteArray coverBytes = nullptr;
-
-    QJniEnvironment env;
-    if (!m_coverBytes.isEmpty()) {
-        coverBytes = env->NewByteArray(m_coverBytes.size());
-        if (coverBytes != nullptr) {
-            env->SetByteArrayRegion(
-                coverBytes,
-                0,
-                m_coverBytes.size(),
-                reinterpret_cast<const jbyte*>(m_coverBytes.constData())
-            );
+void MobileRemoteInputController::updateAndroidMediaNotification() const {
+    #ifdef ANDROID_DEVICE
+        if (!m_sessionActive || !m_connected) {
+            hideAndroidMediaNotification();
+            return;
         }
-    }
 
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/RemoteInputNotification",
-        "show",
-        "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZDD[B)V",
-        context.object<jobject>(),
-        QJniObject::fromString(title).object<jstring>(),
-        QJniObject::fromString(artist).object<jstring>(),
-        QJniObject::fromString(collection).object<jstring>(),
-        QJniObject::fromString(elapsed).object<jstring>(),
-        static_cast<jboolean>(m_playing),
-        static_cast<jdouble>(m_positionSeconds),
-        static_cast<jdouble>(m_durationSeconds),
-        coverBytes
-    );
+        TrackMetadata meta;
+        meta.title = m_trackTitle.toStdString();
+        meta.artist = m_trackArtist.toStdString();
+        meta.album = m_trackCollection.toStdString();
+        meta.duration = m_durationSeconds;
 
-    if (coverBytes != nullptr) {
-        env->DeleteLocalRef(coverBytes);
-    }
-#endif
+        if (!m_coverBytes.isEmpty())
+            meta.cover.assign(m_coverBytes.begin(), m_coverBytes.end());
+
+        MediaNotificationManager::Show();
+        MediaNotificationManager::UpdateMetadata(meta);
+        MediaNotificationManager::UpdatePlaybackState(m_playing, m_positionSeconds);
+    #endif
 }
 
-void MobileRemoteInputController::hideAndroidMediaNotification() const
-{
-#ifdef ANDROID_DEVICE
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    if (!context.isValid()) {
-        return;
-    }
-
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/RemoteInputNotification",
-        "hide",
-        "(Landroid/content/Context;)V",
-        context.object<jobject>()
-    );
-#endif
+void MobileRemoteInputController::hideAndroidMediaNotification() const {
+    #ifdef ANDROID_DEVICE
+        MediaNotificationManager::Hide();
+    #endif
 }

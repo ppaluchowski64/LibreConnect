@@ -129,6 +129,16 @@
             </intent-filter>
         </service>
 
+        <service
+                android:name="com.LibreConnect.mobile.MediaTrackListenerService"
+                android:label="LibreConnect Media Service"
+                android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+                android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver
                 android:name=".NotificationActionReceiver"
                 android:label="LibreConnect Notification Action Receiver"
@@ -138,6 +148,11 @@
         <receiver
                 android:name=".RemoteInputMediaActionReceiver"
                 android:label="LibreConnect Remote Input Receiver"
+                android:exported="false"
+        />
+
+        <receiver
+                android:name=".RemoteInputNotificationReceiver"
                 android:exported="false"
         />
 
