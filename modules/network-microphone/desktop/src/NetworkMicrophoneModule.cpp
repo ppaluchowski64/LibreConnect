@@ -105,7 +105,7 @@ asio::awaitable<void> NetworkMicrophoneModule::StartStream() {
             }
 
             while (instance->GetModuleState() == ModuleState::Enabled) {
-                co_await instance->m_audioStream->AsyncReceive(payload);
+                co_await instance->m_audioStream->AsyncReceiveRaw(payload);
 
                 if (payload.empty()) continue;
 

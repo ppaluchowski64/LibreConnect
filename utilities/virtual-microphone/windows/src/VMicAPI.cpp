@@ -166,7 +166,7 @@ VMicResult VMic_OpenDevice(VMicHandle* handle, const char* deviceId, const VMicF
     wfx.SubFormat = (format->bitDepth == 32) ? KSDATAFORMAT_SUBTYPE_IEEE_FLOAT : KSDATAFORMAT_SUBTYPE_PCM;
 
     hr = pAudioClient->Initialize(
-        AUDCLNT_SHAREMODE_EXCLUSIVE,
+        AUDCLNT_SHAREMODE_SHARED,
         0,
         10000000,
         0,

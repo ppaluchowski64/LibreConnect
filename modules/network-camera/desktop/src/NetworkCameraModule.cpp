@@ -283,6 +283,7 @@ asio::awaitable<void> NetworkCameraModule::StartStream() {
     m_seenSps = false;
     m_seenPps = false;
     m_waitForIdrAfterLoss.store(false);
+    m_decoderNeedsFlush.store(false);
     m_waitForIdrStartMs.store(0);
     m_waitForIdrDroppedFrames.store(0);
     m_decodePacketPts.store(0);
@@ -590,6 +591,12 @@ asio::awaitable<void> NetworkCameraModule::FramePacer() {
 
     while (m_pacerRunning.load() && m_acceptFrames.load()) {
         nextWake += interval;
+
+        const auto now = std::chrono::steady_clock::now();
+        if (nextWake < now) {
+            nextWake = now;
+        }
+
         timer.expires_at(nextWake);
         co_await timer.async_wait(asio::use_awaitable);
 
@@ -667,9 +674,7 @@ asio::awaitable<void> NetworkCameraModule::ReceiveFrames() {
                     Debug::LogWarning("Decoder heavily overloaded. Dropped all pending encoded frames, waiting for IDR");
                     m_waitForIdrStartMs.store(GetMonotonicTimeMs());
                     m_waitForIdrDroppedFrames.store(0);
-                    if (m_codecContext) {
-                        avcodec_flush_buffers(m_codecContext);
-                    }
+                    m_decoderNeedsFlush.store(true);
                 }
             }
             m_encodedQueue.push_back(frameBuffer);
@@ -704,6 +709,9 @@ void NetworkCameraModule::DecodeFramesLoop() {
         }
 
         if (!frameBuffer.empty()) {
+            if (m_decoderNeedsFlush.exchange(false) && m_codecContext) {
+                avcodec_flush_buffers(m_codecContext);
+            }
             ProcessEncodedFrame(frameBuffer);
         }
     }
@@ -849,6 +857,7 @@ asio::awaitable<void> NetworkCameraModule::OnDisable() {
 
     m_acceptFrames.store(false);
     m_waitForIdrAfterLoss.store(false);
+    m_decoderNeedsFlush.store(false);
     m_waitForIdrStartMs.store(0);
     m_waitForIdrDroppedFrames.store(0);
     m_decodePacketPts.store(0);

@@ -33,7 +33,7 @@ namespace {
 void NetworkMicrophoneModule::ProcessAndSendAudio(const std::vector<uint8_t>& pcm) const {
     if (m_audioStream && GetModuleState() == ModuleState::Enabled) {
         // TODO: Implement Opus encoding
-        m_audioStream->Send(pcm.data(), pcm.size());
+        m_audioStream->SendRaw(pcm.data(), pcm.size());
     }
 }
 

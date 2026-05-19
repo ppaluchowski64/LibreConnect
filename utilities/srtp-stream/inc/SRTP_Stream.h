@@ -47,6 +47,9 @@ namespace SRTP {
         asio::awaitable<void> AsyncSend(const std::vector<uint8_t>& payloadData);
         asio::awaitable<void> AsyncSend(const uint8_t* payload, size_t size);
         asio::awaitable<void> AsyncSendNal(const uint8_t* payload, size_t size, uint32_t timestamp, bool marker);
+        void SendRaw(const uint8_t* payload, size_t size);
+        asio::awaitable<void> AsyncReceiveRaw(std::vector<uint8_t>& payload);
+
         bool ConsumeReceiveLossSignal();
 
         uint32_t NextTimestamp();

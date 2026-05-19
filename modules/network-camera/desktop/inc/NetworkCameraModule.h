@@ -67,6 +67,7 @@ private:
     bool m_seenSps{false};
     bool m_seenPps{false};
     std::atomic<bool> m_waitForIdrAfterLoss{false};
+    std::atomic<bool> m_decoderNeedsFlush{false};
     std::atomic<uint64_t> m_waitForIdrStartMs{0};
     std::atomic<uint32_t> m_waitForIdrDroppedFrames{0};
     std::atomic<int64_t> m_decodePacketPts{0};
