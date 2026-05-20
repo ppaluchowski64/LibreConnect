@@ -247,7 +247,7 @@ void DeviceConnectionController::stopFindMyPhoneAlert()
 
 void DeviceConnectionController::submitVerificationCode(const QString& code)
 {
-    if (!m_verificationEvent) {
+    if (!m_verificationEvent || m_approvalPending) {
         return;
     }
 
@@ -263,6 +263,9 @@ void DeviceConnectionController::submitVerificationCode(const QString& code)
         m_verificationError.clear();
         emit verificationErrorChanged();
     }
+
+    m_verificationStatus = QStringLiteral("Checking code...");
+    emit verificationStatusChanged();
 
     const std::string response = trimmedCode.toStdString();
     m_verificationEvent->SendAnswer(response);
@@ -289,6 +292,13 @@ void DeviceConnectionController::cancelVerification()
         m_verificationError.clear();
         emit verificationErrorChanged();
     }
+
+    if (!m_verificationStatus.isEmpty()) {
+        m_verificationStatus.clear();
+        emit verificationStatusChanged();
+    }
+
+    setApprovalPending(false);
 
     if (m_pending) {
         m_pending = false;
@@ -329,6 +339,16 @@ bool DeviceConnectionController::event(QEvent* e)
 
     if (type == ConnectionFailedVerificationEvent::Type) {
         handleConnectionFailedVerificationEvent(static_cast<ConnectionFailedVerificationEvent*>(e));
+        return true;
+    }
+
+    if (type == ConnectionApprovalRequestedEvent::Type) {
+        handleConnectionApprovalRequestedEvent(static_cast<ConnectionApprovalRequestedEvent*>(e));
+        return true;
+    }
+
+    if (type == ConnectionApprovalDeniedEvent::Type) {
+        handleConnectionApprovalDeniedEvent(static_cast<ConnectionApprovalDeniedEvent*>(e));
         return true;
     }
 
@@ -395,6 +415,13 @@ void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
         emit verificationPendingChanged();
     }
 
+    if (!m_verificationStatus.isEmpty()) {
+        m_verificationStatus.clear();
+        emit verificationStatusChanged();
+    }
+
+    setApprovalPending(false);
+
     m_verificationEvent.reset();
 
     if (success) {
@@ -435,6 +462,13 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
         m_verificationError.clear();
         emit verificationErrorChanged();
     }
+
+    if (!m_verificationStatus.isEmpty()) {
+        m_verificationStatus.clear();
+        emit verificationStatusChanged();
+    }
+
+    setApprovalPending(false);
 
     m_verificationEvent.reset();
     setFindMyPhoneAlertActive(false);
@@ -539,6 +573,13 @@ void DeviceConnectionController::handleConnectionFailedVerificationEvent(Connect
     m_verificationError = QString("Verification failed (%1 tries left)").arg(m_verificationTriesLeft);
     emit verificationErrorChanged();
 
+    if (!m_verificationStatus.isEmpty()) {
+        m_verificationStatus.clear();
+        emit verificationStatusChanged();
+    }
+
+    setApprovalPending(false);
+
     emit verificationFailed(m_verificationTriesLeft);
 }
 
@@ -556,10 +597,42 @@ void DeviceConnectionController::handleConnectionVerificationEvent(ConnectionVer
 
     m_verificationEvent.reset(ev->clone());
 
+    m_verificationStatus = QStringLiteral("Enter the code shown on your phone.");
+    emit verificationStatusChanged();
+    setApprovalPending(false);
+
     if (!m_verificationPending) {
         m_verificationPending = true;
         emit verificationPendingChanged();
     }
+}
+
+void DeviceConnectionController::handleConnectionApprovalRequestedEvent(ConnectionApprovalRequestedEvent* /*ev*/)
+{
+    m_verificationStatus = QStringLiteral("Code accepted. Waiting for approval on your phone...");
+    emit verificationStatusChanged();
+    setApprovalPending(true);
+}
+
+void DeviceConnectionController::handleConnectionApprovalDeniedEvent(ConnectionApprovalDeniedEvent* ev)
+{
+    m_verificationError = QStringLiteral("Connection denied on the mobile device.");
+    emit verificationErrorChanged();
+
+    if (m_verificationPending) {
+        m_verificationPending = false;
+        emit verificationPendingChanged();
+    }
+
+    setApprovalPending(false);
+    m_verificationEvent.reset();
+
+    if (!m_verificationStatus.isEmpty()) {
+        m_verificationStatus.clear();
+        emit verificationStatusChanged();
+    }
+
+    handleError("Connection denied on the mobile device.", ev->type());
 }
 
 void DeviceConnectionController::handleModuleErrorEvent(ModuleErrorEvent* ev)
@@ -578,6 +651,16 @@ void DeviceConnectionController::setFindMyPhoneAlertActive(const bool active)
 
     m_findMyPhoneAlertActive = active;
     emit findMyPhoneAlertActiveChanged();
+}
+
+void DeviceConnectionController::setApprovalPending(const bool pending)
+{
+    if (m_approvalPending == pending) {
+        return;
+    }
+
+    m_approvalPending = pending;
+    emit approvalPendingChanged();
 }
 
 void DeviceConnectionController::setBatteryPercentage(const int percentage)

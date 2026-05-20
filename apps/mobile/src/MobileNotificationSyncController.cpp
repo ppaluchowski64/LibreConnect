@@ -126,6 +126,7 @@ void MobileNotificationSyncController::refreshState()
     const ModuleState state = module->GetModuleState();
 
     if (!m_connected) {
+        m_confirmedEnabled = false;
         setEnabledState(m_requestedEnabled);
         setBusy(false);
         setStatusMessage(m_requestedEnabled
@@ -150,6 +151,7 @@ void MobileNotificationSyncController::refreshState()
 
     if (state == ModuleState::Enabled) {
         if (!m_permissionsGranted || !m_desktopPermissionGranted) {
+            m_confirmedEnabled = false;
             m_enableAttemptPending = false;
             m_disableAttemptPending = false;
             if (m_requestedEnabled) {
@@ -165,6 +167,7 @@ void MobileNotificationSyncController::refreshState()
             return;
         }
 
+        m_confirmedEnabled = true;
         m_enableAttemptPending = false;
         if (!m_requestedEnabled) {
             setRequestedEnabled(true, true);
@@ -185,11 +188,16 @@ void MobileNotificationSyncController::refreshState()
     }
 
     if (state == ModuleState::Disabled) {
-        if (m_requestedEnabled && !m_enableAttemptPending && !m_disableAttemptPending) {
-            setRequestedEnabled(false, true);
+        if (m_confirmedEnabled && !m_disableAttemptPending) {
+            m_confirmedEnabled = false;
+            if (m_requestedEnabled) {
+                setRequestedEnabled(false, true);
+            }
+            m_enableAttemptPending = false;
         }
 
         if (m_disableAttemptPending) {
+            m_confirmedEnabled = false;
             m_disableAttemptPending = false;
             if (m_requestedEnabled) {
                 setRequestedEnabled(false, true);

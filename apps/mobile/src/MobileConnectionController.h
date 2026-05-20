@@ -4,8 +4,10 @@
 #include <QPointer>
 #include <QEvent>
 #include <QString>
+#include <QUrl>
 #include <QVariantList>
 #include <QSettings>
+#include <memory>
 
 #include <ConnectionManager.h>
 #include <Events.h>
@@ -19,6 +21,7 @@ class MobileConnectionController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(QString challengeCode READ challengeCode NOTIFY challengeCodeChanged)
     Q_PROPERTY(bool challengeVisible READ challengeVisible NOTIFY challengeVisibleChanged)
+    Q_PROPERTY(bool approvalVisible READ approvalVisible NOTIFY approvalVisibleChanged)
     Q_PROPERTY(QString pendingDeviceName READ pendingDeviceName NOTIFY pendingDeviceNameChanged)
     Q_PROPERTY(QString localDeviceName READ localDeviceName NOTIFY localIdentityChanged)
     Q_PROPERTY(QString localIpAddress READ localIpAddress NOTIFY localIdentityChanged)
@@ -41,6 +44,9 @@ class MobileConnectionController : public QObject
     Q_PROPERTY(QVariantList findMyPhoneRingtoneOptions READ findMyPhoneRingtoneOptions NOTIFY findMyPhoneRingtoneOptionsChanged)
     Q_PROPERTY(QString findMyPhoneRingtoneUri READ findMyPhoneRingtoneUri NOTIFY findMyPhoneRingtoneChanged)
     Q_PROPERTY(QString findMyPhoneRingtoneLabel READ findMyPhoneRingtoneLabel NOTIFY findMyPhoneRingtoneChanged)
+    Q_PROPERTY(QString defaultDownloadPath READ defaultDownloadPath NOTIFY defaultDownloadPathChanged)
+    Q_PROPERTY(QString defaultDownloadPathStatus READ defaultDownloadPathStatus NOTIFY defaultDownloadPathStatusChanged)
+    Q_PROPERTY(int batteryPercentage READ batteryPercentage NOTIFY batteryPercentageChanged)
 
 public:
     explicit MobileConnectionController(QObject* parent = nullptr);
@@ -50,6 +56,7 @@ public:
     QString lastError() const { return m_lastError; }
     QString challengeCode() const { return m_challengeCode; }
     bool challengeVisible() const { return m_challengeVisible; }
+    bool approvalVisible() const { return m_approvalVisible; }
     QString pendingDeviceName() const { return m_pendingDeviceName; }
     QString localDeviceName() const { return m_localDeviceName; }
     QString localIpAddress() const { return m_localIpAddress; }
@@ -72,11 +79,16 @@ public:
     QVariantList findMyPhoneRingtoneOptions() const { return m_findMyPhoneRingtoneOptions; }
     QString findMyPhoneRingtoneUri() const { return m_findMyPhoneRingtoneUri; }
     QString findMyPhoneRingtoneLabel() const;
+    QString defaultDownloadPath() const { return m_defaultDownloadPath; }
+    QString defaultDownloadPathStatus() const { return m_defaultDownloadPathStatus; }
+    int batteryPercentage() const { return m_batteryPercentage; }
 
     Q_INVOKABLE void disconnect();
     Q_INVOKABLE void refreshPairedDevices();
     Q_INVOKABLE bool removePairedDevice(const QString& deviceId);
     Q_INVOKABLE bool unpairCurrentDevice();
+    Q_INVOKABLE void acceptConnectionApproval();
+    Q_INVOKABLE void denyConnectionApproval();
     Q_INVOKABLE void refreshLocalIdentity();
     Q_INVOKABLE void refreshPermissionStatuses();
     Q_INVOKABLE void requestCameraPermission();
@@ -95,8 +107,11 @@ public:
     Q_INVOKABLE void requestAllPermissions();
     Q_INVOKABLE void completePermissionsOnboarding();
     Q_INVOKABLE void stopFindMyPhoneAlert();
-    Q_INVOKABLE void refreshFindMyPhoneRingtones();
+    Q_INVOKABLE void refreshFindMyPhoneRingtones(bool force = false);
     Q_INVOKABLE void setFindMyPhoneRingtoneUri(const QString& uri);
+    Q_INVOKABLE void setFindMyPhoneRingtoneFile(const QUrl& fileUrl);
+    Q_INVOKABLE void refreshDefaultDownloadPath();
+    Q_INVOKABLE void setDefaultDownloadPath(const QString& path);
     Q_INVOKABLE void exportLogs();
 
 signals:
@@ -104,6 +119,7 @@ signals:
     void lastErrorChanged();
     void challengeCodeChanged();
     void challengeVisibleChanged();
+    void approvalVisibleChanged();
     void pendingDeviceNameChanged();
     void pairedDevicesChanged();
     void localIdentityChanged();
@@ -111,6 +127,9 @@ signals:
     void findMyPhoneAlertActiveChanged();
     void findMyPhoneRingtoneOptionsChanged();
     void findMyPhoneRingtoneChanged();
+    void defaultDownloadPathChanged();
+    void defaultDownloadPathStatusChanged();
+    void batteryPercentageChanged();
 
     void incomingConnection(QString deviceName);
 
@@ -138,6 +157,7 @@ private:
     void setError(const QString& e);
     void clearError();
     void clearChallenge();
+    void clearApproval();
     void handleModuleErrorEvent(ModuleErrorEvent* ev);
     void updatePermissionsFromSystem();
     void runPermissionRequest(PermissionRequest request);
@@ -166,12 +186,16 @@ private:
     void ensureSelectedRingtoneOption();
     void setFindMyPhoneRingtoneUriInternal(const QString& uri, bool persist);
     QString resolveFindMyPhoneRingtoneLabel(const QString& uri) const;
+    void setDefaultDownloadPathInternal(const QString& path);
+    void setDefaultDownloadPathStatus(const QString& status);
+    void setBatteryPercentage(int percentage);
 
 private:
     bool m_connected = false;
     QString m_lastError;
     QString m_challengeCode;
     bool m_challengeVisible = false;
+    bool m_approvalVisible = false;
     QString m_pendingDeviceName;
     QString m_localDeviceName;
     QString m_localIpAddress;
@@ -194,5 +218,10 @@ private:
     bool m_findMyPhoneAlertActive = false;
     QVariantList m_findMyPhoneRingtoneOptions;
     QString m_findMyPhoneRingtoneUri;
+    bool m_findMyPhoneRingtonesLoaded = false;
+    QString m_defaultDownloadPath;
+    QString m_defaultDownloadPathStatus;
+    int m_batteryPercentage = -1;
     QSettings m_settings;
+    std::unique_ptr<ConnectionApprovalRequestedEvent> m_approvalEvent;
 };

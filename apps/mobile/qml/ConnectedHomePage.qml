@@ -13,6 +13,7 @@ Page {
     required property var showPresenterModeCallback
     required property var showRemoteKeyboardCallback
     required property var showSettingsCallback
+    property bool showBottomNavigation: true
     property int logoTapCount: 0
 
     readonly property int menuWidth: 190
@@ -410,9 +411,15 @@ Page {
                 RowLayout {
                     Layout.fillWidth: true
 
-                    Item {
+                    Text {
                         Layout.preferredWidth: moreButton.implicitWidth
                         Layout.preferredHeight: moreButton.implicitHeight
+                        visible: page.conn.batteryPercentage >= 0
+                        text: page.conn.batteryPercentage + "%"
+                        color: Theme.mutedTextColor
+                        font.pixelSize: 14
+                        font.bold: true
+                        verticalAlignment: Text.AlignVCenter
                     }
 
                     Item {
@@ -501,6 +508,7 @@ Page {
         }
 
         Frame {
+            visible: page.showBottomNavigation
             Layout.fillWidth: true
             padding: 10
             Material.elevation: 4
@@ -531,4 +539,5 @@ Page {
             }
         }
     }
+
 }

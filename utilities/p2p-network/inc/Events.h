@@ -112,6 +112,36 @@ private:
 
 };
 
+class ConnectionApprovalRequestedEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+9);
+    explicit ConnectionApprovalRequestedEvent(const DeviceInfo& deviceInfo, std::function<void(bool)>&& callback)
+        : QEvent(Type), m_deviceInfo(deviceInfo), m_callback(std::move(callback)) {}
+
+    DeviceInfo GetDeviceInfo() const { return m_deviceInfo; }
+    void AcceptConnection() const { m_callback(true); }
+    void DenyConnection() const { m_callback(false); }
+
+    ConnectionApprovalRequestedEvent* clone() const override {
+        return new ConnectionApprovalRequestedEvent(*this);
+    }
+
+private:
+    DeviceInfo m_deviceInfo;
+    std::function<void(bool)> m_callback;
+};
+
+class ConnectionApprovalDeniedEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase+10);
+
+    explicit ConnectionApprovalDeniedEvent() : QEvent(Type) {}
+
+    ConnectionApprovalDeniedEvent* clone() const override {
+        return new ConnectionApprovalDeniedEvent(*this);
+    }
+};
+
 class FindMyPhoneAlertStateEvent final : public QEvent {
 public:
     static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase + 6);

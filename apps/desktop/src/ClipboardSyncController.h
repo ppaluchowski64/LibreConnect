@@ -45,5 +45,6 @@ private:
     bool m_requestedAutoSync = false;
     bool m_enableAttemptPending = false;
     bool m_disableAttemptPending = false;
+    bool m_confirmedEnabled = false;
     QString m_statusMessage;
 };

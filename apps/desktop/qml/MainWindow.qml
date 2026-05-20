@@ -27,6 +27,10 @@ Window {
     property bool showConnectedAfterConnect: false
     readonly property int fixedWindowWidth: 740
     readonly property int fixedWindowHeight: 420
+    readonly property int homeWindowWidth: 1280
+    readonly property int homeWindowHeight: 800
+    readonly property int homeMinimumWindowWidth: 960
+    readonly property int homeMinimumWindowHeight: 660
     readonly property bool isMacOS: Qt.platform.os === "osx"
     readonly property bool isLinux: Qt.platform.os === "linux"
     title: currentWindowTitleSuffix.length > 0
@@ -100,24 +104,21 @@ Window {
         if (!isLinux && enteringHomeMode) {
             flags = standardWindowFlags & ~Qt.WindowMaximizeButtonHint
         }
-        
-        if (flags !== standardWindowFlags) {
-            flags = standardWindowFlags
-        }
 
         maximumWidth = 16777215
         maximumHeight = 16777215
-        minimumWidth = 0
-        minimumHeight = 0
+        minimumWidth = homeMinimumWindowWidth
+        minimumHeight = homeMinimumWindowHeight
+
+        if (flags !== standardWindowFlags) {
+            flags = standardWindowFlags
+        }
         
         homeMode = true
         if (enteringHomeMode) {
-            width = 1280
-            height = 720
+            width = Math.max(homeWindowWidth, homeMinimumWindowWidth)
+            height = Math.max(homeWindowHeight, homeMinimumWindowHeight)
         }
-
-        minimumWidth = 860
-        minimumHeight = 560
     }
 
     function showInitial() {

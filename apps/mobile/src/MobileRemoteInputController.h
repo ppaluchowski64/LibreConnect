@@ -81,8 +81,8 @@ private:
 
     void refreshState();
     void requestNowPlayingUpdate();
-    bool sendMappedKey(int key, bool requiresShift);
-    bool sendCharacter(QChar c);
+    bool sendMappedKey(int key, bool requiresShift, int modifiers = 0);
+    bool sendCharacter(QChar c, int modifiers = 0);
     void setStatusMessage(const QString& message);
     void setReadyState(bool ready);
     static KeyMapping mapQtSpecialKey(int qtKey);

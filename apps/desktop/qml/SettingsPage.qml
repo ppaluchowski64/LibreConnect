@@ -31,18 +31,33 @@ Page {
         color: "transparent"
     }
 
-    ScrollView {
+    Item {
         anchors.fill: parent
-        contentWidth: availableWidth
-        clip: true
 
-        ColumnLayout {
-            width: parent.width - 36
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: parent.top
-            anchors.topMargin: 18
-            anchors.bottomMargin: 18
-            spacing: 16
+        Flickable {
+            id: settingsFlickable
+            anchors.fill: parent
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            contentWidth: width
+            contentHeight: settingsColumn.implicitHeight + 36
+
+            ScrollBar.vertical: ScrollBar {
+                id: settingsScrollBar
+                parent: scrollGutter
+                anchors.fill: parent
+                policy: ScrollBar.AlwaysOn
+                active: true
+                opacity: 1.0
+                visible: scrollGutter.visible
+            }
+
+            ColumnLayout {
+                id: settingsColumn
+                x: 18
+                y: 18
+                width: settingsFlickable.width - (scrollGutter.visible ? 64 : 36)
+                spacing: 16
 
             Text {
                 Layout.fillWidth: true
@@ -379,7 +394,7 @@ Page {
                     spacing: 14
 
                     Text {
-                        text: "Enable Notification Sync"
+                        text: "Notification Sync"
                         font.family: Theme.fontFamily
                         font.pixelSize: 20
                         font.bold: true
@@ -516,8 +531,26 @@ Page {
                 }
             }
         }
+        }
+
+        }
+
+        Rectangle {
+            id: scrollGutter
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            anchors.topMargin: 18
+            anchors.bottomMargin: 18
+            anchors.rightMargin: 8
+            width: 14
+            radius: 7
+            color: Theme.backgroundColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+            visible: settingsFlickable.contentHeight > settingsFlickable.height + 1
+        }
     }
-}
 
     Dialog {
         id: notificationPermissionDialog

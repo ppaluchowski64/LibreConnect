@@ -24,7 +24,9 @@ enum class InitialConnectionPackageType : PackageTypeInt {
     CHALLENGE_RESPONSE,
     CHALLENGE_WRONG_ANSWER,
     DEVICE_IS_UNPAIRED,
-    DEVICE_CONNECT_COOLDOWN
+    DEVICE_CONNECT_COOLDOWN,
+    CONNECTION_APPROVAL_REQUEST,
+    CONNECTION_APPROVAL_DENIED
 };
 
 struct InitialConnectionData {
@@ -76,6 +78,7 @@ private:
 
     asio::awaitable<void> CoProcessConnectionVerificationEvent(std::string response);
     asio::awaitable<void> CoProcessConnectionPendingCallback(bool actionResult, InitialConnectionData data, std::string challenge);
+    asio::awaitable<void> CoProcessConnectionApprovalCallback(bool approved, InitialConnectionData data);
     asio::awaitable<void> CoPrimaryConnectionCallback(InitialConnectionData data);
     static std::string GeneratePairingCode();
 

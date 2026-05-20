@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Page {
@@ -11,6 +12,8 @@ Page {
     required property var clipboardSyncController
     required property var themeModes
     required property var showHomeCallback
+    property bool showBottomNavigation: true
+    property string downloadPathDraft: conn.defaultDownloadPath
 
     function currentFindMyPhoneRingtoneIndex() {
         const options = page.conn.findMyPhoneRingtoneOptions
@@ -30,6 +33,17 @@ Page {
 
     background: Rectangle {
         color: Theme.backgroundColor
+    }
+
+    FileDialog {
+        id: customRingtoneDialog
+        title: "Choose ringtone"
+        fileMode: FileDialog.OpenFile
+        nameFilters: [ "Audio files (*.mp3 *.m4a *.aac *.ogg *.wav *.flac)", "All files (*)" ]
+        onAccepted: {
+            if (selectedFile)
+                page.conn.setFindMyPhoneRingtoneFile(selectedFile)
+        }
     }
 
     component BottomNavButton: Button {
@@ -93,24 +107,18 @@ Page {
         spacing: 0
 
         ScrollView {
+            id: settingsScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: availableWidth
+            clip: true
 
             ColumnLayout {
+                id: settingsColumn
                 x: 16
                 y: 16
-                width: Math.max(page.width - 32, 320)
+                width: Math.max(0, settingsScroll.availableWidth - 32)
                 spacing: 12
-
-                Text {
-                    Layout.fillWidth: true
-                    text: "Settings"
-                    color: Theme.textColor
-                    font.pixelSize: 26
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                }
 
                 Frame {
                     Layout.fillWidth: true
@@ -224,7 +232,7 @@ Page {
                         spacing: 8
 
                         Text {
-                            text: "Clipboard Sync"
+                            text: "Auto Clipboard Sync"
                             color: Theme.textColor
                             font.pixelSize: 16
                             font.bold: true
@@ -295,6 +303,10 @@ Page {
                             textRole: "label"
                             currentIndex: page.currentFindMyPhoneRingtoneIndex()
                             focusPolicy: Qt.NoFocus
+                            onPressedChanged: {
+                                if (pressed)
+                                    page.conn.refreshFindMyPhoneRingtones()
+                            }
                             onActivated: {
                                 const selected = page.conn.findMyPhoneRingtoneOptions[currentIndex]
                                 if (!selected)
@@ -302,12 +314,86 @@ Page {
                                 page.conn.setFindMyPhoneRingtoneUri(selected.value)
                             }
                         }
+
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Choose Custom Ringtone"
+                            onClicked: customRingtoneDialog.open()
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: page.conn.findMyPhoneRingtoneLabel
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                        }
                     }
+                }
+
+                Frame {
+                    Layout.fillWidth: true
+                    background: Rectangle {
+                        radius: 14
+                        color: Theme.panelColor
+                        border.width: 1
+                        border.color: Theme.panelBorderColor
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        Text {
+                            text: "Downloads"
+                            color: Theme.textColor
+                            font.pixelSize: 16
+                            font.bold: true
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: "Folder on the desktop used for files shared from Android."
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 14
+                            wrapMode: Text.WordWrap
+                        }
+
+                        TextField {
+                            id: downloadPathField
+                            Layout.fillWidth: true
+                            text: page.downloadPathDraft
+                            placeholderText: "Desktop folder path"
+                            selectByMouse: true
+                            onTextEdited: page.downloadPathDraft = text
+                        }
+
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Save Default Download Path"
+                            enabled: page.downloadPathDraft.trim().length > 0
+                            onClicked: page.conn.setDefaultDownloadPath(page.downloadPathDraft)
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: page.conn.defaultDownloadPathStatus
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 16
                 }
             }
         }
 
         Frame {
+            visible: page.showBottomNavigation
             Layout.fillWidth: true
             padding: 10
             Material.elevation: 4
@@ -339,5 +425,13 @@ Page {
         }
     }
 
-    Component.onCompleted: page.conn.refreshFindMyPhoneRingtones()
+    Connections {
+        target: page.conn
+
+        function onDefaultDownloadPathChanged() {
+            page.downloadPathDraft = page.conn.defaultDownloadPath
+        }
+    }
+
+    Component.onCompleted: page.conn.refreshDefaultDownloadPath()
 }
