@@ -24,6 +24,7 @@ BuildQTExecutable(appLibreConnect_desktop
         Qt6::Qml
         Qt6::QuickControls2
         Qt6::Multimedia
+        Qt6::Widgets
         modules-manager
 )
 
