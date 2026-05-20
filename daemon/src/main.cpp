@@ -4,6 +4,17 @@
 #include <boost/uuid/uuid_generators.hpp>
 #include <nlohmann/json.hpp>
 
+#if defined(_WIN32)
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
+#else
+    #include <unistd.h>
+    #include <sys/types.h>
+    #include <sys/wait.h>
+#endif
+
 #include <fstream>
 
 #include <QCoreApplication>
@@ -32,8 +43,63 @@ void LoadDevicesToAutoConnect(std::vector<uuid>& devices) {
 }
 
 void StartInstance(const std::string& address, uint16_t port) {
-    Debug::Log("Auto-Connected to {}:{}", address, port);
-    // TODO
+    std::string port_str = std::to_string(port);
+
+#if defined(_WIN32)
+    std::string cmd = fmt::format("appLibreConnect_desktop.exe --port {} --address {}", port_str, address);
+
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+    std::vector<char> cmd_buffer(cmd.begin(), cmd.end());
+    cmd_buffer.push_back('\0');
+
+    const bool success = CreateProcessA(
+        nullptr,
+        cmd_buffer.data(),
+        nullptr,
+        nullptr,
+        false,
+        0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    if (success) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    } else {
+        Debug::LogError("Windows failed to start instance. Error: {}", GetLastError());
+    }
+
+#else
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        Debug::LogError("Fork failed!");
+        return;
+    }
+
+    if (pid == 0) {
+        const char* binary = "./appLibreConnect_desktop";
+        char* args[] = {
+            const_cast<char*>(binary),
+            const_cast<char*>("--port"),
+            const_cast<char*>(port_str.c_str()),
+            const_cast<char*>("--address"),
+            const_cast<char*>(address.c_str()),
+            nullptr
+        };
+
+        execv(binary, args);
+
+        std::cerr << "Failed to execute binary" << std::endl;
+        _exit(1);
+    } else {
+        signal(SIGCHLD, SIG_IGN);
+    }
+#endif
 }
 
 void LibreConnectLogHandler(const QtMsgType type, const QMessageLogContext& context, const QString& msg)

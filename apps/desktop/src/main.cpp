@@ -5,11 +5,17 @@
 #include <QDirIterator>
 #include <QStandardPaths>
 #include <QtQml>
+#include <QCommandLineParser>
 #include <QFontDatabase>
 #include <QFont>
 #include <QQuickStyle>
 #include <filesystem>
+#include <memory>
+#include <boost/uuid/nil_generator.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <ConnectionManager.h>
 #include <DebugLog.h>
+#include <Events.h>
 #include "DeviceDiscovery.h"
 #include "DeviceModel.h"
 #include "DeviceConnectionController.h"
@@ -24,6 +30,156 @@
 #include "VirtualCameraController.h"
 #endif
 #include "ThemeController.h"
+
+namespace
+{
+void AttachQmlCreationLogging(QQmlApplicationEngine& engine, QGuiApplication& app, const QUrl& url)
+{
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreationFailed,
+        &app,
+        []() {
+            Debug::LogError("Failed to create QML object");
+            QCoreApplication::exit(-1);
+        },
+        Qt::QueuedConnection);
+
+    QObject::connect(
+        &engine,
+        &QQmlApplicationEngine::objectCreated,
+        &app,
+        [url](QObject* obj, const QUrl& createdUrl) {
+            if (createdUrl != url) {
+                return;
+            }
+
+            if (!obj) {
+                qDebug() << "Failed to load QML at" << createdUrl;
+                return;
+            }
+
+            qDebug() << "Qml object created";
+        },
+        Qt::QueuedConnection);
+}
+
+class StartupConnectionListener final : public QObject
+{
+public:
+    explicit StartupConnectionListener(QGuiApplication& app)
+        : m_app(app)
+    {
+    }
+
+    void setMainWindow(QObject* mainWindow)
+    {
+        m_mainWindow = mainWindow;
+    }
+
+protected:
+    bool event(QEvent* event) override
+    {
+        switch (event->type()) {
+        case ConnectedEvent::Type: {
+            if (!m_waitingForConnection) {
+                return QObject::event(event);
+            }
+
+            const auto* connectedEvent = static_cast<ConnectedEvent*>(event);
+            m_waitingForConnection = false;
+
+            if (connectedEvent->GetResult() == EventResult::SUCCESS) {
+                m_connectedSuccessfully = true;
+
+                if (m_mainWindow) {
+                    const auto peerId = ConnectionManager::GetPeerUUID();
+                    const QString peerDeviceId = peerId == boost::uuids::nil_uuid()
+                        ? QString{}
+                        : QString::fromStdString(boost::uuids::to_string(peerId));
+
+                    m_mainWindow->setProperty("activeDeviceId", peerDeviceId);
+                    m_mainWindow->setProperty("activeDeviceName", QString::fromStdString(ConnectionManager::GetPeerDeviceName()));
+
+                    QMetaObject::invokeMethod(
+                        m_mainWindow,
+                        [mainWindow = m_mainWindow]() {
+                            if (!mainWindow) {
+                                return;
+                            }
+
+                            mainWindow->setProperty("startupConnectionPending", false);
+                        },
+                        Qt::QueuedConnection);
+                }
+            } else {
+                Debug::LogError("Startup connection failed");
+                QMetaObject::invokeMethod(&m_app, []() {
+                    QCoreApplication::exit(-1);
+                }, Qt::QueuedConnection);
+            }
+
+            return true;
+        }
+        case DisconnectedEvent::Type:
+            if (m_connectedSuccessfully) {
+                Debug::Log("Startup parameter connection was lost, closing application");
+                QMetaObject::invokeMethod(&m_app, &QCoreApplication::quit, Qt::QueuedConnection);
+                return true;
+            }
+
+            return QObject::event(event);
+        case ScannerErrorEvent::Type: {
+            if (!m_waitingForConnection) {
+                return QObject::event(event);
+            }
+
+            const auto* scannerErrorEvent = static_cast<ScannerErrorEvent*>(event);
+            m_waitingForConnection = false;
+
+            Debug::LogError(
+                "Startup connection failed during initial handshake: {}",
+                scannerErrorEvent->GetErrorCode().message());
+
+            QMetaObject::invokeMethod(&m_app, []() {
+                QCoreApplication::exit(-1);
+            }, Qt::QueuedConnection);
+            return true;
+        }
+        case DeviceNotPairedEvent::Type:
+            if (!m_waitingForConnection) {
+                return QObject::event(event);
+            }
+
+            m_waitingForConnection = false;
+            Debug::LogError("Startup connection failed because devices are not paired");
+            QMetaObject::invokeMethod(&m_app, []() {
+                QCoreApplication::exit(-1);
+            }, Qt::QueuedConnection);
+            return true;
+        case DeviceCooldownEvent::Type:
+            if (!m_waitingForConnection) {
+                return QObject::event(event);
+            }
+
+            m_waitingForConnection = false;
+            Debug::LogError("Startup connection failed because the remote device is temporarily blocking new attempts");
+            QMetaObject::invokeMethod(&m_app, []() {
+                QCoreApplication::exit(-1);
+            }, Qt::QueuedConnection);
+            return true;
+        default:
+            return QObject::event(event);
+        }
+    }
+
+private:
+    QGuiApplication& m_app;
+    QPointer<QObject> m_mainWindow;
+    bool m_waitingForConnection = true;
+    bool m_connectedSuccessfully = false;
+};
+}
 
 void LibreConnectLogHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
@@ -54,6 +210,17 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnect");
+
+    QCommandLineParser parser;
+    const QCommandLineOption portOption(QStringList() << "p" << "port", "The port number to connect to.", "port", "-1");
+    const QCommandLineOption addressOption(QStringList() << "a" << "address", "The address to connect to.", "address", "-1");
+
+    parser.addOption(portOption);
+    parser.addOption(addressOption);
+    parser.process(app);
+
+    const QString port = parser.value(portOption);
+    const QString address = parser.value(addressOption);
 
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {
@@ -100,33 +267,28 @@ int main(int argc, char *argv[])
     qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
 #endif
 
-    QObject::connect(
-        &engine,
-        &QQmlApplicationEngine::objectCreationFailed,
-        &app,
-        []() {
-            Debug::LogError("Failed to create QML object");
-            QCoreApplication::exit(-1);
-        },
-        Qt::QueuedConnection);
-
     const QUrl url = QUrl("qrc:/LibreConnect/desktop/MainWindow.qml");
+    AttachQmlCreationLogging(engine, app, url);
 
-    QObject::connect(&engine, &QQmlApplicationEngine::objectCreated, &app,
-                 [url](QObject *obj, const QUrl& urld) {
-                     if (!obj) {
-                         qDebug() << "Failed to load QML at" << urld;
-                     }
+    const bool startupConnectionRequested = port != "-1" && address != "-1";
+    std::unique_ptr<StartupConnectionListener> startupConnectionListener;
 
-                     if (url != urld) {
-                         qDebug() << "Qml url does not match url" << url;
-                     }
-
-                     qDebug() << "Qml object created";
-                 },
-                 Qt::QueuedConnection);
+    if (startupConnectionRequested) {
+        startupConnectionListener = std::make_unique<StartupConnectionListener>(app);
+        ConnectionManager::AddEventListener(QPointer<QObject>(startupConnectionListener.get()));
+        engine.setInitialProperties({{ QStringLiteral("startupConnectionPending"), true }});
+        ConnectionManager::StartAcceptingConnections();
+    }
 
     engine.load(url);
+
+    if (startupConnectionRequested) {
+        if (!engine.rootObjects().isEmpty()) {
+            startupConnectionListener->setMainWindow(engine.rootObjects().constFirst());
+        }
+
+        ConnectionManager::Connect(address.toStdString(), port.toUInt(), InitialConnectionMode::CONNECT_WITH_PAIR);
+    }
 
     return app.exec();
 }

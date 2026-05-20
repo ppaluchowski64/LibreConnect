@@ -362,7 +362,7 @@ asio::awaitable<void> LanDeviceScanner::Co_ReceiveResponses() {
                     *it = device;
                 } else {
                     m_discoveredDevices.push_back(device);
-                    Debug::Log("LanDeviceScanner::Co_ReceiveResponses discovered new device {} ({})", boost::uuids::to_string(device.deviceID), device.deviceAddress);
+                    Debug::Log("LanDeviceScanner::Co_ReceiveResponses discovered new device {} ({}:{})", boost::uuids::to_string(device.deviceID), device.deviceAddress, device.deviceAddressPort);
                 }
 
                 m_devicesLastProbe[device.deviceID] = GetTimeMS();

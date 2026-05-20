@@ -11,7 +11,8 @@ Window {
                                               | Qt.WindowMaximizeButtonHint
                                               | Qt.WindowCloseButtonHint
     flags: standardWindowFlags
-    visible: true
+    property bool startupConnectionPending: false
+    visible: !startupConnectionPending
     width: 740
     height: 420
     property bool homeMode: false
@@ -370,6 +371,9 @@ Window {
     }
 
     Component.onCompleted: {
+        if (startupConnectionPending)
+            return
+
         connectionController.refreshPairedDevices()
         if (connectionController.hasPairedDevices) {
             showPairedDevices()
