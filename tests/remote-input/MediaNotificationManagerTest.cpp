@@ -97,8 +97,7 @@ void InputLoop(std::atomic<bool>& running) {
             case 1:
                 MediaNotificationManager::Hide();
                 std::cout << "Notification hidden.\n";
-
-                break;
+            break;
 
             case 2:
                 g_currentPrompt = "Enter new Title: ";
@@ -111,8 +110,7 @@ void InputLoop(std::atomic<bool>& running) {
                     g_meta.title = buffer;
                     MediaNotificationManager::UpdateMetadata(g_meta);
                 }
-
-                break;
+            break;
 
             case 3:
                 g_currentPrompt = "Enter new Artist: ";
@@ -125,8 +123,7 @@ void InputLoop(std::atomic<bool>& running) {
                     g_meta.artist = buffer;
                     MediaNotificationManager::UpdateMetadata(g_meta);
                 }
-
-                break;
+            break;
 
             case 4:
                 g_currentPrompt = "Enter new Album: ";
@@ -139,8 +136,7 @@ void InputLoop(std::atomic<bool>& running) {
                     g_meta.album = buffer;
                     MediaNotificationManager::UpdateMetadata(g_meta);
                 }
-
-                break;
+            break;
 
             case 5: {
                 g_currentPrompt = "Enter new Duration (s): ";
