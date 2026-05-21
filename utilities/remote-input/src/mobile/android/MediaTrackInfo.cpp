@@ -16,7 +16,7 @@ namespace {
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_LibreConnect_mobile_MediaTrackListenerService_nativeOnTrackUpdate(
+Java_com_LibreConnect_mobile_NotificationListener_nativeOnTrackUpdate(
     JNIEnv* env, jobject /*thiz*/,
     jstring jTitle, jstring jArtist, jstring jAlbum,
     jlong jDurationMicros, jlong jPositionMicros,
@@ -82,7 +82,7 @@ void MediaTrackInfo::SetPosition(double seconds) {
     long long ms = static_cast<long long>(seconds * 1000.0);
 
     QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/MediaTrackListenerService",
+        "com/LibreConnect/mobile/NotificationListener",
         "setPosition",
         "(J)V",
         static_cast<jlong>(ms)
