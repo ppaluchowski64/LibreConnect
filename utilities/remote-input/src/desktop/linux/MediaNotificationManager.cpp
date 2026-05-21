@@ -57,13 +57,13 @@ namespace {
         public:
             MprisPlayer() : QObject(nullptr) {}
 
-            QString PlaybackStatus() const {
+            [[nodiscard]] QString PlaybackStatus() const {
                 (void)this;
                 std::lock_guard<std::mutex> lock(g_mutex);
                 return g_isPlaying ? "Playing" : "Paused";
             }
 
-            qlonglong Position() const {
+            [[nodiscard]] qlonglong Position() const {
                 (void)this;
                 std::lock_guard<std::mutex> lock(g_mutex);
                 double currentPos = MediaTrackInfo::CalculateInterpolatedPosition(g_position, g_lastUpdateMicros, g_isPlaying);
@@ -74,7 +74,7 @@ namespace {
                 return static_cast<qlonglong>(currentPos * 1000000.0);
             }
 
-            QVariantMap Metadata() const {
+            [[nodiscard]] QVariantMap Metadata() const {
                 (void)this;
                 std::lock_guard<std::mutex> lock(g_mutex);
                 QVariantMap map;
@@ -97,7 +97,7 @@ namespace {
                     QFile file(coverPath);
 
                     if (file.open(QIODevice::WriteOnly)) {
-                        file.write(reinterpret_cast<const char*>(g_metadata.cover.data()), g_metadata.cover.size());
+                        file.write(reinterpret_cast<const char*>(g_metadata.cover.data()), static_cast<qint64>(g_metadata.cover.size()));
                         file.close();
                         map["mpris:artUrl"] = "file://" + coverPath;
                     }
@@ -153,18 +153,18 @@ namespace {
                 (void)this;
 
                 if (g_seekCallback)
-                    g_seekCallback(Position() / 1000000.0 + (offset / 1000000.0));
+                    g_seekCallback(static_cast<double>(Position()) / 1000000.0 + static_cast<double>(offset) / 1000000.0);
             }
 
             void SetPosition(const QDBusObjectPath&, qlonglong pos) const {
                 (void)this;
 
                 if (g_seekCallback)
-                    g_seekCallback(pos / 1000000.0);
+                    g_seekCallback(static_cast<double>(pos) / 1000000.0);
             }
 
         signals:
-            void Seeked(qlonglong position);
+            void Seeked(qlonglong /*position*/);
     };
 
     MprisPlayer* g_player = nullptr;
@@ -266,7 +266,7 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
         NotifyPropertiesChanged();
 
     if (positionJumped && player) {
-        qlonglong dbusPos = static_cast<qlonglong>(position * 1000000.0);
+        auto dbusPos = static_cast<qlonglong>(position * 1000000.0);
         QMetaObject::invokeMethod(player, [player, dbusPos]() {
             emit player->Seeked(dbusPos);
         });

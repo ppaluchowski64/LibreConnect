@@ -71,7 +71,7 @@ std::vector<uint8_t> LoadFile(const std::string& path) {
     if (!file)
         return {};
 
-    return std::vector<uint8_t>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    return {std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
 }
 
 void InputLoop(std::atomic<bool>& running) {
@@ -226,7 +226,7 @@ void InputLoop(std::atomic<bool>& running) {
                 running = false;
 
                 #ifdef __linux__
-                    QCoreApplication::quit();
+                    QCoreApplication::exit(0);
                 #endif
 
                 return;
@@ -241,7 +241,7 @@ void InputLoop(std::atomic<bool>& running) {
     running = false;
 
     #ifdef __linux__
-        QCoreApplication::quit();
+        QCoreApplication::exit(0);
     #endif
 }
 
@@ -320,7 +320,7 @@ int main(int argc, char** argv) {
     std::thread monitorThread(PlaybackMonitorLoop, std::ref(running));
 
     #ifdef __linux__
-        app.exec();
+        QCoreApplication::exec();
     #else
         while (running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
