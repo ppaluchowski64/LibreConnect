@@ -24,6 +24,8 @@ namespace {
     }
 }
 
+extern "C" void LibreConnect_mediaTrackInfoJniAnchor();
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_LibreConnect_mobile_MediaNotificationBridge_nativeOnMediaAction(JNIEnv* /*env*/, jclass /*clazz*/, jint keyCode) {
     std::function<void(MediaSignal)> callback; {
@@ -47,6 +49,8 @@ Java_com_LibreConnect_mobile_MediaNotificationBridge_nativeOnSeek(JNIEnv* /*env*
 }
 
 void MediaNotificationManager::SetActionCallback(const std::function<void(MediaSignal)>& callback) {
+    LibreConnect_mediaTrackInfoJniAnchor();
+
     std::lock_guard<std::mutex> lock(g_callbackMutex);
     g_actionCallback = callback;
 }

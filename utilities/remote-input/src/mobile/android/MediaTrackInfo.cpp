@@ -54,6 +54,8 @@ Java_com_LibreConnect_mobile_MediaTrackListenerService_nativeOnTrackUpdate(
     g_state = std::move(state);
 }
 
+extern "C" void LibreConnect_mediaTrackInfoJniAnchor() {}
+
 std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
     std::unique_lock<std::mutex> lock(g_mutex);
 

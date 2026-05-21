@@ -67,12 +67,19 @@ class MediaTrackListenerService : NotificationListenerService() {
     }
 
     private fun updateActiveController(controllers: List<MediaController>?) {
-        if (controllers.isNullOrEmpty())
-            return
+        val remoteControllers = controllers
+            ?.filterNot { it.packageName == packageName }
+            .orEmpty()
 
-        val activeController = controllers.firstOrNull {
+        if (remoteControllers.isEmpty()) {
+            currentController?.unregisterCallback(controllerCallback)
+            currentController = null
+            return
+        }
+
+        val activeController = remoteControllers.firstOrNull {
             it.playbackState?.state == PlaybackState.STATE_PLAYING
-        } ?: controllers.firstOrNull()
+        } ?: remoteControllers.firstOrNull()
 
         if (currentController != activeController) {
             currentController?.unregisterCallback(controllerCallback)
@@ -105,7 +112,9 @@ class MediaTrackListenerService : NotificationListenerService() {
             coverData = stream.toByteArray()
         }
 
-        nativeOnTrackUpdate(title, artist, album, durationMs * 1000L, positionMs * 1000L, isPlaying, coverData)
+        try {
+            nativeOnTrackUpdate(title, artist, album, durationMs * 1000L, positionMs * 1000L, isPlaying, coverData)
+        } catch (_: UnsatisfiedLinkError) {}
     }
 
     external fun nativeOnTrackUpdate(
