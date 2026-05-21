@@ -7,6 +7,7 @@
 #include <QtQml>
 #include <QFontDatabase>
 #include <QFont>
+#include <QIcon>
 #include <QQuickStyle>
 #include <filesystem>
 #include <DebugLog.h>
@@ -54,6 +55,8 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnect");
+    app.setDesktopFileName(QStringLiteral("libreconnect"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
 
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {

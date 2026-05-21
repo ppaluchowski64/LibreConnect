@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <sys/wait.h>
+#include <fcntl.h>
 #include <unistd.h>
 
 namespace {
@@ -54,7 +55,7 @@ std::string ResolveExecutablePath(const std::string& executable) {
     return executable;
 }
 
-int RunCommand(const std::vector<std::string>& args) {
+int RunCommand(const std::vector<std::string>& args, const bool quietStderr = false) {
     if (args.empty()) {
         return 1;
     }
@@ -72,6 +73,14 @@ int RunCommand(const std::vector<std::string>& args) {
     }
 
     if (pid == 0) {
+        if (quietStderr) {
+            const int devNull = open("/dev/null", O_WRONLY);
+            if (devNull >= 0) {
+                dup2(devNull, STDERR_FILENO);
+                close(devNull);
+            }
+        }
+
         execvp(execArgs[0], execArgs.data());
         _exit(127);
     }
@@ -131,6 +140,24 @@ int main(int argc, char** argv) {
             "delete",
             videoNumber
         };
+
+        args[0] = ResolveExecutablePath(args[0]);
+        if (RunCommand(args, true) == 0) {
+            return 0;
+        }
+
+        args = {
+            args[0],
+            "delete",
+            "/dev/video" + videoNumber
+        };
+
+        if (RunCommand(args, true) == 0) {
+            return 0;
+        }
+
+        std::cerr << "Failed to remove v4l2loopback device /dev/video" << videoNumber << '\n';
+        return 1;
     }
     else {
         std::cerr << "Unknown command\n";

@@ -494,11 +494,14 @@ void StartWatcher(const int videoID, const int fd, const pid_t parentPid) {
         return;
     }
 
+    if (fd >= 0) {
+        close(fd);
+    }
+
     setsid();
 
     while (true) {
         if (kill(parentPid, 0) == -1) {
-            close(fd);
             (void)RemoveLoopbackDevice(videoID);
             _exit(0);
         }

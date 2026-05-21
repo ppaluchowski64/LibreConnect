@@ -276,15 +276,18 @@ function(DeployQT Target)
         set(CUSTOM_LD_LIB_PATHS
                 "${CMAKE_SOURCE_DIR}/build/ffmpeg/lib"
         )
-        set(DESKTOP_FILE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${Target}.desktop")
+        set(DESKTOP_FILE_NAME "${Target}.desktop")
         set(ICON_FILE_PATH "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.png")
         set(DESKTOP_ENTRY_NAME "${Target}")
         set(DESKTOP_ENTRY_COMMENT "${Target}")
 
         if(Target STREQUAL "appLibreConnect_desktop")
+            set(DESKTOP_FILE_NAME "libreconnect.desktop")
             set(DESKTOP_ENTRY_NAME "LibreConnect")
             set(DESKTOP_ENTRY_COMMENT "LibreConnect Desktop")
         endif()
+
+        set(DESKTOP_FILE_PATH "${CMAKE_CURRENT_BINARY_DIR}/${DESKTOP_FILE_NAME}")
 
         # On Linux the desktop entry controls whether the GUI app requests a terminal.
         file(WRITE "${DESKTOP_FILE_PATH}"
