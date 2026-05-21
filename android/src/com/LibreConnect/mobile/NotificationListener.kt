@@ -5,6 +5,10 @@ import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
+import android.media.MediaMetadata
+import android.media.session.MediaController
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -28,8 +32,20 @@ class NotificationListener : NotificationListenerService() {
     private val extraSubstituteAppNameKey = "android.substName"
     private val trackedNotificationKeys = mutableSetOf<String>()
     private var initialSyncCompleted = false
+    private var mediaSessionManager: MediaSessionManager? = null
+    private var currentMediaController: MediaController? = null
+
     external fun onNotificationReceivedCPP(key: String, appName: String?, title: String?, content: String?, timestamp: Long, dismissable: Boolean, largeIconBytes: ByteArray?, mainImage: ByteArray?)
     external fun onNotificationRemovedCPP(key: String)
+    external fun nativeOnTrackUpdate(
+        title: String,
+        artist: String,
+        album: String,
+        durationMicros: Long,
+        positionMicros: Long,
+        isPlaying: Boolean,
+        coverData: ByteArray?
+    )
 
     companion object {
         @Volatile
@@ -37,6 +53,11 @@ class NotificationListener : NotificationListenerService() {
 
         @Volatile
         private var instance: NotificationListener? = null
+
+        @JvmStatic
+        fun setPosition(positionMs: Long) {
+            instance?.currentMediaController?.transportControls?.seekTo(positionMs)
+        }
 
         @JvmStatic
         fun requestSync(context: Context) {
@@ -132,10 +153,12 @@ class NotificationListener : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        mediaSessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as MediaSessionManager
         Log.i(tag, "Notification listener created.")
     }
 
     override fun onDestroy() {
+        stopMediaSessionTracking()
         instance = null
         super.onDestroy()
         Log.i(tag, "Notification listener destroyed.")
@@ -160,6 +183,7 @@ class NotificationListener : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         Log.i(tag, "Notification listener connected.")
+        startMediaSessionTracking()
 
         if (!ensureNativeLoaded(this)) {
             Log.e(tag, "Skipping listener sync because native library is not loaded.")
@@ -174,6 +198,96 @@ class NotificationListener : NotificationListenerService() {
         Log.w(tag, "Notification listener disconnected.")
         trackedNotificationKeys.clear()
         initialSyncCompleted = false
+        stopMediaSessionTracking()
+    }
+
+    private val mediaSessionListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
+        updateActiveMediaController(controllers)
+    }
+
+    private val mediaControllerCallback = object : MediaController.Callback() {
+        override fun onPlaybackStateChanged(state: PlaybackState?) {
+            sendTrackInfo()
+        }
+
+        override fun onMetadataChanged(metadata: MediaMetadata?) {
+            sendTrackInfo()
+        }
+    }
+
+    private fun startMediaSessionTracking() {
+        val componentName = ComponentName(this, NotificationListener::class.java)
+
+        try {
+            mediaSessionManager?.removeOnActiveSessionsChangedListener(mediaSessionListener)
+            mediaSessionManager?.addOnActiveSessionsChangedListener(mediaSessionListener, componentName)
+            updateActiveMediaController(mediaSessionManager?.getActiveSessions(componentName))
+        } catch (e: SecurityException) {
+            Log.w(tag, "Unable to track active media sessions.", e)
+        }
+    }
+
+    private fun stopMediaSessionTracking() {
+        mediaSessionManager?.removeOnActiveSessionsChangedListener(mediaSessionListener)
+        currentMediaController?.unregisterCallback(mediaControllerCallback)
+        currentMediaController = null
+    }
+
+    private fun updateActiveMediaController(controllers: List<MediaController>?) {
+        val remoteControllers = controllers
+            ?.filterNot { it.packageName == packageName }
+            .orEmpty()
+
+        if (remoteControllers.isEmpty()) {
+            currentMediaController?.unregisterCallback(mediaControllerCallback)
+            currentMediaController = null
+            return
+        }
+
+        val activeController = remoteControllers.firstOrNull {
+            it.playbackState?.state == PlaybackState.STATE_PLAYING
+        } ?: remoteControllers.firstOrNull()
+
+        if (currentMediaController != activeController) {
+            currentMediaController?.unregisterCallback(mediaControllerCallback)
+            currentMediaController = activeController
+            currentMediaController?.registerCallback(mediaControllerCallback)
+            sendTrackInfo()
+        }
+    }
+
+    private fun sendTrackInfo() {
+        if (!ensureNativeLoaded(this)) {
+            Log.e(tag, "Skipping media track callback because native library is not loaded.")
+            return
+        }
+
+        val controller = currentMediaController ?: return
+        val metadata = controller.metadata
+        val state = controller.playbackState
+
+        val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: ""
+        val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: ""
+        val album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
+        val durationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+        val positionMs = state?.position ?: 0L
+        val isPlaying = state?.state == PlaybackState.STATE_PLAYING
+
+        var coverData: ByteArray? = null
+        val bitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+
+        if (bitmap != null) {
+            val stream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+            coverData = stream.toByteArray()
+        }
+
+        try {
+            nativeOnTrackUpdate(title, artist, album, durationMs * 1000L, positionMs * 1000L, isPlaying, coverData)
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(tag, "JNI method nativeOnTrackUpdate is missing or failed.", e)
+        }
     }
 
     private fun syncActiveNotificationsToCpp(force: Boolean = false) {
