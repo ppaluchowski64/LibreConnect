@@ -91,6 +91,8 @@ V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
 LINUX_INSTALL_SCRIPTS_DIR="${ROOT_DIR}/scripts/linux/install"
 POSTINST_TEMPLATE="${SCRIPT_DIR}/postinst.sh"
 PRERM_TEMPLATE="${SCRIPT_DIR}/prerm.sh"
+SOURCE_ICON="${ROOT_DIR}/apps/desktop/res/libreconnect_logo.png"
+ICON_NAME="libreconnect_logo.png"
 
 if [[ ! -d "$DEPLOY_DIR" ]]; then
     echo "Deploy directory not found: $DEPLOY_DIR" >&2
@@ -114,6 +116,11 @@ fi
 
 if [[ ! -f "$POSTINST_TEMPLATE" || ! -f "$PRERM_TEMPLATE" ]]; then
     echo "Maintainer script templates missing in $SCRIPT_DIR" >&2
+    exit 1
+fi
+
+if [[ ! -f "$SOURCE_ICON" ]]; then
+    echo "Source icon not found: $SOURCE_ICON" >&2
     exit 1
 fi
 
@@ -206,9 +213,19 @@ Terminal=false
 Categories=Network;Utility;
 EOF
 
-if [[ -f "${DEPLOY_DIR}/usr/share/icons/hicolor/512x512/apps/libreconnect_logo.png" ]]; then
-    cp -a "${DEPLOY_DIR}/usr/share/icons/hicolor/512x512/apps/libreconnect_logo.png" \
-        "${PKG_ROOT}/usr/share/icons/hicolor/512x512/apps/libreconnect_logo.png"
+if [[ -d "${DEPLOY_DIR}/usr/share/icons/hicolor" ]]; then
+    cp -a "${DEPLOY_DIR}/usr/share/icons/hicolor/." \
+        "${PKG_ROOT}/usr/share/icons/hicolor/"
+fi
+
+if [[ ! -f "${PKG_ROOT}/usr/share/icons/hicolor/512x512/apps/${ICON_NAME}" ]]; then
+    install -Dm0644 "${SOURCE_ICON}" \
+        "${PKG_ROOT}/usr/share/icons/hicolor/512x512/apps/${ICON_NAME}"
+fi
+
+if [[ ! -s "${PKG_ROOT}/usr/share/icons/hicolor/512x512/apps/${ICON_NAME}" ]]; then
+    echo "Packaged icon is missing or empty: /usr/share/icons/hicolor/512x512/apps/${ICON_NAME}" >&2
+    exit 1
 fi
 
 if [[ -f "${V4L2_HELPER_BIN}" ]]; then

@@ -21,8 +21,6 @@ class MediaTrackInfo {
         static std::optional<TrackMetadata> GetCurrentTrack();
         static void SetPosition(double seconds);
         static bool SaveCoverToFile(const TrackMetadata& metadata, const std::string& path);
-
-    private:
         static double CalculateInterpolatedPosition(double rawPosition, int64_t lastUpdateMicros, bool isPlaying);
 };
 
