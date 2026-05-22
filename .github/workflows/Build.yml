@@ -225,7 +225,7 @@ jobs:
           export LD_LIBRARY_PATH="$DIR/usr/lib:$LD_LIBRARY_PATH"
           export QT_PLUGIN_PATH="$DIR/usr/plugins"
           export QML2_IMPORT_PATH="$DIR/usr/qml"
-          "$DIR/appLibreConnect_desktop"
+          "$DIR/usr/bin/LibreConnect"
           EOF
 
           chmod +x "$DEPLOY_DIR/run.sh"
@@ -367,7 +367,7 @@ jobs:
           export LD_LIBRARY_PATH="$DIR/usr/lib:$LD_LIBRARY_PATH"
           export QT_PLUGIN_PATH="$DIR/usr/plugins"
           export QML2_IMPORT_PATH="$DIR/usr/qml"
-          "$DIR/appLibreConnect_desktop"
+          "$DIR/usr/bin/LibreConnect"
           EOF
 
           chmod +x "$DEPLOY_DIR/run.sh"
@@ -450,7 +450,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.ref_name }}-build-application-macOS-Latest
-          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/appLibreConnect_desktop.dmg
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/*.dmg
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

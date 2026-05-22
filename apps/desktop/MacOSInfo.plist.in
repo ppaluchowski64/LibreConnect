@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>English</string>
     <key>CFBundleExecutable</key>
-    <string>appLibreConnect_desktop</string>
+    <string>LibreConnect</string>
     <key>CFBundleIconFile</key>
     <string>libreconnect_logo.icns</string>
     <key>CFBundleIdentifier</key>
