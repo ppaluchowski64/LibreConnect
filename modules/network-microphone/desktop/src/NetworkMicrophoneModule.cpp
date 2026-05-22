@@ -146,6 +146,9 @@ void NetworkMicrophoneModule::EnableResponseCallbacks() {
         const bool peerEnabled = package->GetValue<bool>();
         Debug::Log("NetworkMicrophoneModule: Peer module state changed: {}", peerEnabled);
         instance->m_peerModuleEnabled.store(peerEnabled);
+        if (!peerEnabled) {
+            instance->Disable(true);
+        }
     });
 }
 

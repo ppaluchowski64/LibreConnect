@@ -523,3 +523,28 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
 
     env->CallStaticVoidMethod(utilsClass, shareMethod, obj);
 }
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeDisableCameraModule(
+    JNIEnv*,
+    jobject)
+{
+    std::lock_guard<std::mutex> lock(g_backendMutex);
+    if (!g_backendRunning) {
+        return;
+    }
+    auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
+    module->Disable(true);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeDisableMicrophoneModule(
+    JNIEnv*,
+    jobject)
+{
+    std::lock_guard<std::mutex> lock(g_backendMutex);
+    if (!g_backendRunning) {
+        return;
+    }
+    auto& module = ModulesManager::GetModuleReference<NetworkMicrophoneModule>();
+    module->Disable(true);
+}
+
