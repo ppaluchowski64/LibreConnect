@@ -23,8 +23,20 @@ void DaemonClient::ConnectedSignal(const uuid uuid) {
     Send(DaemonPackage::CONNECTED, uuid, GetPid());
 }
 
-void DaemonClient::RequestConnectedWindow(const uuid uuid) {
+asio::awaitable<bool> DaemonClient::RequestConnectedWindow(const uuid uuid) {
+    const auto flag = std::make_shared<AwaitableFlag>(m_socket.get_executor());
+    m_windowRequestFlags.InsertOrAssign(uuid, flag);
+    
     Send(DaemonPackage::REQUEST_CONNECTED_WINDOW, uuid);
+
+    const auto result = co_await flag->WaitFor(std::chrono::seconds(1));
+
+    m_windowRequestFlags.Erase(uuid);
+    if (result == AwaitableFlag::Result::TIMEOUT) {
+        co_return false;
+    }
+
+    co_return m_windowRequestResults.Pop(uuid).value_or(false);
 }
 
 DaemonClient::DaemonClient() : m_socket(ThreadPool::GetContext()) {}
@@ -53,6 +65,19 @@ asio::awaitable<void> DaemonClient::CoReceive() {
 
             const auto package = std::make_unique<Package<DaemonPackage>>(header);
             co_await asio::async_read(m_socket, asio::buffer(package->GetRawBody(), header.size), asio::use_awaitable);
+
+            const DaemonPackage type = static_cast<DaemonPackage>(header.type);
+            if (type == DaemonPackage::REQUEST_CONNECTED_WINDOW_RESPONSE) {
+                uuid id{};
+                bool result{false};
+                package->GetValue(id);
+                package->GetValue(result);
+
+                if (auto flag = m_windowRequestFlags.Get(id)) {
+                    m_windowRequestResults.InsertOrAssign(id, result);
+                    flag.value()->Signal();
+                }
+            }
         }
     } catch (...) {}
 }

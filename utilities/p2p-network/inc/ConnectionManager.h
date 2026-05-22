@@ -122,6 +122,10 @@ private:
 
     std::atomic<size_t> m_currentRequestID{0};
 
+#if defined(DESKTOP_DEVICE)
+    std::shared_ptr<DaemonClient> m_signalSender{nullptr};
+#endif
+
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
     ConcurrentUnorderedMap<size_t, std::shared_ptr<AwaitableFlag>> m_requestAwaitableMap;
     ConcurrentUnorderedMap<size_t, std::unique_ptr<Package<PC_PackageType>>> m_requestPackageMap;

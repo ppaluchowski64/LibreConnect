@@ -12,6 +12,7 @@
 #include <nlohmann/json.hpp>
 #include <ThreadPool.h>
 #include <boost/uuid/string_generator.hpp>
+#include <Scanner.h>
 
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
@@ -40,6 +41,7 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
         ? data.deviceInfo.deviceID
         : boost::uuids::nil_uuid();
     const bool allowUnpinnedPairing = data.initialConnectionMode == InitialConnectionMode::PAIR_AND_CONNECT;
+
 
     s_instance->m_sslContextClient = CreateSSLContext(false, targetUUID, allowUnpinnedPairing);
     s_instance->m_sslContextServer = CreateSSLContext(true, targetUUID, allowUnpinnedPairing);
@@ -128,8 +130,41 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
         return;
     }
 
+    const std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
+    uuid deviceID{};
+
+    for (const auto& device : devices) {
+        if (device.deviceAddress == address && device.deviceAddressPort == port) {
+            deviceID = device.deviceID;
+        }
+    }
+
+#if defined(DESKTOP_DEVICE)
+
+    asio::co_spawn(s_instance->m_context, [address, port, mode, deviceID]() -> asio::awaitable<void> {
+        if (deviceID != boost::uuids::nil_uuid()) {
+            if (!s_instance->m_signalSender) {
+                s_instance->m_signalSender = DaemonClient::Create();
+            }
+
+            if (s_instance->m_signalSender) {
+                const bool alreadyConnected = co_await s_instance->m_signalSender->RequestConnectedWindow(deviceID);
+                if (alreadyConnected) {
+                    Debug::Log("ConnectionManager: Window already exists for device {}, closing program", boost::uuids::to_string(deviceID));
+                    exit(0);
+                }
+            }
+        }
+
+        TCPEndpoint endpoint(asio::ip::make_address_v4(address), port);
+        s_instance->m_initialConnectionOut->Connect(std::move(endpoint), mode);
+        co_return;
+    }, asio::detached);
+
+#else
     TCPEndpoint endpoint(asio::ip::make_address_v4(address), port);
     s_instance->m_initialConnectionOut->Connect(std::move(endpoint), mode);
+#endif
 }
 
 std::vector<DeviceInfoLite> ConnectionManager::GetPairedDevices() {
@@ -228,6 +263,13 @@ bool ConnectionManager::RemovePairedDevice(const std::string& deviceId) {
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Disconnecting primary connection. Reason: {}", errorCode.message());
+
+#if defined(DESKTOP_DEVICE)
+    if (s_instance->m_signalSender) {
+        DaemonClient::Destroy(s_instance->m_signalSender);
+        s_instance->m_signalSender.reset();
+    }
+#endif
 
     CancelPendingRequests();
     s_instance->m_primaryConnection->Disconnect(errorCode, true);

@@ -84,10 +84,6 @@ private:
     std::mutex m_peerDataMutex;
     std::optional<DeviceInfo> m_peerData;
 
-#if defined(DESKTOP_DEVICE)
-    std::shared_ptr<DaemonClient> m_signalSender{nullptr};
-#endif
-
     AwaitableFlag m_sendFlag;
     std::shared_ptr<AwaitableFlag> m_receiveFlag;
 

@@ -5,6 +5,8 @@
 #include <DaemonCommon.h>
 #include <Package.h>
 #include <memory>
+#include <AwaitableFlag.h>
+#include <ConcurrentUnorderedMap.h>
 
 class DaemonClient : public std::enable_shared_from_this<DaemonClient> {
 public:
@@ -13,7 +15,7 @@ public:
     static void Destroy(const std::shared_ptr<DaemonClient>& client);
 
     void ConnectedSignal(uuid uuid);
-    void RequestConnectedWindow(uuid uuid);
+    asio::awaitable<bool> RequestConnectedWindow(uuid uuid);
 
 private:
     template <Serializable... Args>
@@ -41,6 +43,8 @@ private:
     asio::awaitable<void> CoReceive();
 
     TCPSocket m_socket;
+    ConcurrentUnorderedMap<uuid, std::shared_ptr<AwaitableFlag>> m_windowRequestFlags;
+    ConcurrentUnorderedMap<uuid, bool> m_windowRequestResults;
 };
 
 #endif //DAEMON_CLIENT_H

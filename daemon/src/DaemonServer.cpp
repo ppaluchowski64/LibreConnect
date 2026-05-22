@@ -94,17 +94,19 @@ asio::awaitable<void> DaemonServer::ProcessClient(std::shared_ptr<ClientData> cl
                 {
                     std::lock_guard<std::mutex> lock(m_clientsMutex);
 
-                    for (const auto& cl : m_clients) {
-                        if (cl->m_uuid == id) {
-                            Send(client, DaemonPackage::REQUEST_CONNECTED_WINDOW_RESPONSE, true);
-                            found = true;
-                            break;
+                    if (id != uuid{}) {
+                        for (const auto& cl : m_clients) {
+                            if (cl != client && cl->m_uuid == id) {
+                                Send(client, DaemonPackage::REQUEST_CONNECTED_WINDOW_RESPONSE, id, true);
+                                found = true;
+                                break;
+                            }
                         }
                     }
                 }
 
                 if (!found) {
-                    Send(client, DaemonPackage::REQUEST_CONNECTED_WINDOW_RESPONSE, false);
+                    Send(client, DaemonPackage::REQUEST_CONNECTED_WINDOW_RESPONSE, id, false);
                 }
 
                 break;
