@@ -1,8 +1,19 @@
 #include <Scanner.h>
-#include <SignalReceiver.h>
+#include <DaemonServer.h>
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <nlohmann/json.hpp>
+
+#if defined(_WIN32)
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
+#else
+    #include <unistd.h>
+    #include <sys/types.h>
+    #include <sys/wait.h>
+#endif
 
 #include <fstream>
 
@@ -32,8 +43,63 @@ void LoadDevicesToAutoConnect(std::vector<uuid>& devices) {
 }
 
 void StartInstance(const std::string& address, uint16_t port) {
-    Debug::Log("Auto-Connected to {}:{}", address, port);
-    // TODO
+    std::string port_str = std::to_string(port);
+
+#if defined(_WIN32)
+    std::string cmd = fmt::format("appLibreConnect_desktop.exe --port {} --address {} --hidden", port_str, address);
+
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi;
+    std::vector<char> cmd_buffer(cmd.begin(), cmd.end());
+    cmd_buffer.push_back('\0');
+
+    const bool success = CreateProcessA(
+        nullptr,
+        cmd_buffer.data(),
+        nullptr,
+        nullptr,
+        false,
+        0,
+        nullptr,
+        nullptr,
+        &si,
+        &pi
+    );
+
+    if (success) {
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+    } else {
+        Debug::LogError("Windows failed to start instance. Error: {}", GetLastError());
+    }
+
+#else
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        Debug::LogError("Fork failed!");
+        return;
+    }
+
+    if (pid == 0) {
+        const char* binary = "./appLibreConnect_desktop";
+        char* args[] = {
+            const_cast<char*>(binary),
+            const_cast<char*>("--port"),
+            const_cast<char*>(port_str.c_str()),
+            const_cast<char*>("--address"),
+            const_cast<char*>(address.c_str()),
+            const_cast<char*>("--hidden"),
+            nullptr
+        };
+
+        execv(binary, args);
+        Debug::LogError("Failed to execute binary");
+        _exit(1);
+    } else {
+        signal(SIGCHLD, SIG_IGN);
+    }
+#endif
 }
 
 void LibreConnectLogHandler(const QtMsgType type, const QMessageLogContext& context, const QString& msg)
@@ -90,7 +156,8 @@ int main(int argc, char *argv[]) {
     }
 
     LanDeviceScanner::BeginScan(LanDeviceScanner::Options{false, false});
-    SignalReceiver::StartReceiving();
+    auto daemonServer = std::make_shared<DaemonServer>();
+    daemonServer->Start();
 
     std::vector<uuid> autoConnectDevices{};
 
@@ -98,7 +165,7 @@ int main(int argc, char *argv[]) {
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_DURATION));
 
         std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
-        std::vector<uuid> connectedDevices = SignalReceiver::GetConnectedDevices();
+        std::vector<uuid> connectedDevices = daemonServer->GetConnectedDevices();
         LoadDevicesToAutoConnect(autoConnectDevices);
 
         for (const auto& device : devices) {

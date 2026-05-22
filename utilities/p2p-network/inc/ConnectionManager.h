@@ -15,7 +15,7 @@
 #include <boost/uuid/nil_generator.hpp>
 
 #if defined(DESKTOP_DEVICE)
-#include <SignalSender.h>
+#include <DaemonClient.h>
 #endif
 
 enum class InitialConnectionMode : uint8_t;
@@ -121,6 +121,10 @@ private:
     std::shared_ptr<SSLContext_> m_sslContextServer;
 
     std::atomic<size_t> m_currentRequestID{0};
+
+#if defined(DESKTOP_DEVICE)
+    std::shared_ptr<DaemonClient> m_signalSender{nullptr};
+#endif
 
     std::shared_ptr<PrimaryConnection> m_primaryConnection;
     ConcurrentUnorderedMap<size_t, std::shared_ptr<AwaitableFlag>> m_requestAwaitableMap;

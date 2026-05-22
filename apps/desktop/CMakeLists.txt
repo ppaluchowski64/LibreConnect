@@ -24,6 +24,7 @@ BuildQTExecutable(appLibreConnect_desktop
         Qt6::Qml
         Qt6::QuickControls2
         Qt6::Multimedia
+        Qt6::Widgets
         modules-manager
 )
 
@@ -39,6 +40,14 @@ if (APPLE AND NOT IOS)
             "-framework AppKit"
     )
 endif()
+
+add_custom_command(TARGET appLibreConnect_desktop POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:desktop-daemon>
+        $<TARGET_FILE_DIR:appLibreConnect_desktop>
+        COMMENT "Copying desktop-daemon to appLibreConnect_desktop output directory..."
+        VERBATIM
+)
 
 BundleMediaRemoteAdapter(appLibreConnect_desktop)
 
