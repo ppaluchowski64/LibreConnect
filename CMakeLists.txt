@@ -2,6 +2,18 @@ cmake_minimum_required(VERSION 3.20)
 project(p_connect LANGUAGES CXX C)
 enable_language(ASM)
 
+set(LIBRECONNECT_VERSION_FILE "${CMAKE_SOURCE_DIR}/VERSION")
+if(EXISTS "${LIBRECONNECT_VERSION_FILE}")
+    file(READ "${LIBRECONNECT_VERSION_FILE}" LIBRECONNECT_APP_VERSION)
+    string(STRIP "${LIBRECONNECT_APP_VERSION}" LIBRECONNECT_APP_VERSION)
+else()
+    message(FATAL_ERROR "VERSION file not found at ${LIBRECONNECT_VERSION_FILE}")
+endif()
+
+if(NOT LIBRECONNECT_APP_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "VERSION must contain a numeric x.y.z version, got '${LIBRECONNECT_APP_VERSION}'")
+endif()
+
 if (APPLE AND NOT IOS)
     enable_language(OBJCXX)
 endif ()
@@ -115,6 +127,7 @@ endif ()
 qt_standard_project_setup()
 
 add_library(project_defaults)
+target_compile_definitions(project_defaults PUBLIC "LIBRECONNECT_APP_VERSION=\"${LIBRECONNECT_APP_VERSION}\"")
 
 if (IOS)
     target_compile_definitions(project_defaults PUBLIC IOS_DEVICE)

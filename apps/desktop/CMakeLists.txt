@@ -32,8 +32,8 @@ if (APPLE AND NOT IOS)
             MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/MacOSInfo.plist.in"
             MACOSX_BUNDLE_BUNDLE_NAME "LibreConnect"
             MACOSX_BUNDLE_GUI_IDENTIFIER "com.libreconnect.desktop"
-            MACOSX_BUNDLE_BUNDLE_VERSION "1.0"
-            MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${LIBRECONNECT_APP_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${LIBRECONNECT_APP_VERSION}"
     )
     target_link_libraries(appLibreConnect_desktop PRIVATE
             "-framework AppKit"

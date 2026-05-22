@@ -19,6 +19,31 @@ allprojects {
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+def findLibreConnectVersionFile = { File startDir ->
+    File currentDir = startDir
+    while (currentDir != null) {
+        File candidate = new File(currentDir, "VERSION")
+        if (candidate.exists()) {
+            return candidate
+        }
+        currentDir = currentDir.parentFile
+    }
+    return null
+}
+
+def libreConnectVersionFile = findLibreConnectVersionFile(projectDir)
+if (libreConnectVersionFile == null) {
+    throw new GradleException("VERSION file not found from Gradle project directory '${projectDir}'")
+}
+def libreConnectVersion = libreConnectVersionFile.text.trim()
+if (!(libreConnectVersion ==~ /\d+\.\d+\.\d+/)) {
+    throw new GradleException("VERSION must contain a numeric x.y.z version, got '${libreConnectVersion}'")
+}
+def libreConnectVersionParts = libreConnectVersion.tokenize('.').collect { it as int }
+def libreConnectVersionCode = libreConnectVersionParts[0] * 10000 +
+        libreConnectVersionParts[1] * 100 +
+        libreConnectVersionParts[2]
+
 android {
     compileSdk 34
     namespace "com.LibreConnect.mobile"
@@ -46,8 +71,8 @@ android {
         applicationId "com.LibreConnect.mobile"
         minSdkVersion 28
         targetSdkVersion 34
-        versionCode 1
-        versionName "1.0"
+        versionCode libreConnectVersionCode
+        versionName libreConnectVersion
     }
 
     packagingOptions {

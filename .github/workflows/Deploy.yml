@@ -1,16 +1,16 @@
 name: Deploy
 
 on:
+  workflow_run:
+    workflows: [ "Build" ]
+    types: [ completed ]
   workflow_dispatch:
     inputs:
-      version:
-        description: Version used in installer filenames (example 1.2.3)
-        required: true
-        type: string
       release_name:
-        description: GitHub Release title
-        required: true
+        description: GitHub Release title (defaults to vVERSION)
+        required: false
         type: string
+        default: ''
       release_description:
         description: Optional GitHub Release description (prepended before generated notes)
         required: false
@@ -22,12 +22,12 @@ on:
         type: string
       draft:
         description: Create release as draft
-        required: true
+        required: false
         type: boolean
         default: true
       prerelease:
         description: Mark release as prerelease
-        required: true
+        required: false
         type: boolean
         default: false
 
@@ -36,9 +36,95 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') }}
+    outputs:
+      should_deploy: ${{ steps.prepare.outputs.should_deploy }}
+      version: ${{ steps.prepare.outputs.version }}
+      release_name: ${{ steps.prepare.outputs.release_name }}
+      release_description: ${{ steps.prepare.outputs.release_description }}
+      commit_sha: ${{ steps.prepare.outputs.commit_sha }}
+      draft: ${{ steps.prepare.outputs.draft }}
+      prerelease: ${{ steps.prepare.outputs.prerelease }}
+    steps:
+      - name: Checkout target commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.commit_sha }}
+          fetch-depth: 2
+
+      - name: Prepare release inputs
+        id: prepare
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_NAME: ${{ inputs.release_name }}
+          INPUT_RELEASE_DESCRIPTION: ${{ inputs.release_description }}
+          INPUT_COMMIT_SHA: ${{ inputs.commit_sha }}
+          INPUT_DRAFT: ${{ inputs.draft }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+          WORKFLOW_RUN_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f VERSION ]]; then
+            echo "VERSION file is missing." >&2
+            exit 1
+          fi
+
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "VERSION must contain a numeric x.y.z version, got '$VERSION'." >&2
+            exit 1
+          fi
+
+          default_release_name="v$VERSION"
+
+          write_output() {
+            local name="$1"
+            local value="$2"
+            local delimiter="EOF_${name}_$RANDOM"
+            {
+              echo "${name}<<${delimiter}"
+              printf '%s\n' "$value"
+              echo "${delimiter}"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if ! git diff-tree --root --no-commit-id --name-only -r -m "$WORKFLOW_RUN_HEAD_SHA" | grep -qx "VERSION"; then
+              echo "VERSION did not change in $WORKFLOW_RUN_HEAD_SHA; skipping automatic draft release."
+              echo "should_deploy=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            write_output "release_name" "$default_release_name"
+            write_output "release_description" "Automated draft release for VERSION $VERSION from commit $WORKFLOW_RUN_HEAD_SHA."
+            echo "commit_sha=$WORKFLOW_RUN_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          release_name="${INPUT_RELEASE_NAME:-$default_release_name}"
+
+          echo "should_deploy=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          write_output "release_name" "$release_name"
+          write_output "release_description" "$INPUT_RELEASE_DESCRIPTION"
+          echo "commit_sha=$INPUT_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "draft=${INPUT_DRAFT:-true}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${INPUT_PRERELEASE:-false}" >> "$GITHUB_OUTPUT"
+
   resolve-build-run:
     name: Resolve Build Run
     runs-on: ubuntu-24.04
+    needs: prepare-release
+    if: ${{ needs.prepare-release.outputs.should_deploy == 'true' }}
     outputs:
       run_id: ${{ steps.find_run.outputs.run_id }}
     steps:
@@ -46,7 +132,7 @@ jobs:
         id: find_run
         uses: actions/github-script@v7
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
+          COMMIT_SHA: ${{ needs.prepare-release.outputs.commit_sha }}
         with:
           script: |
             const owner = context.repo.owner;
@@ -99,7 +185,9 @@ jobs:
   package-android:
     name: Package Android APK
     runs-on: ubuntu-24.04
-    needs: resolve-build-run
+    needs:
+      - prepare-release
+      - resolve-build-run
     steps:
       - name: Download Android build artifact
         uses: actions/download-artifact@v4
@@ -156,7 +244,7 @@ jobs:
 
           KEYSTORE_PATH="${RUNNER_TEMP}/release.jks"
           ALIGNED_APK="${RUNNER_TEMP}/app-aligned.apk"
-          SIGNED_APK="${GITHUB_WORKSPACE}/out/android/LibreConnect-${{ inputs.version }}-arm64-v8a.apk"
+          SIGNED_APK="${GITHUB_WORKSPACE}/out/android/LibreConnect-${{ needs.prepare-release.outputs.version }}-arm64-v8a.apk"
 
           printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
           chmod 600 "${KEYSTORE_PATH}"
@@ -180,12 +268,14 @@ jobs:
   package-windows:
     name: Package Windows Installer
     runs-on: windows-2025
-    needs: resolve-build-run
+    needs:
+      - prepare-release
+      - resolve-build-run
     steps:
       - name: Checkout repository at target commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ needs.prepare-release.outputs.commit_sha }}
           submodules: recursive
 
       - name: Download Windows build artifact
@@ -255,7 +345,7 @@ jobs:
         run: |
           .\build-installer.ps1 `
           -DeployDir "$env:DEPLOY_DIR" `
-          -Version "${{ inputs.version }}" `
+          -Version "${{ needs.prepare-release.outputs.version }}" `
           -OutputDir "$env:GITHUB_WORKSPACE\out\windows" `
           -WixExePath "$env:WIX_EXE" `
           -WixExtensionVersion "$env:WIX_VERSION"
@@ -269,12 +359,14 @@ jobs:
   package-ubuntu:
     name: Package Ubuntu Installer
     runs-on: ubuntu-24.04
-    needs: resolve-build-run
+    needs:
+      - prepare-release
+      - resolve-build-run
     steps:
       - name: Checkout repository at target commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ needs.prepare-release.outputs.commit_sha }}
           submodules: recursive
 
       - name: Download Ubuntu build artifact
@@ -316,7 +408,7 @@ jobs:
         run: |
           bash installers/linux/build-installer.sh \
             --deploy-dir "$DEPLOY_DIR" \
-            --version "${{ inputs.version }}" \
+            --version "${{ needs.prepare-release.outputs.version }}" \
             --output-dir "$GITHUB_WORKSPACE/out/ubuntu" \
             --arch amd64
 
@@ -329,12 +421,14 @@ jobs:
   package-ubuntu-arm:
     name: Package Ubuntu ARM64 Installer
     runs-on: ubuntu-24.04
-    needs: resolve-build-run
+    needs:
+      - prepare-release
+      - resolve-build-run
     steps:
       - name: Checkout repository at target commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.commit_sha }}
+          ref: ${{ needs.prepare-release.outputs.commit_sha }}
           submodules: recursive
 
       - name: Download Ubuntu ARM build artifact
@@ -376,7 +470,7 @@ jobs:
         run: |
           bash installers/linux/build-installer.sh \
             --deploy-dir "$DEPLOY_DIR" \
-            --version "${{ inputs.version }}" \
+            --version "${{ needs.prepare-release.outputs.version }}" \
             --output-dir "$GITHUB_WORKSPACE/out/ubuntu-arm" \
             --arch arm64
 
@@ -389,7 +483,9 @@ jobs:
   package-macos:
     name: Package Macos
     runs-on: ubuntu-24.04
-    needs: resolve-build-run
+    needs:
+      - prepare-release
+      - resolve-build-run
     steps:
       - name: Download Macos build artifact
         uses: actions/download-artifact@v4
@@ -414,7 +510,7 @@ jobs:
           fi
 
           mkdir -p out/macos
-          cp "$DMG_PATH" "out/macos/LibreConnect-${{ inputs.version }}.dmg"
+          cp "$DMG_PATH" "out/macos/LibreConnect-${{ needs.prepare-release.outputs.version }}.dmg"
 
       - name: Upload macOS installer artifact
         uses: actions/upload-artifact@v4
@@ -426,6 +522,7 @@ jobs:
     name: Publish GitHub Release
     runs-on: ubuntu-24.04
     needs:
+      - prepare-release
       - package-windows
       - package-ubuntu
       - package-ubuntu-arm
@@ -453,11 +550,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version) }}
-          name: ${{ inputs.release_name }}
-          body: ${{ inputs.release_description }}
-          draft: ${{ inputs.draft }}
-          prerelease: ${{ inputs.prerelease }}
+          tag_name: ${{ startsWith(needs.prepare-release.outputs.version, 'v') && needs.prepare-release.outputs.version || format('v{0}', needs.prepare-release.outputs.version) }}
+          name: ${{ needs.prepare-release.outputs.release_name }}
+          body: ${{ needs.prepare-release.outputs.release_description }}
+          draft: ${{ needs.prepare-release.outputs.draft }}
+          prerelease: ${{ needs.prepare-release.outputs.prerelease }}
           fail_on_unmatched_files: true
           files: |
             release-assets/**/*.msi

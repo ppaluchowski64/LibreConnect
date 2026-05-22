@@ -17,9 +17,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>@MACOSX_BUNDLE_SHORT_VERSION_STRING@</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>@MACOSX_BUNDLE_BUNDLE_VERSION@</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>LibreConnect needs local network access to discover and connect to nearby devices.</string>
     <key>NSBonjourServices</key>

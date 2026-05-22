@@ -3,6 +3,7 @@
 #include <ConnectionManager.h>
 #include <DeviceData.h>
 #include <CryptographicIdentityManager.h>
+#include <QCoreApplication>
 #include <fmt/format.h>
 
 #ifdef ANDROID_DEVICE
@@ -26,7 +27,7 @@ DeviceInfo DeviceInfo::GetThisDeviceInfo() {
     device.deviceName = asio::ip::host_name();
     device.osName = "Desktop";
     device.osVersion.clear();
-    device.appVersion.clear();
+    device.appVersion = QCoreApplication::applicationVersion().toStdString();
 #elif defined(ANDROID_DEVICE)
     char model[PROP_VALUE_MAX];
     char manufacturer[PROP_VALUE_MAX];

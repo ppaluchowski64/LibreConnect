@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnect");
+    app.setApplicationVersion(QStringLiteral(LIBRECONNECT_APP_VERSION));
     app.setDesktopFileName(QStringLiteral("libreconnect"));
     app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
 

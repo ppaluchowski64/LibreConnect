@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     app.setOrganizationName("LibreConnect");
     app.setApplicationName("LibreConnectMobile");
+    app.setApplicationVersion(QStringLiteral(LIBRECONNECT_APP_VERSION));
 
     const QString storagePath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     ConfigureStorage(storagePath.toStdString());
