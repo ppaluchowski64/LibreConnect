@@ -6,12 +6,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 DEPLOY_DIR_REL="../../build/desktop/build/Release/deploy/Release/appLibreConnect_desktop"
-VERSION="1.0.0"
+if [[ -f "${ROOT_DIR}/VERSION" ]]; then
+    VERSION_FROM_FILE="$(tr -d '[:space:]' < "${ROOT_DIR}/VERSION")"
+    if [[ -n "${VERSION_FROM_FILE}" ]]; then
+        VERSION="${VERSION_FROM_FILE}"
+    else
+        VERSION="1.0.0"
+    fi
+else
+    VERSION="1.0.0"
+fi
 OUTPUT_DIR_REL="../../out"
 PACKAGE_NAME="libreconnect"
 ARCH="amd64"
 MAINTAINER="LibreConnect"
-DESCRIPTION="LibreConnect Desktop"
+DESCRIPTION="Privacy-focused peer-to-peer device connectivity app"
+LONG_DESCRIPTION="LibreConnect links desktop and mobile devices over local, encrypted peer-to-peer connections"
+HOMEPAGE="https://github.com/ppaluchowski64/LibreConnect"
+LICENSE="GPL-3.0-only"
 INSTALL_PREFIX="/opt/libreconnect"
 
 usage() {
@@ -26,6 +38,7 @@ Options:
   --arch <arch>         Debian architecture (default: ${ARCH})
   --maintainer <name>   Maintainer field (default: ${MAINTAINER})
   --description <text>  Description field (default: ${DESCRIPTION})
+  --homepage <url>      Homepage field (default: ${HOMEPAGE})
   -h, --help            Show help
 EOF
 }
@@ -70,6 +83,10 @@ while [[ $# -gt 0 ]]; do
             DESCRIPTION="$2"
             shift 2
             ;;
+        --homepage)
+            HOMEPAGE="$2"
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -93,6 +110,7 @@ POSTINST_TEMPLATE="${SCRIPT_DIR}/postinst.sh"
 PRERM_TEMPLATE="${SCRIPT_DIR}/prerm.sh"
 SOURCE_ICON="${ROOT_DIR}/apps/desktop/res/libreconnect_logo.png"
 ICON_NAME="libreconnect_logo.png"
+LICENSE_FILE="${ROOT_DIR}/LICENSE"
 
 if [[ ! -d "$DEPLOY_DIR" ]]; then
     echo "Deploy directory not found: $DEPLOY_DIR" >&2
@@ -124,6 +142,11 @@ if [[ ! -f "$SOURCE_ICON" ]]; then
     exit 1
 fi
 
+if [[ ! -f "$LICENSE_FILE" ]]; then
+    echo "License file not found: $LICENSE_FILE" >&2
+    exit 1
+fi
+
 mkdir -p "$OUTPUT_DIR"
 
 BUILD_ROOT="$(mktemp -d)"
@@ -133,8 +156,10 @@ PKG_ROOT="${BUILD_ROOT}/${PACKAGE_NAME}_${VERSION}_${ARCH}"
 mkdir -p "${PKG_ROOT}/DEBIAN"
 mkdir -p "${PKG_ROOT}/opt"
 mkdir -p "${PKG_ROOT}/usr/bin"
+mkdir -p "${PKG_ROOT}/usr/share/doc/${PACKAGE_NAME}"
 mkdir -p "${PKG_ROOT}/usr/share/applications"
 mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/512x512/apps"
+mkdir -p "${PKG_ROOT}/usr/share/metainfo"
 mkdir -p "${PKG_ROOT}${INSTALL_PREFIX}/tools"
 mkdir -p "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux"
 
@@ -206,11 +231,38 @@ cat > "${PKG_ROOT}/usr/share/applications/libreconnect.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=LibreConnect
-Comment=LibreConnect Desktop
+Comment=${DESCRIPTION}
 Exec=libreconnect
 Icon=libreconnect_logo
 Terminal=false
 Categories=Network;Utility;
+Keywords=phone;android;sync;clipboard;notification;file transfer;remote;
+EOF
+
+cat > "${PKG_ROOT}/usr/share/metainfo/com.libreconnect.desktop.metainfo.xml" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.libreconnect.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>${LICENSE}</project_license>
+  <name>LibreConnect</name>
+  <summary>${DESCRIPTION}</summary>
+  <description>
+    <p>${LONG_DESCRIPTION}</p>
+  </description>
+  <launchable type="desktop-id">libreconnect.desktop</launchable>
+  <url type="homepage">${HOMEPAGE}</url>
+  <url type="bugtracker">${HOMEPAGE}/issues</url>
+  <url type="vcs-browser">${HOMEPAGE}</url>
+  <developer_name>LibreConnect</developer_name>
+  <categories>
+    <category>Network</category>
+    <category>Utility</category>
+  </categories>
+  <provides>
+    <binary>libreconnect</binary>
+  </provides>
+</component>
 EOF
 
 if [[ -d "${DEPLOY_DIR}/usr/share/icons/hicolor" ]]; then
@@ -233,6 +285,10 @@ if [[ -f "${V4L2_HELPER_BIN}" ]]; then
     chmod 0755 "${PKG_ROOT}${INSTALL_PREFIX}/tools/v4l2loopback-helper"
 fi
 
+cp -a "${LICENSE_FILE}" "${PKG_ROOT}/usr/share/doc/${PACKAGE_NAME}/GPL-3"
+
+INSTALLED_SIZE="$(du -sk "${PKG_ROOT}" | awk '{print $1}')"
+
 cat > "${PKG_ROOT}/DEBIAN/control" <<EOF
 Package: ${PACKAGE_NAME}
 Version: ${VERSION}
@@ -240,7 +296,21 @@ Section: net
 Priority: optional
 Architecture: ${ARCH}
 Maintainer: ${MAINTAINER}
+Depends: bash
+Installed-Size: ${INSTALLED_SIZE}
+Homepage: ${HOMEPAGE}
 Description: ${DESCRIPTION}
+ ${LONG_DESCRIPTION}
+EOF
+
+cat > "${PKG_ROOT}/usr/share/doc/${PACKAGE_NAME}/copyright" <<EOF
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: LibreConnect
+Source: ${HOMEPAGE}
+
+Files: *
+Copyright: LibreConnect contributors
+License: GPL-3.0-only
 EOF
 
 cp -a "${POSTINST_TEMPLATE}" "${PKG_ROOT}/DEBIAN/postinst"
@@ -248,6 +318,9 @@ cp -a "${PRERM_TEMPLATE}" "${PKG_ROOT}/DEBIAN/prerm"
 
 chmod 0755 "${PKG_ROOT}/DEBIAN"
 chmod 0644 "${PKG_ROOT}/DEBIAN/control"
+chmod 0644 "${PKG_ROOT}/usr/share/doc/${PACKAGE_NAME}/copyright"
+chmod 0644 "${PKG_ROOT}/usr/share/doc/${PACKAGE_NAME}/GPL-3"
+chmod 0644 "${PKG_ROOT}/usr/share/metainfo/com.libreconnect.desktop.metainfo.xml"
 chmod 0755 "${PKG_ROOT}/DEBIAN/postinst"
 chmod 0755 "${PKG_ROOT}/DEBIAN/prerm"
 
