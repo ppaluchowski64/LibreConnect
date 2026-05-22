@@ -187,4 +187,14 @@ private:
     float m_leftDuration;
 };
 
+class ShowWindowEvent final : public QEvent {
+public:
+    static constexpr QEvent::Type Type = static_cast<QEvent::Type>(P2PEventBase + 11);
+    explicit ShowWindowEvent() : QEvent(Type) {}
+
+    ShowWindowEvent* clone() const override {
+        return new ShowWindowEvent(*this);
+    }
+};
+
 #endif //EVENTS_H

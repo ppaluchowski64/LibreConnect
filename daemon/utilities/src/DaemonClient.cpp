@@ -1,5 +1,7 @@
 #include <DaemonClient.h>
 #include <ThreadPool.h>
+#include <Events.h>
+#include <ConnectionManager.h>
 
 static auto GetPid() {
 #ifdef _WIN32
@@ -77,6 +79,8 @@ asio::awaitable<void> DaemonClient::CoReceive() {
                     m_windowRequestResults.InsertOrAssign(id, result);
                     flag.value()->Signal();
                 }
+            } else if (type == DaemonPackage::SHOW_WINDOW_REQUEST) {
+                ConnectionManager::SendEvent(std::make_unique<ShowWindowEvent>());
             }
         }
     } catch (...) {}

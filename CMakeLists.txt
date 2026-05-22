@@ -304,6 +304,7 @@ if (ANDROID)
 elseif (WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE))
     add_subdirectory("daemon")
     add_subdirectory("apps/desktop")
+    add_dependencies(appLibreConnect_desktop desktop-daemon)
 endif()
 
 if (ENABLE_TESTS)

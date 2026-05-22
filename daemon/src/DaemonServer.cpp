@@ -98,6 +98,7 @@ asio::awaitable<void> DaemonServer::ProcessClient(std::shared_ptr<ClientData> cl
                         for (const auto& cl : m_clients) {
                             if (cl != client && cl->m_uuid == id) {
                                 Send(client, DaemonPackage::REQUEST_CONNECTED_WINDOW_RESPONSE, id, true);
+                                Send(cl, DaemonPackage::SHOW_WINDOW_REQUEST);
                                 found = true;
                                 break;
                             }

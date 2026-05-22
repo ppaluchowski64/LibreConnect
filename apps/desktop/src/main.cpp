@@ -202,6 +202,18 @@ protected:
                 Debug::Log("Disconnected while hidden, quitting.");
                 QMetaObject::invokeMethod(QCoreApplication::instance(), &QCoreApplication::quit, Qt::QueuedConnection);
             }
+        } else if (event->type() == ShowWindowEvent::Type) {
+            if (m_window) {
+                QMetaObject::invokeMethod(m_window, [window = m_window]() {
+                    if (window) {
+                        window->show();
+                        window->setFlag(Qt::WindowStaysOnTopHint, true);
+                        window->raise();
+                        window->requestActivate();
+                        window->setFlag(Qt::WindowStaysOnTopHint, false);
+                    }
+                }, Qt::QueuedConnection);
+            }
         }
         return QObject::event(event);
     }

@@ -41,6 +41,14 @@ if (APPLE AND NOT IOS)
     )
 endif()
 
+add_custom_command(TARGET appLibreConnect_desktop POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:desktop-daemon>
+        $<TARGET_FILE_DIR:appLibreConnect_desktop>
+        COMMENT "Copying desktop-daemon to appLibreConnect_desktop output directory..."
+        VERBATIM
+)
+
 BundleMediaRemoteAdapter(appLibreConnect_desktop)
 
 LinkVirtualCameraLibs(appLibreConnect_desktop)

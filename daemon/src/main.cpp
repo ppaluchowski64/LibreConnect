@@ -94,8 +94,7 @@ void StartInstance(const std::string& address, uint16_t port) {
         };
 
         execv(binary, args);
-
-        std::cerr << "Failed to execute binary" << std::endl;
+        Debug::LogError("Failed to execute binary");
         _exit(1);
     } else {
         signal(SIGCHLD, SIG_IGN);
