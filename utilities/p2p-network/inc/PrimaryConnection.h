@@ -15,7 +15,7 @@
 #include <InitialConnection.h>
 
 #if defined(DESKTOP_DEVICE)
-#include <SignalSender.h>
+#include <DaemonClient.h>
 #endif
 
 constexpr size_t MAX_PACKAGE_SIZE = 1024 * 256;
@@ -85,7 +85,7 @@ private:
     std::optional<DeviceInfo> m_peerData;
 
 #if defined(DESKTOP_DEVICE)
-    SignalSender m_signalSender;
+    std::shared_ptr<DaemonClient> m_signalSender{nullptr};
 #endif
 
     AwaitableFlag m_sendFlag;

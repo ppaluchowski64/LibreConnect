@@ -1,5 +1,5 @@
 #include <Scanner.h>
-#include <SignalReceiver.h>
+#include <DaemonServer.h>
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <nlohmann/json.hpp>
@@ -46,7 +46,7 @@ void StartInstance(const std::string& address, uint16_t port) {
     std::string port_str = std::to_string(port);
 
 #if defined(_WIN32)
-    std::string cmd = fmt::format("appLibreConnect_desktop.exe --port {} --address {}", port_str, address);
+    std::string cmd = fmt::format("appLibreConnect_desktop.exe --port {} --address {} --hidden", port_str, address);
 
     STARTUPINFOA si = { sizeof(si) };
     PROCESS_INFORMATION pi;
@@ -89,6 +89,7 @@ void StartInstance(const std::string& address, uint16_t port) {
             const_cast<char*>(port_str.c_str()),
             const_cast<char*>("--address"),
             const_cast<char*>(address.c_str()),
+            const_cast<char*>("--hidden"),
             nullptr
         };
 
@@ -156,7 +157,8 @@ int main(int argc, char *argv[]) {
     }
 
     LanDeviceScanner::BeginScan(LanDeviceScanner::Options{false, false});
-    SignalReceiver::StartReceiving();
+    auto daemonServer = std::make_shared<DaemonServer>();
+    daemonServer->Start();
 
     std::vector<uuid> autoConnectDevices{};
 
@@ -164,7 +166,7 @@ int main(int argc, char *argv[]) {
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_DURATION));
 
         std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
-        std::vector<uuid> connectedDevices = SignalReceiver::GetConnectedDevices();
+        std::vector<uuid> connectedDevices = daemonServer->GetConnectedDevices();
         LoadDevicesToAutoConnect(autoConnectDevices);
 
         for (const auto& device : devices) {

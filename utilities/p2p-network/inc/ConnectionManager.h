@@ -15,7 +15,7 @@
 #include <boost/uuid/nil_generator.hpp>
 
 #if defined(DESKTOP_DEVICE)
-#include <SignalSender.h>
+#include <DaemonClient.h>
 #endif
 
 enum class InitialConnectionMode : uint8_t;

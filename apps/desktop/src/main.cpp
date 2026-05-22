@@ -245,9 +245,11 @@ int main(int argc, char *argv[])
     QCommandLineParser parser;
     const QCommandLineOption portOption(QStringList() << "p" << "port", "The port number to connect to.", "port", "-1");
     const QCommandLineOption addressOption(QStringList() << "a" << "address", "The address to connect to.", "address", "-1");
+    const QCommandLineOption hiddenOption("hidden", "Start the application hidden in the system tray.");
 
     parser.addOption(portOption);
     parser.addOption(addressOption);
+    parser.addOption(hiddenOption);
     parser.process(app);
 
     const QString port = parser.value(portOption);
@@ -304,14 +306,22 @@ int main(int argc, char *argv[])
     const QUrl url = QUrl("qrc:/LibreConnect/desktop/MainWindow.qml");
     AttachQmlCreationLogging(engine, app, url);
 
+    const bool shouldBeHidden = parser.isSet(hiddenOption) || port != "-1" || address != "-1";
     const bool startupConnectionRequested = port != "-1" && address != "-1";
     std::unique_ptr<StartupConnectionListener> startupConnectionListener;
 
-    if (startupConnectionRequested) {
-        startupConnectionListener = std::make_unique<StartupConnectionListener>(app);
-        ConnectionManager::AddEventListener(QPointer<QObject>(startupConnectionListener.get()));
-        engine.setInitialProperties({{ QStringLiteral("startupConnectionPending"), true }});
-        ConnectionManager::StartAcceptingConnections();
+    if (shouldBeHidden) {
+        QVariantMap initialProperties;
+        initialProperties.insert(QStringLiteral("visible"), false);
+
+        if (startupConnectionRequested) {
+            startupConnectionListener = std::make_unique<StartupConnectionListener>(app);
+            ConnectionManager::AddEventListener(QPointer<QObject>(startupConnectionListener.get()));
+            initialProperties.insert(QStringLiteral("startupConnectionPending"), true);
+            ConnectionManager::StartAcceptingConnections();
+        }
+
+        engine.setInitialProperties(initialProperties);
     }
 
     engine.load(url);
@@ -361,8 +371,9 @@ int main(int argc, char *argv[])
             if (startupConnectionRequested) {
                 startupConnectionListener->setMainWindow(rootObject);
                 ConnectionManager::Connect(address.toStdString(), port.toUInt(), InitialConnectionMode::CONNECT_WITH_PAIR);
-                window->setVisible(false);
-            } else {
+            }
+
+            if (!shouldBeHidden) {
                 window->setVisible(true);
             }
         }

@@ -170,7 +170,8 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
 
 #if defined(DESKTOP_DEVICE)
-        m_signalSender.ConnectionSignal(data.deviceInfo.deviceID);
+        m_signalSender = DaemonClient::Create();
+        m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
 
         asio::co_spawn(m_strand, CoSend(), asio::detached);
@@ -244,7 +245,8 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         m_connectionState.store(ConnectionState::CONNECTED);
         m_heartbeatReceived.store(false);
 #if defined(DESKTOP_DEVICE)
-        m_signalSender.ConnectionSignal(data.deviceInfo.deviceID);
+        m_signalSender = DaemonClient::Create();
+        m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
         asio::co_spawn(m_strand, CoSend(), asio::detached);
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
@@ -297,7 +299,7 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
 
 #if defined(DESKTOP_DEVICE)
     if (m_peerData.has_value()) {
-        m_signalSender.DisconnectionSignal(m_peerData.value().deviceID);
+        DaemonClient::Destroy(m_signalSender);
         m_peerData = std::nullopt;
     }
 #endif
