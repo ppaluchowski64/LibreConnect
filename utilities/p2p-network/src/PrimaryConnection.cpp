@@ -170,7 +170,9 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
 
 #if defined(DESKTOP_DEVICE)
-        ConnectionManager::s_instance->m_signalSender = DaemonClient::Create();
+        if (!ConnectionManager::s_instance->m_signalSender) {
+            ConnectionManager::s_instance->m_signalSender = DaemonClient::Create();
+        }
         ConnectionManager::s_instance->m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
 
@@ -245,7 +247,9 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         m_connectionState.store(ConnectionState::CONNECTED);
         m_heartbeatReceived.store(false);
 #if defined(DESKTOP_DEVICE)
-        ConnectionManager::s_instance->m_signalSender = DaemonClient::Create();
+        if (!ConnectionManager::s_instance->m_signalSender) {
+            ConnectionManager::s_instance->m_signalSender = DaemonClient::Create();
+        }
         ConnectionManager::s_instance->m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
         asio::co_spawn(m_strand, CoSend(), asio::detached);

@@ -6,6 +6,7 @@
 #include <Package.h>
 #include <memory>
 #include <atomic>
+#include <chrono>
 #include <AwaitableFlag.h>
 #include <ConcurrentUnorderedMap.h>
 
@@ -16,6 +17,8 @@ public:
     static void Destroy(const std::shared_ptr<DaemonClient>& client);
 
     bool IsConnected() const;
+    bool HasFinishedConnectAttempt() const;
+    asio::awaitable<bool> WaitForConnectResult(std::chrono::milliseconds timeout);
     void ConnectedSignal(uuid uuid);
     asio::awaitable<bool> RequestConnectedWindow(uuid uuid);
 
@@ -45,7 +48,9 @@ private:
     asio::awaitable<void> CoReceive();
 
     TCPSocket m_socket;
+    AwaitableFlag m_connectedFlag;
     std::atomic_bool m_connected{false};
+    std::atomic_bool m_connectAttemptFinished{false};
     ConcurrentUnorderedMap<uuid, std::shared_ptr<AwaitableFlag>> m_windowRequestFlags;
     ConcurrentUnorderedMap<uuid, bool> m_windowRequestResults;
 };

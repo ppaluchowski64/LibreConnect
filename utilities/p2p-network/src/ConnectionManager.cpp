@@ -139,6 +139,17 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
         }
     }
 
+    if (deviceID == boost::uuids::nil_uuid() && mode == InitialConnectionMode::CONNECT_WITH_PAIR) {
+        const std::vector<DeviceInfoLite> pairedDevices = GetPairedDevices();
+        if (pairedDevices.size() == 1) {
+            deviceID = pairedDevices.front().deviceID;
+            Debug::Log(
+                "ConnectionManager: Falling back to the only paired device {} for daemon window lookup",
+                boost::uuids::to_string(deviceID)
+            );
+        }
+    }
+
 #if defined(DESKTOP_DEVICE)
 
     asio::co_spawn(s_instance->m_context, [address, port, mode, deviceID]() -> asio::awaitable<void> {
@@ -147,7 +158,7 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
                 s_instance->m_signalSender = DaemonClient::Create();
             }
 
-            if (s_instance->m_signalSender && s_instance->m_signalSender->IsConnected()) {
+            if (s_instance->m_signalSender) {
                 const bool alreadyConnected = co_await s_instance->m_signalSender->RequestConnectedWindow(deviceID);
                 if (alreadyConnected) {
                     Debug::Log("ConnectionManager: Window already exists for device {}, closing program", boost::uuids::to_string(deviceID));

@@ -1,4 +1,4 @@
-BuildProgram(desktop-daemon .
+BuildProgram(LibreConnect-daemon .
         project_defaults
         Debug-Log
         network-component-pc

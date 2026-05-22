@@ -26,8 +26,37 @@ bool DaemonClient::IsConnected() const {
     return m_connected.load(std::memory_order_acquire);
 }
 
+bool DaemonClient::HasFinishedConnectAttempt() const {
+    return m_connectAttemptFinished.load(std::memory_order_acquire);
+}
+
+asio::awaitable<bool> DaemonClient::WaitForConnectResult(const std::chrono::milliseconds timeout) {
+    if (IsConnected()) {
+        co_return true;
+    }
+
+    if (HasFinishedConnectAttempt()) {
+        co_return false;
+    }
+
+    const auto result = co_await m_connectedFlag.WaitFor(timeout);
+    if (result != AwaitableFlag::Result::SUCCESS) {
+        co_return IsConnected();
+    }
+
+    co_return IsConnected();
+}
+
 void DaemonClient::ConnectedSignal(const uuid uuid) {
     if (!IsConnected()) {
+        const std::shared_ptr<DaemonClient> self = shared_from_this();
+        asio::co_spawn(ThreadPool::GetContext(), [self, uuid]() -> asio::awaitable<void> {
+            const bool connected = co_await self->WaitForConnectResult(std::chrono::milliseconds(250));
+            if (connected) {
+                self->Send(DaemonPackage::CONNECTED, uuid, GetPid());
+            }
+            co_return;
+        }, asio::detached);
         return;
     }
 
@@ -35,6 +64,13 @@ void DaemonClient::ConnectedSignal(const uuid uuid) {
 }
 
 asio::awaitable<bool> DaemonClient::RequestConnectedWindow(const uuid uuid) {
+    if (!IsConnected()) {
+        const bool connected = co_await WaitForConnectResult(std::chrono::milliseconds(250));
+        if (!connected) {
+            co_return false;
+        }
+    }
+
     if (!IsConnected()) {
         co_return false;
     }
@@ -54,15 +90,21 @@ asio::awaitable<bool> DaemonClient::RequestConnectedWindow(const uuid uuid) {
     co_return m_windowRequestResults.Pop(uuid).value_or(false);
 }
 
-DaemonClient::DaemonClient() : m_socket(ThreadPool::GetContext()) {}
+DaemonClient::DaemonClient()
+    : m_socket(ThreadPool::GetContext()),
+      m_connectedFlag(m_socket.get_executor()) {}
 
 asio::awaitable<void> DaemonClient::CoConnect() {
     try {
         co_await m_socket.async_connect(TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), DAEMON_SIGNAL_PORT), asio::use_awaitable);
         m_connected.store(true, std::memory_order_release);
+        m_connectAttemptFinished.store(true, std::memory_order_release);
+        m_connectedFlag.Signal();
         co_await CoReceive();
     } catch (...) {
         m_connected.store(false, std::memory_order_release);
+        m_connectAttemptFinished.store(true, std::memory_order_release);
+        m_connectedFlag.Signal();
     }
 
     m_connected.store(false, std::memory_order_release);

@@ -46,7 +46,7 @@ void StartInstance(const std::string& address, uint16_t port) {
     std::string port_str = std::to_string(port);
 
 #if defined(_WIN32)
-    std::string cmd = fmt::format("appLibreConnect_desktop.exe --port {} --address {} --hidden", port_str, address);
+    std::string cmd = fmt::format("LibreConnect.exe --port {} --address {} --hidden", port_str, address);
 
     STARTUPINFOA si = { sizeof(si) };
     PROCESS_INFORMATION pi;
@@ -82,7 +82,7 @@ void StartInstance(const std::string& address, uint16_t port) {
     }
 
     if (pid == 0) {
-        const char* binary = "./appLibreConnect_desktop";
+        const char* binary = "./LibreConnect";
         char* args[] = {
             const_cast<char*>(binary),
             const_cast<char*>("--port"),
