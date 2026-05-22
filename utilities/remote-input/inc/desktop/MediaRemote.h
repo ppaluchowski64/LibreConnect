@@ -5,6 +5,7 @@
 #include "VirtualInputDevice.h"
 #include "MediaTrackInfo.h"
 #include "SystemVolumeController.h"
+#include  "MediaNotificationManager.h"
 
 class MediaRemote : public VirtualInputDevice {
     public:

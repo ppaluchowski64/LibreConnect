@@ -1,5 +1,11 @@
 #include "MediaNotificationManager.h"
 
+#ifdef __linux__
+    #include <QCoreApplication>
+#elif defined(__APPLE__)
+    #include <CoreFoundation/CoreFoundation.h>
+#endif
+
 #include <iostream>
 #include <string>
 #include <vector>
@@ -9,10 +15,6 @@
 #include <chrono>
 #include <mutex>
 #include <cmath>
-
-#ifdef __linux__
-    #include <QCoreApplication>
-#endif
 
 std::mutex g_metaMutex;
 TrackMetadata g_meta;
@@ -97,8 +99,7 @@ void InputLoop(std::atomic<bool>& running) {
             case 1:
                 MediaNotificationManager::Hide();
                 std::cout << "Notification hidden.\n";
-
-                break;
+            break;
 
             case 2:
                 g_currentPrompt = "Enter new Title: ";
@@ -111,8 +112,7 @@ void InputLoop(std::atomic<bool>& running) {
                     g_meta.title = buffer;
                     MediaNotificationManager::UpdateMetadata(g_meta);
                 }
-
-                break;
+            break;
 
             case 3:
                 g_currentPrompt = "Enter new Artist: ";
@@ -125,8 +125,7 @@ void InputLoop(std::atomic<bool>& running) {
                     g_meta.artist = buffer;
                     MediaNotificationManager::UpdateMetadata(g_meta);
                 }
-
-                break;
+            break;
 
             case 4:
                 g_currentPrompt = "Enter new Album: ";
@@ -139,8 +138,7 @@ void InputLoop(std::atomic<bool>& running) {
                     g_meta.album = buffer;
                     MediaNotificationManager::UpdateMetadata(g_meta);
                 }
-
-                break;
+            break;
 
             case 5: {
                 g_currentPrompt = "Enter new Duration (s): ";
@@ -321,6 +319,10 @@ int main(int argc, char** argv) {
 
     #ifdef __linux__
         QCoreApplication::exec();
+    #elif defined(__APPLE__)
+        while (running) {
+            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+        }
     #else
         while (running) {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
