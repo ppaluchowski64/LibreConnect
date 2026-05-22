@@ -169,6 +169,7 @@ Page {
         anchors.top: deviceListContainer.top
         anchors.right: logo.left
         anchors.rightMargin: 20
+        width: 240
         spacing: 12
 
         ThemedButton {
@@ -178,6 +179,7 @@ Page {
             height: 48
             font.pixelSize: 16
             visible: allowBackToPairedDevices
+            x: parent.width - width
             onClicked: windowRef.showPairedDevices()
         }
 
@@ -187,6 +189,7 @@ Page {
             width: 120
             height: 48
             font.pixelSize: 16
+            x: parent.width - width
             enabled: deviceListView.currentIndex >= 0
                      && !connectionController.pending
                      && !connectionController.connected
@@ -199,22 +202,28 @@ Page {
             width: 120
             height: 48
             font.pixelSize: 16
+            x: parent.width - width
             enabled: !isConnecting
             onClicked: {
                 statusMessage = ""
                 discovery.discover()
             }
         }
+    }
 
-        Text {
-            width: 240
-            text: statusMessage
-            color: Theme.dangerColor
-            font.family: Theme.fontFamily
-            font.pixelSize: 13
-            visible: statusMessage.length > 0
-            wrapMode: Text.WordWrap
-        }
+    Text {
+        id: statusText
+        anchors.right: parent.right
+        anchors.top: logo.bottom
+        anchors.topMargin: 16
+        anchors.rightMargin: 24
+        width: 280
+        text: statusMessage
+        color: Theme.dangerColor
+        font.family: Theme.fontFamily
+        font.pixelSize: 13
+        visible: statusMessage.length > 0
+        wrapMode: Text.WordWrap
     }
 
     Column {
@@ -337,6 +346,7 @@ Page {
             TextField {
                 id: verificationCodeField
                 placeholderText: "6-digit code"
+                enabled: !connectionController.approvalPending
                 inputMethodHints: Qt.ImhDigitsOnly
                 maximumLength: 6
                 validator: RegularExpressionValidator { regularExpression: /\d{0,6}/ }
@@ -350,7 +360,7 @@ Page {
                     border.width: 1
                 }
                 onAccepted: {
-                    if (verificationCodeField.text.length === 6) {
+                    if (verificationCodeField.text.length === 6 && !connectionController.approvalPending) {
                         connectionController.submitVerificationCode(verificationCodeField.text)
                     }
                 }
@@ -361,6 +371,15 @@ Page {
                 text: "Tries left: " + connectionController.verificationTriesLeft
                 font.family: Theme.fontFamily
                 color: Theme.subtleTextColor
+            }
+
+            Text {
+                visible: connectionController.verificationStatus.length > 0
+                text: connectionController.verificationStatus
+                font.family: Theme.fontFamily
+                color: Theme.mutedTextColor
+                wrapMode: Text.WordWrap
+                width: parent.width
             }
 
             Text {
@@ -377,7 +396,7 @@ Page {
 
                 ThemedButton {
                     text: "Submit"
-                    enabled: verificationCodeField.text.length === 6
+                    enabled: verificationCodeField.text.length === 6 && !connectionController.approvalPending
                     onClicked: connectionController.submitVerificationCode(verificationCodeField.text)
                 }
 

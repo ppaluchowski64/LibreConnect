@@ -478,19 +478,37 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                     continue;
                 }
 
-                Debug::Log("InitialConnection: Challenge Verified. Seeking Primary...");
-                ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = data](const TCPEndpoint endpoint) mutable {
-                    initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
-                    initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
-                    initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
-                    asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
+                Debug::Log("InitialConnection: Challenge Verified. Requesting final approval.");
+                Send(InitialConnectionPackageType::CONNECTION_APPROVAL_REQUEST);
+
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionApprovalRequestedEvent>(data.deviceInfo, [ref = shared_from_this(), data](const bool approved) {
+                    try {
+                        asio::co_spawn(ref->m_strand, ref->CoProcessConnectionApprovalCallback(approved, data), asio::detached);
+                    } catch (const std::exception& ex) {
+                        Debug::LogError("InitialConnection: Failed to spawn approval callback coroutine - {}", ex.what());
+                    }
                 });
+                ConnectionManager::SendEvent(event);
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_WRONG_ANSWER)) {
                 int32_t leftTries = package->GetValue<int32_t>();
                 Debug::Log("InitialConnection: Server reported wrong challenge answer. Tries left: {}", leftTries);
 
                 std::unique_ptr<QEvent> event = std::make_unique<ConnectionFailedVerificationEvent>(leftTries);
+                ConnectionManager::SendEvent(event);
+
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CONNECTION_APPROVAL_REQUEST)) {
+                Debug::Log("InitialConnection: Remote device is waiting for final approval.");
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionApprovalRequestedEvent>(
+                    data.deviceInfo,
+                    [](bool) {}
+                );
+                ConnectionManager::SendEvent(event);
+
+            } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CONNECTION_APPROVAL_DENIED)) {
+                Debug::LogWarning("InitialConnection: Final approval denied by remote device.");
+                m_receivedTerminalHandshakeReason = true;
+                std::unique_ptr<QEvent> event = std::make_unique<ConnectionApprovalDeniedEvent>();
                 ConnectionManager::SendEvent(event);
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_ANSWER_REQUEST)) {
@@ -550,6 +568,25 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 asio::awaitable<void> InitialConnection::CoProcessConnectionVerificationEvent(std::string response) {
     Debug::Log("InitialConnection: User provided challenge response. Sending back to server.");
     Send(InitialConnectionPackageType::CHALLENGE_RESPONSE, std::move(response));
+
+    co_return;
+}
+
+asio::awaitable<void> InitialConnection::CoProcessConnectionApprovalCallback(const bool approved, InitialConnectionData data) {
+    if (!approved) {
+        Debug::Log("InitialConnection: Final approval denied by user.");
+        Send(InitialConnectionPackageType::CONNECTION_APPROVAL_DENIED);
+        Disconnect();
+        co_return;
+    }
+
+    Debug::Log("InitialConnection: Final approval accepted. Seeking Primary...");
+    ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = data](const TCPEndpoint endpoint) mutable {
+        initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
+        initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
+        initialConnectionData.deviceInfo.deviceAddressPort = endpoint.port();
+        asio::co_spawn(ref->m_strand, ref->CoPrimaryConnectionCallback(initialConnectionData), asio::detached);
+    });
 
     co_return;
 }

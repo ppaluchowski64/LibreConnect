@@ -25,6 +25,8 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(bool verificationPending READ verificationPending NOTIFY verificationPendingChanged)
     Q_PROPERTY(int verificationTriesLeft READ verificationTriesLeft NOTIFY verificationTriesLeftChanged)
     Q_PROPERTY(QString verificationError READ verificationError NOTIFY verificationErrorChanged)
+    Q_PROPERTY(QString verificationStatus READ verificationStatus NOTIFY verificationStatusChanged)
+    Q_PROPERTY(bool approvalPending READ approvalPending NOTIFY approvalPendingChanged)
     Q_PROPERTY(bool findMyPhoneAlertActive READ findMyPhoneAlertActive NOTIFY findMyPhoneAlertActiveChanged)
     Q_PROPERTY(int batteryPercentage READ batteryPercentage NOTIFY batteryPercentageChanged)
 
@@ -41,6 +43,8 @@ public:
     bool verificationPending() const { return m_verificationPending; }
     int verificationTriesLeft() const { return m_verificationTriesLeft; }
     QString verificationError() const { return m_verificationError; }
+    QString verificationStatus() const { return m_verificationStatus; }
+    bool approvalPending() const { return m_approvalPending; }
     bool findMyPhoneAlertActive() const { return m_findMyPhoneAlertActive; }
     int batteryPercentage() const { return m_batteryPercentage; }
 
@@ -69,6 +73,8 @@ public:
     void verificationPendingChanged();
     void verificationTriesLeftChanged();
     void verificationErrorChanged();
+    void verificationStatusChanged();
+    void approvalPendingChanged();
     void findMyPhoneAlertActiveChanged();
     void batteryPercentageChanged();
 
@@ -85,12 +91,15 @@ private:
     void handleConnectionPendingEvent(ConnectionPendingEvent* ev);
     void handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev);
     void handleConnectionVerificationEvent(ConnectionVerificationEvent* ev);
+    void handleConnectionApprovalRequestedEvent(ConnectionApprovalRequestedEvent* ev);
+    void handleConnectionApprovalDeniedEvent(ConnectionApprovalDeniedEvent* ev);
     void handleModuleErrorEvent(ModuleErrorEvent* ev);
     void setBatteryPercentage(int percentage);
 
     void handleError(const std::string& message);
     void handleError(const std::string& message, QEvent::Type eventType);
     void setFindMyPhoneAlertActive(bool active);
+    void setApprovalPending(bool pending);
 
     bool m_connected = false;
     bool m_pending   = false;
@@ -100,6 +109,8 @@ private:
     bool m_verificationPending = false;
     int m_verificationTriesLeft = 0;
     QString m_verificationError;
+    QString m_verificationStatus;
+    bool m_approvalPending = false;
     bool m_findMyPhoneAlertActive = false;
     int m_batteryPercentage = -1;
     std::unique_ptr<ConnectionVerificationEvent> m_verificationEvent;

@@ -48,6 +48,7 @@ private:
     bool m_requestedEnabled = false;
     bool m_enableAttemptPending = false;
     bool m_disableAttemptPending = false;
+    bool m_confirmedEnabled = false;
     bool m_enabled = false;
     bool m_busy = false;
     QString m_statusMessage;

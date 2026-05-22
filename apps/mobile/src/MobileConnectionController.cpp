@@ -9,6 +9,7 @@
 #include <QSet>
 #include <QRandomGenerator>
 #include <QTimer>
+#include <QtMath>
 
 #include <memory>
 #include <vector>
@@ -18,6 +19,8 @@
 #include <AddressResolver.h>
 #include <ConnectionManager.h>
 #include <DeviceInfo.h>
+#include <ModulesManager.h>
+#include <SystemInfoShareModule.h>
 #include <ThreadPool.h>
 
 #ifdef ANDROID_DEVICE
@@ -89,8 +92,8 @@ MobileConnectionController::MobileConnectionController(QObject* parent)
 #endif
 
     m_findMyPhoneRingtoneUri = m_settings.value(QString::fromLatin1(kFindMyPhoneRingtoneSetting), QString()).toString().trimmed();
+    ensureSelectedRingtoneOption();
     setFindMyPhoneAlertActive(m_settings.value(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false).toBool());
-    refreshFindMyPhoneRingtones();
 }
 
 MobileConnectionController::~MobileConnectionController()
@@ -149,6 +152,27 @@ bool MobileConnectionController::unpairCurrentDevice()
     }
 
     return removePairedDevice(peerId);
+}
+
+void MobileConnectionController::acceptConnectionApproval()
+{
+    if (!m_approvalEvent) {
+        return;
+    }
+
+    m_approvalEvent->AcceptConnection();
+    clearApproval();
+}
+
+void MobileConnectionController::denyConnectionApproval()
+{
+    if (!m_approvalEvent) {
+        ConnectionManager::Disconnect();
+        return;
+    }
+
+    m_approvalEvent->DenyConnection();
+    clearApproval();
 }
 
 void MobileConnectionController::refreshLocalIdentity()
@@ -274,9 +298,14 @@ void MobileConnectionController::stopFindMyPhoneAlert()
     stopFindMyPhoneAlertInternal(true);
 }
 
-void MobileConnectionController::refreshFindMyPhoneRingtones()
+void MobileConnectionController::refreshFindMyPhoneRingtones(const bool force)
 {
+    if (m_findMyPhoneRingtonesLoaded && !force) {
+        return;
+    }
+
     const QVariantList options = queryFindMyPhoneRingtoneOptions();
+    m_findMyPhoneRingtonesLoaded = true;
     if (m_findMyPhoneRingtoneOptions != options) {
         m_findMyPhoneRingtoneOptions = options;
         emit findMyPhoneRingtoneOptionsChanged();
@@ -289,6 +318,91 @@ void MobileConnectionController::refreshFindMyPhoneRingtones()
 void MobileConnectionController::setFindMyPhoneRingtoneUri(const QString& uri)
 {
     setFindMyPhoneRingtoneUriInternal(uri, true);
+}
+
+void MobileConnectionController::setFindMyPhoneRingtoneFile(const QUrl& fileUrl)
+{
+    const QString uri = fileUrl.toString();
+    setFindMyPhoneRingtoneUriInternal(uri, true);
+}
+
+void MobileConnectionController::refreshDefaultDownloadPath()
+{
+    if (!m_connected) {
+        setDefaultDownloadPathStatus(QStringLiteral("Connect to a desktop device to load the default download path."));
+        return;
+    }
+
+    setDefaultDownloadPathStatus(QStringLiteral("Loading default download path..."));
+    QPointer<MobileConnectionController> weakThis(this);
+    asio::co_spawn(ThreadPool::GetContext(), [weakThis]() -> asio::awaitable<void> {
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
+            PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_GET_REQUEST
+        );
+
+        QString path;
+        QString status;
+        if (response.has_value()) {
+            path = QString::fromStdString(response.value()->GetValue<std::string>());
+            status = QStringLiteral("Default download path loaded.");
+        } else {
+            status = QStringLiteral("Could not load the desktop default download path.");
+        }
+
+        QMetaObject::invokeMethod(qApp, [weakThis, path, status]() {
+            if (!weakThis) {
+                return;
+            }
+
+            if (!path.isEmpty()) {
+                weakThis->setDefaultDownloadPathInternal(path);
+            }
+            weakThis->setDefaultDownloadPathStatus(status);
+        }, Qt::QueuedConnection);
+    }, asio::detached);
+}
+
+void MobileConnectionController::setDefaultDownloadPath(const QString& path)
+{
+    const QString normalizedPath = path.trimmed();
+    if (!m_connected) {
+        setDefaultDownloadPathStatus(QStringLiteral("Connect to a desktop device before changing the download path."));
+        return;
+    }
+
+    if (normalizedPath.isEmpty()) {
+        setDefaultDownloadPathStatus(QStringLiteral("Enter a desktop folder path."));
+        return;
+    }
+
+    setDefaultDownloadPathStatus(QStringLiteral("Saving default download path..."));
+    QPointer<MobileConnectionController> weakThis(this);
+    asio::co_spawn(ThreadPool::GetContext(), [weakThis, normalizedPath]() -> asio::awaitable<void> {
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(
+            PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_SET_REQUEST,
+            normalizedPath.toStdString()
+        );
+
+        bool success = false;
+        QString resolvedPath = normalizedPath;
+        QString message = QStringLiteral("Could not save the desktop default download path.");
+        if (response.has_value()) {
+            success = response.value()->GetValue<bool>();
+            resolvedPath = QString::fromStdString(response.value()->GetValue<std::string>());
+            message = QString::fromStdString(response.value()->GetValue<std::string>());
+        }
+
+        QMetaObject::invokeMethod(qApp, [weakThis, success, resolvedPath, message]() {
+            if (!weakThis) {
+                return;
+            }
+
+            if (success) {
+                weakThis->setDefaultDownloadPathInternal(resolvedPath);
+            }
+            weakThis->setDefaultDownloadPathStatus(message);
+        }, Qt::QueuedConnection);
+    }, asio::detached);
 }
 
 void MobileConnectionController::exportLogs()
@@ -343,6 +457,16 @@ void MobileConnectionController::clearChallenge()
     if (!m_pendingDeviceName.isEmpty()) {
         m_pendingDeviceName.clear();
         emit pendingDeviceNameChanged();
+    }
+}
+
+void MobileConnectionController::clearApproval()
+{
+    m_approvalEvent.reset();
+
+    if (m_approvalVisible) {
+        m_approvalVisible = false;
+        emit approvalVisibleChanged();
     }
 }
 
@@ -501,6 +625,36 @@ QString MobileConnectionController::resolveFindMyPhoneRingtoneLabel(const QStrin
     return QStringLiteral("Custom ringtone");
 }
 
+void MobileConnectionController::setDefaultDownloadPathInternal(const QString& path)
+{
+    if (m_defaultDownloadPath == path) {
+        return;
+    }
+
+    m_defaultDownloadPath = path;
+    emit defaultDownloadPathChanged();
+}
+
+void MobileConnectionController::setDefaultDownloadPathStatus(const QString& status)
+{
+    if (m_defaultDownloadPathStatus == status) {
+        return;
+    }
+
+    m_defaultDownloadPathStatus = status;
+    emit defaultDownloadPathStatusChanged();
+}
+
+void MobileConnectionController::setBatteryPercentage(const int percentage)
+{
+    if (m_batteryPercentage == percentage) {
+        return;
+    }
+
+    m_batteryPercentage = percentage;
+    emit batteryPercentageChanged();
+}
+
 void MobileConnectionController::updatePermissionsFromSystem()
 {
 #ifdef ANDROID_DEVICE
@@ -619,7 +773,20 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
             smsReadGranted &&
             smsSendGranted &&
             contactsGranted;
+        const bool notificationPermissionsGranted = notificationSendGranted && notificationListenerGranted;
+        bool requestAffectsNotificationPermissions = false;
         bool requestAffectsSmsPermissions = false;
+        switch (request) {
+        case PermissionRequest::Notifications:
+        case PermissionRequest::NotificationSend:
+        case PermissionRequest::NotificationListener:
+        case PermissionRequest::All:
+            requestAffectsNotificationPermissions = true;
+            break;
+        default:
+            break;
+        }
+
         switch (request) {
         case PermissionRequest::Sms:
         case PermissionRequest::SmsReceive:
@@ -647,6 +814,8 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
              smsReadGranted,
              smsSendGranted,
              contactsGranted,
+             notificationPermissionsGranted,
+             requestAffectsNotificationPermissions,
              smsPermissionsGranted,
              requestAffectsSmsPermissions]() {
                 if (!weakThis) {
@@ -669,6 +838,15 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
                 weakThis->setPermissionsBusy(false);
                 if (weakThis->connected()) {
                     weakThis->sendPermissionSnapshotToPeer();
+                }
+                if (requestAffectsNotificationPermissions) {
+                    std::unique_ptr<QEvent> event;
+                    if (notificationPermissionsGranted) {
+                        event = std::make_unique<ModuleRequestedPermissionGranted>(PermissionType::Notifications);
+                    } else {
+                        event = std::make_unique<ModuleRequestedPermissionRejected>(PermissionType::Notifications);
+                    }
+                    ConnectionManager::SendEvent(event);
                 }
                 if (requestAffectsSmsPermissions) {
                     std::unique_ptr<QEvent> event;
@@ -802,8 +980,12 @@ bool MobileConnectionController::event(QEvent* e)
         if (ok) {
             clearError();
             clearChallenge();
+            clearApproval();
             updatePermissionsFromSystem();
             sendPermissionSnapshotToPeer();
+            refreshDefaultDownloadPath();
+            auto& systemInfoModule = ModulesManager::GetModuleReference<SystemInfoShareModule>();
+            systemInfoModule->Enable(true);
             QTimer::singleShot(750, this, [this]() {
                 if (m_connected) {
                     sendPermissionSnapshotToPeer();
@@ -812,6 +994,7 @@ bool MobileConnectionController::event(QEvent* e)
         } else {
             stopFindMyPhoneAlertInternal(false);
             m_connectedPeerDeviceId.clear();
+            setBatteryPercentage(-1);
             setError(QStringLiteral("Connection failed"));
         }
 
@@ -829,8 +1012,12 @@ bool MobileConnectionController::event(QEvent* e)
         }
 
         clearChallenge();
+        clearApproval();
         m_connectedPeerDeviceId.clear();
         stopFindMyPhoneAlertInternal(false);
+        setBatteryPercentage(-1);
+        auto& systemInfoModule = ModulesManager::GetModuleReference<SystemInfoShareModule>();
+        systemInfoModule->Disable(true);
         setError(QString::fromStdString(ev->GetErrorCode().message()));
         refreshPairedDevices();
         return true;
@@ -880,6 +1067,32 @@ bool MobileConnectionController::event(QEvent* e)
         return true;
     }
 
+    if (type == ConnectionApprovalRequestedEvent::Type) {
+        auto* ev = static_cast<ConnectionApprovalRequestedEvent*>(e);
+        const DeviceInfo info = ev->GetDeviceInfo();
+        const QString deviceName = QString::fromStdString(info.deviceName);
+
+        clearChallenge();
+
+        if (!deviceName.isEmpty() && m_pendingDeviceName != deviceName) {
+            m_pendingDeviceName = deviceName;
+            emit pendingDeviceNameChanged();
+        }
+
+        m_approvalEvent.reset(ev->clone());
+        if (!m_approvalVisible) {
+            m_approvalVisible = true;
+            emit approvalVisibleChanged();
+        }
+        return true;
+    }
+
+    if (type == ConnectionApprovalDeniedEvent::Type) {
+        setError(QStringLiteral("Connection denied on the remote device."));
+        clearApproval();
+        return true;
+    }
+
     if (type == DeviceNotPairedEvent::Type) {
         const auto* ev = static_cast<DeviceNotPairedEvent*>(e);
         const QString deviceId = QString::fromStdString(ev->GetDeviceID());
@@ -926,6 +1139,15 @@ bool MobileConnectionController::event(QEvent* e)
         const auto* alertStateEvent = static_cast<FindMyPhoneAlertStateEvent*>(e);
         m_settings.setValue(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), alertStateEvent->IsActive());
         setFindMyPhoneAlertActive(alertStateEvent->IsActive());
+        return true;
+    }
+
+    if (type == PeerBatteryLevelUpdateEvent::Type) {
+        const auto* batteryEvent = static_cast<PeerBatteryLevelUpdateEvent*>(e);
+        const int percentage = batteryEvent->GetBatteryLevel() < 0
+            ? -1
+            : std::clamp(static_cast<int>(std::lround(batteryEvent->GetBatteryLevel())), 0, 100);
+        setBatteryPercentage(percentage);
         return true;
     }
 
