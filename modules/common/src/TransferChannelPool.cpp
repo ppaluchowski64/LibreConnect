@@ -7,7 +7,9 @@
 namespace {
 constexpr size_t BORROW_WAIT_POLL_MS = 10;
 constexpr size_t CHANNEL_CONNECT_POLL_MS = 10;
+constexpr size_t CONNECT_REQUEST_RETRY_MS = 1000;
 constexpr auto CHANNELS_CONNECT_TIMEOUT = std::chrono::seconds(15);
+constexpr auto CONNECT_REQUEST_TIMEOUT = std::chrono::seconds(15);
 }
 
 TransferChannelPool* TransferChannelPool::s_instance{};
@@ -103,7 +105,33 @@ asio::awaitable<void> TransferChannelPool::Connect() {
 
     Debug::Log("TransferChannelPool: Starting outbound connect flow");
     s_connectionState.store(ConnectionState::CONNECTING);
-    ConnectionManager::Send(PC_PackageType::TRANSFER_CHANNEL_POOL_CONNECT);
+
+    IOContext& context = ThreadPool::GetContext();
+    asio::steady_timer timer(context);
+    const auto deadline = std::chrono::steady_clock::now() + CONNECT_REQUEST_TIMEOUT;
+
+    while (s_connectionState.load() == ConnectionState::CONNECTING) {
+        if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogWarning("TransferChannelPool: Connect aborted because primary connection dropped");
+            s_connectionState.store(ConnectionState::DISCONNECTED);
+            co_return;
+        }
+
+        if (s_instance->m_waitingForConnections.load()) {
+            co_return;
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline) {
+            Debug::LogError("TransferChannelPool: Timed out waiting for peer transfer channel ports");
+            s_connectionState.store(ConnectionState::DISCONNECTED);
+            co_return;
+        }
+
+        ConnectionManager::Send(PC_PackageType::TRANSFER_CHANNEL_POOL_CONNECT);
+
+        timer.expires_after(std::chrono::milliseconds(CONNECT_REQUEST_RETRY_MS));
+        co_await timer.async_wait();
+    }
 #endif
 }
 

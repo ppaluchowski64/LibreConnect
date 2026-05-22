@@ -110,6 +110,7 @@ std::filesystem::path CurrentIncomingPostDirectory()
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
+constexpr auto TRANSFER_CHANNEL_ENABLE_TIMEOUT = std::chrono::seconds(30);
 
 void FileShareModule::SetIncomingPostDirectory(const std::filesystem::path& path) {
     std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
@@ -779,13 +780,24 @@ void FileShareModule::OnInitialize() {
 
 asio::awaitable<void> FileShareModule::OnEnable() {
     asio::steady_timer timer(m_context);
+    const auto deadline = std::chrono::steady_clock::now() + TRANSFER_CHANNEL_ENABLE_TIMEOUT;
 
     ConnectionState state = TransferChannelPool::GetConnectionState();
 
     while (state != ConnectionState::CONNECTED) {
-        if (state != ConnectionState::CONNECTING) {
-            Disable();
+        if (ShouldAbortEnable()) {
             co_return;
+        }
+
+        if (state == ConnectionState::DISCONNECTED) {
+            Debug::Log("FileShareModule: Transfer channel pool is disconnected; starting connect flow");
+            co_await TransferChannelPool::Connect();
+        } else if (state != ConnectionState::CONNECTING) {
+            throw std::runtime_error("Transfer channel pool entered an invalid state while enabling file share");
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline) {
+            throw std::runtime_error("FileShareModule enable timed out waiting for transfer channel pool");
         }
 
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
