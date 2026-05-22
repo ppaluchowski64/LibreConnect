@@ -152,9 +152,8 @@ namespace {
                             }
                         }
 
-                        if (start > 0) {
+                        if (start > 0)
                             [lineBuffer replaceBytesInRange:NSMakeRange(0, start) withBytes:NULL length:0];
-                        }
                     }
                 }];
 

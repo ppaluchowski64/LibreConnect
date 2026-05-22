@@ -18,6 +18,9 @@ class MediaNotificationManager {
 
         static void SetActionCallback(const std::function<void(MediaSignal)>& callback);
         static void SetSeekCallback(const std::function<void(double)>& callback);
+
+        static void InvokeAction(MediaSignal signal);
+        static void InvokeSeek(double position);
 };
 
 #endif // MEDIA_NOTIFICATION_MANAGER_H

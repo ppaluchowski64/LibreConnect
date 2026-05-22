@@ -1,63 +1,36 @@
 #include "MediaNotificationManager.h"
+#include "InputTypes.h"
+#include "MediaTrackInfo.h"
 
 #include <QtCore/QJniObject>
 #include <QtCore/QCoreApplication>
 
-#include <mutex>
-
 namespace {
-    std::mutex g_callbackMutex;
-    std::function<void(MediaSignal)> g_actionCallback;
-    std::function<void(double)> g_seekCallback;
-
     MediaSignal KeyCodeToSignal(int keyCode) {
         switch (keyCode) {
             case 85:
                 return MediaSignal::PlayPause;
+
             case 87:
                 return MediaSignal::NextTrack;
+
             case 88:
                 return MediaSignal::PreviousTrack;
+
             default:
                 return MediaSignal::PlayPause;
         }
     }
 }
 
-extern "C" void LibreConnect_mediaTrackInfoJniAnchor();
-
 extern "C" JNIEXPORT void JNICALL
 Java_com_LibreConnect_mobile_MediaNotificationBridge_nativeOnMediaAction(JNIEnv* /*env*/, jclass /*clazz*/, jint keyCode) {
-    std::function<void(MediaSignal)> callback; {
-        std::lock_guard<std::mutex> lock(g_callbackMutex);
-        callback = g_actionCallback;
-    }
-
-    if (callback)
-        callback(KeyCodeToSignal(keyCode));
+    MediaNotificationManager::InvokeAction(KeyCodeToSignal(keyCode));
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_LibreConnect_mobile_MediaNotificationBridge_nativeOnSeek(JNIEnv* /*env*/, jclass /*clazz*/, jdouble positionSeconds) {
-    std::function<void(double)> callback; {
-        std::lock_guard<std::mutex> lock(g_callbackMutex);
-        callback = g_seekCallback;
-    }
-
-    if (callback)
-        callback(positionSeconds);
-}
-
-void MediaNotificationManager::SetActionCallback(const std::function<void(MediaSignal)>& callback) {
-    LibreConnect_mediaTrackInfoJniAnchor();
-
-    std::lock_guard<std::mutex> lock(g_callbackMutex);
-    g_actionCallback = callback;
-}
-
-void MediaNotificationManager::SetSeekCallback(const std::function<void(double)>& callback) {
-    std::lock_guard<std::mutex> lock(g_callbackMutex);
-    g_seekCallback = callback;
+    MediaNotificationManager::InvokeSeek(positionSeconds);
 }
 
 void MediaNotificationManager::Show() {

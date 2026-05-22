@@ -16,6 +16,7 @@ VirtualInputDevice::VirtualInputDevice(const char* /*deviceName*/) :
     m_isRunning(true) {
 
     m_source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+
     if (m_source)
         CGEventSourceSetLocalEventsSuppressionInterval(m_source, 0.0);
 

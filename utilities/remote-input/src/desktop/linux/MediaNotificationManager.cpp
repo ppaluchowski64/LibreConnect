@@ -1,4 +1,5 @@
 #include "MediaNotificationManager.h"
+#include "InputTypes.h"
 #include "MediaTrackInfo.h"
 
 #include <QCoreApplication>
@@ -17,8 +18,6 @@
 
 namespace {
     std::mutex g_mutex;
-    std::function<void(MediaSignal)> g_actionCallback;
-    std::function<void(double)> g_seekCallback;
 
     bool g_isPlaying = false;
     double g_position = 0.0;
@@ -38,6 +37,7 @@ namespace {
         Q_PROPERTY(QString Identity MEMBER m_id CONSTANT)
         Q_PROPERTY(QString DesktopEntry MEMBER m_entry CONSTANT)
         Q_PROPERTY(double Rate MEMBER m_one CONSTANT)
+
         Q_PROPERTY(double MinimumRate MEMBER m_one CONSTANT)
         Q_PROPERTY(double MaximumRate MEMBER m_one CONSTANT)
         Q_PROPERTY(double Volume MEMBER m_one CONSTANT)
@@ -109,58 +109,42 @@ namespace {
         public slots:
             void Next() const {
                 (void)this;
-
-                if (g_actionCallback)
-                    g_actionCallback(MediaSignal::NextTrack);
+                MediaNotificationManager::InvokeAction(MediaSignal::NextTrack);
             }
 
             void Previous() const {
                 (void)this;
-
-                if (g_actionCallback)
-                    g_actionCallback(MediaSignal::PreviousTrack);
+                MediaNotificationManager::InvokeAction(MediaSignal::PreviousTrack);
             }
 
             void Pause() const {
                 (void)this;
-
-                if (g_actionCallback)
-                    g_actionCallback(MediaSignal::PlayPause);
+                MediaNotificationManager::InvokeAction(MediaSignal::PlayPause);
             }
 
             void PlayPause() const {
                 (void)this;
-
-                if (g_actionCallback)
-                    g_actionCallback(MediaSignal::PlayPause);
+                MediaNotificationManager::InvokeAction(MediaSignal::PlayPause);
             }
 
             void Stop() const {
                 (void)this;
-
-                if (g_actionCallback)
-                    g_actionCallback(MediaSignal::PlayPause);
+                MediaNotificationManager::InvokeAction(MediaSignal::PlayPause);
             }
 
             void Play() const {
                 (void)this;
-
-                if (g_actionCallback)
-                    g_actionCallback(MediaSignal::PlayPause);
+                MediaNotificationManager::InvokeAction(MediaSignal::PlayPause);
             }
 
             void Seek(qlonglong offset) const {
                 (void)this;
-
-                if (g_seekCallback)
-                    g_seekCallback(static_cast<double>(Position()) / 1000000.0 + static_cast<double>(offset) / 1000000.0);
+                MediaNotificationManager::InvokeSeek(static_cast<double>(Position()) / 1000000.0 + static_cast<double>(offset) / 1000000.0);
             }
 
             void SetPosition(const QDBusObjectPath&, qlonglong pos) const {
                 (void)this;
-
-                if (g_seekCallback)
-                    g_seekCallback(static_cast<double>(pos) / 1000000.0);
+                MediaNotificationManager::InvokeSeek(static_cast<double>(pos) / 1000000.0);
             }
 
         signals:
@@ -252,11 +236,13 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
 
     {
         std::lock_guard<std::mutex> lock(g_mutex);
+
         stateChanged = (g_isPlaying != isPlaying);
         positionJumped = std::abs(g_position - position) > 1.5;
 
         g_isPlaying = isPlaying;
         g_position = position;
+
         g_lastUpdateMicros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
         player = g_player;
@@ -267,20 +253,11 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
 
     if (positionJumped && player) {
         auto dbusPos = static_cast<qlonglong>(position * 1000000.0);
+
         QMetaObject::invokeMethod(player, [player, dbusPos]() {
             emit player->Seeked(dbusPos);
         });
     }
-}
-
-void MediaNotificationManager::SetActionCallback(const std::function<void(MediaSignal)>& callback) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_actionCallback = callback;
-}
-
-void MediaNotificationManager::SetSeekCallback(const std::function<void(double)>& callback) {
-    std::lock_guard<std::mutex> lock(g_mutex);
-    g_seekCallback = callback;
 }
 
 #include "MediaNotificationManager.moc"
