@@ -36,6 +36,7 @@ class MainService : Service() {
 
     private val backendStarted = AtomicBoolean(false)
     private val cameraRequested = AtomicBoolean(false)
+    private val microphoneRequested = AtomicBoolean(false)
     private var notificationManager: NotificationManager? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
@@ -135,16 +136,23 @@ class MainService : Service() {
             if (shouldIncludeCameraType()) {
                 serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
             }
+            if (shouldIncludeMicrophoneType()) {
+                serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
             startForeground(
                 NOTIFICATION_ID,
                 notification,
                 serviceTypes
             )
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var serviceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            if (shouldIncludeMicrophoneType()) {
+                serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                serviceTypes
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
@@ -284,6 +292,13 @@ class MainService : Service() {
         return true
     }
 
+    private fun shouldIncludeMicrophoneType(): Boolean {
+        if (!microphoneRequested.get()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
+        return true
+    }
+
     companion object {
         private const val TAG = "MainService"
         const val CHANNEL_ID = "libreconnect_main_service"
@@ -299,6 +314,17 @@ class MainService : Service() {
         private var nativeLoaded = false
         @Volatile
         private var activeService: MainService? = null
+
+        @JvmStatic
+        fun setMicrophoneRequested(enabled: Boolean) {
+            val service = activeService
+            if (service != null) {
+                service.microphoneRequested.set(enabled)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    service.startAsForeground()
+                }
+            }
+        }
 
         @JvmStatic
         fun getActiveContext(): Context? {
