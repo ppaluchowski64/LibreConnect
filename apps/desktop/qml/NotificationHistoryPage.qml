@@ -52,13 +52,23 @@ Page {
 
                 ListView {
                     id: historyList
-                    anchors.fill: parent
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.rightMargin: scrollGutter.visible ? 28 : 0
                     visible: notificationSyncController.enabled && count > 0
                     clip: true
                     spacing: 8
                     model: notificationSyncController.notifications
                     ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
+                        id: notificationsScrollBar
+                        parent: scrollGutter
+                        anchors.fill: parent
+                        policy: ScrollBar.AlwaysOn
+                        active: true
+                        opacity: 1.0
+                        visible: scrollGutter.visible
                     }
 
                     delegate: Rectangle {
@@ -214,6 +224,19 @@ Page {
                             }
                         }
                     }
+                }
+
+                Rectangle {
+                    id: scrollGutter
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.right: parent.right
+                    width: 14
+                    radius: 7
+                    color: Theme.backgroundColor
+                    border.color: Theme.panelBorderColor
+                    border.width: 1
+                    visible: historyList.visible && historyList.contentHeight > historyList.height + 1
                 }
 
                 Column {

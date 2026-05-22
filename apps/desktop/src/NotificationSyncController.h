@@ -77,6 +77,7 @@ private:
     bool m_requestedEnabled = false;
     bool m_enableAttemptPending = false;
     bool m_disableAttemptPending = false;
+    bool m_confirmedEnabled = false;
     QString m_statusMessage;
     QVector<NotificationItem> m_notifications;
     std::optional<bool> m_lastReportedLocalPermissionState;

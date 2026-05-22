@@ -54,6 +54,7 @@ void SystemInfoShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_ENABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_STATE_CHANGED);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_NEW_BATTERY_LEVEL);
 }
 
 void SystemInfoShareModule::OnInitialize() {}

@@ -8,6 +8,7 @@
 #include <QCommandLineParser>
 #include <QFontDatabase>
 #include <QFont>
+#include <QIcon>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSystemTrayIcon>
@@ -251,6 +252,9 @@ int main(int argc, char *argv[])
 
     const QString port = parser.value(portOption);
     const QString address = parser.value(addressOption);
+
+    app.setDesktopFileName(QStringLiteral("libreconnect"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
 
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {

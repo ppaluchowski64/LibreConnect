@@ -96,10 +96,21 @@ std::filesystem::path DefaultIncomingPostDirectory()
     return QStandardPaths::writableLocation(QStandardPaths::HomeLocation).toStdString();
 }
 
+std::filesystem::path CurrentIncomingPostDirectory()
+{
+    std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+    if (g_incomingPostDirectory.empty()) {
+        g_incomingPostDirectory = DefaultIncomingPostDirectory();
+    }
+
+    return g_incomingPostDirectory;
+}
+
 }
 
 constexpr size_t TRANSFER_CHANNELS_COUNT = 10;
 constexpr size_t PROGRESS_EVENT_DELAY_MS = 100;
+constexpr auto TRANSFER_CHANNEL_ENABLE_TIMEOUT = std::chrono::seconds(30);
 
 void FileShareModule::SetIncomingPostDirectory(const std::filesystem::path& path) {
     std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
@@ -687,6 +698,55 @@ void FileShareModule::EnableResponseCallbacks() {
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
         ConnectionManager::SendEvent(event);
     });
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_GET_REQUEST, [](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID = package->GetValue<size_t>();
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_GET_RESPONSE,
+            CurrentIncomingPostDirectory().string()
+        );
+        co_return;
+    });
+    ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_SET_REQUEST, [](PC_Package&& package) mutable -> asio::awaitable<void> {
+        const size_t requestID = package->GetValue<size_t>();
+        const std::string requestedPath = package->GetValue<std::string>();
+        const std::filesystem::path candidate(requestedPath);
+
+        std::error_code ec;
+        const bool valid = !candidate.empty() &&
+            std::filesystem::exists(candidate, ec) &&
+            !ec &&
+            std::filesystem::is_directory(candidate, ec) &&
+            !ec;
+
+        if (!valid) {
+            ConnectionManager::SendRequestResponse(
+                requestID,
+                PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_SET_RESPONSE,
+                false,
+                requestedPath,
+                std::string("That desktop folder does not exist. Modify the path and try again.")
+            );
+            co_return;
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(g_incomingPostDirectoryMutex);
+            g_incomingPostDirectory = candidate;
+        }
+
+        QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnect"));
+        settings.setValue(QStringLiteral("fileManager/localDownloadDirectory"), QString::fromStdString(candidate.string()));
+
+        ConnectionManager::SendRequestResponse(
+            requestID,
+            PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_SET_RESPONSE,
+            true,
+            candidate.string(),
+            std::string("Default download path saved.")
+        );
+        co_return;
+    });
 }
 
 void FileShareModule::DisableResponseCallbacks() {
@@ -694,6 +754,8 @@ void FileShareModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::FILE_SHARE_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_TRANSFER_POST_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_GET_REQUEST);
+    ConnectionManager::RemoveAwaitableResponseHandler(PC_PackageType::FILE_SHARE_INCOMING_DIRECTORY_SET_REQUEST);
 }
 
 void FileShareModule::OnInitialize() {
@@ -718,13 +780,24 @@ void FileShareModule::OnInitialize() {
 
 asio::awaitable<void> FileShareModule::OnEnable() {
     asio::steady_timer timer(m_context);
+    const auto deadline = std::chrono::steady_clock::now() + TRANSFER_CHANNEL_ENABLE_TIMEOUT;
 
     ConnectionState state = TransferChannelPool::GetConnectionState();
 
     while (state != ConnectionState::CONNECTED) {
-        if (state != ConnectionState::CONNECTING) {
-            Disable();
+        if (ShouldAbortEnable()) {
             co_return;
+        }
+
+        if (state == ConnectionState::DISCONNECTED) {
+            Debug::Log("FileShareModule: Transfer channel pool is disconnected; starting connect flow");
+            co_await TransferChannelPool::Connect();
+        } else if (state != ConnectionState::CONNECTING) {
+            throw std::runtime_error("Transfer channel pool entered an invalid state while enabling file share");
+        }
+
+        if (std::chrono::steady_clock::now() >= deadline) {
+            throw std::runtime_error("FileShareModule enable timed out waiting for transfer channel pool");
         }
 
         timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));

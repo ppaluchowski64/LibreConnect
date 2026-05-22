@@ -48,6 +48,7 @@ void ClipboardSyncController::refreshState()
     const ModuleState state = module->GetModuleState();
 
     if (!m_connected) {
+        m_confirmedEnabled = false;
         setAutoSyncEnabledState(m_requestedAutoSync);
         setBusy(false);
         setStatusMessage(m_requestedAutoSync
@@ -71,6 +72,7 @@ void ClipboardSyncController::refreshState()
     }
 
     if (state == ModuleState::Enabled) {
+        m_confirmedEnabled = true;
         m_enableAttemptPending = false;
         if (!m_requestedAutoSync) {
             setRequestedAutoSync(true, true);
@@ -92,11 +94,16 @@ void ClipboardSyncController::refreshState()
     }
 
     if (state == ModuleState::Disabled) {
-        if (m_requestedAutoSync && !m_enableAttemptPending && !m_disableAttemptPending) {
-            setRequestedAutoSync(false, true);
+        if (m_confirmedEnabled && !m_disableAttemptPending) {
+            m_confirmedEnabled = false;
+            if (m_requestedAutoSync) {
+                setRequestedAutoSync(false, true);
+            }
+            m_enableAttemptPending = false;
         }
 
         if (m_disableAttemptPending) {
+            m_confirmedEnabled = false;
             m_disableAttemptPending = false;
             if (m_requestedAutoSync) {
                 setRequestedAutoSync(false, true);
@@ -112,7 +119,7 @@ void ClipboardSyncController::refreshState()
             return;
         }
 
-        setAutoSyncEnabledState(false);
+        setAutoSyncEnabledState(m_requestedAutoSync);
         setBusy(false);
         setStatusMessage(m_requestedAutoSync
             ? QStringLiteral("Clipboard auto sync is waiting for the connected device.")

@@ -17,6 +17,7 @@
 class FileShareModule final : public BaseModule {
 public:
     FileShareModule() = default;
+
     void PostEntry(const std::filesystem::path& path, const std::filesystem::path& destination, bool notifyTransferProgress = false) const;
 
 private:

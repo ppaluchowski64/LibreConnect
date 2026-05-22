@@ -215,7 +215,7 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     KeyMapping special = mapQtSpecialKey(qtKey);
     if (special.key != INVALID_KEY) {
         const bool shifted = special.requiresShift || (modifiers & Qt::ShiftModifier);
-        if (sendMappedKey(special.key, shifted)) {
+        if (sendMappedKey(special.key, shifted, modifiers)) {
             setStatusMessage(QStringLiteral("Keyboard input sent to desktop."));
         }
         return;
@@ -227,7 +227,7 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
 
     bool anySent = false;
     for (const QChar c : text) {
-        if (sendCharacter(c)) {
+        if (sendCharacter(c, modifiers)) {
             anySent = true;
         }
     }
@@ -450,30 +450,54 @@ void MobileRemoteInputController::requestNowPlayingUpdate() {
     RemoteInputModule::RequestMediaInfo();
 }
 
-bool MobileRemoteInputController::sendMappedKey(const int key, const bool requiresShift) {
+bool MobileRemoteInputController::sendMappedKey(const int key, const bool requiresShift, const int modifiers) {
     if (key == INVALID_KEY) {
         return false;
     }
 
     const Key mappedKey = static_cast<Key>(key);
-    if (requiresShift) {
+    const bool pressShift = requiresShift || (modifiers & Qt::ShiftModifier);
+    const bool pressControl = modifiers & Qt::ControlModifier;
+    const bool pressAlt = modifiers & Qt::AltModifier;
+    const bool pressSuper = modifiers & Qt::MetaModifier;
+
+    if (pressControl) {
+        RemoteInputModule::SendInput(Key::LeftControl, InputEventType::PRESS);
+    }
+    if (pressAlt) {
+        RemoteInputModule::SendInput(Key::LeftAlt, InputEventType::PRESS);
+    }
+    if (pressSuper) {
+        RemoteInputModule::SendInput(Key::LeftSuper, InputEventType::PRESS);
+    }
+    if (pressShift) {
         RemoteInputModule::SendInput(Key::LeftShift, InputEventType::PRESS);
-        RemoteInputModule::SendInput(mappedKey, InputEventType::PRESS_AND_RELEASE);
-        RemoteInputModule::SendInput(Key::LeftShift, InputEventType::RELEASE);
-        return true;
     }
 
     RemoteInputModule::SendInput(mappedKey, InputEventType::PRESS_AND_RELEASE);
+
+    if (pressShift) {
+        RemoteInputModule::SendInput(Key::LeftShift, InputEventType::RELEASE);
+    }
+    if (pressSuper) {
+        RemoteInputModule::SendInput(Key::LeftSuper, InputEventType::RELEASE);
+    }
+    if (pressAlt) {
+        RemoteInputModule::SendInput(Key::LeftAlt, InputEventType::RELEASE);
+    }
+    if (pressControl) {
+        RemoteInputModule::SendInput(Key::LeftControl, InputEventType::RELEASE);
+    }
     return true;
 }
 
-bool MobileRemoteInputController::sendCharacter(const QChar c) {
+bool MobileRemoteInputController::sendCharacter(const QChar c, const int modifiers) {
     const KeyMapping mapping = mapCharacter(c);
     if (mapping.key == INVALID_KEY) {
         return false;
     }
 
-    return sendMappedKey(mapping.key, mapping.requiresShift);
+    return sendMappedKey(mapping.key, mapping.requiresShift, modifiers);
 }
 
 void MobileRemoteInputController::setStatusMessage(const QString& message) {
@@ -552,6 +576,16 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecia
         return { static_cast<int>(Key::Delete), false };
     case Qt::Key_Insert:
         return { static_cast<int>(Key::Insert), false };
+    case Qt::Key_Shift:
+        return { static_cast<int>(Key::LeftShift), false };
+    case Qt::Key_Control:
+        return { static_cast<int>(Key::LeftControl), false };
+    case Qt::Key_Alt:
+        return { static_cast<int>(Key::LeftAlt), false };
+    case Qt::Key_Meta:
+        return { static_cast<int>(Key::LeftSuper), false };
+    case Qt::Key_Menu:
+        return { static_cast<int>(Key::Menu), false };
     case Qt::Key_F1:
         return { static_cast<int>(Key::F1), false };
     case Qt::Key_F2:
@@ -576,6 +610,36 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapQtSpecia
         return { static_cast<int>(Key::F11), false };
     case Qt::Key_F12:
         return { static_cast<int>(Key::F12), false };
+    case Qt::Key_F13:
+        return { static_cast<int>(Key::F13), false };
+    case Qt::Key_F14:
+        return { static_cast<int>(Key::F14), false };
+    case Qt::Key_F15:
+        return { static_cast<int>(Key::F15), false };
+    case Qt::Key_F16:
+        return { static_cast<int>(Key::F16), false };
+    case Qt::Key_F17:
+        return { static_cast<int>(Key::F17), false };
+    case Qt::Key_F18:
+        return { static_cast<int>(Key::F18), false };
+    case Qt::Key_F19:
+        return { static_cast<int>(Key::F19), false };
+    case Qt::Key_F20:
+        return { static_cast<int>(Key::F20), false };
+    case Qt::Key_F21:
+        return { static_cast<int>(Key::F21), false };
+    case Qt::Key_F22:
+        return { static_cast<int>(Key::F22), false };
+    case Qt::Key_F23:
+        return { static_cast<int>(Key::F23), false };
+    case Qt::Key_F24:
+        return { static_cast<int>(Key::F24), false };
+    case Qt::Key_Print:
+        return { static_cast<int>(Key::PrintScreen), false };
+    case Qt::Key_ScrollLock:
+        return { static_cast<int>(Key::ScrollLock), false };
+    case Qt::Key_Pause:
+        return { static_cast<int>(Key::Pause), false };
     default:
         return { INVALID_KEY, false };
     }
