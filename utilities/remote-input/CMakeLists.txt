@@ -118,6 +118,7 @@ else ()
                 "-framework AppKit"
                 "-framework CoreAudio"
                 "-framework AudioToolbox"
+                "-framework MediaPlayer"
         )
     elseif (WIN32)
         target_link_libraries(remote-input PUBLIC

@@ -16,7 +16,6 @@ VirtualInputDevice::VirtualInputDevice(const char* /*deviceName*/) :
     m_isRunning(true) {
 
     m_source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-
     if (m_source)
         CGEventSourceSetLocalEventsSuppressionInterval(m_source, 0.0);
 
@@ -34,14 +33,12 @@ VirtualInputDevice::~VirtualInputDevice() {
 }
 
 void VirtualInputDevice::EmitNativeKeyPress(int nativeKeyCode) {
-    static thread_local moodycamel::ProducerToken producerToken(m_eventQueue);
-    m_eventQueue.enqueue(producerToken, {nativeKeyCode, true});
+    m_eventQueue.enqueue({nativeKeyCode, true});
     m_eventFlag.Signal();
 }
 
 void VirtualInputDevice::EmitNativeKeyRelease(int nativeKeyCode) {
-    static thread_local moodycamel::ProducerToken producerToken(m_eventQueue);
-    m_eventQueue.enqueue(producerToken, {nativeKeyCode, false});
+    m_eventQueue.enqueue({nativeKeyCode, false});
     m_eventFlag.Signal();
 }
 

@@ -87,72 +87,74 @@ namespace {
                 __block NSMutableData* lineBuffer = [[NSMutableData alloc] init];
 
                 [[pipe fileHandleForReading] setReadabilityHandler:^(NSFileHandle* handle) {
-                    NSData* data = [handle availableData];
+                    @autoreleasepool {
+                        NSData* data = [handle availableData];
 
-                    if (data.length == 0) {
-                        [handle setReadabilityHandler:nil];
-                        return;
-                    }
-
-                    [lineBuffer appendData:data];
-
-                    const char* bytes = (const char*)lineBuffer.bytes;
-                    NSUInteger len = lineBuffer.length;
-                    NSUInteger start = 0;
-
-                    for (NSUInteger i = 0; i < len; i++) {
-                        if (bytes[i] == '\n') {
-                            NSUInteger lineLen = i - start;
-
-                            if (lineLen > 0) {
-                                NSData* lineData = [lineBuffer subdataWithRange:NSMakeRange(start, lineLen)];
-                                NSDictionary* dict = [NSJSONSerialization JSONObjectWithData:lineData options:0 error:nil];
-
-                                if (dict && dict[@"payload"]) {
-                                    NSDictionary* p = dict[@"payload"];
-                                    CachedState next{};
-
-                                    if (p[@"title"] && p[@"title"] != [NSNull null])
-                                        next.info.title = [p[@"title"] UTF8String];
-
-                                    if (p[@"artist"] && p[@"artist"] != [NSNull null])
-                                        next.info.artist = [p[@"artist"] UTF8String];
-
-                                    if (p[@"album"] && p[@"album"] != [NSNull null])
-                                        next.info.album = [p[@"album"] UTF8String];
-
-                                    if (p[@"durationMicros"] && p[@"durationMicros"] != [NSNull null])
-                                        next.info.duration = [p[@"durationMicros"] doubleValue] / 1e6;
-
-                                    if (p[@"elapsedTimeMicros"] && p[@"elapsedTimeMicros"] != [NSNull null])
-                                        next.rawPosMicros = [p[@"elapsedTimeMicros"] longLongValue];
-
-                                    if (p[@"playing"] && p[@"playing"] != [NSNull null])
-                                        next.info.playing = [p[@"playing"] boolValue];
-
-                                    if (p[@"timestampEpochMicros"] && p[@"timestampEpochMicros"] != [NSNull null])
-                                        next.timestamp = [p[@"timestampEpochMicros"] longLongValue];
-
-                                    if (p[@"artworkData"] && p[@"artworkData"] != [NSNull null]) {
-                                        NSData* art = [[NSData alloc] initWithBase64EncodedString:p[@"artworkData"] options:0];
-
-                                        if (art) {
-                                            auto artBytes = static_cast<const uint8_t*>([art bytes]);
-                                            next.info.cover.assign(artBytes, artBytes + [art length]);
-                                        }
-                                    }
-
-                                    std::unique_lock lock(this->m_mutex);
-                                    this->m_state = next;
-                                }
-                            }
-
-                            start = i + 1;
+                        if (data.length == 0) {
+                            [handle setReadabilityHandler:nil];
+                            return;
                         }
-                    }
 
-                    if (start > 0) {
-                        [lineBuffer replaceBytesInRange:NSMakeRange(0, start) withBytes:NULL length:0];
+                        [lineBuffer appendData:data];
+
+                        const char* bytes = (const char*)lineBuffer.bytes;
+                        NSUInteger len = lineBuffer.length;
+                        NSUInteger start = 0;
+
+                        for (NSUInteger i = 0; i < len; i++) {
+                            if (bytes[i] == '\n') {
+                                NSUInteger lineLen = i - start;
+
+                                if (lineLen > 0) {
+                                    NSData* lineData = [lineBuffer subdataWithRange:NSMakeRange(start, lineLen)];
+                                    NSDictionary* dict = [NSJSONSerialization JSONObjectWithData:lineData options:0 error:nil];
+
+                                    if (dict && dict[@"payload"]) {
+                                        NSDictionary* p = dict[@"payload"];
+                                        CachedState next{};
+
+                                        if (p[@"title"] && p[@"title"] != [NSNull null])
+                                            next.info.title = [p[@"title"] UTF8String];
+
+                                        if (p[@"artist"] && p[@"artist"] != [NSNull null])
+                                            next.info.artist = [p[@"artist"] UTF8String];
+
+                                        if (p[@"album"] && p[@"album"] != [NSNull null])
+                                            next.info.album = [p[@"album"] UTF8String];
+
+                                        if (p[@"durationMicros"] && p[@"durationMicros"] != [NSNull null])
+                                            next.info.duration = [p[@"durationMicros"] doubleValue] / 1e6;
+
+                                        if (p[@"elapsedTimeMicros"] && p[@"elapsedTimeMicros"] != [NSNull null])
+                                            next.rawPosMicros = [p[@"elapsedTimeMicros"] longLongValue];
+
+                                        if (p[@"playing"] && p[@"playing"] != [NSNull null])
+                                            next.info.playing = [p[@"playing"] boolValue];
+
+                                        if (p[@"timestampEpochMicros"] && p[@"timestampEpochMicros"] != [NSNull null])
+                                            next.timestamp = [p[@"timestampEpochMicros"] longLongValue];
+
+                                        if (p[@"artworkData"] && p[@"artworkData"] != [NSNull null]) {
+                                            NSData* art = [[NSData alloc] initWithBase64EncodedString:p[@"artworkData"] options:0];
+
+                                            if (art) {
+                                                auto artBytes = static_cast<const uint8_t*>([art bytes]);
+                                                next.info.cover.assign(artBytes, artBytes + [art length]);
+                                            }
+                                        }
+
+                                        std::unique_lock lock(this->m_mutex);
+                                        this->m_state = next;
+                                    }
+                                }
+
+                                start = i + 1;
+                            }
+                        }
+
+                        if (start > 0) {
+                            [lineBuffer replaceBytesInRange:NSMakeRange(0, start) withBytes:NULL length:0];
+                        }
                     }
                 }];
 
@@ -172,7 +174,6 @@ std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
         return std::nullopt;
 
     TrackMetadata info = stateOpt->info;
-
     double rawPos = static_cast<double>(stateOpt->rawPosMicros) / 1000000.0;
 
     info.position = CalculateInterpolatedPosition(
@@ -195,16 +196,18 @@ void MediaTrackInfo::SetPosition(double seconds) {
         return;
 
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        auto micros = static_cast<long long>(seconds * 1e6);
-        NSArray* args = @[script, framework, @"seek", [NSString stringWithFormat:@"%lld", micros]];
+        @autoreleasepool {
+            auto micros = static_cast<long long>(seconds * 1e6);
+            NSArray* args = @[script, framework, @"seek", [NSString stringWithFormat:@"%lld", micros]];
 
-        NSTask* task = [[NSTask alloc] init];
-        [task setLaunchPath:@"/usr/bin/perl"];
-        [task setArguments:args];
-        [task setStandardOutput:[NSFileHandle fileHandleWithNullDevice]];
-        [task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
+            NSTask* task = [[NSTask alloc] init];
+            [task setLaunchPath:@"/usr/bin/perl"];
+            [task setArguments:args];
+            [task setStandardOutput:[NSFileHandle fileHandleWithNullDevice]];
+            [task setStandardError:[NSFileHandle fileHandleWithNullDevice]];
 
-        if ([task launchAndReturnError:nil])
-            [task waitUntilExit];
+            if ([task launchAndReturnError:nil])
+                [task waitUntilExit];
+        }
     });
 }
