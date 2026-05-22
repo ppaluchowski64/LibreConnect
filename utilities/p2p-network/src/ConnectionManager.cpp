@@ -147,7 +147,7 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
                 s_instance->m_signalSender = DaemonClient::Create();
             }
 
-            if (s_instance->m_signalSender) {
+            if (s_instance->m_signalSender && s_instance->m_signalSender->IsConnected()) {
                 const bool alreadyConnected = co_await s_instance->m_signalSender->RequestConnectedWindow(deviceID);
                 if (alreadyConnected) {
                     Debug::Log("ConnectionManager: Window already exists for device {}, closing program", boost::uuids::to_string(deviceID));

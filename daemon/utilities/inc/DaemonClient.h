@@ -5,6 +5,7 @@
 #include <DaemonCommon.h>
 #include <Package.h>
 #include <memory>
+#include <atomic>
 #include <AwaitableFlag.h>
 #include <ConcurrentUnorderedMap.h>
 
@@ -14,6 +15,7 @@ public:
     static std::shared_ptr<DaemonClient> Create();
     static void Destroy(const std::shared_ptr<DaemonClient>& client);
 
+    bool IsConnected() const;
     void ConnectedSignal(uuid uuid);
     asio::awaitable<bool> RequestConnectedWindow(uuid uuid);
 
@@ -43,6 +45,7 @@ private:
     asio::awaitable<void> CoReceive();
 
     TCPSocket m_socket;
+    std::atomic_bool m_connected{false};
     ConcurrentUnorderedMap<uuid, std::shared_ptr<AwaitableFlag>> m_windowRequestFlags;
     ConcurrentUnorderedMap<uuid, bool> m_windowRequestResults;
 };
