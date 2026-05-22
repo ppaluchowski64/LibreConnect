@@ -90,6 +90,7 @@ private:
     std::string m_challengeResult;
     InitialConnectionMode m_requestedConnectionMode{InitialConnectionMode::CONNECTION_WITHOUT_PAIR};
     bool m_finalHandshakeCompleted{false};
+    bool m_suppressDisconnectErrors{false};
 
     std::deque<std::unique_ptr<Package<InitialConnectionPackageType>>> m_packagesOut;
     std::shared_ptr<InitialConnection> m_temporaryOwnership;

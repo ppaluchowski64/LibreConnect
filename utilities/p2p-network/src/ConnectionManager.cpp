@@ -232,9 +232,27 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
     CancelPendingRequests();
     s_instance->m_primaryConnection->Disconnect(errorCode, true);
 
-    std::lock_guard<std::mutex> lock(s_mutex);
-    if (s_instance->m_initialConnectionOut != nullptr) {
-        s_instance->m_initialConnectionOut->Disconnect();
+    std::vector<std::shared_ptr<InitialConnection>> inboundConnections;
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        if (s_instance->m_initialConnectionOut != nullptr) {
+            s_instance->m_initialConnectionOut->Disconnect();
+        }
+
+        std::erase_if(s_instance->m_initialConnectionsIn, [](const std::weak_ptr<InitialConnection>& connection) {
+            return connection.expired();
+        });
+
+        inboundConnections.reserve(s_instance->m_initialConnectionsIn.size());
+        for (const auto& connection : s_instance->m_initialConnectionsIn) {
+            if (const auto ref = connection.lock()) {
+                inboundConnections.push_back(ref);
+            }
+        }
+    }
+
+    for (const auto& connection : inboundConnections) {
+        connection->Disconnect();
     }
 }
 

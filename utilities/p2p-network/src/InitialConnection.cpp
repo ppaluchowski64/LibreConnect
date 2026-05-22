@@ -177,6 +177,7 @@ asio::awaitable<void> InitialConnection::CoConnect(TCPEndpoint endpoint, const I
     m_connectionState = ConnectionState::CONNECTING;
     m_requestedConnectionMode = mode;
     m_finalHandshakeCompleted = false;
+    m_suppressDisconnectErrors = false;
     m_receivedTerminalHandshakeReason = false;
 
     try {
@@ -219,6 +220,7 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
     m_connectionState = ConnectionState::CONNECTING;
     m_requestedConnectionMode = InitialConnectionMode::CONNECTION_WITHOUT_PAIR;
     m_finalHandshakeCompleted = false;
+    m_suppressDisconnectErrors = false;
     m_receivedTerminalHandshakeReason = false;
 
     try {
@@ -351,7 +353,7 @@ asio::awaitable<void> InitialConnection::CoSend() {
         Debug::Log("InitialConnection: CoSend Error - {}", error.what());
         HandleAsioError(error.code());
 
-        if (!m_finalHandshakeCompleted && !m_receivedTerminalHandshakeReason) {
+        if (!m_finalHandshakeCompleted && !m_receivedTerminalHandshakeReason && !m_suppressDisconnectErrors) {
             const std::unique_ptr<QEvent> event = std::make_unique<ScannerErrorEvent>(error.code());
             ConnectionManager::SendEvent(event);
         }
@@ -453,6 +455,9 @@ asio::awaitable<void> InitialConnection::CoReceive() {
 
                 Debug::Log("InitialConnection: Handshake step 2 - Received DEVICE_DATA_FOR_SEEKING_CONNECTION ({}:{}). Transitioning to Primary.", data.deviceInfo.deviceAddress, data.deviceInfo.deviceAddressPort);
                 ConnectionManager::ConnectPrimary(data);
+                m_suppressDisconnectErrors = true;
+                Disconnect();
+                co_return;
 
             } else if (header.type == static_cast<uint16_t>(InitialConnectionPackageType::CHALLENGE_RESPONSE)) {
                 const std::string response = package->GetValue<std::string>();
@@ -545,7 +550,7 @@ asio::awaitable<void> InitialConnection::CoReceive() {
         Debug::Log("InitialConnection: CoReceive Error - {}", error.what());
         HandleAsioError(error.code());
 
-        if (!m_finalHandshakeCompleted && !m_receivedTerminalHandshakeReason) {
+        if (!m_finalHandshakeCompleted && !m_receivedTerminalHandshakeReason && !m_suppressDisconnectErrors) {
             std::error_code reportCode = error.code();
 
             if (m_requestedConnectionMode == InitialConnectionMode::CONNECT_WITH_PAIR &&
@@ -631,5 +636,8 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
 asio::awaitable<void> InitialConnection::CoPrimaryConnectionCallback(InitialConnectionData data) {
     Debug::Log("InitialConnection: Primary listener ready. Sending final DEVICE_DATA_FOR_SEEKING_CONNECTION.");
     Send(InitialConnectionPackageType::DEVICE_DATA_FOR_SEEKING_CONNECTION, data);
+    m_finalHandshakeCompleted = true;
+    m_suppressDisconnectErrors = true;
+    Disconnect();
     co_return;
 }

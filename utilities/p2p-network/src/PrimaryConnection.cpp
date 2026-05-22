@@ -297,10 +297,15 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     m_heartbeatReceived.store(false);
     m_connectionState.store(ConnectionState::DISCONNECTED);
 
+    {
+        std::lock_guard<std::mutex> lock(m_peerDataMutex);
+        m_peerData.reset();
+    }
+
 #if defined(DESKTOP_DEVICE)
-    if (m_peerData.has_value()) {
+    if (m_signalSender) {
         DaemonClient::Destroy(m_signalSender);
-        m_peerData = std::nullopt;
+        m_signalSender.reset();
     }
 #endif
 
