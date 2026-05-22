@@ -79,6 +79,33 @@ namespace {
         }
     }
 
+    void RotateNv12Buffer180(uint8_t* buffer, const int width, const int height) {
+        if (!buffer || width <= 0 || height <= 0) {
+            return;
+        }
+
+        const size_t yPlaneSize = static_cast<size_t>(width) * static_cast<size_t>(height);
+        std::reverse(buffer, buffer + yPlaneSize);
+
+        uint8_t* uvPlane = buffer + yPlaneSize;
+        const size_t uvPairCount = (static_cast<size_t>(width) * static_cast<size_t>(height / 2)) / 2;
+        if (uvPairCount < 2) {
+            return;
+        }
+
+        for (size_t front = 0, back = uvPairCount - 1; front <= back; ++front, --back) {
+            const size_t frontOffset = front * 2;
+            const size_t backOffset = back * 2;
+
+            if (front == back) {
+                break;
+            }
+
+            std::swap(uvPlane[frontOffset], uvPlane[backOffset]);
+            std::swap(uvPlane[frontOffset + 1], uvPlane[backOffset + 1]);
+        }
+    }
+
     size_t FindStart(const uint8_t* data, const size_t size, const size_t from) {
         for (size_t j = from; j + 3 < size; ++j) {
             if (data[j] == 0x00 && data[j + 1] == 0x00 &&
@@ -179,6 +206,14 @@ void NetworkCameraModule::SetCameraSettings(CameraSettings settings) {
     asio::post(m_context, [this, settings]() {
         m_cameraSettings = settings;
     });
+}
+
+void NetworkCameraModule::FlipCamera() {
+    m_cameraFlipped.store(!m_cameraFlipped.load());
+}
+
+bool NetworkCameraModule::IsCameraFlipped() const {
+    return m_cameraFlipped.load();
 }
 
 asio::awaitable<void> NetworkCameraModule::StartStream() {
@@ -567,6 +602,11 @@ void NetworkCameraModule::ProcessEncodedFrame(const std::vector<uint8_t>& frameB
             ReleaseDecodedFrames();
             goto cleanup;
         }
+
+        if (m_cameraFlipped.load()) {
+            RotateNv12Buffer180(newBuffer.data(), targetW, targetH);
+        }
+
         ReleaseDecodedFrames();
 
         {

@@ -33,6 +33,8 @@ class NetworkCameraModule final : public BaseModule {
 public:
     std::vector<CameraSpecification> GetCamerasSpecification() const;
     void SetCameraSettings(CameraSettings settings);
+    void FlipCamera();
+    bool IsCameraFlipped() const;
 
 private:
     asio::awaitable<void> StartStream();
@@ -48,6 +50,7 @@ private:
 
     VirtualCamera m_camera;
     CameraSettings m_cameraSettings{};
+    std::atomic_bool m_cameraFlipped{false};
 
     AVCodecContext* m_codecContext{nullptr};
     const AVCodec* m_codec{nullptr};
