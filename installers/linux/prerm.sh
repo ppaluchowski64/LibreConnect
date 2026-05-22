@@ -6,6 +6,7 @@ if [[ "${1:-}" = "remove" || "${1:-}" = "purge" ]]; then
     rm -f /usr/share/polkit-1/rules.d/50-v4l2loopback.rules || true
     rm -f /usr/share/polkit-1/actions/org.example.v4l2loopback.policy || true
     systemctl restart polkit || true
+    pkill -f "/usr/bin/libreconnect-daemon" || true
 fi
 
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then

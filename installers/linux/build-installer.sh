@@ -102,7 +102,9 @@ done
 DEPLOY_DIR="$(resolve_path "$SCRIPT_DIR" "$DEPLOY_DIR_REL")"
 OUTPUT_DIR="$(resolve_path "$SCRIPT_DIR" "$OUTPUT_DIR_REL")"
 MAIN_EXE="${DEPLOY_DIR}/usr/bin/LibreConnect"
+DAEMON_EXE_NAME="LibreConnect-daemon"
 LAUNCHER_REL="libreconnect-run.sh"
+DAEMON_LAUNCHER_REL="libreconnect-daemon-run.sh"
 CMAKE_BUILD_DIR="$(cd "${DEPLOY_DIR}/../../.." && pwd)"
 V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
 LINUX_INSTALL_SCRIPTS_DIR="${ROOT_DIR}/scripts/linux/install"
@@ -156,6 +158,7 @@ PKG_ROOT="${BUILD_ROOT}/${PACKAGE_NAME}_${VERSION}_${ARCH}"
 mkdir -p "${PKG_ROOT}/DEBIAN"
 mkdir -p "${PKG_ROOT}/opt"
 mkdir -p "${PKG_ROOT}/usr/bin"
+mkdir -p "${PKG_ROOT}/etc/xdg/autostart"
 mkdir -p "${PKG_ROOT}/usr/share/doc/${PACKAGE_NAME}"
 mkdir -p "${PKG_ROOT}/usr/share/applications"
 mkdir -p "${PKG_ROOT}/usr/share/icons/hicolor/512x512/apps"
@@ -221,11 +224,56 @@ exec "\${MAIN_EXE}" "\$@"
 EOF
 chmod 0755 "${PKG_ROOT}${INSTALL_PREFIX}/${LAUNCHER_REL}"
 
+cat > "${PKG_ROOT}${INSTALL_PREFIX}/${DAEMON_LAUNCHER_REL}" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+APPDIR="${INSTALL_PREFIX}"
+DAEMON_EXE_ROOT="\${APPDIR}/${DAEMON_EXE_NAME}"
+DAEMON_EXE_USR_BIN="\${APPDIR}/usr/bin/${DAEMON_EXE_NAME}"
+
+if [[ -d "\${APPDIR}/usr/plugins" ]]; then
+    export QT_PLUGIN_PATH="\${APPDIR}/usr/plugins"
+    export QT_QPA_PLATFORM_PLUGIN_PATH="\${APPDIR}/usr/plugins/platforms"
+fi
+if [[ -d "\${APPDIR}/usr/qml" ]]; then
+    export QML2_IMPORT_PATH="\${APPDIR}/usr/qml"
+    export QML_IMPORT_PATH="\${APPDIR}/usr/qml"
+fi
+if [[ -d "\${APPDIR}/usr/translations" ]]; then
+    export QT_TRANSLATIONS_PATH="\${APPDIR}/usr/translations"
+fi
+
+LIB_PATHS=()
+for lib_dir in "\${APPDIR}/usr/lib" "\${APPDIR}/usr/lib/aarch64-linux-gnu" "\${APPDIR}/usr/lib/x86_64-linux-gnu"; do
+    if [[ -d "\${lib_dir}" ]]; then
+        LIB_PATHS+=("\${lib_dir}")
+    fi
+done
+if [[ \${#LIB_PATHS[@]} -gt 0 ]]; then
+    BUNDLED_LD_PATH="\$(IFS=:; echo "\${LIB_PATHS[*]}")"
+    export LD_LIBRARY_PATH="\${BUNDLED_LD_PATH}\${LD_LIBRARY_PATH:+:\${LD_LIBRARY_PATH}}"
+fi
+
+if [[ -x "\${DAEMON_EXE_ROOT}" ]]; then
+    exec "\${DAEMON_EXE_ROOT}" "\$@"
+fi
+
+exec "\${DAEMON_EXE_USR_BIN}" "\$@"
+EOF
+chmod 0755 "${PKG_ROOT}${INSTALL_PREFIX}/${DAEMON_LAUNCHER_REL}"
+
 cat > "${PKG_ROOT}/usr/bin/libreconnect" <<EOF
 #!/usr/bin/env bash
 exec "${INSTALL_PREFIX}/${LAUNCHER_REL}" "\$@"
 EOF
 chmod 0755 "${PKG_ROOT}/usr/bin/libreconnect"
+
+cat > "${PKG_ROOT}/usr/bin/libreconnect-daemon" <<EOF
+#!/usr/bin/env bash
+exec "${INSTALL_PREFIX}/${DAEMON_LAUNCHER_REL}" "\$@"
+EOF
+chmod 0755 "${PKG_ROOT}/usr/bin/libreconnect-daemon"
 
 cat > "${PKG_ROOT}/usr/share/applications/libreconnect.desktop" <<EOF
 [Desktop Entry]
@@ -237,6 +285,17 @@ Icon=libreconnect_logo
 Terminal=false
 Categories=Network;Utility;
 Keywords=phone;android;sync;clipboard;notification;file transfer;remote;
+EOF
+
+cat > "${PKG_ROOT}/etc/xdg/autostart/libreconnect-daemon.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=LibreConnect Daemon
+Comment=Start the LibreConnect background daemon
+Exec=libreconnect-daemon
+Terminal=false
+X-GNOME-Autostart-enabled=true
+NoDisplay=true
 EOF
 
 cat > "${PKG_ROOT}/usr/share/metainfo/com.libreconnect.desktop.metainfo.xml" <<EOF

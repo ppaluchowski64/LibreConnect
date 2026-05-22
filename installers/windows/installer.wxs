@@ -31,11 +31,13 @@
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
         <CustomAction Id="LaunchApplication" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]LibreConnect.exe&quot;" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
+        <CustomAction Id="LaunchDaemon" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]LibreConnect-daemon.exe&quot;" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
 
         <Feature Id="ProductFeature" Title="LibreConnect Core" Level="1" AllowAbsent="no" ConfigurableDirectory="INSTALLFOLDER">
             <ComponentGroupRef Id="HarvestedFiles" />
             <ComponentRef Id="VirtualCameraSetupScriptComponent" />
             <ComponentRef Id="VirtualCameraTeardownScriptComponent" />
+            <ComponentRef Id="DaemonStartupComponent" />
             <ComponentRef Id="ProgramMenuFolderCleanup" />
         </Feature>
 
@@ -69,12 +71,25 @@
             </Component>
         </StandardDirectory>
 
+        <StandardDirectory Id="StartupFolder">
+            <Component Id="DaemonStartupComponent" Guid="{4D985ECC-2627-48FE-BD50-8C3B499B8978}">
+                <RegistryValue
+                    Root="HKCU"
+                    Key="Software\Microsoft\Windows\CurrentVersion\Run"
+                    Name="LibreConnectDaemon"
+                    Type="string"
+                    Value="&quot;[INSTALLFOLDER]LibreConnect-daemon.exe&quot;"
+                    KeyPath="yes" />
+            </Component>
+        </StandardDirectory>
+
         <CustomAction Id="RunVirtualCameraSetupScript" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="check" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[#VirtualCameraSetupScriptFile]&quot;" />
         <CustomAction Id="RunVirtualCameraTeardownScript" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="ignore" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[#VirtualCameraTeardownScriptFile]&quot;" />
 
         <InstallExecuteSequence>
             <Custom Action="RunVirtualCameraSetupScript" After="InstallFiles" Condition='NOT REMOVE~="ALL"' />
             <Custom Action="RunVirtualCameraTeardownScript" Before="RemoveFiles" Condition='REMOVE~="ALL"' />
+            <Custom Action="LaunchDaemon" After="InstallFinalize" Condition='NOT REMOVE~="ALL"' />
         </InstallExecuteSequence>
 
         <StandardDirectory Id="ProgramFiles64Folder">
