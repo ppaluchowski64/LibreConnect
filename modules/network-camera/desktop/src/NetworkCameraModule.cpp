@@ -792,7 +792,11 @@ void NetworkCameraModule::EnableResponseCallbacks() {
         Enable(true);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::NETWORK_CAMERA_MODULE_STATE_CHANGED, [instance, this](PC_Package&& package) mutable {
-       m_peerModuleEnabled.store(package->GetValue<bool>());
+       const bool peerEnabled = package->GetValue<bool>();
+       m_peerModuleEnabled.store(peerEnabled);
+       if (!peerEnabled) {
+           Disable(true);
+       }
     });
 
 }

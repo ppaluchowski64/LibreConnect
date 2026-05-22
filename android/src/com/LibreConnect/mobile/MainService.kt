@@ -17,6 +17,8 @@ import android.os.PowerManager
 import android.Manifest
 import android.annotation.SuppressLint
 import android.util.Log
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,17 +35,48 @@ class MainService : Service() {
         flags: Int,
         ptsUs: Long
     )
+    external fun nativeDisableCameraModule()
+    external fun nativeDisableMicrophoneModule()
 
     private val backendStarted = AtomicBoolean(false)
     private val cameraRequested = AtomicBoolean(false)
+    private val microphoneRequested = AtomicBoolean(false)
     private var notificationManager: NotificationManager? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
     private var cpuWakeLock: PowerManager.WakeLock? = null
 
+    private val moduleActionReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_DISABLE_CAMERA -> {
+                    Log.d(TAG, "Disable camera action received from notification")
+                    if (ensureNativeLoaded(this@MainService)) {
+                        nativeDisableCameraModule()
+                    }
+                }
+                ACTION_DISABLE_MICROPHONE -> {
+                    Log.d(TAG, "Disable microphone action received from notification")
+                    if (ensureNativeLoaded(this@MainService)) {
+                        nativeDisableMicrophoneModule()
+                    }
+                }
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         activeService = this
+        val filter = IntentFilter().apply {
+            addAction(ACTION_DISABLE_CAMERA)
+            addAction(ACTION_DISABLE_MICROPHONE)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(moduleActionReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(moduleActionReceiver, filter)
+        }
         startAsForeground()
     }
 
@@ -87,6 +120,13 @@ class MainService : Service() {
         if (activeService === this) {
             activeService = null
         }
+        try {
+            unregisterReceiver(moduleActionReceiver)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to unregister moduleActionReceiver", e)
+        }
+        notificationManager?.cancel(NOTIFICATION_ID_CAMERA)
+        notificationManager?.cancel(NOTIFICATION_ID_MICROPHONE)
         stopBackendIfNeeded()
         super.onDestroy()
     }
@@ -135,19 +175,92 @@ class MainService : Service() {
             if (shouldIncludeCameraType()) {
                 serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
             }
+            if (shouldIncludeMicrophoneType()) {
+                serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
             startForeground(
                 NOTIFICATION_ID,
                 notification,
                 serviceTypes
             )
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var serviceTypes = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            if (shouldIncludeMicrophoneType()) {
+                serviceTypes = serviceTypes or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                serviceTypes
             )
         } else {
             startForeground(NOTIFICATION_ID, notification)
+        }
+        updateModuleNotifications()
+    }
+
+    private fun updateModuleNotifications() {
+        val manager = notificationManager ?: getSystemService(NotificationManager::class.java).also {
+            notificationManager = it
+        }
+
+        val modulesChannel = NotificationChannel(
+            MODULES_CHANNEL_ID,
+            "Active Modules",
+            NotificationManager.IMPORTANCE_DEFAULT
+        )
+        manager.createNotificationChannel(modulesChannel)
+
+        // Camera notification
+        if (cameraRequested.get()) {
+            val disableIntent = Intent(ACTION_DISABLE_CAMERA).setPackage(packageName)
+            val pendingIntent = PendingIntent.getBroadcast(
+                this,
+                101,
+                disableIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val builder = Notification.Builder(this, MODULES_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_menu_camera)
+                .setContentTitle("Virtual Camera Active")
+                .setContentText("Your camera is being streamed to your PC")
+                .setOngoing(true)
+                .addAction(
+                    Notification.Action.Builder(
+                        Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                        "Disable",
+                        pendingIntent
+                    ).build()
+                )
+            manager.notify(NOTIFICATION_ID_CAMERA, builder.build())
+        } else {
+            manager.cancel(NOTIFICATION_ID_CAMERA)
+        }
+
+        // Microphone notification
+        if (microphoneRequested.get()) {
+            val disableIntent = Intent(ACTION_DISABLE_MICROPHONE).setPackage(packageName)
+            val pendingIntent = PendingIntent.getBroadcast(
+                this,
+                102,
+                disableIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val builder = Notification.Builder(this, MODULES_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_btn_speak_now)
+                .setContentTitle("Virtual Microphone Active")
+                .setContentText("Your microphone is being streamed to your PC")
+                .setOngoing(true)
+                .addAction(
+                    Notification.Action.Builder(
+                        Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                        "Disable",
+                        pendingIntent
+                    ).build()
+                )
+            manager.notify(NOTIFICATION_ID_MICROPHONE, builder.build())
+        } else {
+            manager.cancel(NOTIFICATION_ID_MICROPHONE)
         }
     }
 
@@ -284,21 +397,44 @@ class MainService : Service() {
         return true
     }
 
+    private fun shouldIncludeMicrophoneType(): Boolean {
+        if (!microphoneRequested.get()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return false
+        return true
+    }
+
     companion object {
         private const val TAG = "MainService"
         const val CHANNEL_ID = "libreconnect_main_service"
+        const val MODULES_CHANNEL_ID = "libreconnect_active_modules"
         const val NOTIFICATION_ID = 1001
+        const val NOTIFICATION_ID_CAMERA = 1002
+        const val NOTIFICATION_ID_MICROPHONE = 1003
         const val EXTRA_REQUEST_CAMERA = "com.LibreConnect.mobile.EXTRA_REQUEST_CAMERA"
         @Suppress("unused")
         const val ACTION_START_BACKEND = "com.LibreConnect.mobile.action.START_BACKEND"
         const val ACTION_STOP_BACKEND = "com.LibreConnect.mobile.action.STOP_BACKEND"
         const val ACTION_SET_CAMERA_REQUEST = "com.LibreConnect.mobile.action.SET_CAMERA_REQUEST"
+        const val ACTION_DISABLE_CAMERA = "com.LibreConnect.mobile.action.DISABLE_CAMERA"
+        const val ACTION_DISABLE_MICROPHONE = "com.LibreConnect.mobile.action.DISABLE_MICROPHONE"
         private const val CPU_WAKE_LOCK_TIMEOUT_MS = 24L * 60L * 60L * 1000L
 
         @Volatile
         private var nativeLoaded = false
         @Volatile
         private var activeService: MainService? = null
+
+        @JvmStatic
+        fun setMicrophoneRequested(enabled: Boolean) {
+            val service = activeService
+            if (service != null) {
+                service.microphoneRequested.set(enabled)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    service.startAsForeground()
+                }
+            }
+        }
 
         @JvmStatic
         fun getActiveContext(): Context? {
