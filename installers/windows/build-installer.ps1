@@ -65,7 +65,7 @@ if (-not (Test-Path $deployFull -PathType Container)) {
     throw "Deploy directory does not exist: $deployFull"
 }
 
-$mainExe = Join-Path $deployFull "appLibreConnect_desktop.exe"
+$mainExe = Join-Path $deployFull "LibreConnect.exe"
 if (-not (Test-Path $mainExe -PathType Leaf)) {
     throw "Main executable not found: $mainExe"
 }

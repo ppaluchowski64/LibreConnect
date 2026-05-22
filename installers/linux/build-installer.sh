@@ -84,7 +84,7 @@ done
 
 DEPLOY_DIR="$(resolve_path "$SCRIPT_DIR" "$DEPLOY_DIR_REL")"
 OUTPUT_DIR="$(resolve_path "$SCRIPT_DIR" "$OUTPUT_DIR_REL")"
-MAIN_EXE="${DEPLOY_DIR}/usr/bin/appLibreConnect_desktop"
+MAIN_EXE="${DEPLOY_DIR}/usr/bin/LibreConnect"
 LAUNCHER_REL="libreconnect-run.sh"
 CMAKE_BUILD_DIR="$(cd "${DEPLOY_DIR}/../../.." && pwd)"
 V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
@@ -141,7 +141,7 @@ mkdir -p "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux"
 cp -a "${DEPLOY_DIR}/." "${PKG_ROOT}${INSTALL_PREFIX}/"
 cp -a "${LINUX_INSTALL_SCRIPTS_DIR}" "${PKG_ROOT}${INSTALL_PREFIX}/scripts/linux/install"
 
-PACKAGED_MAIN_EXE="${PKG_ROOT}${INSTALL_PREFIX}/usr/bin/appLibreConnect_desktop"
+PACKAGED_MAIN_EXE="${PKG_ROOT}${INSTALL_PREFIX}/usr/bin/LibreConnect"
 if [[ ! -f "$PACKAGED_MAIN_EXE" ]]; then
     echo "Main executable missing in package root: $PACKAGED_MAIN_EXE" >&2
     exit 1
@@ -161,7 +161,7 @@ set -euo pipefail
 
 APPDIR="${INSTALL_PREFIX}"
 APPRUN="\${APPDIR}/AppRun"
-MAIN_EXE="\${APPDIR}/usr/bin/appLibreConnect_desktop"
+MAIN_EXE="\${APPDIR}/usr/bin/LibreConnect"
 
 if [[ -x "\${APPRUN}" ]]; then
     exec "\${APPRUN}" "\$@"

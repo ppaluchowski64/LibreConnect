@@ -30,7 +30,7 @@
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch LibreConnect" />
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
 
-        <CustomAction Id="LaunchApplication" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]appLibreConnect_desktop.exe&quot;" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
+        <CustomAction Id="LaunchApplication" Directory="INSTALLFOLDER" ExeCommand="&quot;[INSTALLFOLDER]LibreConnect.exe&quot;" Execute="immediate" Impersonate="yes" Return="asyncNoWait" />
 
         <Feature Id="ProductFeature" Title="LibreConnect Core" Level="1" AllowAbsent="no" ConfigurableDirectory="INSTALLFOLDER">
             <ComponentGroupRef Id="HarvestedFiles" />
@@ -64,7 +64,7 @@
 
         <StandardDirectory Id="DesktopFolder">
             <Component Id="DesktopShortcutComponent" Guid="{7D1A2B3C-4E5F-6A7B-8C9D-0E1F2A3B4C5D}">
-                <Shortcut Id="DesktopShortcut" Name="LibreConnect" Description="LibreConnect" Target="[INSTALLFOLDER]appLibreConnect_desktop.exe" WorkingDirectory="INSTALLFOLDER" />
+                <Shortcut Id="DesktopShortcut" Name="LibreConnect" Description="LibreConnect" Target="[INSTALLFOLDER]LibreConnect.exe" WorkingDirectory="INSTALLFOLDER" />
                 <RegistryValue Root="HKCU" Key="Software\LibreConnect" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
             </Component>
         </StandardDirectory>
@@ -84,7 +84,7 @@
         <StandardDirectory Id="ProgramMenuFolder">
             <Directory Id="ProgramMenuDir" Name="LibreConnect">
                 <Component Id="ProgramMenuFolderCleanup" Guid="{18D3A7D8-D85E-44A7-B2FC-C88E5F68C9A0}">
-                    <Shortcut Id="StartMenuShortcut" Name="LibreConnect" Description="LibreConnect" Target="[INSTALLFOLDER]appLibreConnect_desktop.exe" WorkingDirectory="INSTALLFOLDER" />
+                    <Shortcut Id="StartMenuShortcut" Name="LibreConnect" Description="LibreConnect" Target="[INSTALLFOLDER]LibreConnect.exe" WorkingDirectory="INSTALLFOLDER" />
                     <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" Directory="ProgramMenuDir" />
                     <RegistryValue Root="HKLM" Key="Software\LibreConnect" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
                 </Component>

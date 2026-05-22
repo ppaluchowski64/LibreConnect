@@ -2,7 +2,7 @@
 Type=Application
 Name=LibreConnect
 Comment=LibreConnect Desktop
-Exec=appLibreConnect_desktop
+Exec=LibreConnect
 Icon=libreconnect_logo
 Terminal=false
 Categories=Network;Utility;

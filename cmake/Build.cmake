@@ -179,6 +179,13 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
 
     target_include_directories(${ExecutableName} PUBLIC ${RootPath}/inc)
     target_link_libraries(${ExecutableName} PRIVATE ${ARGN})
+
+    if(ExecutableName STREQUAL "appLibreConnect_desktop")
+        set_target_properties(${ExecutableName} PROPERTIES
+                OUTPUT_NAME "LibreConnect"
+        )
+    endif()
+
     if(CMAKE_BUILD_TYPE)
         set(DEPLOY_FOLDER ${CMAKE_BINARY_DIR}/deploy/${CMAKE_BUILD_TYPE}/${ExecutableName})
     else()
@@ -211,10 +218,49 @@ endfunction()
 function(DeployQT Target)
     set(WIN_ICON "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.ico")
     set(MAC_ICON "${CMAKE_SOURCE_DIR}/apps/desktop/res/libreconnect_logo.icns")
+    get_target_property(TARGET_OUTPUT_NAME ${Target} OUTPUT_NAME)
+    if(NOT TARGET_OUTPUT_NAME)
+        set(TARGET_OUTPUT_NAME "${Target}")
+    endif()
 
     if(WIN32)
-        set(RC_FILE "${CMAKE_CURRENT_BINARY_DIR}/app_icon.rc")
-        file(WRITE "${RC_FILE}" "IDI_ICON1 ICON DISCARDABLE \"${WIN_ICON}\"")
+        set(RC_FILE "${CMAKE_CURRENT_BINARY_DIR}/${Target}_version.rc")
+        file(WRITE "${RC_FILE}"
+                "#include <winver.h>\n"
+                "IDI_ICON1 ICON DISCARDABLE \"${WIN_ICON}\"\n"
+                "\n"
+                "VS_VERSION_INFO VERSIONINFO\n"
+                " FILEVERSION ${LIBRECONNECT_APP_VERSION_MAJOR},${LIBRECONNECT_APP_VERSION_MINOR},${LIBRECONNECT_APP_VERSION_PATCH},0\n"
+                " PRODUCTVERSION ${LIBRECONNECT_APP_VERSION_MAJOR},${LIBRECONNECT_APP_VERSION_MINOR},${LIBRECONNECT_APP_VERSION_PATCH},0\n"
+                " FILEFLAGSMASK 0x3fL\n"
+                "#ifdef _DEBUG\n"
+                " FILEFLAGS 0x1L\n"
+                "#else\n"
+                " FILEFLAGS 0x0L\n"
+                "#endif\n"
+                " FILEOS 0x40004L\n"
+                " FILETYPE 0x1L\n"
+                " FILESUBTYPE 0x0L\n"
+                "BEGIN\n"
+                "    BLOCK \"StringFileInfo\"\n"
+                "    BEGIN\n"
+                "        BLOCK \"040904b0\"\n"
+                "        BEGIN\n"
+                "            VALUE \"CompanyName\", \"LibreConnect\\0\"\n"
+                "            VALUE \"FileDescription\", \"LibreConnect\\0\"\n"
+                "            VALUE \"FileVersion\", \"${LIBRECONNECT_APP_VERSION}\\0\"\n"
+                "            VALUE \"InternalName\", \"${Target}\\0\"\n"
+                "            VALUE \"OriginalFilename\", \"${TARGET_OUTPUT_NAME}.exe\\0\"\n"
+                "            VALUE \"ProductName\", \"LibreConnect\\0\"\n"
+                "            VALUE \"ProductVersion\", \"${LIBRECONNECT_APP_VERSION}\\0\"\n"
+                "        END\n"
+                "    END\n"
+                "    BLOCK \"VarFileInfo\"\n"
+                "    BEGIN\n"
+                "        VALUE \"Translation\", 0x0409, 1200\n"
+                "    END\n"
+                "END\n"
+        )
         target_sources(${Target} PRIVATE "${RC_FILE}")
 
         if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -295,7 +341,7 @@ function(DeployQT Target)
                 "Type=Application\n"
                 "Name=${DESKTOP_ENTRY_NAME}\n"
                 "Comment=${DESKTOP_ENTRY_COMMENT}\n"
-                "Exec=${Target}\n"
+                "Exec=${TARGET_OUTPUT_NAME}\n"
                 "Icon=libreconnect_logo\n"
                 "Terminal=false\n"
                 "Categories=Network;Utility;\n"
