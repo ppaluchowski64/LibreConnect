@@ -1,0 +1,170 @@
+name: Build Android ARMv8
+
+on:
+  workflow_call:
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+
+jobs:
+  build-android-armv8:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Conan
+        uses: conan-io/setup-conan@v1
+
+      - name: Set Conan Env
+        shell: bash
+        run: |
+          CONAN_VERSION=$(conan --version | grep -oP '\d+\.\d+\.\d+')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/
+          key: Android-armv8-${{ env.CONAN_VERSION }}
+          restore-keys: Android-armv8-${{ env.CONAN_VERSION }}
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'linux'
+          target: 'android'
+          arch: 'android_arm64_v8a'
+          modules: qtmultimedia
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and SDK components
+        run: |
+          set +o pipefail
+          yes 2>/dev/null | sdkmanager --licenses > /dev/null
+          set -o pipefail
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-24" \
+            "platforms;android-34" \
+            "build-tools;30.0.3" \
+            "build-tools;34.0.0" \
+            "ndk;27.3.13750724"
+
+      - name: Write Qt path to .env for CMake
+        run: |
+          echo "BUILD_FOR=Android" >> .env
+          echo "DISABLE_DEBUG=true" >> .env
+          echo "QT_DIR_ANDROID=$QT_ROOT_DIR" >> .env
+          echo "ANDROID_NDK_DIR=$ANDROID_SDK_ROOT/ndk/27.3.13750724" >> .env
+          echo "ANDROID_SDK_DIR=$ANDROID_SDK_ROOT" >> .env
+          echo "ANDROID_ARCH=armv8" >> .env
+          echo "ANDROID_CLANG_VERSION=18" >> .env
+          echo "ANDROID_OS_API_LEVEL=24" >> .env
+          echo "BUILD_TESTS=true" >> .env
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Install Conan deps
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Read package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$VERSION" ]]; then
+            echo "VERSION file is empty." >&2
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Upload deployed application artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-application-Android-armv8
+          path: build/android/build/Release/apps/mobile/android-build/appLibreConnect_mobile.apk
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Android-armv8
+          path: build
+
+      - name: Sign Android APK
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${ANDROID_KEYSTORE_BASE64:-}" || -z "${ANDROID_KEYSTORE_PASSWORD:-}" ]]; then
+            echo "Android signing secrets are unavailable; skipping signed installer artifact."
+            exit 0
+          fi
+
+          UNSIGNED_APK="$(find build/android/build/Release/apps/mobile/android-build -type f -name '*.apk' | head -n1)"
+          if [[ -z "${UNSIGNED_APK}" ]]; then
+            echo "No APK found in Android build output." >&2
+            find build/android/build/Release/apps/mobile/android-build -maxdepth 4 -type f | sort
+            exit 1
+          fi
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          BUILD_TOOLS="${SDK_ROOT}/build-tools/34.0.0"
+          if [[ ! -x "${BUILD_TOOLS}/apksigner" || ! -x "${BUILD_TOOLS}/zipalign" ]]; then
+            echo "apksigner/zipalign not found in ${BUILD_TOOLS}" >&2
+            exit 1
+          fi
+
+          mkdir -p out/android
+
+          KEYSTORE_PATH="${RUNNER_TEMP}/release.jks"
+          ALIGNED_APK="${RUNNER_TEMP}/app-aligned.apk"
+          SIGNED_APK="${GITHUB_WORKSPACE}/out/android/LibreConnect-${PACKAGE_VERSION}-arm64-v8a.apk"
+
+          printf '%s' "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
+          chmod 600 "${KEYSTORE_PATH}"
+
+          "${BUILD_TOOLS}/zipalign" -f 4 "${UNSIGNED_APK}" "${ALIGNED_APK}"
+          "${BUILD_TOOLS}/apksigner" sign \
+            --ks "${KEYSTORE_PATH}" \
+            --ks-key-alias libreconnect \
+            --ks-pass "env:ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass "env:ANDROID_KEYSTORE_PASSWORD" \
+            --out "${SIGNED_APK}" \
+            "${ALIGNED_APK}"
+          "${BUILD_TOOLS}/apksigner" verify --verbose --print-certs "${SIGNED_APK}"
+
+      - name: Upload Android installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-Android
+          path: out/android/*.apk
+          if-no-files-found: ignore

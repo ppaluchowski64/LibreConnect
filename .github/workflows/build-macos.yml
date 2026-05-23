@@ -1,0 +1,105 @@
+name: Build macOS
+
+on:
+  workflow_call:
+
+jobs:
+  build-macos:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Update Homebrew
+        run: brew update
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Setup Conan
+        uses: conan-io/setup-conan@v1
+
+      - name: Set Conan Env
+        shell: bash
+        run: |
+          CONAN_VERSION=$(conan --version | sed -E 's/[^0-9]*([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
+          echo "CONAN_VERSION=$CONAN_VERSION" >> "$GITHUB_ENV"
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+          modules: qtmultimedia
+
+      - name: Write Qt path to .env for CMake
+        run: echo "QT_DIR_DESKTOP=$QT_ROOT_DIR" >> .env && echo "DISABLE_DEBUG=true" >> .env && echo "BUILD_FOR=Desktop" >> .env && echo "BUILD_TESTS=true" >> .env
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Install Conan deps
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Read package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$VERSION" ]]; then
+            echo "VERSION file is empty." >&2
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Upload deployed application artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-application-macOS-Latest
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop/*.dmg
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-macOS-Latest
+          path: build
+
+      - name: Prepare macOS installer artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          DMG_PATH="$(find build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop -type f -name '*.dmg' | head -n1)"
+          if [[ -z "$DMG_PATH" ]]; then
+            echo "No .dmg found in macOS build output." >&2
+            find build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop -maxdepth 3 -type f | sort
+            exit 1
+          fi
+
+          mkdir -p out/macos
+          cp "$DMG_PATH" "out/macos/LibreConnect-${PACKAGE_VERSION}.dmg"
+
+      - name: Upload macOS installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-macOS
+          path: out/macos/*.dmg

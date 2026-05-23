@@ -1,0 +1,77 @@
+name: Build Fedora Installer
+
+on:
+  workflow_call:
+
+jobs:
+  build-fedora-installer:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install RPM tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Download Ubuntu build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Ubuntu-Latest
+          path: artifacts/ubuntu
+
+      - name: Find deploy directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEPLOY_DIR=""
+          for candidate in \
+            artifacts/ubuntu/build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop \
+            artifacts/ubuntu/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop
+          do
+            if [[ -d "$candidate" ]]; then
+              DEPLOY_DIR="$candidate"
+              break
+            fi
+          done
+          if [[ -z "$DEPLOY_DIR" ]]; then
+            DEPLOY_DIR="$(find artifacts/ubuntu -type d -name appLibreConnect_desktop | head -n1)"
+          fi
+          if [[ -z "$DEPLOY_DIR" ]]; then
+            echo "Could not find appLibreConnect_desktop in Ubuntu build artifact." >&2
+            find artifacts/ubuntu -maxdepth 6 -type d | sort
+            exit 1
+          fi
+          echo "DEPLOY_DIR=$(realpath "$DEPLOY_DIR")" >> "$GITHUB_ENV"
+
+      - name: Read package version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$VERSION" ]]; then
+            echo "VERSION file is empty." >&2
+            exit 1
+          fi
+          echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Build Fedora RPM
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash installers/linux/build-rpm.sh \
+            --deploy-dir "$DEPLOY_DIR" \
+            --version "$PACKAGE_VERSION" \
+            --output-dir "$GITHUB_WORKSPACE/out/fedora" \
+            --arch x86_64
+
+      - name: Upload Fedora installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-Fedora
+          path: out/fedora/*.rpm

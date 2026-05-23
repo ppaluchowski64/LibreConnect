@@ -1,0 +1,177 @@
+name: Build Windows
+
+on:
+  workflow_call:
+
+jobs:
+  build-windows:
+    runs-on: windows-2025
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Upgrade Git to latest
+        run: choco upgrade git -y
+
+      - name: Download FFmpeg 7.1 Shared
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 --retry-delay 5 \
+          https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build-shared.zip \
+          -o ffmpeg.zip
+
+          unzip -q ffmpeg.zip -d FFmpegRaw
+
+          FFMPEG_SRC_DIR=$(find FFmpegRaw -maxdepth 1 -type d -name "ffmpeg-*")
+
+          mkdir FFmpeg
+          mv "$FFMPEG_SRC_DIR"/* FFmpeg/
+
+          echo "FFMPEG_DIR=$GITHUB_WORKSPACE/FFmpeg" >> $GITHUB_ENV
+
+      - name: Setup MSVC Environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.x"
+
+      - name: Setup Conan
+        uses: conan-io/setup-conan@v1
+
+      - name: Set Conan Env
+        shell: pwsh
+        run: |
+          $conan_version = conan --version -q | ForEach-Object { ($_ -match '\d+\.\d+\.\d+')[0] }
+          echo "CONAN_VERSION=$conan_version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache Conan Packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2/
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
+
+      - name: Install Qt (includes Qt Quick / QML)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+          modules: qtmultimedia
+
+      - name: Create Conan profile
+        run: conan profile detect --force
+
+      - name: Write Qt path to .env for CMake
+        shell: pwsh
+        run: |
+          "QT_DIR_DESKTOP=$env:QT_ROOT_DIR" >> .env
+          "DISABLE_DEBUG=true" >> .env
+          "BUILD_FOR=Desktop" >> .env
+          "BUILD_TESTS=true" >> .env
+
+      - name: Install Conan deps
+        shell: powershell
+        run: python configure_project.py
+
+      - name: Configure CMake
+        run: cmake --preset conan-release
+
+      - name: Build CMake
+        run: cmake --build --preset conan-release
+
+      - name: Read package version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          if (-not $version) {
+            throw "VERSION file is empty."
+          }
+          "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Upload deployed application artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-application-Windows-Latest
+          path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop
+
+      - name: Upload build directory artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.ref_name }}-build-dir-Windows-Latest
+          path: build
+
+      - name: Install WiX CLI
+        shell: powershell
+        run: |
+          $toolPath = "$env:USERPROFILE\.dotnet\tools"
+          $wixExe = Join-Path $toolPath "wix.exe"
+          $env:PATH = "$toolPath;$env:PATH"
+          "$toolPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          dotnet tool install --global wix --version 6.*
+          if ($LASTEXITCODE -ne 0) {
+            dotnet tool update --global wix --version 6.*
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to install or update WiX .NET tool."
+            }
+          }
+
+          $wixVersionOutput = & $wixExe --version 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to determine WiX CLI version from $wixExe."
+          }
+
+          $wixVersion = [regex]::Match(($wixVersionOutput | Out-String), '\b\d+\.\d+\.\d+(?:-[0-9A-Za-z\.-]+)?\b').Value
+          if (-not $wixVersion) {
+            throw "Could not parse WiX CLI version from output: $($wixVersionOutput | Out-String)"
+          }
+
+          "WIX_EXE=$wixExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WIX_VERSION=$wixVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          & $wixExe extension add --global "WixToolset.UI.wixext/$wixVersion"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to add WixToolset.UI.wixext/$wixVersion to the global WiX extension cache."
+          }
+
+          & $wixExe extension add --global "WixToolset.Util.wixext/$wixVersion"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to add WixToolset.Util.wixext/$wixVersion to the global WiX extension cache."
+          }
+
+          & $wixExe extension list --global
+          & $wixExe --version
+
+      - name: Find deploy directory
+        shell: powershell
+        run: |
+          $deployDir = Get-ChildItem -Path build -Recurse -Directory -Filter appLibreConnect_desktop | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $deployDir) {
+            throw "Could not find appLibreConnect_desktop in Windows build output."
+          }
+          "DEPLOY_DIR=$deployDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Create Windows installer
+        shell: powershell
+        working-directory: installers/windows
+        run: |
+          .\build-installer.ps1 `
+          -DeployDir "$env:DEPLOY_DIR" `
+          -Version "$env:PACKAGE_VERSION" `
+          -OutputDir "$env:GITHUB_WORKSPACE\out\windows" `
+          -WixExePath "$env:WIX_EXE" `
+          -WixExtensionVersion "$env:WIX_VERSION"
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-Windows
+          path: out/windows
