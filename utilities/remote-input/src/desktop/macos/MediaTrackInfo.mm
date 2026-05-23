@@ -112,34 +112,44 @@ namespace {
                                     if (dict && dict[@"payload"]) {
                                         NSDictionary* p = dict[@"payload"];
                                         CachedState next{};
+                                        bool isLibreConnect = false;
 
-                                        if (p[@"title"] && p[@"title"] != [NSNull null])
-                                            next.info.title = [p[@"title"] UTF8String];
+                                        if (p[@"bundleIdentifier"] && p[@"bundleIdentifier"] != [NSNull null]) {
+                                            NSString* bundleId = p[@"bundleIdentifier"];
+                                            if ([bundleId rangeOfString:@"LibreConnect" options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                                                isLibreConnect = true;
+                                            }
+                                        }
 
-                                        if (p[@"artist"] && p[@"artist"] != [NSNull null])
-                                            next.info.artist = [p[@"artist"] UTF8String];
+                                        if (!isLibreConnect) {
+                                            if (p[@"title"] && p[@"title"] != [NSNull null])
+                                                next.info.title = [p[@"title"] UTF8String];
 
-                                        if (p[@"album"] && p[@"album"] != [NSNull null])
-                                            next.info.album = [p[@"album"] UTF8String];
+                                            if (p[@"artist"] && p[@"artist"] != [NSNull null])
+                                                next.info.artist = [p[@"artist"] UTF8String];
 
-                                        if (p[@"durationMicros"] && p[@"durationMicros"] != [NSNull null])
-                                            next.info.duration = [p[@"durationMicros"] doubleValue] / 1e6;
+                                            if (p[@"album"] && p[@"album"] != [NSNull null])
+                                                next.info.album = [p[@"album"] UTF8String];
 
-                                        if (p[@"elapsedTimeMicros"] && p[@"elapsedTimeMicros"] != [NSNull null])
-                                            next.rawPosMicros = [p[@"elapsedTimeMicros"] longLongValue];
+                                            if (p[@"durationMicros"] && p[@"durationMicros"] != [NSNull null])
+                                                next.info.duration = [p[@"durationMicros"] doubleValue] / 1e6;
 
-                                        if (p[@"playing"] && p[@"playing"] != [NSNull null])
-                                            next.info.playing = [p[@"playing"] boolValue];
+                                            if (p[@"elapsedTimeMicros"] && p[@"elapsedTimeMicros"] != [NSNull null])
+                                                next.rawPosMicros = [p[@"elapsedTimeMicros"] longLongValue];
 
-                                        if (p[@"timestampEpochMicros"] && p[@"timestampEpochMicros"] != [NSNull null])
-                                            next.timestamp = [p[@"timestampEpochMicros"] longLongValue];
+                                            if (p[@"playing"] && p[@"playing"] != [NSNull null])
+                                                next.info.playing = [p[@"playing"] boolValue];
 
-                                        if (p[@"artworkData"] && p[@"artworkData"] != [NSNull null]) {
-                                            NSData* art = [[NSData alloc] initWithBase64EncodedString:p[@"artworkData"] options:0];
+                                            if (p[@"timestampEpochMicros"] && p[@"timestampEpochMicros"] != [NSNull null])
+                                                next.timestamp = [p[@"timestampEpochMicros"] longLongValue];
 
-                                            if (art) {
-                                                auto artBytes = static_cast<const uint8_t*>([art bytes]);
-                                                next.info.cover.assign(artBytes, artBytes + [art length]);
+                                            if (p[@"artworkData"] && p[@"artworkData"] != [NSNull null]) {
+                                                NSData* art = [[NSData alloc] initWithBase64EncodedString:p[@"artworkData"] options:0];
+
+                                                if (art) {
+                                                    auto artBytes = static_cast<const uint8_t*>([art bytes]);
+                                                    next.info.cover.assign(artBytes, artBytes + [art length]);
+                                                }
                                             }
                                         }
 

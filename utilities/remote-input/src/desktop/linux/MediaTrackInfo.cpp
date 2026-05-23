@@ -29,6 +29,10 @@ namespace {
 
         for (const QString& name : reply.value()) {
             if (name.startsWith("org.mpris.MediaPlayer2.")) {
+                if (name.contains(QLatin1String("LibreConnect"))) {
+                    continue;
+                }
+
                 if (firstPlayer.isEmpty())
                     firstPlayer = name;
 

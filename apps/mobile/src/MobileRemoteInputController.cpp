@@ -140,10 +140,7 @@ void MobileRemoteInputController::setSessionActive(const bool active) {
 
     m_sessionActive = active;
     if (m_sessionActive) {
-        updateAndroidMediaNotification();
         requestNowPlayingUpdate();
-    } else {
-        hideAndroidMediaNotification();
     }
 }
 
@@ -443,7 +440,7 @@ void MobileRemoteInputController::refreshState() {
 }
 
 void MobileRemoteInputController::requestNowPlayingUpdate() {
-    if (!m_sessionActive || !m_connected || !m_ready) {
+    if (!m_connected || !m_ready) {
         return;
     }
 
@@ -738,7 +735,12 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapCharacte
 
 void MobileRemoteInputController::updateAndroidMediaNotification() const {
     #ifdef ANDROID_DEVICE
-        if (!m_sessionActive || !m_connected) {
+        if (!m_connected) {
+            hideAndroidMediaNotification();
+            return;
+        }
+
+        if (m_trackTitle.isEmpty() && m_trackArtist.isEmpty()) {
             hideAndroidMediaNotification();
             return;
         }

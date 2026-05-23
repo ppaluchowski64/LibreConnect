@@ -20,7 +20,7 @@ class MediaNotificationBridge {
         private const val NOTIFICATION_ID = 1302
 
         @Volatile
-        private var mediaSession: MediaSession? = null
+        var mediaSession: MediaSession? = null
 
         @JvmStatic
         fun show(context: Context) {
