@@ -402,3 +402,8 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
 
     g_smtc.UpdateTimelineProperties(timeline);
 }
+
+bool MediaNotificationManager::IsVisible() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_smtc != nullptr;
+}

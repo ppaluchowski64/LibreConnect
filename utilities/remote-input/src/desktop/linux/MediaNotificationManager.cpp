@@ -260,4 +260,9 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
     }
 }
 
+bool MediaNotificationManager::IsVisible() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_player != nullptr;
+}
+
 #include "MediaNotificationManager.moc"

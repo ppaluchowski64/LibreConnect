@@ -8,6 +8,7 @@
 #include <vector>
 #include <mutex>
 #include <chrono>
+#include <unistd.h>
 
 namespace {
     struct CachedState {
@@ -114,6 +115,13 @@ namespace {
                                         CachedState next{};
                                         bool isLibreConnect = false;
 
+                                        if (p[@"processIdentifier"] && p[@"processIdentifier"] != [NSNull null]) {
+                                            int pid = [p[@"processIdentifier"] intValue];
+                                            if (pid == getpid()) {
+                                                isLibreConnect = true;
+                                            }
+                                        }
+
                                         if (p[@"bundleIdentifier"] && p[@"bundleIdentifier"] != [NSNull null]) {
                                             NSString* bundleId = p[@"bundleIdentifier"];
                                             if ([bundleId rangeOfString:@"LibreConnect" options:NSCaseInsensitiveSearch].location != NSNotFound) {
@@ -151,10 +159,10 @@ namespace {
                                                     next.info.cover.assign(artBytes, artBytes + [art length]);
                                                 }
                                             }
-                                        }
 
-                                        std::unique_lock lock(this->m_mutex);
-                                        this->m_state = next;
+                                            std::unique_lock lock(this->m_mutex);
+                                            this->m_state = next;
+                                        }
                                     }
                                 }
 

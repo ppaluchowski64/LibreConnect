@@ -111,3 +111,6 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
         jPosition
     );
 }
+bool MediaNotificationManager::IsVisible() {
+    return false;
+}

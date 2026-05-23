@@ -270,8 +270,10 @@ int main(int argc, char *argv[])
     const QString address = parser.value(addressOption);
 
     app.setDesktopFileName(QStringLiteral("libreconnect"));
-    app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
 
+#ifndef MACOS_DEVICE
+    app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
+#endif
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {
         QDir().mkpath(appDataPath);

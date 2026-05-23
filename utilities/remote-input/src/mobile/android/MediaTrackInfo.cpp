@@ -35,6 +35,7 @@ Java_com_LibreConnect_mobile_NotificationListener_nativeOnTrackUpdate(
         state.info.album = QJniObject(jAlbum).toString().toStdString();
 
     state.info.duration = static_cast<double>(jDurationMicros) / 1000000.0;
+    state.info.position = static_cast<double>(jPositionMicros) / 1000000.0;
     state.rawPosMicros = jPositionMicros;
     state.info.playing = static_cast<bool>(jIsPlaying);
 
