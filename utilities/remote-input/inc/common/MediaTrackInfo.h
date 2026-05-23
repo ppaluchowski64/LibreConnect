@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <functional>
+#include "InputTypes.h"
 
 struct TrackMetadata {
     std::string title;
@@ -21,6 +22,7 @@ class MediaTrackInfo {
     public:
         static std::optional<TrackMetadata> GetCurrentTrack();
         static void SetPosition(double seconds);
+        static bool ControlPlayback(MediaSignal signal);
         static bool SaveCoverToFile(const TrackMetadata& metadata, const std::string& path);
         static double CalculateInterpolatedPosition(double rawPosition, int64_t lastUpdateMicros, bool isPlaying);
         static void SetTrackCallback(const std::function<void(const TrackMetadata&)>& callback);

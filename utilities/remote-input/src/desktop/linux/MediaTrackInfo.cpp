@@ -141,3 +141,26 @@ void MediaTrackInfo::SetPosition(double seconds) {
         }
     }
 }
+
+bool MediaTrackInfo::ControlPlayback(MediaSignal signal) {
+    QString playerService = GetActiveMprisPlayer();
+
+    if (playerService.isEmpty())
+        return false;
+
+    QDBusInterface player(playerService, "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player");
+
+    switch (signal) {
+        case MediaSignal::PlayPause:
+            player.call("PlayPause");
+            return true;
+        case MediaSignal::NextTrack:
+            player.call("Next");
+            return true;
+        case MediaSignal::PreviousTrack:
+            player.call("Previous");
+            return true;
+        default:
+            return false;
+    }
+}

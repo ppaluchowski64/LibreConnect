@@ -228,3 +228,8 @@ void MediaTrackInfo::SetPosition(double seconds) {
         }
     });
 }
+
+bool MediaTrackInfo::ControlPlayback(MediaSignal signal) {
+    (void)signal;
+    return false;
+}

@@ -97,3 +97,8 @@ void MediaTrackInfo::SetPosition(double seconds) {
         static_cast<jlong>(ms)
     );
 }
+
+bool MediaTrackInfo::ControlPlayback(MediaSignal signal) {
+    (void)signal;
+    return false;
+}
