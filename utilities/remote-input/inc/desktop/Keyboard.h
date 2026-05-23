@@ -12,6 +12,8 @@ class Keyboard : public VirtualInputDevice {
         void PressKey(Key key);
         void ReleaseKey(Key key);
         void PressAndReleaseKey(Key key);
+
+        void TypeCharacter(uint32_t unicodePoint);
 };
 
 #endif // KEYBOARD_H

@@ -103,6 +103,7 @@ else ()
     target_link_libraries(remote-input PUBLIC
             network-component-pc
             system-component-pc
+            clipboard
     )
 
     if (UNIX AND NOT APPLE)
