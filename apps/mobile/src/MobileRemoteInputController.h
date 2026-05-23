@@ -97,6 +97,7 @@ private:
 
     QTimer m_pollTimer;
     QTimer m_mediaInfoTimer;
+    QTimer m_optimisticPlaybackTimer;
     bool m_connected = false;
     bool m_ready = false;
     bool m_playing = false;

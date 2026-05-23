@@ -116,13 +116,15 @@ MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
     connect(&m_mediaInfoTimer, &QTimer::timeout, this, &MobileRemoteInputController::requestNowPlayingUpdate);
     m_mediaInfoTimer.start();
 
+    m_optimisticPlaybackTimer.setSingleShot(true);
+
     #ifdef ANDROID_DEVICE
-        MediaNotificationManager::SetActionCallback([](MediaSignal signal) {
-            RemoteInputModule::SendMediaInput(signal);
+        MediaNotificationManager::SetActionCallback([this](MediaSignal signal) {
+            this->sendMediaSignal(static_cast<int>(signal));
         });
 
-        MediaNotificationManager::SetSeekCallback([](double posSeconds) {
-            RemoteInputModule::SetMediaPosition(posSeconds);
+        MediaNotificationManager::SetSeekCallback([this](double posSeconds) {
+            this->seekTo(posSeconds);
         });
     #endif
 
@@ -172,6 +174,7 @@ void MobileRemoteInputController::sendMediaSignal(const int signal) {
     RemoteInputModule::SendMediaInput(static_cast<MediaSignal>(signal));
     if (static_cast<MediaSignal>(signal) == MediaSignal::PlayPause) {
         m_playing = !m_playing;
+        m_optimisticPlaybackTimer.start(500);
         emit playbackChanged();
     }
 
@@ -306,7 +309,9 @@ void MobileRemoteInputController::setNowPlayingInfo(
                          m_durationSeconds != safeDuration ||
                          m_volume != volume ||
                          coverChanged;
-    const bool playbackChangedValue = m_playing != playing;
+    
+    const bool effectivePlaying = m_optimisticPlaybackTimer.isActive() ? m_playing : playing;
+    const bool playbackChangedValue = m_playing != effectivePlaying;
 
     m_trackTitle = title;
     m_trackArtist = artist;
@@ -318,7 +323,7 @@ void MobileRemoteInputController::setNowPlayingInfo(
     m_volume = volume;
     m_coverBytes = std::move(coverArray);
     m_coverImageSource = coverSource;
-    m_playing = playing;
+    m_playing = effectivePlaying;
 
     if (changed) {
         emit nowPlayingChanged();
