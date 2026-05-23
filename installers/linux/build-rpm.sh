@@ -389,7 +389,15 @@ Summary: ${DESCRIPTION}
 License: ${LICENSE}
 URL: ${HOMEPAGE}
 BuildArch: ${RPM_ARCH}
+AutoReqProv: no
 Requires: bash
+Requires: dkms
+Requires: gcc
+Requires: git
+Requires: kernel-devel
+Requires: libv4l-devel
+Requires: make
+Requires: wl-clipboard
 
 %description
 ${LONG_DESCRIPTION}

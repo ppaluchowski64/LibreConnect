@@ -14,6 +14,20 @@ run_as_root() {
     fi
 }
 
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+matches_distro() {
+    local needle="$1"
+    if [[ "${ID:-}" == "$needle" ]]; then
+        return 0
+    fi
+
+    local like_value=" ${ID_LIKE:-} "
+    [[ "$like_value" == *" ${needle} "* ]]
+}
+
 install_dependencies_debian() {
     run_as_root apt update
     run_as_root apt install -y \
@@ -24,22 +38,44 @@ install_dependencies_debian() {
         libv4l-dev
 }
 
+install_dependencies_fedora() {
+    run_as_root dnf install -y \
+        dkms \
+        git \
+        gcc \
+        make \
+        "kernel-devel-$(uname -r)" \
+        libv4l-devel || run_as_root dnf install -y \
+        dkms \
+        git \
+        gcc \
+        make \
+        kernel-devel \
+        libv4l-devel
+}
+
 if [[ "$SKIP_PACKAGE_INSTALL" != "1" ]]; then
     if [[ -f /etc/os-release ]]; then
         # shellcheck disable=SC1091
         source /etc/os-release
-        case "${ID:-}" in
-            ubuntu|debian|linuxmint|pop|elementary)
-                install_dependencies_debian
-                ;;
-            *)
-                echo "Unsupported distro for auto dependency install (${ID:-unknown}). Skipping package install."
-                ;;
-        esac
+        if matches_distro debian; then
+            install_dependencies_debian
+        elif matches_distro fedora || matches_distro rhel; then
+            install_dependencies_fedora
+        else
+            echo "Unsupported distro for auto dependency install (${ID:-unknown}). Skipping package install."
+        fi
     fi
 else
     echo "Package installation disabled (LIBRECONNECT_SKIP_PACKAGE_INSTALL=1)."
 fi
+
+for required_cmd in dkms git make modprobe; do
+    if ! command_exists "$required_cmd"; then
+        echo "Required command not found: $required_cmd" >&2
+        exit 1
+    fi
+done
 
 MODULE="v4l2loopback"
 VERSION="git"
@@ -80,7 +116,7 @@ if [[ -f "$HELPER_PATH" ]]; then
 polkit.addRule(function(action, subject) {
     if ((action.id === "org.example.v4l2loopback.manage" || (action.id === "org.freedesktop.policykit.exec" &&
     action.lookup("program") == "/usr/libexec/v4l2loopback-helper")) &&
-        subject.isInGroup("sudo")) {
+        (subject.isInGroup("sudo") || subject.isInGroup("wheel"))) {
         return polkit.Result.YES;
     }
 });
