@@ -233,7 +233,7 @@ if (ANDROID OR IOS)
 
     BuildApplicationModule(remote-input-module modules/remote-input/common modules/remote-input/mobile
             common-module
-            remote-input-types
+            remote-input
     )
 
     BuildApplicationModule(sms-bridge-module modules/sms-bridge/common modules/sms-bridge/mobile
