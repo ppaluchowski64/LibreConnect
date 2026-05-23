@@ -4,11 +4,17 @@
 #include <MediaTrackInfo.h>
 #include <asio/post.hpp>
 
+#ifdef ANDROID_DEVICE
+#include <MediaNotificationManager.h>
+#endif
+
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <chrono>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
+constexpr std::chrono::milliseconds MEDIA_INFO_POLL_INTERVAL{1800};
 
 namespace {
     std::atomic<bool> g_mirroringEnabled{false};
@@ -111,6 +117,23 @@ void RemoteInputModule::EnableResponseCallbacks() {
             volume = package->GetValue<int>();
         } catch (...) {}
 
+#ifdef ANDROID_DEVICE
+        if (title.empty() && artist.empty()) {
+            MediaNotificationManager::Hide();
+        } else {
+            TrackMetadata meta;
+            meta.title = title;
+            meta.artist = artist;
+            meta.album = collection;
+            meta.duration = durationSeconds;
+            meta.cover = coverBytes;
+
+            MediaNotificationManager::Show();
+            MediaNotificationManager::UpdateMetadata(meta);
+            MediaNotificationManager::UpdatePlaybackState(playing, positionSeconds);
+        }
+#endif
+
         const std::unique_ptr<QEvent> event = std::make_unique<RemoteMediaInfoEvent>(
             title,
             artist,
@@ -151,6 +174,16 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, true);
 
+#ifdef ANDROID_DEVICE
+    MediaNotificationManager::SetActionCallback([](MediaSignal signal) {
+        RemoteInputModule::SendMediaInput(signal);
+    });
+
+    MediaNotificationManager::SetSeekCallback([](double posSeconds) {
+        RemoteInputModule::SetMediaPosition(posSeconds);
+    });
+#endif
+
     const std::shared_ptr<RemoteInputModule> instance = std::static_pointer_cast<RemoteInputModule>(shared_from_this());
     MediaTrackInfo::SetTrackCallback([instance](const TrackMetadata& metadata) {
         const bool mirroring = IsMirroringEnabled();
@@ -175,9 +208,19 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
     });
 
     asio::steady_timer timer(m_context.get_executor());
+    auto lastRequestTime = std::chrono::steady_clock::now() - MEDIA_INFO_POLL_INTERVAL;
+
     while (!ShouldAbortEnable()) {
         if (ShouldAbortEnable()) {
             co_return;
+        }
+
+        auto now = std::chrono::steady_clock::now();
+        if (now - lastRequestTime >= MEDIA_INFO_POLL_INTERVAL) {
+            if (ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED) {
+                RequestMediaInfo();
+            }
+            lastRequestTime = now;
         }
 
         timer.expires_after(std::chrono::milliseconds(FUTURES_WAIT_DELAY));
@@ -188,6 +231,12 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
 }
 
 asio::awaitable<void> RemoteInputModule::OnDisable() {
+#ifdef ANDROID_DEVICE
+    MediaNotificationManager::Hide();
+    MediaNotificationManager::SetActionCallback(nullptr);
+    MediaNotificationManager::SetSeekCallback(nullptr);
+#endif
+
     MediaTrackInfo::SetTrackCallback(nullptr);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_DISABLE);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, false);

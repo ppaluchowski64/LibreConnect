@@ -443,7 +443,6 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
     jobject thiz)
 {
     CacheFindMyPhoneJniState(env, thiz);
-    SystemInfo::SetAndroidContext(env, thiz);
     StartBackendIfNeeded();
 }
 
@@ -452,7 +451,6 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
     jobject)
 {
     StopBackendIfNeeded();
-    SystemInfo::ClearAndroidContext(env);
     std::lock_guard<std::mutex> lock(g_jniStateMutex);
     ReleaseFindMyPhoneJniState(env);
 }

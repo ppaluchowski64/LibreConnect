@@ -16,8 +16,11 @@ public:
     bool enabled() const { return m_enabled; }
     void setEnabled(bool enabled);
 
+    static void triggerNavigation();
+
 signals:
     void enabledChanged();
+    void navigateToMediaRemote();
 
 private:
     void applyState();

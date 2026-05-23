@@ -112,21 +112,7 @@ MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
     connect(&m_pollTimer, &QTimer::timeout, this, &MobileRemoteInputController::refreshState);
     m_pollTimer.start();
 
-    m_mediaInfoTimer.setInterval(1800);
-    connect(&m_mediaInfoTimer, &QTimer::timeout, this, &MobileRemoteInputController::requestNowPlayingUpdate);
-    m_mediaInfoTimer.start();
-
     m_optimisticPlaybackTimer.setSingleShot(true);
-
-    #ifdef ANDROID_DEVICE
-        MediaNotificationManager::SetActionCallback([this](MediaSignal signal) {
-            this->sendMediaSignal(static_cast<int>(signal));
-        });
-
-        MediaNotificationManager::SetSeekCallback([this](double posSeconds) {
-            this->seekTo(posSeconds);
-        });
-    #endif
 
     refreshState();
 }
@@ -752,34 +738,7 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapCharacte
 }
 
 void MobileRemoteInputController::updateAndroidMediaNotification() const {
-    #ifdef ANDROID_DEVICE
-        if (!m_connected) {
-            hideAndroidMediaNotification();
-            return;
-        }
-
-        if (m_trackTitle.isEmpty() && m_trackArtist.isEmpty()) {
-            hideAndroidMediaNotification();
-            return;
-        }
-
-        TrackMetadata meta;
-        meta.title = m_trackTitle.toStdString();
-        meta.artist = m_trackArtist.toStdString();
-        meta.album = m_trackCollection.toStdString();
-        meta.duration = m_durationSeconds;
-
-        if (!m_coverBytes.isEmpty())
-            meta.cover.assign(m_coverBytes.begin(), m_coverBytes.end());
-
-        MediaNotificationManager::Show();
-        MediaNotificationManager::UpdateMetadata(meta);
-        MediaNotificationManager::UpdatePlaybackState(m_playing, m_positionSeconds);
-    #endif
 }
 
 void MobileRemoteInputController::hideAndroidMediaNotification() const {
-    #ifdef ANDROID_DEVICE
-        MediaNotificationManager::Hide();
-    #endif
 }

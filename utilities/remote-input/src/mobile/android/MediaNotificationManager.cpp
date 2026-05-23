@@ -21,6 +21,20 @@ namespace {
                 return MediaSignal::PlayPause;
         }
     }
+
+    QJniObject GetContext() {
+        QJniObject context = QJniObject::callStaticMethod<jobject>(
+            "com/LibreConnect/mobile/MainService",
+            "getActiveContext",
+            "()Landroid/content/Context;"
+        );
+
+        if (context.isValid()) {
+            return context;
+        }
+
+        return QNativeInterface::QAndroidApplication::context();
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -34,7 +48,7 @@ Java_com_LibreConnect_mobile_MediaNotificationBridge_nativeOnSeek(JNIEnv* /*env*
 }
 
 void MediaNotificationManager::Show() {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;
@@ -48,7 +62,7 @@ void MediaNotificationManager::Show() {
 }
 
 void MediaNotificationManager::Hide() {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;
@@ -62,7 +76,7 @@ void MediaNotificationManager::Hide() {
 }
 
 void MediaNotificationManager::UpdateMetadata(const TrackMetadata& metadata) {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;
@@ -95,7 +109,7 @@ void MediaNotificationManager::UpdateMetadata(const TrackMetadata& metadata) {
 }
 
 void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double position) {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;

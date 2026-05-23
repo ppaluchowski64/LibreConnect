@@ -185,6 +185,9 @@ ApplicationWindow {
 
     MobileMediaNotificationController {
         id: mediaNotificationController
+        onNavigateToMediaRemote: {
+            root.showRemoteInputPage()
+        }
     }
 
     Component {
