@@ -36,6 +36,7 @@
 #include "VirtualCameraController.h"
 #endif
 #include "ThemeController.h"
+#include "MediaNotificationController.h"
 
 namespace
 {
@@ -315,6 +316,7 @@ int main(int argc, char *argv[])
 #ifndef MACOS_DEVICE
     qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
 #endif
+    qmlRegisterType<MediaNotificationController>("LibreConnect.desktop", 1, 0, "MediaNotificationController");
 
     const QUrl url = QUrl("qrc:/LibreConnect/desktop/MainWindow.qml");
     AttachQmlCreationLogging(engine, app, url);

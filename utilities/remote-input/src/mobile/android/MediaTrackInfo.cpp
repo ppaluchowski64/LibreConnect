@@ -3,6 +3,7 @@
 #include <QtCore/QJniObject>
 #include <mutex>
 #include <chrono>
+#include <DebugLog.h>
 
 namespace {
     struct CachedState {
@@ -50,8 +51,15 @@ Java_com_LibreConnect_mobile_NotificationListener_nativeOnTrackUpdate(
         }
     }
 
-    std::unique_lock<std::mutex> lock(g_mutex);
-    g_state = std::move(state);
+    TrackMetadata infoToCallback;
+    {
+        std::unique_lock<std::mutex> lock(g_mutex);
+        g_state = std::move(state);
+        infoToCallback = g_state->info;
+    }
+    Debug::Log("Android MediaTrackInfo nativeOnTrackUpdate: title='{}', artist='{}', album='{}', playing={}, duration={:.2f}s",
+               infoToCallback.title, infoToCallback.artist, infoToCallback.album, infoToCallback.playing, infoToCallback.duration);
+    MediaTrackInfo::InvokeTrackCallback(infoToCallback);
 }
 
 extern "C" void LibreConnect_mediaTrackInfoJniAnchor() {}

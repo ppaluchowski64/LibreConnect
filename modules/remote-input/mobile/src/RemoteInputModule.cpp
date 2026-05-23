@@ -1,11 +1,18 @@
 #include <RemoteInputModule.h>
 #include <ConnectionManager.h>
 #include <RemoteInputEvents.h>
+#include <MediaTrackInfo.h>
+#include <asio/post.hpp>
 
 #include <memory>
 #include <vector>
+#include <atomic>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
+
+namespace {
+    std::atomic<bool> g_mirroringEnabled{false};
+}
 
 void RemoteInputModule::SendInput(const Key key, const InputEventType type) {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SEND_INPUT, key, type);
@@ -21,6 +28,37 @@ void RemoteInputModule::RequestMediaInfo() {
 
 void RemoteInputModule::SetMediaPosition(const double seconds) {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION, seconds);
+}
+
+void RemoteInputModule::SendMediaInfoUpdate(
+    const std::string& title,
+    const std::string& artist,
+    const std::string& collection,
+    const std::string& elapsed,
+    const bool playing,
+    const double positionSeconds,
+    const double durationSeconds,
+    const std::vector<uint8_t>& coverBytes
+) {
+    ConnectionManager::Send(
+        PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE,
+        title,
+        artist,
+        collection,
+        elapsed,
+        playing,
+        positionSeconds,
+        durationSeconds,
+        coverBytes
+    );
+}
+
+void RemoteInputModule::SetMirroringEnabled(bool enabled) {
+    g_mirroringEnabled.store(enabled);
+}
+
+bool RemoteInputModule::IsMirroringEnabled() {
+    return g_mirroringEnabled.load();
 }
 
 void RemoteInputModule::EnableResponseCallbacks() {
@@ -79,6 +117,16 @@ void RemoteInputModule::EnableResponseCallbacks() {
         );
         ConnectionManager::SendEvent(event);
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT, [instance](PC_Package&& package) mutable {
+        const MediaSignal key = package->GetValue<MediaSignal>();
+        Debug::Log("Mobile RemoteInputModule: Received REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT package: key={}", static_cast<int>(key));
+        instance->m_remote.ExecuteSignal(key);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION, [instance](PC_Package&& package) mutable {
+        const double seconds = std::max(0.0, package->GetValue<double>());
+        Debug::Log("Mobile RemoteInputModule: Received REMOTE_INPUT_MODULE_SET_MEDIA_POSITION package: position={:.2f}s", seconds);
+        MediaTrackInfo::SetPosition(seconds);
+    });
 }
 
 void RemoteInputModule::DisableResponseCallbacks() {
@@ -86,6 +134,8 @@ void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_DISABLE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION);
 }
 
 void RemoteInputModule::OnInitialize() {}
@@ -93,6 +143,29 @@ void RemoteInputModule::OnInitialize() {}
 asio::awaitable<void> RemoteInputModule::OnEnable() {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, true);
+
+    const std::shared_ptr<RemoteInputModule> instance = std::static_pointer_cast<RemoteInputModule>(shared_from_this());
+    MediaTrackInfo::SetTrackCallback([instance](const TrackMetadata& metadata) {
+        const bool mirroring = IsMirroringEnabled();
+        Debug::Log("Mobile RemoteInputModule: MediaTrackInfo track update callback triggered. title='{}', playing={}, mirroringEnabled={}",
+                   metadata.title, metadata.playing, mirroring);
+        if (!mirroring) {
+            return;
+        }
+        asio::post(instance->m_context.get_executor(), [instance, metadata]() {
+            Debug::Log("Mobile RemoteInputModule: Posting SendMediaInfoUpdate package to desktop");
+            SendMediaInfoUpdate(
+                metadata.title,
+                metadata.artist,
+                metadata.album,
+                "", // elapsed
+                metadata.playing,
+                metadata.position,
+                metadata.duration,
+                metadata.cover
+            );
+        });
+    });
 
     asio::steady_timer timer(m_context.get_executor());
     while (!ShouldAbortEnable()) {
@@ -108,6 +181,7 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
 }
 
 asio::awaitable<void> RemoteInputModule::OnDisable() {
+    MediaTrackInfo::SetTrackCallback(nullptr);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_DISABLE);
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_STATE_CHANGED, false);
     co_return;

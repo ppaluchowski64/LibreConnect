@@ -11,6 +11,7 @@
 #include "MobileNotificationSyncController.h"
 #include "MobileClipboardSyncController.h"
 #include "MobileRemoteInputController.h"
+#include "MobileMediaNotificationController.h"
 
 extern void StartBackendIfNeeded();
 extern void ConfigureStorage(const std::string& storageRootPath);
@@ -73,6 +74,10 @@ int main(int argc, char *argv[])
 
     qmlRegisterType<MobileRemoteInputController>(
         "LibreConnect.mobile", 1, 0, "MobileRemoteInputController"
+    );
+
+    qmlRegisterType<MobileMediaNotificationController>(
+        "LibreConnect.mobile", 1, 0, "MobileMediaNotificationController"
     );
 
     QQmlApplicationEngine engine;

@@ -62,6 +62,10 @@ Window {
         id: temporaryStorageController
     }
 
+    MediaNotificationController {
+        id: mediaNotificationController
+    }
+
     function updateWindowTitle() {
         const currentItem = stackView.currentItem
         currentWindowTitleSuffix = currentItem && currentItem.windowTitleSuffix !== undefined

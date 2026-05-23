@@ -183,6 +183,10 @@ ApplicationWindow {
         id: remoteInputController
     }
 
+    MobileMediaNotificationController {
+        id: mediaNotificationController
+    }
+
     Component {
         id: mainMenusPageComponent
 

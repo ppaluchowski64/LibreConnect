@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdint>
 #include <optional>
+#include <functional>
 
 struct TrackMetadata {
     std::string title;
@@ -22,6 +23,8 @@ class MediaTrackInfo {
         static void SetPosition(double seconds);
         static bool SaveCoverToFile(const TrackMetadata& metadata, const std::string& path);
         static double CalculateInterpolatedPosition(double rawPosition, int64_t lastUpdateMicros, bool isPlaying);
+        static void SetTrackCallback(const std::function<void(const TrackMetadata&)>& callback);
+        static void InvokeTrackCallback(const TrackMetadata& metadata);
 };
 
 #endif // MEDIA_TRACK_INFO_H

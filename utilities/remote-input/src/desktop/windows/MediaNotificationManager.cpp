@@ -224,6 +224,39 @@ namespace {
 
         return path;
     }
+
+    winrt::fire_and_forget UpdateThumbnailAsync(uint64_t version, std::filesystem::path newCoverPath, std::filesystem::path oldCoverPath) {
+        try {
+            auto file = co_await winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(newCoverPath.wstring());
+
+            std::lock_guard<std::mutex> lock(g_mutex);
+
+            if (version != g_coverVersion || !g_smtc) {
+                RemoveCachedCover(newCoverPath);
+                co_return;
+            }
+
+            g_thumbnail = winrt::Windows::Storage::Streams::RandomAccessStreamReference::CreateFromFile(file);
+            g_coverPath = newCoverPath;
+
+            auto updater = g_smtc.DisplayUpdater();
+            updater.Thumbnail(g_thumbnail);
+            updater.Update();
+
+            RemoveCachedCover(oldCoverPath);
+        } catch (...) {
+            std::lock_guard<std::mutex> lock(g_mutex);
+            if (version == g_coverVersion && g_smtc) {
+                g_thumbnail = nullptr;
+                g_coverPath.clear();
+                auto updater = g_smtc.DisplayUpdater();
+                updater.Thumbnail(nullptr);
+                updater.Update();
+                RemoveCachedCover(oldCoverPath);
+            }
+            RemoveCachedCover(newCoverPath);
+        }
+    }
 }
 
 void MediaNotificationManager::Show() {
@@ -294,6 +327,7 @@ void MediaNotificationManager::Hide() {
     g_thumbnail = nullptr;
     RemoveCachedCover(g_coverPath);
     g_coverPath.clear();
+    ++g_coverVersion;
 
     g_smtc.IsEnabled(false);
     g_smtc = nullptr;
@@ -325,22 +359,20 @@ void MediaNotificationManager::UpdateMetadata(const TrackMetadata& metadata) {
         const auto oldCoverPath = g_coverPath;
 
         if (const auto newCoverPath = WriteCoverToCache(metadata.cover)) {
-            auto file = winrt::Windows::Storage::StorageFile::GetFileFromPathAsync(newCoverPath->wstring()).get();
-            g_thumbnail = winrt::Windows::Storage::Streams::RandomAccessStreamReference::CreateFromFile(file);
-            g_coverPath = *newCoverPath;
-            updater.Thumbnail(g_thumbnail);
-            RemoveCachedCover(oldCoverPath);
+            UpdateThumbnailAsync(g_coverVersion, *newCoverPath, oldCoverPath);
         } else {
             g_thumbnail = nullptr;
             g_coverPath.clear();
             updater.Thumbnail(nullptr);
             RemoveCachedCover(oldCoverPath);
+            ++g_coverVersion;
         }
     } else {
         g_thumbnail = nullptr;
         RemoveCachedCover(g_coverPath);
         g_coverPath.clear();
         updater.Thumbnail(nullptr);
+        ++g_coverVersion;
     }
 
     updater.Update();

@@ -1,6 +1,7 @@
 #include <RemoteInputModule.h>
 #include <ConnectionManager.h>
 #include <MediaTrackInfo.h>
+#include <RemoteInputEvents.h>
 
 #include <asio/post.hpp>
 
@@ -238,6 +239,38 @@ void RemoteInputModule::EnableResponseCallbacks() {
             MediaTrackInfo::SetPosition(seconds);
         });
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE, [instance](PC_Package&& package) mutable {
+        (void)instance;
+        const std::string title = package->GetValue<std::string>();
+        const std::string artist = package->GetValue<std::string>();
+        const std::string collection = package->GetValue<std::string>();
+        const std::string elapsed = package->GetValue<std::string>();
+        const bool playing = package->GetValue<bool>();
+        double positionSeconds = 0.0;
+        double durationSeconds = 0.0;
+        std::vector<uint8_t> coverBytes;
+
+        try {
+            positionSeconds = package->GetValue<double>();
+            durationSeconds = package->GetValue<double>();
+            coverBytes = package->GetValue<std::vector<uint8_t>>();
+        } catch (...) {}
+
+        Debug::Log("Desktop RemoteInputModule: Received REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE: title='{}', artist='{}', playing={}, duration={:.2f}s, coverSize={}",
+                   title, artist, playing, durationSeconds, coverBytes.size());
+
+        const std::unique_ptr<QEvent> event = std::make_unique<RemoteMediaInfoEvent>(
+            title,
+            artist,
+            collection,
+            elapsed,
+            playing,
+            positionSeconds,
+            durationSeconds,
+            std::move(coverBytes)
+        );
+        ConnectionManager::SendEvent(event);
+    });
 }
 
 void RemoteInputModule::DisableResponseCallbacks() {
@@ -248,6 +281,7 @@ void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_REQUEST_MEDIA_INFO);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE);
 }
 
 void RemoteInputModule::OnInitialize() {}

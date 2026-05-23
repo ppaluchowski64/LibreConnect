@@ -3,6 +3,7 @@
 #include <fstream>
 #include <chrono>
 #include <algorithm>
+#include <mutex>
 
 bool MediaTrackInfo::SaveCoverToFile(const TrackMetadata& metadata, const std::string& path) {
     if (metadata.cover.empty())
@@ -27,4 +28,25 @@ double MediaTrackInfo::CalculateInterpolatedPosition(double rawPosition, int64_t
 
     int64_t diff = std::max<int64_t>(0, now - lastUpdateMicros);
     return rawPosition + (static_cast<double>(diff) / 1000000.0);
+}
+
+namespace {
+    std::mutex g_trackCallbackMutex;
+    std::function<void(const TrackMetadata&)> g_trackCallback;
+}
+
+void MediaTrackInfo::SetTrackCallback(const std::function<void(const TrackMetadata&)>& callback) {
+    std::lock_guard<std::mutex> lock(g_trackCallbackMutex);
+    g_trackCallback = callback;
+}
+
+void MediaTrackInfo::InvokeTrackCallback(const TrackMetadata& metadata) {
+    std::function<void(const TrackMetadata&)> cb;
+    {
+        std::lock_guard<std::mutex> lock(g_trackCallbackMutex);
+        cb = g_trackCallback;
+    }
+    if (cb) {
+        cb(metadata);
+    }
 }
