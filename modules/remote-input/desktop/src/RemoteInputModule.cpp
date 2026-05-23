@@ -1,6 +1,7 @@
 #include <RemoteInputModule.h>
 #include <ConnectionManager.h>
 #include <MediaTrackInfo.h>
+#include <SystemVolumeController.h>
 #include <RemoteInputEvents.h>
 
 #include <asio/post.hpp>
@@ -34,6 +35,7 @@ struct MediaInfoSnapshot {
     double positionSeconds = 0.0;
     double durationSeconds = 0.0;
     std::vector<uint8_t> coverBytes;
+    int volume = 0;
 };
 
 std::string FormatElapsedTime(const long long elapsedSeconds) {
@@ -54,8 +56,10 @@ std::string FormatElapsedTime(const long long elapsedSeconds) {
 }
 
 MediaInfoSnapshot GetMediaInfoSnapshot() {
+    MediaInfoSnapshot snapshot;
+    snapshot.volume = SystemVolumeController::GetVolume();
+
     if (const auto track = MediaTrackInfo::GetCurrentTrack(); track.has_value()) {
-        MediaInfoSnapshot snapshot;
         snapshot.title = track->title;
         snapshot.artist = track->artist;
         snapshot.collection = track->album;
@@ -70,11 +74,9 @@ MediaInfoSnapshot GetMediaInfoSnapshot() {
         if (!track->cover.empty() && track->cover.size() <= MAX_MEDIA_COVER_BYTES) {
             snapshot.coverBytes = track->cover;
         }
-
-        return snapshot;
     }
 
-    return {};
+    return snapshot;
 }
 
 void SendMediaInfoSnapshot(const MediaInfoSnapshot& snapshot) {
@@ -89,7 +91,8 @@ void SendMediaInfoSnapshot(const MediaInfoSnapshot& snapshot) {
         snapshot.playing,
         snapshot.positionSeconds,
         snapshot.durationSeconds,
-        std::move(coverPayload)
+        std::move(coverPayload),
+        snapshot.volume
     );
 }
 
@@ -239,6 +242,20 @@ void RemoteInputModule::EnableResponseCallbacks() {
             MediaTrackInfo::SetPosition(seconds);
         });
     });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_VOLUME, [instance](PC_Package&& package) mutable {
+        if (!IsInputDeliveryState(instance->GetModuleState())) {
+            return;
+        }
+
+        if (!EnsureRemoteInputPermission(false)) {
+            return;
+        }
+
+        const int volume = package->GetValue<int>();
+        asio::post(instance->m_moduleStrand, [volume]() {
+            SystemVolumeController::SetVolume(volume);
+        });
+    });
     ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE, [instance](PC_Package&& package) mutable {
         (void)instance;
         const std::string title = package->GetValue<std::string>();
@@ -249,15 +266,17 @@ void RemoteInputModule::EnableResponseCallbacks() {
         double positionSeconds = 0.0;
         double durationSeconds = 0.0;
         std::vector<uint8_t> coverBytes;
+        int volume = 0;
 
         try {
             positionSeconds = package->GetValue<double>();
             durationSeconds = package->GetValue<double>();
             coverBytes = package->GetValue<std::vector<uint8_t>>();
+            volume = package->GetValue<int>();
         } catch (...) {}
 
-        Debug::Log("Desktop RemoteInputModule: Received REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE: title='{}', artist='{}', playing={}, duration={:.2f}s, coverSize={}",
-                   title, artist, playing, durationSeconds, coverBytes.size());
+        Debug::Log("Desktop RemoteInputModule: Received REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE: title='{}', artist='{}', playing={}, duration={:.2f}s, coverSize={}, volume={}",
+                   title, artist, playing, durationSeconds, coverBytes.size(), volume);
 
         const std::unique_ptr<QEvent> event = std::make_unique<RemoteMediaInfoEvent>(
             title,
@@ -267,7 +286,8 @@ void RemoteInputModule::EnableResponseCallbacks() {
             playing,
             positionSeconds,
             durationSeconds,
-            std::move(coverBytes)
+            std::move(coverBytes),
+            volume
         );
         ConnectionManager::SendEvent(event);
     });
@@ -281,6 +301,7 @@ void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_REQUEST_MEDIA_INFO);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_VOLUME);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE);
 }
 

@@ -11,6 +11,7 @@ public:
     static void SendMediaInput(MediaSignal signal);
     static void RequestMediaInfo();
     static void SetMediaPosition(double seconds);
+    static void SetVolume(int volume);
     static void SendMediaInfoUpdate(
         const std::string& title,
         const std::string& artist,

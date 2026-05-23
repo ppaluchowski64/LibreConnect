@@ -30,6 +30,10 @@ void RemoteInputModule::SetMediaPosition(const double seconds) {
     ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION, seconds);
 }
 
+void RemoteInputModule::SetVolume(const int volume) {
+    ConnectionManager::Send(PC_PackageType::REMOTE_INPUT_MODULE_SET_VOLUME, volume);
+}
+
 void RemoteInputModule::SendMediaInfoUpdate(
     const std::string& title,
     const std::string& artist,
@@ -97,12 +101,14 @@ void RemoteInputModule::EnableResponseCallbacks() {
         double positionSeconds = 0.0;
         double durationSeconds = 0.0;
         std::vector<uint8_t> coverBytes;
+        int volume = 0;
 
         // Keep compatibility with peers that still send the old 5-field payload.
         try {
             positionSeconds = package->GetValue<double>();
             durationSeconds = package->GetValue<double>();
             coverBytes = package->GetValue<std::vector<uint8_t>>();
+            volume = package->GetValue<int>();
         } catch (...) {}
 
         const std::unique_ptr<QEvent> event = std::make_unique<RemoteMediaInfoEvent>(
@@ -113,7 +119,8 @@ void RemoteInputModule::EnableResponseCallbacks() {
             playing,
             positionSeconds,
             durationSeconds,
-            std::move(coverBytes)
+            std::move(coverBytes),
+            volume
         );
         ConnectionManager::SendEvent(event);
     });

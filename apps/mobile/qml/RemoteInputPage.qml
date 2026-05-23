@@ -147,9 +147,10 @@ Page {
                             id: coverImage
                             anchors.fill: parent
                             source: remoteInputController.coverImageSource
-                            fillMode: Image.PreserveAspectFit
+                            fillMode: Image.PreserveAspectCrop
                             cache: false
                             visible: false
+                            layer.enabled: true
                         }
 
                         Rectangle {
@@ -157,6 +158,7 @@ Page {
                             anchors.fill: parent
                             radius: Math.max(0, coverTemplate.radius - coverTemplate.coverInset)
                             visible: false
+                            layer.enabled: true
                         }
 
                         MultiEffect {
@@ -233,8 +235,8 @@ Page {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    visible: remoteInputController.elapsedTime.length > 0
-                             || remoteInputController.durationTime.length > 0
+                    visible: remoteInputController.durationSeconds > 0 && (remoteInputController.elapsedTime.length > 0
+                             || remoteInputController.durationTime.length > 0)
 
                     Text {
                         Layout.alignment: Qt.AlignLeft
@@ -295,7 +297,10 @@ Page {
 
                 RowLayout {
                     Layout.alignment: Qt.AlignHCenter
-                    spacing: 18
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 8
 
                     ToolButton {
                         icon.source: Theme.dark
@@ -304,6 +309,20 @@ Page {
                         icon.width: 28
                         icon.height: 28
                         onClicked: remoteInputController.sendMediaSignal(4)
+                    }
+
+                    Slider {
+                        id: volumeSlider
+                        Layout.fillWidth: true
+                        from: 0
+                        to: 100
+                        value: remoteInputController.volume
+
+                        onPressedChanged: {
+                            if (!pressed) {
+                                remoteInputController.setVolume(value)
+                            }
+                        }
                     }
 
                     ToolButton {

@@ -189,6 +189,15 @@ void MobileRemoteInputController::seekTo(const double seconds) {
     RemoteInputModule::SetMediaPosition(clampedSeconds);
 }
 
+void MobileRemoteInputController::setVolume(const int volume) {
+    if (!m_connected || !m_ready) {
+        return;
+    }
+
+    const int clampedVolume = std::clamp(volume, 0, 100);
+    RemoteInputModule::SetVolume(clampedVolume);
+}
+
 void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString& text, const int modifiers) {
     if (!m_connected) {
         setStatusMessage(QStringLiteral("Connect to a desktop device to use remote keyboard."));
@@ -270,7 +279,8 @@ void MobileRemoteInputController::setNowPlayingInfo(
     const bool playing,
     const double positionSeconds,
     const double durationSeconds,
-    const std::vector<uint8_t>& coverBytes
+    const std::vector<uint8_t>& coverBytes,
+    const int volume
 ) {
     const double safePosition = std::max(0.0, positionSeconds);
     const double safeDuration = std::max(0.0, durationSeconds);
@@ -294,6 +304,7 @@ void MobileRemoteInputController::setNowPlayingInfo(
                          m_durationTime != normalizedDuration ||
                          m_positionSeconds != safePosition ||
                          m_durationSeconds != safeDuration ||
+                         m_volume != volume ||
                          coverChanged;
     const bool playbackChangedValue = m_playing != playing;
 
@@ -304,6 +315,7 @@ void MobileRemoteInputController::setNowPlayingInfo(
     m_durationTime = normalizedDuration;
     m_positionSeconds = safePosition;
     m_durationSeconds = safeDuration;
+    m_volume = volume;
     m_coverBytes = std::move(coverArray);
     m_coverImageSource = coverSource;
     m_playing = playing;
@@ -366,7 +378,8 @@ bool MobileRemoteInputController::event(QEvent* event) {
             mediaEvent->IsPlaying(),
             mediaEvent->GetPositionSeconds(),
             mediaEvent->GetDurationSeconds(),
-            mediaEvent->GetCoverBytes()
+            mediaEvent->GetCoverBytes(),
+            mediaEvent->GetVolume()
         );
         return true;
     }
