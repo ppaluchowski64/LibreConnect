@@ -54,19 +54,22 @@ IOContext& ThreadPool::GetContext() {
 
 void ThreadPool::Stop() {
     std::call_once(s_flag, Initialize);
-    std::lock_guard<std::mutex> lock(s_instance->m_mutex);
 
-    Debug::Log("ThreadPool: stopping ({} threads)", s_instance->m_threads.size());
-    s_instance->m_workGuard.reset();
-    s_instance->m_context.stop();
+    std::vector<std::thread> threadsToJoin;
+    {
+        std::lock_guard<std::mutex> lock(s_instance->m_mutex);
+        Debug::Log("ThreadPool: stopping ({} threads)", s_instance->m_threads.size());
+        s_instance->m_workGuard.reset();
+        s_instance->m_context.stop();
+        threadsToJoin = std::move(s_instance->m_threads);
+        s_instance->m_threads.clear();
+    }
 
-    for (auto& thread : s_instance->m_threads) {
+    for (auto& thread : threadsToJoin) {
         if (thread.joinable()) {
             thread.join();
         }
     }
-
-    s_instance->m_threads.clear();
     Debug::Log("ThreadPool: stopped");
 }
 

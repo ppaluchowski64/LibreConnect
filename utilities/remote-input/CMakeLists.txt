@@ -98,6 +98,7 @@ target_link_libraries(remote-input PUBLIC
 if (ANDROID)
     target_link_libraries(remote-input PUBLIC
             Qt6::Core
+            android-context
     )
 else ()
     target_link_libraries(remote-input PUBLIC

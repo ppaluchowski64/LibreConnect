@@ -224,12 +224,24 @@ Page {
                     enabled: remoteInputController.durationSeconds > 0
                     from: 0
                     to: Math.max(remoteInputController.durationSeconds, 1)
-                    value: remoteInputController.positionSeconds
 
                     onPressedChanged: {
                         if (!pressed && remoteInputController.durationSeconds > 0) {
                             remoteInputController.seekTo(value)
                         }
+                    }
+
+                    Connections {
+                        target: remoteInputController
+                        function onNowPlayingChanged() {
+                            if (!seekSlider.pressed) {
+                                seekSlider.value = remoteInputController.positionSeconds
+                            }
+                        }
+                    }
+
+                    Component.onCompleted: {
+                        value = remoteInputController.positionSeconds
                     }
                 }
 
@@ -316,12 +328,24 @@ Page {
                         Layout.fillWidth: true
                         from: 0
                         to: 100
-                        value: remoteInputController.volume
 
                         onPressedChanged: {
                             if (!pressed) {
                                 remoteInputController.setVolume(value)
                             }
+                        }
+
+                        Connections {
+                            target: remoteInputController
+                            function onNowPlayingChanged() {
+                                if (!volumeSlider.pressed) {
+                                    volumeSlider.value = remoteInputController.volume
+                                }
+                            }
+                        }
+
+                        Component.onCompleted: {
+                            value = remoteInputController.volume
                         }
                     }
 

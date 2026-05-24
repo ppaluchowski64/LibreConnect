@@ -6,6 +6,11 @@
 #include <Events.h>
 #include <ModulesManager.h>
 #include <ClipboardSyncModule.h>
+#include <TextClipboard.h>
+
+#ifdef ANDROID_DEVICE
+#include "BackendBridge.h"
+#endif
 
 MobileClipboardSyncController::MobileClipboardSyncController(QObject* parent)
     : QObject(parent)
@@ -14,7 +19,15 @@ MobileClipboardSyncController::MobileClipboardSyncController(QObject* parent)
     m_requestedAutoSync = m_settings.value(QStringLiteral("clipboardSync/autoSync"), false).toBool();
     m_autoSyncEnabled = m_requestedAutoSync;
     m_enableAttemptPending = m_requestedAutoSync;
+#ifndef ANDROID_DEVICE
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+#endif
+
+#ifdef ANDROID_DEVICE
+    const QJsonObject snapshot = BackendBridge::ReadStateSnapshot();
+    m_lastAppliedRemoteClipboard = snapshot.value(QStringLiteral("lastRemoteClipboard")).toString();
+    m_lastSentLocalClipboard = QString::fromStdString(TextClipboard::Get());
+#endif
 
     m_pollTimer.setInterval(400);
     connect(&m_pollTimer, &QTimer::timeout, this, &MobileClipboardSyncController::refreshState);
@@ -28,11 +41,20 @@ void MobileClipboardSyncController::setClipboardAutoSyncEnabled(const bool enabl
     setRequestedAutoSync(enabled, true);
     m_enableAttemptPending = enabled;
     m_disableAttemptPending = !enabled;
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionToggleClipboardSync, BackendBridge::kExtraEnabled, enabled);
+#endif
     refreshState();
 }
 
 void MobileClipboardSyncController::syncClipboard()
 {
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionSyncClipboard);
+    setStatusMessage(QStringLiteral("Sync request sent."));
+    return;
+#endif
+
     if (!m_connected) {
         setStatusMessage(QStringLiteral("Connect to a desktop device to sync clipboard."));
         return;
@@ -69,6 +91,48 @@ bool MobileClipboardSyncController::event(QEvent* event)
 
 void MobileClipboardSyncController::refreshState()
 {
+#ifdef ANDROID_DEVICE
+    const QJsonObject snapshot = BackendBridge::ReadStateSnapshot();
+    m_connected = snapshot.value(QStringLiteral("connected")).toBool(false);
+    const bool backendEnabled = snapshot.value(QStringLiteral("clipboardSyncEnabled")).toBool(false);
+    setAutoSyncEnabledState(backendEnabled);
+    setBusy(false);
+
+    if (m_requestedAutoSync != backendEnabled) {
+        setRequestedAutoSync(backendEnabled, true);
+    }
+
+    if (!m_connected) {
+        setStatusMessage(QStringLiteral("Connect to a desktop device to sync clipboard."));
+    } else {
+        setStatusMessage(backendEnabled
+            ? QStringLiteral("Clipboard auto sync is enabled for the connected desktop device.")
+            : QStringLiteral("Clipboard auto sync is disabled."));
+
+        if (backendEnabled) {
+            const QString remoteClipboard = snapshot.value(QStringLiteral("lastRemoteClipboard")).toString();
+            if (!remoteClipboard.isEmpty() && remoteClipboard != m_lastAppliedRemoteClipboard) {
+                m_lastAppliedRemoteClipboard = remoteClipboard;
+                m_lastSentLocalClipboard = remoteClipboard;
+                TextClipboard::Set(remoteClipboard.toStdString());
+            }
+
+            const QString localClipboard = QString::fromStdString(TextClipboard::Get());
+            if (!localClipboard.isEmpty() &&
+                localClipboard != m_lastAppliedRemoteClipboard &&
+                localClipboard != m_lastSentLocalClipboard) {
+                m_lastSentLocalClipboard = localClipboard;
+                BackendBridge::SendAction(
+                    BackendBridge::kActionSendLocalClipboard,
+                    BackendBridge::kExtraClipboardText,
+                    localClipboard
+                );
+            }
+        }
+    }
+    return;
+#endif
+
     auto& module = ModulesManager::GetModuleReference<ClipboardSyncModule>();
     const ModuleState state = module->GetModuleState();
 

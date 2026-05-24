@@ -9,7 +9,7 @@
 #ifdef ANDROID_DEVICE
 #include <sys/system_properties.h>
 #include <QJniObject>
-#include <QtCore/qcoreapplication_platform.h>
+#include <AndroidContextProvider.h>
 #endif
 
 DeviceInfo DeviceInfo::GetThisDeviceInfo() {
@@ -41,7 +41,7 @@ DeviceInfo DeviceInfo::GetThisDeviceInfo() {
     device.osVersion = osVersion;
     device.appVersion.clear();
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (context.isValid()) {
         const QJniObject packageManager = context.callObjectMethod(
             "getPackageManager",

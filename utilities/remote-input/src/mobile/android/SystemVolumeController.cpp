@@ -2,9 +2,16 @@
 
 #include <QtCore/QJniObject>
 #include <QtCore/QCoreApplication>
+#include <AndroidContextProvider.h>
+
+namespace {
+QJniObject GetContext() {
+    return AndroidContextProvider::GetAndroidContext();
+}
+}
 
 int SystemVolumeController::GetVolume() {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return 0;
@@ -24,7 +31,7 @@ void SystemVolumeController::SetVolume(int percentage) {
     if (percentage > 100)
         percentage = 100;
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;

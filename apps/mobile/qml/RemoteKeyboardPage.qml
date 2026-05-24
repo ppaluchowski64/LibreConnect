@@ -193,7 +193,6 @@ Page {
                     sendDelta(previousText, text)
                     previousText = text
 
-                    // Keep internal buffer small while preserving delta behavior.
                     if (text.length > 96) {
                         ignoreChange = true
                         text = ""

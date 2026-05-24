@@ -683,6 +683,11 @@ ApplicationWindow {
     }
 
     onClosing: function(close) {
+        if (conn.androidActivityDestroying) {
+            close.accepted = true
+            return
+        }
+
         if (challengeDialog.visible) {
             challengeDialog.close()
             close.accepted = false
@@ -697,7 +702,11 @@ ApplicationWindow {
         if (stackView.depth > 1) {
             root.popPage()
             close.accepted = false
+            return
         }
+
+        close.accepted = false
+        conn.minimizeApp()
     }
 
     Connections {

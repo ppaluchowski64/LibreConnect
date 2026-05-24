@@ -4,6 +4,7 @@
 #include <PermissionManager.h>
 #include <QString>
 #include <utility>
+#include <AndroidContextProvider.h>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 
@@ -120,19 +121,38 @@ void NotificationSyncModule::DismissNotificationOnPhone(const std::string& key) 
         return;
     }
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) {
         return;
     }
 
-    const QJniObject jKey = QJniObject::fromString(QString::fromStdString(key));
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/NotificationListener",
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv) return;
+
+    jclass listenerClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/NotificationListener");
+    if (!listenerClass) return;
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        listenerClass,
         "dismissNotification",
-        "(Landroid/content/Context;Ljava/lang/String;)V",
-        context.object<jobject>(),
-        jKey.object<jstring>()
+        "(Landroid/content/Context;Ljava/lang/String;)V"
     );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(listenerClass);
+        return;
+    }
+
+    jstring jKey = jniEnv->NewStringUTF(key.c_str());
+    jniEnv->CallStaticVoidMethod(listenerClass, method, context.object<jobject>(), jKey);
+    jniEnv->DeleteLocalRef(jKey);
+    jniEnv->DeleteLocalRef(listenerClass);
+
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+    }
 }
 
 void NotificationSyncModule::EnableResponseCallbacks() {
@@ -241,16 +261,38 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
     const std::shared_ptr<NotificationSyncModule> instance = std::static_pointer_cast<NotificationSyncModule>(shared_from_this());
     m_peerModuleEnabled.store(false);
     ClearNotificationCallbacks();
+    RegisterNotificationCallbacks(instance);
 
     ClearNotificationDatas();
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/NotificationListener",
-        "requestSync",
-        "(Landroid/content/Context;)V",
-        context.object<jobject>()
-    );
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
+    {
+        QJniEnvironment env;
+        JNIEnv* jniEnv = env.jniEnv();
+        if (jniEnv && context.isValid()) {
+            jclass listenerClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/NotificationListener");
+            if (listenerClass) {
+                jmethodID method = jniEnv->GetStaticMethodID(
+                    listenerClass,
+                    "requestSync",
+                    "(Landroid/content/Context;)V"
+                );
+                if (method) {
+                    jniEnv->CallStaticVoidMethod(listenerClass, method, context.object<jobject>());
+                    if (jniEnv->ExceptionCheck()) {
+                        jniEnv->ExceptionDescribe();
+                        jniEnv->ExceptionClear();
+                    }
+                } else {
+                    jniEnv->ExceptionClear();
+                    Debug::LogWarning("NotificationSyncModule: Failed to find requestSync method");
+                }
+                jniEnv->DeleteLocalRef(listenerClass);
+            } else {
+                Debug::LogWarning("NotificationSyncModule: Failed to find NotificationListener class");
+            }
+        }
+    }
 
     ConnectionManager::Send(PC_PackageType::PERMISSION_REQUESTED, PermissionType::Notifications);
     if (!co_await PermissionManager::RequestNotificationEmitPermission()) {
@@ -317,7 +359,6 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
         co_await timer.async_wait();
     }
 
-    RegisterNotificationCallbacks(instance);
 }
 
 asio::awaitable<void> NotificationSyncModule::OnDisable() {

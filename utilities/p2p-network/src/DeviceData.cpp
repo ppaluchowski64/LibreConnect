@@ -12,14 +12,14 @@
 #include <QDir>
 
 boost::uuids::uuid DeviceData::GetDeviceUUID() {
+    std::string uuidFile = "uuid.bin";
 
-#if defined(DESKTOP_DEVICE)
-    const std::string uuidFile = "uuid.bin";
-
-#elif defined(MOBILE_DEVICE)
-    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(base);
-    const std::string uuidFile = (base + "/uuid.bin").toStdString();
+#if defined(MOBILE_DEVICE)
+    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (!base.isEmpty()) {
+        QDir().mkpath(base);
+        uuidFile = (base + "/uuid.bin").toStdString();
+    }
 #endif
 
     try {

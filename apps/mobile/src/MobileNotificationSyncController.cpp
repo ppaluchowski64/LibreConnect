@@ -7,6 +7,7 @@
 #include <ModulesManager.h>
 #ifdef ANDROID_DEVICE
 #include <PermissionManager.h>
+#include "BackendBridge.h"
 #endif
 
 MobileNotificationSyncController::MobileNotificationSyncController(QObject* parent)
@@ -21,7 +22,9 @@ MobileNotificationSyncController::MobileNotificationSyncController(QObject* pare
 #else
     m_permissionsGranted = true;
 #endif
+#ifndef ANDROID_DEVICE
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+#endif
 
     m_pollTimer.setInterval(400);
     connect(&m_pollTimer, &QTimer::timeout, this, &MobileNotificationSyncController::refreshState);
@@ -35,6 +38,9 @@ void MobileNotificationSyncController::setNotificationSyncEnabled(const bool ena
     setRequestedEnabled(enabled, true);
     m_enableAttemptPending = enabled;
     m_disableAttemptPending = !enabled;
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionToggleNotificationSync, BackendBridge::kExtraEnabled, enabled);
+#endif
     refreshState();
 }
 
@@ -122,6 +128,27 @@ bool MobileNotificationSyncController::event(QEvent* event)
 
 void MobileNotificationSyncController::refreshState()
 {
+#ifdef ANDROID_DEVICE
+    const QJsonObject snapshot = BackendBridge::ReadStateSnapshot();
+    m_connected = snapshot.value(QStringLiteral("connected")).toBool(false);
+    const bool backendEnabled = snapshot.value(QStringLiteral("notificationSyncEnabled")).toBool(false);
+    setEnabledState(backendEnabled);
+    setBusy(false);
+
+    if (m_requestedEnabled != backendEnabled) {
+        setRequestedEnabled(backendEnabled, true);
+    }
+
+    if (!m_connected) {
+        setStatusMessage(QStringLiteral("Connect to a desktop device to sync notifications."));
+    } else {
+        setStatusMessage(backendEnabled
+            ? QStringLiteral("Notification sync is enabled for the connected desktop device.")
+            : QStringLiteral("Notification sync is disabled."));
+    }
+    return;
+#endif
+
     auto& module = ModulesManager::GetModuleReference<NotificationSyncModule>();
     const ModuleState state = module->GetModuleState();
 

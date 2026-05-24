@@ -14,6 +14,10 @@
 #include <boost/uuid/string_generator.hpp>
 #include <Scanner.h>
 
+#ifdef ANDROID_DEVICE
+__attribute__((weak)) void PublishBackendEvent(const QEvent&) {}
+#endif
+
 ConnectionManager* ConnectionManager::s_instance{nullptr};
 std::mutex         ConnectionManager::s_mutex{};
 std::once_flag     ConnectionManager::s_flag{};
@@ -606,6 +610,12 @@ void ConnectionManager::Initialize() {
 void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
     std::call_once(s_flag, Initialize);
 
+#ifdef ANDROID_DEVICE
+    if (event) {
+        PublishBackendEvent(*event);
+    }
+#endif
+
     std::vector<QPointer<QObject>> targets;
     {
         std::lock_guard<std::mutex> lock(s_mutex);
@@ -623,7 +633,7 @@ void ConnectionManager::SendEvent(const std::unique_ptr<QEvent>& event) {
     }
 
     for (const auto& obj : targets) {
-        if (obj.isNull()) {
+        if (obj.isNull() || !QCoreApplication::instance()) {
             continue;
         }
 

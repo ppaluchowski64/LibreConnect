@@ -238,6 +238,11 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
         Debug::Log("InitialConnection: Accepted connection from {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
 
         TCPEndpoint acceptorEndpoint = acceptor.local_endpoint();
+        std::error_code closeError;
+        acceptor.close(closeError);
+        if (closeError) {
+            HandleAsioError(closeError);
+        }
 
         asio::post(
             m_context,
@@ -398,7 +403,11 @@ asio::awaitable<void> InitialConnection::CoReceive() {
                 data.deviceInfo.deviceAddress = m_socket.remote_endpoint().address().to_string();
                 const std::string connectionBanKey = BuildConnectionBanKey(data.deviceInfo);
 
-                Debug::Log("InitialConnection: Handshake step 1 - Received DEVICE_DATA_FOR_CONNECTION from {}", data.deviceInfo.deviceName);
+                Debug::Log(
+                    "InitialConnection: Handshake step 1 - Received DEVICE_DATA_FOR_CONNECTION from {} (mode: {})",
+                    data.deviceInfo.deviceName,
+                    static_cast<int>(data.initialConnectionMode)
+                );
                 if (IsConnectionTemporarilyBanned(connectionBanKey)) {
                     Debug::LogWarning(
                         "InitialConnection: Rejecting connection from {} due to active verification cooldown",

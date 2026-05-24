@@ -2,6 +2,7 @@
 
 #include <ConnectionManager.h>
 #include <Events.h>
+#include <QTimer>
 #ifdef MACOS_DEVICE
 #include <NotificationEmitter.h>
 #endif
@@ -10,6 +11,12 @@ PermissionStateController::PermissionStateController(QObject* parent)
     : QObject(parent)
 {
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+    m_connected = ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED;
+    if (m_connected) {
+        QTimer::singleShot(0, this, [] {
+            ConnectionManager::Send(PC_PackageType::PERMISSION_SYNC_REQUEST);
+        });
+    }
 }
 
 bool PermissionStateController::isGranted(const int permissionType) const

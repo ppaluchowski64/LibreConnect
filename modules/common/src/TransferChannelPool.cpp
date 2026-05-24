@@ -211,8 +211,24 @@ void TransferChannelPool::Reset() {
     Debug::Log("TransferChannelPool: Resetting {} channels", s_instance->m_count);
     s_connectionState.store(ConnectionState::DISCONNECTED);
     s_instance->m_waitingForConnections.store(false);
-    s_instance->Clear();
-    s_instance->InitializeChannels();
+    s_instance->ClearReservations();
+
+    std::vector<std::shared_ptr<TransferChannel>> channelsToDisconnect;
+    {
+        std::lock_guard<std::mutex> lock(s_instance->m_channelsMutex);
+        channelsToDisconnect = std::move(s_instance->m_channels);
+        s_instance->m_channels.clear();
+        s_instance->m_channels.reserve(s_instance->m_count);
+        for (size_t i = 0; i < s_instance->m_count; ++i) {
+            s_instance->m_channels.emplace_back(std::make_shared<TransferChannel>());
+        }
+    }
+
+    for (const auto& channel : channelsToDisconnect) {
+        asio::co_spawn(ThreadPool::GetContext(), [channel]() -> asio::awaitable<void> {
+            co_await channel->Disconnect();
+        }, asio::detached);
+    }
 }
 
 void TransferChannelPool::Clear() {

@@ -94,7 +94,6 @@ bool MediaNotificationController::event(QEvent* event)
 {
     if (event->type() == ConnectedEvent::Type) {
         Debug::Log("Desktop MediaNotificationController: ConnectedEvent received. Resetting state.");
-        // Connected event resets any displayed media info
         m_trackTitle.clear();
         m_trackArtist.clear();
         m_trackAlbum.clear();
@@ -179,7 +178,6 @@ void MediaNotificationController::updateNativeNotification()
         metadata.playing = m_playing;
         metadata.position = m_position;
         metadata.duration = m_duration;
-        // Cover is empty when manually set via Q_INVOKABLE setTrackInfo without image bytes
 
         MediaNotificationManager::UpdateMetadata(metadata);
         MediaNotificationManager::UpdatePlaybackState(m_playing, m_position);

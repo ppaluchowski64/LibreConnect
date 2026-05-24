@@ -166,8 +166,16 @@ BuildStaticLibrary(permission-manager utilities/permission-manager project_defau
 BuildStaticLibrary(system-info utilities/system-info project_defaults Debug-Log Qt6::Core Qt6::Gui)
 
 if (ANDROID)
+    BuildStaticLibrary(android-context utilities/android-context project_defaults Debug-Log Qt6::Core)
     BuildStaticLibrary(sms-handler utilities/sms-handler network-component-pc system-component-pc p2p-network-component-pc project_defaults Qt6::Core Qt6::Gui)
     BuildStaticLibrary(find-my utilities/find-my project_defaults Qt6::Core)
+
+    target_link_libraries(permission-manager PUBLIC android-context)
+    target_link_libraries(clipboard PUBLIC android-context)
+    target_link_libraries(system-info PUBLIC android-context)
+    target_link_libraries(sms-handler PUBLIC android-context)
+    target_link_libraries(find-my PUBLIC android-context)
+    target_link_libraries(p2p-network-component-pc PUBLIC android-context)
 endif ()
 
 if ((WIN32 OR (APPLE AND NOT IOS) OR (UNIX AND NOT APPLE)) AND NOT ANDROID)
@@ -199,6 +207,10 @@ add_subdirectory("utilities/virtual-microphone")
 add_subdirectory("utilities/notifications-handler")
 
 BuildStaticLibrary(common-module modules/common Debug-Log Qt6::Core Qt6::Multimedia asio::asio p2p-network-component-pc permission-manager file-system)
+
+if (ANDROID)
+    target_link_libraries(common-module PUBLIC android-context)
+endif ()
 
 if (ANDROID OR IOS)
 

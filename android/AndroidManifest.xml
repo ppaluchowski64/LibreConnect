@@ -67,10 +67,12 @@
             </intent-filter>
 
             <meta-data android:name="android.app.lib_name" android:value="LibreConnectNative" />
+            <meta-data android:name="android.app.background_running" android:value="false" />
         </activity>
 
         <activity
                 android:name=".ClipboardActionActivity"
+                android:process=":backend"
                 android:theme="@style/Theme.Transparent"
                 android:taskAffinity=""
                 android:excludeFromRecents="true"
@@ -81,6 +83,7 @@
 
         <activity
                 android:name=".ShareReceiverActivity"
+                android:process=":backend"
                 android:label="@string/share_receiver_label"
                 android:description="@string/share_receiver_description"
                 android:theme="@style/Theme.Transparent"
@@ -103,6 +106,7 @@
         </activity>
 
         <service android:name=".NotificationListener"
+                 android:process=":backend"
                  android:label="LibreConnect Notification Listener"
                  android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
                  android:exported="true">
@@ -112,11 +116,13 @@
         </service>
 
         <service android:name=".MainService"
+                 android:process=":backend"
                  android:label="LibreConnect Main Service"
                  android:exported="true"
                  android:stopWithTask="false"
                  android:foregroundServiceType="connectedDevice|camera|microphone"
                  tools:ignore="ForegroundServicePermission">
+            <meta-data android:name="android.app.background_running" android:value="true"/>
         </service>
 
         <service android:name=".ClipboardTileService"
@@ -132,17 +138,20 @@
         <receiver
                 android:name=".NotificationActionReceiver"
                 android:label="LibreConnect Notification Action Receiver"
+                android:process=":backend"
                 android:exported="true"
         />
 
         <receiver
                 android:name=".RemoteInputMediaActionReceiver"
                 android:label="LibreConnect Remote Input Receiver"
+                android:process=":backend"
                 android:exported="false"
         />
 
         <receiver
                 android:name=".RemoteInputNotificationReceiver"
+                android:process=":backend"
                 android:exported="false"
         />
 
@@ -156,6 +165,7 @@
 
         <receiver
                 android:name=".SmsReceiver"
+                android:process=":backend"
                 android:exported="true"
                 android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>

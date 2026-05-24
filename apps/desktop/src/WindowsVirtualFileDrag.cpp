@@ -270,8 +270,6 @@ private:
 
     HRESULT BuildDropFiles(STGMEDIUM* medium)
     {
-        // Explorer can probe CF_HDROP during hover. Defer expensive resolution
-        // until the user has actually released the drag button (drop intent).
         if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0) {
             return DV_E_FORMATETC;
         }

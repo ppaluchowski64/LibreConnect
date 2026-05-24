@@ -94,10 +94,15 @@ private:
     static QString formatTime(double seconds);
     void updateAndroidMediaNotification() const;
     void hideAndroidMediaNotification() const;
+    void onOptimisticPlaybackTimeout();
+    void onOptimisticPositionTimeout();
+    void onOptimisticVolumeTimeout();
 
     QTimer m_pollTimer;
     QTimer m_mediaInfoTimer;
     QTimer m_optimisticPlaybackTimer;
+    QTimer m_optimisticPositionTimer;
+    QTimer m_optimisticVolumeTimer;
     bool m_connected = false;
     bool m_ready = false;
     bool m_playing = false;
@@ -114,4 +119,15 @@ private:
     int m_volume = 0;
     QByteArray m_coverBytes;
     QString m_coverImageSource;
+
+    bool m_isOptimisticPlayingActive = false;
+    bool m_backendPlaying = false;
+    bool m_isOptimisticPositionActive = false;
+    double m_optimisticPositionSeconds = 0.0;
+    double m_backendPositionSeconds = 0.0;
+    double m_preSeekBackendPosition = 0.0;
+
+    bool m_isOptimisticVolumeActive = false;
+    int m_optimisticVolume = 0;
+    int m_backendVolume = 0;
 };

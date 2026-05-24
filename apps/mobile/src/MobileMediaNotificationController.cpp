@@ -7,6 +7,7 @@
 
 #ifdef ANDROID_DEVICE
 #include <jni.h>
+#include "BackendBridge.h"
 #endif
 
 namespace {
@@ -60,8 +61,13 @@ void MobileMediaNotificationController::triggerNavigation()
 void MobileMediaNotificationController::applyState()
 {
     Debug::Log("Mobile MobileMediaNotificationController::applyState(): setting mirroring enabled on RemoteInputModule to {}", m_enabled);
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionSetMirroringEnabled, BackendBridge::kExtraEnabled, m_enabled);
+    return;
+#endif
     RemoteInputModule::SetMirroringEnabled(m_enabled);
 }
+
 
 #ifdef ANDROID_DEVICE
 extern "C" JNIEXPORT void JNICALL

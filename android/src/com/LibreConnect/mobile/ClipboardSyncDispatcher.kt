@@ -12,7 +12,7 @@ object ClipboardSyncDispatcher {
     private external fun nativeRequestClipboardSyncWithText(text: String)
 
     @JvmStatic
-    private external fun nativeSendClipboardWithText(text: String)
+    external fun nativeSendClipboardWithText(text: String)
 
     @JvmStatic
     fun requestManualSync(context: Context, clipboardTextOverride: String? = null) {

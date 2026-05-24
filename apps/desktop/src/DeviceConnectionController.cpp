@@ -161,7 +161,6 @@ void DeviceConnectionController::connectTo(const QString& ipAddress,
     m_pending = true;
     emit pendingChanged();
 
-    // Clear old error
     if (!m_lastError.isEmpty()) {
         m_lastError.clear();
         emit lastErrorChanged();
@@ -562,7 +561,6 @@ void DeviceConnectionController::handleConnectionPendingEvent(ConnectionPendingE
 
 void DeviceConnectionController::handleConnectionFailedVerificationEvent(ConnectionFailedVerificationEvent* ev)
 {
-    // Ignore stale events after cancel/close.
     if (!m_verificationPending) {
         return;
     }

@@ -5,27 +5,64 @@
 
 #ifdef Q_OS_ANDROID
 #include <QJniObject>
+#include <QJniEnvironment>
+#include <AndroidContextProvider.h>
 #endif
 
 namespace {
     void SetMicrophoneCaptureEnabled(const bool enabled) {
 #ifdef Q_OS_ANDROID
-        const QJniObject receiver = QJniObject::getStaticObjectField(
-            "com/LibreConnect/mobile/MicrophoneReceiver",
-            "INSTANCE",
-            "Lcom/LibreConnect/mobile/MicrophoneReceiver;"
-        );
+        // Use AndroidContextProvider::FindClass to resolve the MicrophoneReceiver class,
+        // because QJniObject::getStaticObjectField uses JNIEnv::FindClass which fails
+        // from native C++ threads (uses system classloader instead of app classloader).
+        AndroidContextProvider::WithJniEnv([enabled](JNIEnv* env) {
+            jclass receiverClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/MicrophoneReceiver");
+            if (!receiverClass) {
+                Debug::LogError("NetworkMicrophoneModule: Failed to find MicrophoneReceiver class");
+                return;
+            }
 
-        if (!receiver.isValid()) {
-            Debug::LogError("NetworkMicrophoneModule: Failed to get MicrophoneReceiver instance");
-            return;
-        }
+            jfieldID instanceField = env->GetStaticFieldID(receiverClass, "INSTANCE", "Lcom/LibreConnect/mobile/MicrophoneReceiver;");
+            if (!instanceField) {
+                env->ExceptionClear();
+                Debug::LogError("NetworkMicrophoneModule: Failed to find INSTANCE field on MicrophoneReceiver");
+                env->DeleteLocalRef(receiverClass);
+                return;
+            }
 
-        if (enabled) {
-            receiver.callMethod<jboolean>("start", "()Z");
-        } else {
-            receiver.callMethod<void>("stop");
-        }
+            jobject instance = env->GetStaticObjectField(receiverClass, instanceField);
+            if (!instance) {
+                Debug::LogError("NetworkMicrophoneModule: MicrophoneReceiver INSTANCE is null");
+                env->DeleteLocalRef(receiverClass);
+                return;
+            }
+
+            if (enabled) {
+                jmethodID startMethod = env->GetMethodID(receiverClass, "start", "()Z");
+                if (startMethod) {
+                    env->CallBooleanMethod(instance, startMethod);
+                } else {
+                    env->ExceptionClear();
+                    Debug::LogError("NetworkMicrophoneModule: Failed to find start() method");
+                }
+            } else {
+                jmethodID stopMethod = env->GetMethodID(receiverClass, "stop", "()V");
+                if (stopMethod) {
+                    env->CallVoidMethod(instance, stopMethod);
+                } else {
+                    env->ExceptionClear();
+                    Debug::LogError("NetworkMicrophoneModule: Failed to find stop() method");
+                }
+            }
+
+            if (env->ExceptionCheck()) {
+                env->ExceptionDescribe();
+                env->ExceptionClear();
+            }
+
+            env->DeleteLocalRef(instance);
+            env->DeleteLocalRef(receiverClass);
+        });
 #endif
     }
 }

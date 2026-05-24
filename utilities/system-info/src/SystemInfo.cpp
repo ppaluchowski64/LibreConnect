@@ -21,7 +21,7 @@
 #ifdef Q_OS_ANDROID
 #include <QGuiApplication>
 #include <QJniObject>
-#include <QtCore/qcoreapplication_platform.h>
+#include <AndroidContextProvider.h>
 #endif
 
 #include <SystemInfo.h>
@@ -131,7 +131,7 @@ float SystemInfo::GetBatteryLevel() {
         return cachedContextResult;
     }
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) return -1;
 
     const QJniObject batteryServiceString = QJniObject::getStaticObjectField<jstring>(

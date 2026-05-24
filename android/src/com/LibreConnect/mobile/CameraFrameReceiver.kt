@@ -102,7 +102,11 @@ object CameraFrameReceiver {
                 val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
                 val cameraId = requestedCameraId ?: cameraManager.cameraIdList.firstOrNull {
                     cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-                } ?: cameraManager.cameraIdList.firstOrNull() ?: return false
+                } ?: cameraManager.cameraIdList.firstOrNull()
+                if (cameraId == null) {
+                    Log.e(TAG, "Failed to start camera: No camera IDs found on this device")
+                    return false
+                }
 
                 val width = requestedWidth.coerceAtLeast(320)
                 val height = requestedHeight.coerceAtLeast(240)
@@ -113,6 +117,7 @@ object CameraFrameReceiver {
 
                 val encoder = createHardwareEncoder(width, height, fps, bitrate, onEncodedSample)
                 if (encoder == null || videoEncoderInputSurface == null) {
+                    Log.e(TAG, "Failed to start camera: hardware encoder or input surface creation failed")
                     stopLocked()
                     return false
                 }
