@@ -161,21 +161,62 @@ bool OpenAppPermissionSettings() {
 }
 
 bool ShouldShowPermissionRationale(const QString& permission) {
-    return QJniObject::callStaticMethod<jboolean>(
-        "com/LibreConnect/mobile/AndroidPermissionBridge",
-        "shouldShowRequestPermissionRationale",
-        "(Ljava/lang/String;)Z",
-        QJniObject::fromString(permission).object<jstring>()
-    );
+    bool result = false;
+    AndroidContextProvider::WithJniEnv([&](JNIEnv* env) {
+        jclass bridgeClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/AndroidPermissionBridge");
+        if (!bridgeClass) {
+            return;
+        }
+
+        jmethodID method = env->GetStaticMethodID(
+            bridgeClass,
+            "shouldShowRequestPermissionRationale",
+            "(Ljava/lang/String;)Z"
+        );
+        if (!method) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(bridgeClass);
+            return;
+        }
+
+        const QJniObject jPermission = QJniObject::fromString(permission);
+        result = env->CallStaticBooleanMethod(bridgeClass, method, jPermission.object<jstring>());
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            result = false;
+        }
+        env->DeleteLocalRef(bridgeClass);
+    });
+    return result;
 }
 
 jint CheckAndroidPermission(const QString& permission) {
-    const jint result = QJniObject::callStaticMethod<jint>(
-        "com/LibreConnect/mobile/AndroidPermissionBridge",
-        "checkPermission",
-        "(Ljava/lang/String;)I",
-        QJniObject::fromString(permission).object<jstring>()
-    );
+    jint result = -1;
+    AndroidContextProvider::WithJniEnv([&](JNIEnv* env) {
+        jclass bridgeClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/AndroidPermissionBridge");
+        if (!bridgeClass) {
+            return;
+        }
+
+        jmethodID method = env->GetStaticMethodID(
+            bridgeClass,
+            "checkPermission",
+            "(Ljava/lang/String;)I"
+        );
+        if (!method) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(bridgeClass);
+            return;
+        }
+
+        const QJniObject jPermission = QJniObject::fromString(permission);
+        result = env->CallStaticIntMethod(bridgeClass, method, jPermission.object<jstring>());
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            result = -1;
+        }
+        env->DeleteLocalRef(bridgeClass);
+    });
 
     Debug::Log("CheckingAndroidPermissions: permission {}, state {}", permission.toStdString(), result == kAndroidPermissionGranted);
 
@@ -183,13 +224,38 @@ jint CheckAndroidPermission(const QString& permission) {
 }
 
 bool RequestAndroidPermissionBlocking(const QString& permission, const int timeoutMs) {
-    return QJniObject::callStaticMethod<jboolean>(
-        "com/LibreConnect/mobile/AndroidPermissionBridge",
-        "requestPermissionBlocking",
-        "(Ljava/lang/String;I)Z",
-        QJniObject::fromString(permission).object<jstring>(),
-        static_cast<jint>(timeoutMs)
-    );
+    bool result = false;
+    AndroidContextProvider::WithJniEnv([&](JNIEnv* env) {
+        jclass bridgeClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/AndroidPermissionBridge");
+        if (!bridgeClass) {
+            return;
+        }
+
+        jmethodID method = env->GetStaticMethodID(
+            bridgeClass,
+            "requestPermissionBlocking",
+            "(Ljava/lang/String;I)Z"
+        );
+        if (!method) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(bridgeClass);
+            return;
+        }
+
+        const QJniObject jPermission = QJniObject::fromString(permission);
+        result = env->CallStaticBooleanMethod(
+            bridgeClass,
+            method,
+            jPermission.object<jstring>(),
+            static_cast<jint>(timeoutMs)
+        );
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            result = false;
+        }
+        env->DeleteLocalRef(bridgeClass);
+    });
+    return result;
 }
 #endif
 }

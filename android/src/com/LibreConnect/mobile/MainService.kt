@@ -53,8 +53,12 @@ class MainService : Service() {
     external fun nativeDisconnect()
     external fun nativeSetMirroringEnabled(enabled: Boolean)
     external fun nativeNotificationAction(key: String, option: String)
+    external fun nativeRemovePairedDevice(deviceId: String)
+    external fun nativeStopFindMyPhoneAlert()
+    external fun nativeSyncPermissionSnapshot()
 
     private val backendStarted = AtomicBoolean(false)
+    private val storageConfigured = AtomicBoolean(false)
     private val cameraRequested = AtomicBoolean(false)
     private val microphoneRequested = AtomicBoolean(false)
     private var notificationManager: NotificationManager? = null
@@ -67,13 +71,13 @@ class MainService : Service() {
             when (intent?.action) {
                 ACTION_DISABLE_CAMERA -> {
                     Log.d(TAG, "Disable camera action received from notification")
-                    if (ensureNativeLoaded(this@MainService)) {
+                    if (ensureNativeReady()) {
                         nativeDisableCameraModule()
                     }
                 }
                 ACTION_DISABLE_MICROPHONE -> {
                     Log.d(TAG, "Disable microphone action received from notification")
-                    if (ensureNativeLoaded(this@MainService)) {
+                    if (ensureNativeReady()) {
                         nativeDisableMicrophoneModule()
                     }
                 }
@@ -118,7 +122,7 @@ class MainService : Service() {
         }
 
         if (action == ACTION_RESPOND_CONNECTION_PENDING) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 nativeRespondConnectionPending(
                     extras?.getBoolean(EXTRA_ACCEPTED, false) ?: false,
                     extras?.getString(EXTRA_CHALLENGE).orEmpty()
@@ -128,14 +132,14 @@ class MainService : Service() {
         }
 
         if (action == ACTION_RESPOND_CONNECTION_APPROVAL) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 nativeRespondConnectionApproval(extras?.getBoolean(EXTRA_APPROVED, false) ?: false)
             }
             return START_STICKY
         }
 
         if (action == ACTION_TOGGLE_CLIPBOARD_SYNC) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val enabled = extras?.getBoolean(EXTRA_ENABLED, false) ?: false
                 nativeSetClipboardSyncEnabled(enabled)
             }
@@ -143,14 +147,14 @@ class MainService : Service() {
         }
 
         if (action == ACTION_SYNC_CLIPBOARD) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 nativeRequestClipboardSync()
             }
             return START_STICKY
         }
 
         if (action == ACTION_SEND_LOCAL_CLIPBOARD) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val text = extras?.getString(EXTRA_CLIPBOARD_TEXT).orEmpty()
                 Log.d(TAG, "onStartCommand: ACTION_SEND_LOCAL_CLIPBOARD text length=${text.length}")
                 ClipboardSyncDispatcher.nativeSendClipboardWithText(text)
@@ -159,7 +163,7 @@ class MainService : Service() {
         }
 
         if (action == ACTION_TOGGLE_NOTIFICATION_SYNC) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val enabled = extras?.getBoolean(EXTRA_ENABLED, false) ?: false
                 nativeSetNotificationSyncEnabled(enabled)
             }
@@ -167,7 +171,7 @@ class MainService : Service() {
         }
 
         if (action == ACTION_SEND_MEDIA_SIGNAL) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val signal = extras?.getInt(EXTRA_SIGNAL, 0) ?: 0
                 nativeSendMediaSignal(signal)
             }
@@ -175,7 +179,7 @@ class MainService : Service() {
         }
 
         if (action == ACTION_MEDIA_SEEK) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val position = extras?.getDouble(EXTRA_POSITION, 0.0) ?: 0.0
                 nativeMediaSeek(position)
             }
@@ -183,7 +187,7 @@ class MainService : Service() {
         }
 
         if (action == ACTION_MEDIA_SET_VOLUME) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val volume = extras?.getInt(EXTRA_VOLUME, 0) ?: 0
                 nativeMediaSetVolume(volume)
             }
@@ -191,7 +195,7 @@ class MainService : Service() {
         }
 
         if (action == ACTION_SEND_KEY_INPUT) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val key = extras?.getInt(EXTRA_KEY, 0) ?: 0
                 val text = extras?.getString(EXTRA_TEXT).orEmpty()
                 val modifiers = extras?.getInt(EXTRA_MODIFIERS, 0) ?: 0
@@ -201,14 +205,14 @@ class MainService : Service() {
         }
 
         if (action == ACTION_REFRESH_DOWNLOAD_PATH) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 nativeRefreshDownloadPath()
             }
             return START_STICKY
         }
 
         if (action == ACTION_SET_DOWNLOAD_PATH) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val path = extras?.getString(EXTRA_PATH).orEmpty()
                 nativeSetDownloadPath(path)
             }
@@ -216,22 +220,44 @@ class MainService : Service() {
         }
 
         if (action == ACTION_DISCONNECT) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 nativeDisconnect()
             }
             return START_STICKY
         }
 
+        if (action == ACTION_REMOVE_PAIRED_DEVICE) {
+            if (ensureNativeReady()) {
+                val deviceId = extras?.getString(EXTRA_DEVICE_ID).orEmpty()
+                nativeRemovePairedDevice(deviceId)
+            }
+            return START_STICKY
+        }
+
         if (action == ACTION_SET_MIRRORING_ENABLED) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val enabled = extras?.getBoolean(EXTRA_ENABLED, false) ?: false
                 nativeSetMirroringEnabled(enabled)
             }
             return START_STICKY
         }
 
+        if (action == ACTION_STOP_FIND_MY_PHONE_ALERT) {
+            if (ensureNativeReady()) {
+                nativeStopFindMyPhoneAlert()
+            }
+            return START_STICKY
+        }
+
+        if (action == ACTION_SYNC_PERMISSION_SNAPSHOT) {
+            if (ensureNativeReady()) {
+                nativeSyncPermissionSnapshot()
+            }
+            return START_STICKY
+        }
+
         if (action == ACTION_NOTIFICATION_ACTION) {
-            if (ensureNativeLoaded(this)) {
+            if (ensureNativeReady()) {
                 val key = extras?.getString(EXTRA_NOTIFICATION_KEY) ?: return START_STICKY
                 val option = extras?.getString(EXTRA_NOTIFICATION_OPTION) ?: return START_STICKY
                 Log.d(TAG, "onStartCommand (sync): NOTIFICATION_ACTION: key=$key, option=$option")
@@ -267,7 +293,7 @@ class MainService : Service() {
 
         Thread {
             Log.d(TAG, "onStartCommand: async startup start")
-            if (!ensureNativeLoaded(this)) {
+            if (!ensureNativeReady()) {
                 Log.e(TAG, "Native library not loaded, cannot start backend")
                 stopSelf()
                 return@Thread
@@ -492,13 +518,30 @@ class MainService : Service() {
             return
         }
 
-        val storageDir = filesDir
-        val logDir = getExternalFilesDir(null) ?: filesDir
-        nativeConfigureStorage(storageDir.absolutePath, logDir.absolutePath)
+        configureNativeStorageIfNeeded()
         acquireMulticastLock()
         acquireWifiLock()
         acquireCpuWakeLock()
         nativeStartBackend()
+    }
+
+    private fun ensureNativeReady(): Boolean {
+        if (!ensureNativeLoaded(this)) {
+            return false
+        }
+
+        configureNativeStorageIfNeeded()
+        return true
+    }
+
+    private fun configureNativeStorageIfNeeded() {
+        if (!storageConfigured.compareAndSet(false, true)) {
+            return
+        }
+
+        val storageDir = filesDir
+        val logDir = getExternalFilesDir(null) ?: filesDir
+        nativeConfigureStorage(storageDir.absolutePath, logDir.absolutePath)
     }
 
     private fun stopBackendIfNeeded() {
@@ -643,6 +686,9 @@ class MainService : Service() {
         const val ACTION_DISCONNECT = "com.LibreConnect.mobile.action.DISCONNECT"
         const val ACTION_SET_MIRRORING_ENABLED = "com.LibreConnect.mobile.action.SET_MIRRORING_ENABLED"
         const val ACTION_NOTIFICATION_ACTION = "com.LibreConnect.mobile.action.NOTIFICATION_ACTION"
+        const val ACTION_REMOVE_PAIRED_DEVICE = "com.LibreConnect.mobile.action.REMOVE_PAIRED_DEVICE"
+        const val ACTION_STOP_FIND_MY_PHONE_ALERT = "com.LibreConnect.mobile.action.STOP_FIND_MY_PHONE_ALERT"
+        const val ACTION_SYNC_PERMISSION_SNAPSHOT = "com.LibreConnect.mobile.action.SYNC_PERMISSION_SNAPSHOT"
 
         const val EXTRA_ENABLED = "com.LibreConnect.mobile.EXTRA_ENABLED"
         const val EXTRA_SIGNAL = "com.LibreConnect.mobile.EXTRA_SIGNAL"

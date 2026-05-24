@@ -23,6 +23,7 @@
 #include <ModulesManager.h>
 #include <ClipboardSyncModule.h>
 #include <FileShareModule.h>
+#include <PermissionManager.h>
 #include <Scanner.h>
 #include <DebugLog.h>
 #include <SystemInfo.h>
@@ -88,6 +89,8 @@ void BackendQtRuntimeMain()
     char* argv[] = {appName, nullptr};
 
     QCoreApplication app(argc, argv);
+    app.setOrganizationName(QStringLiteral("LibreConnect"));
+    app.setApplicationName(QStringLiteral("LibreConnectMobile"));
     {
         std::lock_guard<std::mutex> lock(g_qtRuntimeMutex);
         g_qtRuntimeApp = &app;
@@ -451,6 +454,16 @@ void WriteBackendStateSnapshot(const bool connected, std::string peerId = {}, st
     }
 }
 
+void WriteCurrentBackendStateSnapshot()
+{
+    const bool connected = ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED;
+    WriteBackendStateSnapshot(
+        connected,
+        connected ? boost::uuids::to_string(ConnectionManager::GetPeerUUID()) : std::string{},
+        connected ? ConnectionManager::GetPeerDeviceName() : std::string{}
+    );
+}
+
 extern "C" void UpdateLastRemoteClipboard(const std::string& text)
 {
     {
@@ -460,6 +473,41 @@ extern "C" void UpdateLastRemoteClipboard(const std::string& text)
     WriteBackendStateSnapshot(ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED,
                               boost::uuids::to_string(ConnectionManager::GetPeerUUID()),
                               ConnectionManager::GetPeerDeviceName());
+}
+
+void SendAndroidPermissionSnapshotToPeer()
+{
+    if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
+        return;
+    }
+
+    auto sendStatus = [](const PermissionType type, const bool granted) {
+        ConnectionManager::Send(
+            granted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
+            type
+        );
+    };
+
+    sendStatus(PermissionType::Camera, PermissionManager::IsCameraAccessPermissionGranted());
+    sendStatus(PermissionType::Microphone, PermissionManager::IsMicrophoneAccessPermissionGranted());
+    sendStatus(
+        PermissionType::Notifications,
+        PermissionManager::IsNotificationEmitPermissionGranted() &&
+            PermissionManager::IsNotificationAccessPermissionGranted()
+    );
+    sendStatus(
+        PermissionType::FileSystem,
+        PermissionManager::IsFileAccessPermissionGranted() &&
+            PermissionManager::IsManagingExternalStoragePermissionGranted()
+    );
+    sendStatus(PermissionType::Battery, PermissionManager::IsBatteryOptimizationIgnored());
+    sendStatus(
+        PermissionType::Sms,
+        PermissionManager::IsReceiveSmsPermissionGranted() &&
+            PermissionManager::IsReadContactsPermissionGranted() &&
+            PermissionManager::IsReadSmsPermissionGranted() &&
+            PermissionManager::IsSendSmsPermissionGranted()
+    );
 }
 
 template <typename Fn>
@@ -683,7 +731,7 @@ void PublishBackendEvent(const QEvent& event)
     if (event.type() == DisconnectedEvent::Type || event.type() == ConnectedEvent::Type) {
         try {
             auto& remoteInput = ModulesManager::GetModuleReference<RemoteInputModule>();
-            remoteInput->Enable(false);
+            remoteInput->Disable(true);
         } catch (...) {}
         WriteBackendStateSnapshot(false);
     }
@@ -848,7 +896,7 @@ void StartFindMyPhoneAlertFromService()
 
     if (started) {
         ConnectionManager::SendEvent(std::make_unique<FindMyPhoneAlertStateEvent>(true));
-        WriteBackendStateSnapshot(ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED);
+        WriteCurrentBackendStateSnapshot();
     }
 }
 
@@ -887,7 +935,7 @@ void StopFindMyPhoneAlertFromService()
 
     ConnectionManager::SendEvent(std::make_unique<FindMyPhoneAlertStateEvent>(false));
     ConnectionManager::Send(PC_PackageType::FIND_MY_PHONE_STOP_RINGING);
-    WriteBackendStateSnapshot(ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED);
+    WriteCurrentBackendStateSnapshot();
 }
 
 std::string JStringToStdString(JNIEnv* env, jstring value)
@@ -1026,7 +1074,7 @@ void StartBackendIfNeeded()
         std::lock_guard<std::mutex> lock(g_backendMutex);
         g_backendState = BackendState::Running;
     }
-    WriteBackendStateSnapshot(ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED);
+    WriteCurrentBackendStateSnapshot();
 
     {
         QSettings settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnectMobile"));
@@ -1527,6 +1575,54 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
     PostToBackendQt([]() {
         ConnectionManager::Disconnect();
         WriteBackendStateSnapshot(false);
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeRemovePairedDevice(
+    JNIEnv* env,
+    jobject,
+    jstring deviceId)
+{
+    std::string deviceIdStr = JStringToStdString(env, deviceId);
+    PostToBackendQt([deviceIdStr = std::move(deviceIdStr)]() {
+        if (deviceIdStr.empty()) {
+            return;
+        }
+
+        const bool wasActivePeer =
+            ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED &&
+            boost::uuids::to_string(ConnectionManager::GetPeerUUID()) == deviceIdStr;
+
+        const bool removed = ConnectionManager::RemovePairedDevice(deviceIdStr);
+        if (wasActivePeer) {
+            ConnectionManager::Disconnect();
+            WriteBackendStateSnapshot(false);
+        } else if (removed) {
+            const bool connected = ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED;
+            WriteBackendStateSnapshot(
+                connected,
+                connected ? boost::uuids::to_string(ConnectionManager::GetPeerUUID()) : std::string{},
+                connected ? ConnectionManager::GetPeerDeviceName() : std::string{}
+            );
+        }
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeStopFindMyPhoneAlert(
+    JNIEnv*,
+    jobject)
+{
+    PostToBackendQt([] {
+        StopFindMyPhoneAlertFromService();
+    });
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativeSyncPermissionSnapshot(
+    JNIEnv*,
+    jobject)
+{
+    PostToBackendQt([] {
+        SendAndroidPermissionSnapshotToPeer();
     });
 }
 

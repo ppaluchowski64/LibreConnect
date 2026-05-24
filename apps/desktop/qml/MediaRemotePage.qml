@@ -29,7 +29,7 @@ Page {
                 width: control.visualPosition * parent.width
                 height: parent.height
                 radius: parent.radius
-                color: Theme.dark ? "#f2f2f2" : Theme.selectedColor
+                color: Theme.dark ? "#f2f2f2" : "#303030"
             }
         }
 

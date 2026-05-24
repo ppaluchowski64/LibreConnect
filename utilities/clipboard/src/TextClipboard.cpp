@@ -27,6 +27,160 @@ static std::string lastText;
 static std::function<void()> currentCallback;
 static std::mutex clipboardMutex;
 
+#ifdef __ANDROID__
+namespace
+{
+jclass FindClipboardBridge(JNIEnv* env)
+{
+    return AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/ClipboardBridge");
+}
+
+bool CallSetClipboardText(const QJniObject& context, const std::string& text)
+{
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv || !context.isValid()) {
+        return false;
+    }
+
+    jclass clipboardBridge = FindClipboardBridge(jniEnv);
+    if (!clipboardBridge) {
+        return false;
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        clipboardBridge,
+        "setClipboardText",
+        "(Landroid/content/Context;Ljava/lang/String;)Z"
+    );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(clipboardBridge);
+        return false;
+    }
+
+    const QJniObject jText = QJniObject::fromString(QString::fromUtf8(text.c_str()));
+    const bool result = jText.isValid() && jniEnv->CallStaticBooleanMethod(
+        clipboardBridge,
+        method,
+        context.object<jobject>(),
+        jText.object<jstring>()
+    );
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionClear();
+    }
+    jniEnv->DeleteLocalRef(clipboardBridge);
+    return result;
+}
+
+std::string CallGetClipboardText(const QJniObject& context)
+{
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv || !context.isValid()) {
+        return {};
+    }
+
+    jclass clipboardBridge = FindClipboardBridge(jniEnv);
+    if (!clipboardBridge) {
+        return {};
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        clipboardBridge,
+        "getClipboardText",
+        "(Landroid/content/Context;)Ljava/lang/String;"
+    );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(clipboardBridge);
+        return {};
+    }
+
+    jobject result = jniEnv->CallStaticObjectMethod(clipboardBridge, method, context.object<jobject>());
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionClear();
+        result = nullptr;
+    }
+    jniEnv->DeleteLocalRef(clipboardBridge);
+    if (!result) {
+        return {};
+    }
+
+    const QString text = QJniObject::fromLocalRef(result).toString();
+    return text.toStdString();
+}
+
+bool CallHasClipboardText(const QJniObject& context)
+{
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv || !context.isValid()) {
+        return false;
+    }
+
+    jclass clipboardBridge = FindClipboardBridge(jniEnv);
+    if (!clipboardBridge) {
+        return false;
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        clipboardBridge,
+        "hasClipboardText",
+        "(Landroid/content/Context;)Z"
+    );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(clipboardBridge);
+        return false;
+    }
+
+    const bool result = jniEnv->CallStaticBooleanMethod(clipboardBridge, method, context.object<jobject>());
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionClear();
+    }
+    jniEnv->DeleteLocalRef(clipboardBridge);
+    return result;
+}
+
+void CallSetClipboardListenerEnabled(const QJniObject& context, const bool enabled)
+{
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv || !context.isValid()) {
+        return;
+    }
+
+    jclass clipboardBridge = FindClipboardBridge(jniEnv);
+    if (!clipboardBridge) {
+        return;
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        clipboardBridge,
+        "setClipboardListenerEnabled",
+        "(Landroid/content/Context;Z)V"
+    );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(clipboardBridge);
+        return;
+    }
+
+    jniEnv->CallStaticVoidMethod(
+        clipboardBridge,
+        method,
+        context.object<jobject>(),
+        static_cast<jboolean>(enabled)
+    );
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionClear();
+    }
+    jniEnv->DeleteLocalRef(clipboardBridge);
+}
+}
+#endif
+
 #if defined(__linux__) && !defined(__ANDROID__)
     static QProcess* wlpasteProcess = nullptr;
 
@@ -70,34 +224,11 @@ bool TextClipboard::Set(const std::string& text) {
     if (AndroidContextProvider::HasServiceContext()) {
         UpdateLastRemoteClipboard(text);
 
-        // Also attempt to set system clipboard from service context.
-        // This works on Android 9 and below. On Android 10+ it will
-        // silently fail, and the frontend polling path handles it.
+        // Also attempt to set system clipboard from service context. This works
+        // on Android 9 and below; on Android 10+ the frontend polling path handles it.
         const QJniObject context = AndroidContextProvider::GetAndroidContext();
         if (context.isValid()) {
-            QJniEnvironment env;
-            JNIEnv* jniEnv = env.jniEnv();
-            if (jniEnv) {
-                jclass clipboardBridge = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/ClipboardBridge");
-                if (clipboardBridge) {
-                    jmethodID method = jniEnv->GetStaticMethodID(
-                        clipboardBridge,
-                        "setClipboardText",
-                        "(Landroid/content/Context;Ljava/lang/String;)Z"
-                    );
-                    if (method) {
-                        jstring jText = jniEnv->NewStringUTF(text.c_str());
-                        jniEnv->CallStaticBooleanMethod(clipboardBridge, method, context.object<jobject>(), jText);
-                        if (jniEnv->ExceptionCheck()) {
-                            jniEnv->ExceptionClear();
-                        }
-                        jniEnv->DeleteLocalRef(jText);
-                    } else {
-                        jniEnv->ExceptionClear();
-                    }
-                    jniEnv->DeleteLocalRef(clipboardBridge);
-                }
-            }
+            CallSetClipboardText(context, text);
         }
 
         return true;
@@ -108,13 +239,7 @@ bool TextClipboard::Set(const std::string& text) {
         return false;
     }
 
-    return QJniObject::callStaticMethod<jboolean>(
-        "com/LibreConnect/mobile/ClipboardBridge",
-        "setClipboardText",
-        "(Landroid/content/Context;Ljava/lang/String;)Z",
-        context.object<jobject>(),
-        QJniObject::fromString(QString::fromUtf8(text.c_str())).object<jstring>()
-    );
+    return CallSetClipboardText(context, text);
 #else
     if (!QGuiApplication::instance())
         return false;
@@ -150,18 +275,7 @@ std::string TextClipboard::Get() {
         return {};
     }
 
-    const QJniObject text = QJniObject::callStaticObjectMethod(
-        "com/LibreConnect/mobile/ClipboardBridge",
-        "getClipboardText",
-        "(Landroid/content/Context;)Ljava/lang/String;",
-        context.object<jobject>()
-    );
-
-    if (!text.isValid()) {
-        return {};
-    }
-
-    return text.toString().toStdString();
+    return CallGetClipboardText(context);
 #else
     if (!QGuiApplication::instance()) {
         #if defined(__linux__) && !defined(__ANDROID__)
@@ -226,12 +340,7 @@ bool TextClipboard::Has() {
         return false;
     }
 
-    return QJniObject::callStaticMethod<jboolean>(
-        "com/LibreConnect/mobile/ClipboardBridge",
-        "hasClipboardText",
-        "(Landroid/content/Context;)Z",
-        context.object<jobject>()
-    );
+    return CallHasClipboardText(context);
 #else
     if (!QGuiApplication::instance()) {
         #if defined(__linux__) && !defined(__ANDROID__)
@@ -301,13 +410,7 @@ void TextClipboard::AddClipboardUpdateListener(std::function<void()>&& callback)
             }
             const QJniObject context = AndroidContextProvider::GetAndroidContext();
             if (context.isValid()) {
-                QJniObject::callStaticMethod<void>(
-                    "com/LibreConnect/mobile/ClipboardBridge",
-                    "setClipboardListenerEnabled",
-                    "(Landroid/content/Context;Z)V",
-                    context.object<jobject>(),
-                    true
-                );
+                CallSetClipboardListenerEnabled(context, true);
             }
             return;
         #endif
@@ -354,13 +457,7 @@ void TextClipboard::RemoveClipboardUpdateListener() {
 
             const QJniObject context = AndroidContextProvider::GetAndroidContext();
             if (context.isValid()) {
-                QJniObject::callStaticMethod<void>(
-                    "com/LibreConnect/mobile/ClipboardBridge",
-                    "setClipboardListenerEnabled",
-                    "(Landroid/content/Context;Z)V",
-                    context.object<jobject>(),
-                    false
-                );
+                CallSetClipboardListenerEnabled(context, false);
             }
         #endif
 

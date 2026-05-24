@@ -441,21 +441,54 @@ void MobileConnectionController::refreshPairedDevices()
 
 bool MobileConnectionController::removePairedDevice(const QString& deviceId)
 {
+#ifdef ANDROID_DEVICE
+    if (deviceId.trimmed().isEmpty()) {
+        return false;
+    }
+
+    BackendBridge::SendAction(BackendBridge::kActionRemovePairedDevice, BackendBridge::kExtraDeviceId, deviceId);
+
+    if (m_connected && deviceId == activePeerDeviceId()) {
+        m_connected = false;
+        emit connectedChanged();
+        emit permissionsStateChanged();
+        m_connectedPeerDeviceId.clear();
+        setBatteryPercentage(-1);
+        clearChallenge();
+        clearApproval();
+    }
+
+    QVariantList updatedEntries;
+    updatedEntries.reserve(m_pairedDevices.size());
+    for (const QVariant& entryValue : m_pairedDevices) {
+        const QVariantMap entry = entryValue.toMap();
+        if (entry.value(QStringLiteral("deviceId")).toString() != deviceId) {
+            updatedEntries.push_back(entry);
+        }
+    }
+
+    const bool hasDevices = !updatedEntries.isEmpty();
+    const bool hasChanged = m_pairedDevices != updatedEntries || m_hasPairedDevices != hasDevices;
+    m_pairedDevices = updatedEntries;
+    m_hasPairedDevices = hasDevices;
+    if (hasChanged) {
+        emit pairedDevicesChanged();
+    }
+
+    return true;
+#else
     const bool removed = ConnectionManager::RemovePairedDevice(deviceId.toStdString());
     if (!removed) {
         return false;
     }
 
     if (m_connected && deviceId == activePeerDeviceId()) {
-#ifdef ANDROID_DEVICE
-        BackendBridge::SendAction(BackendBridge::kActionDisconnect);
-#else
         ConnectionManager::Disconnect();
-#endif
     }
 
     refreshPairedDevices();
     return true;
+#endif
 }
 
 bool MobileConnectionController::unpairCurrentDevice()
@@ -888,10 +921,9 @@ void MobileConnectionController::stopFindMyPhoneAlertInternal(const bool notifyP
 {
 #ifdef ANDROID_DEVICE
     FindMyBridge::StopAlert();
-#endif
-
-#ifdef ANDROID_DEVICE
-    (void)notifyPeer;
+    if (notifyPeer) {
+        BackendBridge::SendAction(BackendBridge::kActionStopFindMyPhoneAlert);
+    }
 #else
     if (notifyPeer && m_connected) {
         ConnectionManager::Send(kFindMyPhoneStopPackage);
@@ -1221,38 +1253,6 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
         const bool smsReadGranted = PermissionManager::IsReadSmsPermissionGranted();
         const bool smsSendGranted = PermissionManager::IsSendSmsPermissionGranted();
         const bool contactsGranted = PermissionManager::IsReadContactsPermissionGranted();
-        const bool smsPermissionsGranted =
-            smsReceiveGranted &&
-            smsReadGranted &&
-            smsSendGranted &&
-            contactsGranted;
-        const bool notificationPermissionsGranted = notificationSendGranted && notificationListenerGranted;
-        bool requestAffectsNotificationPermissions = false;
-        bool requestAffectsSmsPermissions = false;
-        switch (request) {
-        case PermissionRequest::Notifications:
-        case PermissionRequest::NotificationSend:
-        case PermissionRequest::NotificationListener:
-        case PermissionRequest::All:
-            requestAffectsNotificationPermissions = true;
-            break;
-        default:
-            break;
-        }
-
-        switch (request) {
-        case PermissionRequest::Sms:
-        case PermissionRequest::SmsReceive:
-        case PermissionRequest::SmsRead:
-        case PermissionRequest::SmsSend:
-        case PermissionRequest::Contacts:
-        case PermissionRequest::All:
-            requestAffectsSmsPermissions = true;
-            break;
-        default:
-            break;
-        }
-
         QMetaObject::invokeMethod(
             qApp,
             [weakThis,
@@ -1266,11 +1266,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
              smsReceiveGranted,
              smsReadGranted,
              smsSendGranted,
-             contactsGranted,
-             notificationPermissionsGranted,
-             requestAffectsNotificationPermissions,
-             smsPermissionsGranted,
-             requestAffectsSmsPermissions]() {
+             contactsGranted]() {
                 if (!weakThis) {
                     return;
                 }
@@ -1290,25 +1286,7 @@ void MobileConnectionController::runPermissionRequest(const PermissionRequest re
                 );
                 weakThis->setPermissionsBusy(false);
                 if (weakThis->connected()) {
-                    weakThis->sendPermissionSnapshotToPeer();
-                }
-                if (requestAffectsNotificationPermissions) {
-                    std::unique_ptr<QEvent> event;
-                    if (notificationPermissionsGranted) {
-                        event = std::make_unique<ModuleRequestedPermissionGranted>(PermissionType::Notifications);
-                    } else {
-                        event = std::make_unique<ModuleRequestedPermissionRejected>(PermissionType::Notifications);
-                    }
-                    ConnectionManager::SendEvent(event);
-                }
-                if (requestAffectsSmsPermissions) {
-                    std::unique_ptr<QEvent> event;
-                    if (smsPermissionsGranted) {
-                        event = std::make_unique<ModuleRequestedPermissionGranted>(PermissionType::Sms);
-                    } else {
-                        event = std::make_unique<ModuleRequestedPermissionRejected>(PermissionType::Sms);
-                    }
-                    ConnectionManager::SendEvent(event);
+                    BackendBridge::SendAction(BackendBridge::kActionSyncPermissionSnapshot);
                 }
             },
             Qt::QueuedConnection

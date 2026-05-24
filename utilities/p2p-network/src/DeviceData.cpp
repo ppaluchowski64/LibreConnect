@@ -11,11 +11,48 @@
 #include <QStandardPaths>
 #include <QDir>
 
+#ifdef ANDROID_DEVICE
+#include <AndroidContextProvider.h>
+#include <QJniObject>
+#endif
+
+namespace
+{
+#if defined(ANDROID_DEVICE)
+QString AndroidFilesDir()
+{
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
+    if (!context.isValid()) {
+        return {};
+    }
+
+    const QJniObject filesDir = context.callObjectMethod(
+        "getFilesDir",
+        "()Ljava/io/File;"
+    );
+    if (!filesDir.isValid()) {
+        return {};
+    }
+
+    return filesDir.callObjectMethod(
+        "getAbsolutePath",
+        "()Ljava/lang/String;"
+    ).toString();
+}
+#endif
+}
+
 boost::uuids::uuid DeviceData::GetDeviceUUID() {
     std::string uuidFile = "uuid.bin";
 
 #if defined(MOBILE_DEVICE)
-    const QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString base;
+#if defined(ANDROID_DEVICE)
+    base = AndroidFilesDir();
+#endif
+    if (base.isEmpty()) {
+        base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    }
     if (!base.isEmpty()) {
         QDir().mkpath(base);
         uuidFile = (base + "/uuid.bin").toStdString();

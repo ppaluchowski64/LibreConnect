@@ -25,6 +25,13 @@ constexpr size_t DIRECTORY_REQUEST_WAIT_POLL_MS = 5;
 
 namespace
 {
+#ifdef ANDROID_DEVICE
+jclass FindAndroidClass(JNIEnv* env, const char* className)
+{
+    return AndroidContextProvider::FindClass(env, className);
+}
+#endif
+
 QString DisplayNameForEntry(const FileEntry& entry)
 {
     if (entry.GetName().has_value() && !entry.GetName().value().empty()) {
@@ -59,47 +66,41 @@ void PostTransferProgressNotification(const FileEntry& entry, const size_t bytes
     const QJniObject content = QJniObject::fromString(DisplayNameForEntry(entry));
 
     const QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
     bool posted = false;
     const QJniObject context = AndroidContextProvider::GetAndroidContext();
-    if (context.isValid()) {
-        QJniObject::callStaticMethod<void>(
-            "com/LibreConnect/mobile/NotificationBridge",
-            "postTransferProgressNotification",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJ)V",
-            context.object<jobject>(),
-            key.object<jstring>(),
-            title.object<jstring>(),
-            content.object<jstring>(),
-            static_cast<jlong>(bytesTransferred),
-            static_cast<jlong>(totalBytes)
-        );
+    if (jniEnv && context.isValid()) {
+        jclass bridgeClass = FindAndroidClass(jniEnv, "com/LibreConnect/mobile/NotificationBridge");
+        if (bridgeClass) {
+            jmethodID method = jniEnv->GetStaticMethodID(
+                bridgeClass,
+                "postTransferProgressNotification",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJ)V"
+            );
+            if (method) {
+                jniEnv->CallStaticVoidMethod(
+                    bridgeClass,
+                    method,
+                    context.object<jobject>(),
+                    key.object<jstring>(),
+                    title.object<jstring>(),
+                    content.object<jstring>(),
+                    static_cast<jlong>(bytesTransferred),
+                    static_cast<jlong>(totalBytes)
+                );
+            }
 
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            Debug::LogWarning("FileShareModule: Transfer progress notification failed in Android bridge");
-        } else {
-            posted = true;
+            if (jniEnv->ExceptionCheck()) {
+                jniEnv->ExceptionDescribe();
+                jniEnv->ExceptionClear();
+            } else if (method) {
+                posted = true;
+            }
+            jniEnv->DeleteLocalRef(bridgeClass);
         }
-    }
 
-    if (!posted) {
-        posted = QJniObject::callStaticMethod<jboolean>(
-            "com/LibreConnect/mobile/MainService",
-            "postTransferProgressNotification",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJ)Z",
-            key.object<jstring>(),
-            title.object<jstring>(),
-            content.object<jstring>(),
-            static_cast<jlong>(bytesTransferred),
-            static_cast<jlong>(totalBytes)
-        );
-
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            Debug::LogWarning("FileShareModule: Transfer progress notification failed in MainService bridge");
-            posted = false;
+        if (!posted) {
+            Debug::LogWarning("FileShareModule: Transfer progress notification failed in Android bridge");
         }
     }
 
@@ -123,45 +124,40 @@ void PostTransferNotification(const FileEntry& entry, const bool success)
     const QJniObject content = QJniObject::fromString(DisplayNameForEntry(entry));
 
     const QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
     bool posted = false;
     const QJniObject context = AndroidContextProvider::GetAndroidContext();
-    if (context.isValid()) {
-        QJniObject::callStaticMethod<void>(
-            "com/LibreConnect/mobile/NotificationBridge",
-            "postTransferNotification",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V",
-            context.object<jobject>(),
-            key.object<jstring>(),
-            title.object<jstring>(),
-            content.object<jstring>(),
-            static_cast<jboolean>(success)
-        );
+    if (jniEnv && context.isValid()) {
+        jclass bridgeClass = FindAndroidClass(jniEnv, "com/LibreConnect/mobile/NotificationBridge");
+        if (bridgeClass) {
+            jmethodID method = jniEnv->GetStaticMethodID(
+                bridgeClass,
+                "postTransferNotification",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V"
+            );
+            if (method) {
+                jniEnv->CallStaticVoidMethod(
+                    bridgeClass,
+                    method,
+                    context.object<jobject>(),
+                    key.object<jstring>(),
+                    title.object<jstring>(),
+                    content.object<jstring>(),
+                    static_cast<jboolean>(success)
+                );
+            }
 
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            Debug::LogWarning("FileShareModule: Transfer notification failed in Android bridge");
-        } else {
-            posted = true;
+            if (jniEnv->ExceptionCheck()) {
+                jniEnv->ExceptionDescribe();
+                jniEnv->ExceptionClear();
+            } else if (method) {
+                posted = true;
+            }
+            jniEnv->DeleteLocalRef(bridgeClass);
         }
-    }
 
-    if (!posted) {
-        posted = QJniObject::callStaticMethod<jboolean>(
-            "com/LibreConnect/mobile/MainService",
-            "postTransferNotification",
-            "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Z",
-            key.object<jstring>(),
-            title.object<jstring>(),
-            content.object<jstring>(),
-            static_cast<jboolean>(success)
-        );
-
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-            Debug::LogWarning("FileShareModule: Transfer notification failed in MainService bridge");
-            posted = false;
+        if (!posted) {
+            Debug::LogWarning("FileShareModule: Transfer notification failed in Android bridge");
         }
     }
 
@@ -318,58 +314,80 @@ std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, cons
     }
 
     const QJniObject filePath = QJniObject::fromString(QString::fromStdString(file));
-    const QJniObject response = QJniObject::callStaticObjectMethod(
-        "com/LibreConnect/mobile/FileSystemUtils",
-        "getFileIconAsPngBytes",
-        "(Landroid/content/Context;Ljava/lang/String;I)[B",
-        context.object<jobject>(),
-        filePath.object<jstring>(),
-        static_cast<jint>(density)
-    );
-
     const QJniEnvironment env;
-    if (!response.isValid()) {
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-        }
-        Debug::LogWarning("FileShareModule: GetEntryIcon failed: JNI response is invalid");
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv) {
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: JNI environment is unavailable");
         return {};
     }
 
-    const jbyteArray bytes = response.object<jbyteArray>();
+    jclass utilsClass = FindAndroidClass(jniEnv, "com/LibreConnect/mobile/FileSystemUtils");
+    if (!utilsClass) {
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: FileSystemUtils class is unavailable");
+        return {};
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        utilsClass,
+        "getFileIconAsPngBytes",
+        "(Landroid/content/Context;Ljava/lang/String;I)[B"
+    );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(utilsClass);
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: getFileIconAsPngBytes method is unavailable");
+        return {};
+    }
+
+    const jbyteArray bytes = static_cast<jbyteArray>(jniEnv->CallStaticObjectMethod(
+        utilsClass,
+        method,
+        context.object<jobject>(),
+        filePath.object<jstring>(),
+        static_cast<jint>(density)
+    ));
+    jniEnv->DeleteLocalRef(utilsClass);
+
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed: JNI call threw an exception");
+        return {};
+    }
+
     if (!bytes) {
         Debug::LogWarning("FileShareModule: GetEntryIcon failed: JNI byte array is null");
         return {};
     }
 
-    const jsize length = env->GetArrayLength(bytes);
+    const jsize length = jniEnv->GetArrayLength(bytes);
     if (length <= 0) {
+        jniEnv->DeleteLocalRef(bytes);
         Debug::LogWarning("FileShareModule: GetEntryIcon returned empty icon bytes");
         return {};
     }
 
     std::vector<uint8_t> buffer(static_cast<size_t>(length));
-    env->GetByteArrayRegion(
+    jniEnv->GetByteArrayRegion(
         bytes,
         0,
         length,
         reinterpret_cast<jbyte*>(buffer.data())
     );
+    jniEnv->DeleteLocalRef(bytes);
 
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        Debug::LogWarning("FileShareModule: GetEntryIcon failed while reading JNI byte array");
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+        Debug::LogWarning("FileShareModule: GetEntryIcon failed while reading byte array");
         return {};
     }
 
-    Debug::Log("FileShareModule: GetEntryIcon success. Path: {}, Bytes: {}", file, buffer.size());
+    Debug::Log("FileShareModule: GetEntryIcon success. Bytes: {}", buffer.size());
     return buffer;
 #else
     (void)file;
     (void)density;
-    Debug::LogWarning("FileShareModule: GetEntryIcon is unavailable on non-Android platform");
     return {};
 #endif
 }

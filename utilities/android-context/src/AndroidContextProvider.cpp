@@ -74,10 +74,18 @@ void AndroidContextProvider::CacheClassLoader(JavaVM* vm, JNIEnv* env) {
         Debug::Log("AndroidContextProvider: App classloader cached successfully");
     }
 
-    g_sdkVersion = env->GetStaticIntField(
-        env->FindClass("android/os/Build$VERSION"),
-        env->GetStaticFieldID(env->FindClass("android/os/Build$VERSION"), "SDK_INT", "I")
-    );
+    jclass versionClass = env->FindClass("android/os/Build$VERSION");
+    if (versionClass) {
+        jfieldID sdkIntField = env->GetStaticFieldID(versionClass, "SDK_INT", "I");
+        if (sdkIntField) {
+            g_sdkVersion = env->GetStaticIntField(versionClass, sdkIntField);
+        } else {
+            env->ExceptionClear();
+        }
+        env->DeleteLocalRef(versionClass);
+    } else {
+        env->ExceptionClear();
+    }
 
     env->DeleteLocalRef(classClass);
     env->DeleteLocalRef(mainServiceClass);

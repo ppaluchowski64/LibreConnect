@@ -31,6 +31,9 @@ namespace BackendBridge
     constexpr auto kActionSendLocalClipboard       = "com.LibreConnect.mobile.action.SEND_LOCAL_CLIPBOARD";
     constexpr auto kActionDisconnect               = "com.LibreConnect.mobile.action.DISCONNECT";
     constexpr auto kActionSetMirroringEnabled       = "com.LibreConnect.mobile.action.SET_MIRRORING_ENABLED";
+    constexpr auto kActionRemovePairedDevice        = "com.LibreConnect.mobile.action.REMOVE_PAIRED_DEVICE";
+    constexpr auto kActionStopFindMyPhoneAlert      = "com.LibreConnect.mobile.action.STOP_FIND_MY_PHONE_ALERT";
+    constexpr auto kActionSyncPermissionSnapshot    = "com.LibreConnect.mobile.action.SYNC_PERMISSION_SNAPSHOT";
 
     constexpr auto kExtraEnabled   = "com.LibreConnect.mobile.EXTRA_ENABLED";
     constexpr auto kExtraSignal    = "com.LibreConnect.mobile.EXTRA_SIGNAL";
@@ -41,5 +44,6 @@ namespace BackendBridge
     constexpr auto kExtraPosition  = "com.LibreConnect.mobile.EXTRA_POSITION";
     constexpr auto kExtraVolume    = "com.LibreConnect.mobile.EXTRA_VOLUME";
     constexpr auto kExtraPath      = "com.LibreConnect.mobile.EXTRA_PATH";
+    constexpr auto kExtraDeviceId  = "com.LibreConnect.mobile.EXTRA_DEVICE_ID";
 }
 #endif
