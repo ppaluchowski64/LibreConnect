@@ -12,6 +12,7 @@ class MediaNotificationManager {
 
         static void Show();
         static void Hide();
+        static bool IsVisible();
 
         static void UpdateMetadata(const TrackMetadata& metadata);
         static void UpdatePlaybackState(bool isPlaying, double position);

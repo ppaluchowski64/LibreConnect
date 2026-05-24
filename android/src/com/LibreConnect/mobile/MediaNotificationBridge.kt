@@ -20,7 +20,7 @@ class MediaNotificationBridge {
         private const val NOTIFICATION_ID = 1302
 
         @Volatile
-        private var mediaSession: MediaSession? = null
+        var mediaSession: MediaSession? = null
 
         @JvmStatic
         fun show(context: Context) {
@@ -123,8 +123,23 @@ class MediaNotificationBridge {
             if (cover != null)
                 builder.setLargeIcon(cover)
 
+            builder.setContentIntent(buildContentIntent(context))
+
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.notify(NOTIFICATION_ID, builder.build())
+        }
+
+        private fun buildContentIntent(context: Context): PendingIntent {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)!!
+            launchIntent.putExtra("NAVIGATE_TO", "media_remote")
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+            return PendingIntent.getActivity(
+                context,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
         }
 
         private fun buildPendingIntent(context: Context, keyCode: Int): PendingIntent {

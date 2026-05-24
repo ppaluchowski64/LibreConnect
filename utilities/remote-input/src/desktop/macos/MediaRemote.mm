@@ -1,7 +1,16 @@
 #include <AppKit/AppKit.h>
 #include <Carbon/Carbon.h>
+#include "MediaNotificationManager.h"
+#include <thread>
+#include <chrono>
 
 void EmitMacMediaSignal(int code) {
+    bool wasVisible = MediaNotificationManager::IsVisible();
+    if (wasVisible) {
+        MediaNotificationManager::Hide();
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
     // 0xa is a press
     NSEvent *eventDown = [NSEvent otherEventWithType:NSEventTypeSystemDefined
                                             location:NSZeroPoint
@@ -27,4 +36,9 @@ void EmitMacMediaSignal(int code) {
                                              data2:-1];
 
     CGEventPost(kCGHIDEventTap, [eventUp CGEvent]);
+
+    if (wasVisible) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        MediaNotificationManager::Show();
+    }
 }

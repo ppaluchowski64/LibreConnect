@@ -36,6 +36,7 @@
 #include "VirtualCameraController.h"
 #endif
 #include "ThemeController.h"
+#include "MediaNotificationController.h"
 
 namespace
 {
@@ -269,8 +270,10 @@ int main(int argc, char *argv[])
     const QString address = parser.value(addressOption);
 
     app.setDesktopFileName(QStringLiteral("libreconnect"));
-    app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
 
+#ifndef MACOS_DEVICE
+    app.setWindowIcon(QIcon(QStringLiteral(":/LibreConnect/desktop/libreconnect_logo.png")));
+#endif
     const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (!appDataPath.isEmpty()) {
         QDir().mkpath(appDataPath);
@@ -315,6 +318,7 @@ int main(int argc, char *argv[])
 #ifndef MACOS_DEVICE
     qmlRegisterType<VirtualCameraController>("LibreConnect.desktop", 1, 0, "VirtualCameraController");
 #endif
+    qmlRegisterType<MediaNotificationController>("LibreConnect.desktop", 1, 0, "MediaNotificationController");
 
     const QUrl url = QUrl("qrc:/LibreConnect/desktop/MainWindow.qml");
     AttachQmlCreationLogging(engine, app, url);

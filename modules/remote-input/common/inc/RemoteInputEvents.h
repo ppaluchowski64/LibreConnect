@@ -21,7 +21,8 @@ public:
         bool playing,
         double positionSeconds = 0.0,
         double durationSeconds = 0.0,
-        std::vector<uint8_t> coverBytes = {}
+        std::vector<uint8_t> coverBytes = {},
+        int volume = 0
     )
         : QEvent(Type)
         , m_title(std::move(title))
@@ -31,7 +32,8 @@ public:
         , m_playing(playing)
         , m_positionSeconds(positionSeconds)
         , m_durationSeconds(durationSeconds)
-        , m_coverBytes(std::move(coverBytes)) {}
+        , m_coverBytes(std::move(coverBytes))
+        , m_volume(volume) {}
 
     const std::string& GetTitle() const { return m_title; }
     const std::string& GetArtist() const { return m_artist; }
@@ -41,6 +43,7 @@ public:
     double GetPositionSeconds() const { return m_positionSeconds; }
     double GetDurationSeconds() const { return m_durationSeconds; }
     const std::vector<uint8_t>& GetCoverBytes() const { return m_coverBytes; }
+    int GetVolume() const { return m_volume; }
 
     RemoteMediaInfoEvent* clone() const override {
         return new RemoteMediaInfoEvent(*this);
@@ -55,6 +58,7 @@ private:
     double m_positionSeconds = 0.0;
     double m_durationSeconds = 0.0;
     std::vector<uint8_t> m_coverBytes;
+    int m_volume = 0;
 };
 
 #endif // REMOTE_INPUT_EVENTS_H

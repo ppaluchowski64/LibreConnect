@@ -2,6 +2,7 @@
 #define BASE_MODULE_H
 
 #include <atomic>
+#include <cstdint>
 
 #include <DebugLog.h>
 #include <asio.hpp>
@@ -185,10 +186,15 @@ public:
             return;
         }
 
+        const uint64_t generation = m_lifecycleGeneration.fetch_add(1) + 1;
         Debug::Log("{}: Initialize started", GetModuleName());
         SetModuleState(ModuleState::Initializing);
         EnableResponseCallbacks();
         OnInitialize();
+        if (m_lifecycleGeneration.load() != generation) {
+            Debug::LogWarning("{}: Initialize completion ignored - lifecycle changed", GetModuleName());
+            return;
+        }
         SetModuleState(ModuleState::Disabled);
         Debug::Log("{}: Initialize completed", GetModuleName());
     }
@@ -202,7 +208,22 @@ public:
     }
 
     void Shutdown(const bool disableWarnings = false) {
-        asio::co_spawn(m_moduleStrand, ShutdownAwaitable(disableWarnings), asio::detached);
+        const ModuleState state = GetModuleState();
+
+        if (state == ModuleState::Uninitialized) {
+            if (!disableWarnings) {
+                Debug::LogWarning("{}: Shutdown skipped - module is not initialized", GetModuleName());
+            }
+
+            return;
+        }
+
+        const uint64_t generation = m_lifecycleGeneration.fetch_add(1) + 1;
+        Debug::Log("{}: Shutdown started", GetModuleName());
+        DisableResponseCallbacks();
+        SetModuleState(ModuleState::Uninitialized);
+
+        asio::co_spawn(m_moduleStrand, ShutdownAwaitable(disableWarnings, state, generation), asio::detached);
     }
 
     asio::awaitable<void> EnableAwaitable(const bool disableWarnings = false) {
@@ -298,24 +319,20 @@ public:
         }
     }
 
-    asio::awaitable<void> ShutdownAwaitable(const bool disableWarnings = false) {
+    asio::awaitable<void> ShutdownAwaitable(
+        const bool disableWarnings = false,
+        const ModuleState shutdownState = ModuleState::Uninitialized,
+        const uint64_t shutdownGeneration = 0
+    ) {
+        (void)disableWarnings;
         const std::shared_ptr<BaseModule> instance = shared_from_this();
-        const ModuleState state = GetModuleState();
 
-        if (state == ModuleState::Uninitialized) {
-            if (disableWarnings) {
-                co_return;
+        if (shutdownState == ModuleState::Enabled || shutdownState == ModuleState::Enabling) {
+            try {
+                co_await OnDisable();
+            } catch (const std::exception& exc) {
+                Debug::LogError("{}: Disable during shutdown failed with exception: {}", GetModuleName(), exc.what());
             }
-
-            Debug::LogWarning("{}: Shutdown skipped - module is not initialized", GetModuleName());
-            co_return;
-        }
-
-        Debug::Log("{}: Shutdown started", GetModuleName());
-        DisableResponseCallbacks();
-
-        if (state == ModuleState::Enabled || state == ModuleState::Enabling) {
-            co_await DisableAwaitable(true);
         }
 
         try {
@@ -324,7 +341,11 @@ public:
             Debug::LogError("{}: Shutdown failed with exception: {}", GetModuleName(), exc.what());
         }
 
-        SetModuleState(ModuleState::Uninitialized);
+        if (m_lifecycleGeneration.load() != shutdownGeneration) {
+            Debug::LogWarning("{}: Shutdown completion ignored - lifecycle changed", GetModuleName());
+            co_return;
+        }
+
         Debug::Log("{}: Shutdown completed", GetModuleName());
     }
 
@@ -351,6 +372,7 @@ protected:
 
     std::atomic<ModuleState> m_state = ModuleState::Uninitialized;
     std::atomic<bool> m_peerModuleEnabled = false;
+    std::atomic<uint64_t> m_lifecycleGeneration = 0;
     mutable std::atomic<ModuleFailReason> m_failReason = ModuleFailReason::None;
 
     bool ShouldAbortEnable() const {

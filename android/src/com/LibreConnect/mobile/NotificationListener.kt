@@ -235,7 +235,11 @@ class NotificationListener : NotificationListenerService() {
 
     private fun updateActiveMediaController(controllers: List<MediaController>?) {
         val remoteControllers = controllers
-            ?.filterNot { it.packageName == packageName }
+            ?.filterNot { 
+                it.packageName == packageName || 
+                it.packageName == "com.LibreConnect.mobile" ||
+                (MediaNotificationBridge.mediaSession != null && it.sessionToken == MediaNotificationBridge.mediaSession?.sessionToken)
+            }
             .orEmpty()
 
         if (remoteControllers.isEmpty()) {
@@ -475,7 +479,7 @@ class NotificationListener : NotificationListenerService() {
     }
 
     private fun shouldIgnoreNotification(sbn: StatusBarNotification): Boolean {
-        if (sbn.packageName == packageName) {
+        if (sbn.packageName == packageName || sbn.packageName == "com.LibreConnect.mobile") {
             return true
         }
 

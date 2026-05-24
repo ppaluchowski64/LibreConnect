@@ -48,4 +48,6 @@ private:
     bool m_disableAttemptPending = false;
     bool m_confirmedEnabled = false;
     QString m_statusMessage;
+    QString m_lastAppliedRemoteClipboard;
+    QString m_lastSentLocalClipboard;
 };

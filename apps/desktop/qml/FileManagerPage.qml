@@ -1159,7 +1159,6 @@ Page {
                             } else if (mouse.modifiers & Qt.ControlModifier) {
                                 root.toggleSelection(modelData.path, index)
                             } else {
-                                // Keep multi-selection intact while user may be starting a drag.
                                 if (root.isPathSelected(modelData.path) && root.selectedCount > 1) {
                                     deferSingleSelection = true
                                 } else {

@@ -18,7 +18,8 @@
 
 #ifdef __ANDROID__
     #include <QJniObject>
-    #include <QtCore/qcoreapplication_platform.h>
+    #include <AndroidContextProvider.h>
+    extern "C" __attribute__((weak)) void UpdateLastRemoteClipboard(const std::string& text) {}
 #endif
 
 static QMetaObject::Connection clipboardConnection;
@@ -66,7 +67,43 @@ bool TextClipboard::Set(const std::string& text) {
     }
 
 #ifdef __ANDROID__
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (AndroidContextProvider::HasServiceContext()) {
+        UpdateLastRemoteClipboard(text);
+
+        // Also attempt to set system clipboard from service context.
+        // This works on Android 9 and below. On Android 10+ it will
+        // silently fail, and the frontend polling path handles it.
+        const QJniObject context = AndroidContextProvider::GetAndroidContext();
+        if (context.isValid()) {
+            QJniEnvironment env;
+            JNIEnv* jniEnv = env.jniEnv();
+            if (jniEnv) {
+                jclass clipboardBridge = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/ClipboardBridge");
+                if (clipboardBridge) {
+                    jmethodID method = jniEnv->GetStaticMethodID(
+                        clipboardBridge,
+                        "setClipboardText",
+                        "(Landroid/content/Context;Ljava/lang/String;)Z"
+                    );
+                    if (method) {
+                        jstring jText = jniEnv->NewStringUTF(text.c_str());
+                        jniEnv->CallStaticBooleanMethod(clipboardBridge, method, context.object<jobject>(), jText);
+                        if (jniEnv->ExceptionCheck()) {
+                            jniEnv->ExceptionClear();
+                        }
+                        jniEnv->DeleteLocalRef(jText);
+                    } else {
+                        jniEnv->ExceptionClear();
+                    }
+                    jniEnv->DeleteLocalRef(clipboardBridge);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) {
         return false;
     }
@@ -108,7 +145,7 @@ bool TextClipboard::Set(const std::string& text) {
 
 std::string TextClipboard::Get() {
 #ifdef __ANDROID__
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) {
         return {};
     }
@@ -184,7 +221,7 @@ std::string TextClipboard::Get() {
 
 bool TextClipboard::Has() {
 #ifdef __ANDROID__
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) {
         return false;
     }
@@ -262,7 +299,7 @@ void TextClipboard::AddClipboardUpdateListener(std::function<void()>&& callback)
                 std::lock_guard lock(clipboardMutex);
                 currentCallback = std::move(wrapper);
             }
-            const QJniObject context = QNativeInterface::QAndroidApplication::context();
+            const QJniObject context = AndroidContextProvider::GetAndroidContext();
             if (context.isValid()) {
                 QJniObject::callStaticMethod<void>(
                     "com/LibreConnect/mobile/ClipboardBridge",
@@ -315,7 +352,7 @@ void TextClipboard::RemoveClipboardUpdateListener() {
                 currentCallback = nullptr;
             }
 
-            const QJniObject context = QNativeInterface::QAndroidApplication::context();
+            const QJniObject context = AndroidContextProvider::GetAndroidContext();
             if (context.isValid()) {
                 QJniObject::callStaticMethod<void>(
                     "com/LibreConnect/mobile/ClipboardBridge",

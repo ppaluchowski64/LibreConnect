@@ -1,7 +1,9 @@
 #include "MediaRemote.h"
 
 #include <QtCore/QJniObject>
+#include <QtCore/QJniEnvironment>
 #include <QtCore/QCoreApplication>
+#include <AndroidContextProvider.h>
 
 namespace {
     enum class AndroidKeyCode {
@@ -30,6 +32,10 @@ namespace {
             default:
                 return -1;
         }
+    }
+
+    QJniObject GetContext() {
+        return AndroidContextProvider::GetAndroidContext();
     }
 }
 
@@ -66,16 +72,30 @@ void MediaRemote::ExecuteSignal(MediaSignal signal) {
     if (androidKeyCode == -1)
         return;
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;
 
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/MediaRemoteBridge",
-        "sendMediaKey",
-        "(Landroid/content/Context;I)V",
-        context.object(),
-        static_cast<jint>(androidKeyCode)
-    );
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv) return;
+
+    jclass bridgeClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/MediaRemoteBridge");
+    if (!bridgeClass) return;
+
+    jmethodID method = jniEnv->GetStaticMethodID(bridgeClass, "sendMediaKey", "(Landroid/content/Context;I)V");
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(bridgeClass);
+        return;
+    }
+
+    jniEnv->CallStaticVoidMethod(bridgeClass, method, context.object<jobject>(), static_cast<jint>(androidKeyCode));
+    jniEnv->DeleteLocalRef(bridgeClass);
+
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+    }
 }

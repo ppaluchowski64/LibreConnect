@@ -25,6 +25,7 @@ class MobileRemoteInputController : public QObject
     Q_PROPERTY(double durationSeconds READ durationSeconds NOTIFY nowPlayingChanged)
     Q_PROPERTY(QString coverImageSource READ coverImageSource NOTIFY nowPlayingChanged)
     Q_PROPERTY(bool hasTrackInfo READ hasTrackInfo NOTIFY nowPlayingChanged)
+    Q_PROPERTY(int volume READ volume NOTIFY nowPlayingChanged)
 
 public:
     explicit MobileRemoteInputController(QObject* parent = nullptr);
@@ -42,10 +43,12 @@ public:
     double durationSeconds() const { return m_durationSeconds; }
     QString coverImageSource() const { return m_coverImageSource; }
     bool hasTrackInfo() const;
+    int volume() const { return m_volume; }
 
     Q_INVOKABLE void setSessionActive(bool active);
     Q_INVOKABLE void sendMediaSignal(int signal);
     Q_INVOKABLE void seekTo(double seconds);
+    Q_INVOKABLE void setVolume(int volume);
     Q_INVOKABLE void sendQtKeyEvent(int qtKey, const QString& text, int modifiers);
     Q_INVOKABLE void presenterPreviousSlide();
     Q_INVOKABLE void presenterNextSlide();
@@ -59,7 +62,8 @@ public:
         bool playing,
         double positionSeconds = 0.0,
         double durationSeconds = 0.0,
-        const std::vector<uint8_t>& coverBytes = {}
+        const std::vector<uint8_t>& coverBytes = {},
+        int volume = 0
     );
 
 signals:
@@ -90,9 +94,15 @@ private:
     static QString formatTime(double seconds);
     void updateAndroidMediaNotification() const;
     void hideAndroidMediaNotification() const;
+    void onOptimisticPlaybackTimeout();
+    void onOptimisticPositionTimeout();
+    void onOptimisticVolumeTimeout();
 
     QTimer m_pollTimer;
     QTimer m_mediaInfoTimer;
+    QTimer m_optimisticPlaybackTimer;
+    QTimer m_optimisticPositionTimer;
+    QTimer m_optimisticVolumeTimer;
     bool m_connected = false;
     bool m_ready = false;
     bool m_playing = false;
@@ -106,6 +116,18 @@ private:
     QString m_durationTime;
     double m_positionSeconds = 0.0;
     double m_durationSeconds = 0.0;
+    int m_volume = 0;
     QByteArray m_coverBytes;
     QString m_coverImageSource;
+
+    bool m_isOptimisticPlayingActive = false;
+    bool m_backendPlaying = false;
+    bool m_isOptimisticPositionActive = false;
+    double m_optimisticPositionSeconds = 0.0;
+    double m_backendPositionSeconds = 0.0;
+    double m_preSeekBackendPosition = 0.0;
+
+    bool m_isOptimisticVolumeActive = false;
+    int m_optimisticVolume = 0;
+    int m_backendVolume = 0;
 };

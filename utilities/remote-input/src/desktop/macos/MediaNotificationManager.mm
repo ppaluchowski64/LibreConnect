@@ -90,6 +90,9 @@ void MediaNotificationManager::Hide() {
     g_changePlaybackPositionTarget = nil;
 
     [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nil;
+    if (@available(macOS 10.12.2, *)) {
+        [MPNowPlayingInfoCenter defaultCenter].playbackState = MPNowPlayingPlaybackStateStopped;
+    }
 }
 
 void MediaNotificationManager::UpdateMetadata(const TrackMetadata& metadata) {
@@ -133,6 +136,15 @@ void MediaNotificationManager::UpdatePlaybackState(bool isPlaying, double positi
     g_nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = @(position);
     g_nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? @1.0 : @0.0;
 
-    if (g_isVisible)
+    if (g_isVisible) {
         [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = g_nowPlayingInfo;
+        if (@available(macOS 10.12.2, *)) {
+            [MPNowPlayingInfoCenter defaultCenter].playbackState = isPlaying ? MPNowPlayingPlaybackStatePlaying : MPNowPlayingPlaybackStatePaused;
+        }
+    }
+}
+
+bool MediaNotificationManager::IsVisible() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_isVisible;
 }

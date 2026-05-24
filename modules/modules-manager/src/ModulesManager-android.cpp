@@ -1,7 +1,7 @@
 #ifdef ANDROID_DEVICE
 
 #include <ModulesManager.h>
-#include <QtCore/qcoreapplication_platform.h>
+#include <AndroidContextProvider.h>
 
 namespace {
 constexpr const char* MAIN_SERVICE_CLASS = "com.LibreConnect.mobile.MainService";
@@ -14,7 +14,7 @@ void ModulesManager::StartMainService() {
 }
 
 void ModulesManager::SetMainServiceBackendEnabled(const bool enabled) {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) {
         return;
     }

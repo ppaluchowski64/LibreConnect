@@ -1,6 +1,7 @@
 #include "MobileRemoteInputController.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include <QBuffer>
 #include <QDir>
@@ -18,6 +19,7 @@
 
 #ifdef ANDROID_DEVICE
     #include "MediaNotificationManager.h"
+    #include "BackendBridge.h"
 #endif
 
 namespace {
@@ -106,25 +108,25 @@ QString BuildCoverImageSource(const QByteArray& coverBytes) {
 
 MobileRemoteInputController::MobileRemoteInputController(QObject* parent)
     : QObject(parent) {
+#ifndef ANDROID_DEVICE
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+#endif
 
     m_pollTimer.setInterval(350);
     connect(&m_pollTimer, &QTimer::timeout, this, &MobileRemoteInputController::refreshState);
     m_pollTimer.start();
 
-    m_mediaInfoTimer.setInterval(1800);
+    m_optimisticPlaybackTimer.setSingleShot(true);
+    connect(&m_optimisticPlaybackTimer, &QTimer::timeout, this, &MobileRemoteInputController::onOptimisticPlaybackTimeout);
+
+    m_optimisticPositionTimer.setSingleShot(true);
+    connect(&m_optimisticPositionTimer, &QTimer::timeout, this, &MobileRemoteInputController::onOptimisticPositionTimeout);
+
+    m_mediaInfoTimer.setSingleShot(true);
     connect(&m_mediaInfoTimer, &QTimer::timeout, this, &MobileRemoteInputController::requestNowPlayingUpdate);
-    m_mediaInfoTimer.start();
 
-    #ifdef ANDROID_DEVICE
-        MediaNotificationManager::SetActionCallback([](MediaSignal signal) {
-            RemoteInputModule::SendMediaInput(signal);
-        });
-
-        MediaNotificationManager::SetSeekCallback([](double posSeconds) {
-            RemoteInputModule::SetMediaPosition(posSeconds);
-        });
-    #endif
+    m_optimisticVolumeTimer.setSingleShot(true);
+    connect(&m_optimisticVolumeTimer, &QTimer::timeout, this, &MobileRemoteInputController::onOptimisticVolumeTimeout);
 
     refreshState();
 }
@@ -140,14 +142,26 @@ void MobileRemoteInputController::setSessionActive(const bool active) {
 
     m_sessionActive = active;
     if (m_sessionActive) {
-        updateAndroidMediaNotification();
         requestNowPlayingUpdate();
-    } else {
-        hideAndroidMediaNotification();
     }
 }
 
 void MobileRemoteInputController::sendMediaSignal(const int signal) {
+#ifdef ANDROID_DEVICE
+    if (signal < static_cast<int>(MediaSignal::PlayPause) ||
+        signal > static_cast<int>(MediaSignal::VolumeMute)) {
+        return;
+    }
+    BackendBridge::SendAction(BackendBridge::kActionSendMediaSignal, BackendBridge::kExtraSignal, signal);
+    if (static_cast<MediaSignal>(signal) == MediaSignal::PlayPause) {
+        m_playing = !m_playing;
+        m_isOptimisticPlayingActive = true;
+        m_optimisticPlaybackTimer.start(1500);
+        emit playbackChanged();
+    }
+    setStatusMessage(QStringLiteral("Media command sent to desktop."));
+    return;
+#else
     if (!m_connected) {
         setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
         return;
@@ -175,24 +189,85 @@ void MobileRemoteInputController::sendMediaSignal(const int signal) {
     RemoteInputModule::SendMediaInput(static_cast<MediaSignal>(signal));
     if (static_cast<MediaSignal>(signal) == MediaSignal::PlayPause) {
         m_playing = !m_playing;
+        m_isOptimisticPlayingActive = true;
+        m_optimisticPlaybackTimer.start(1500);
         emit playbackChanged();
     }
 
     setStatusMessage(QStringLiteral("Media command sent to desktop."));
-    requestNowPlayingUpdate();
+    m_mediaInfoTimer.start(250);
     updateAndroidMediaNotification();
+#endif
 }
 
 void MobileRemoteInputController::seekTo(const double seconds) {
+#ifdef ANDROID_DEVICE
+#else
     if (!m_connected || !m_ready || m_durationSeconds <= 0.0) {
         return;
     }
+#endif
 
-    const double clampedSeconds = std::clamp(seconds, 0.0, m_durationSeconds);
+    const double limitDuration = m_durationSeconds > 0.0 ? m_durationSeconds : seconds;
+    const double clampedSeconds = std::clamp(seconds, 0.0, limitDuration);
+
+    m_preSeekBackendPosition = m_backendPositionSeconds;
+    m_optimisticPositionSeconds = clampedSeconds;
+    m_isOptimisticPositionActive = true;
+    m_optimisticPositionTimer.start(3000);
+
+    const QString elapsed = formatTime(clampedSeconds);
+    if (m_positionSeconds != clampedSeconds || m_elapsedTime != elapsed) {
+        m_positionSeconds = clampedSeconds;
+        m_elapsedTime = elapsed;
+        emit nowPlayingChanged();
+    }
+
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionMediaSeek, BackendBridge::kExtraPosition, clampedSeconds);
+    return;
+#else
     RemoteInputModule::SetMediaPosition(clampedSeconds);
+    m_mediaInfoTimer.start(250);
+#endif
+}
+
+void MobileRemoteInputController::setVolume(const int volume) {
+    const int clampedVolume = std::clamp(volume, 0, 100);
+
+    m_optimisticVolume = clampedVolume;
+    m_isOptimisticVolumeActive = true;
+    m_optimisticVolumeTimer.start(1500);
+
+    if (m_volume != clampedVolume) {
+        m_volume = clampedVolume;
+        emit nowPlayingChanged();
+    }
+
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionMediaSetVolume, BackendBridge::kExtraVolume, clampedVolume);
+    return;
+#else
+    if (!m_connected || !m_ready) {
+        return;
+    }
+
+    RemoteInputModule::SetVolume(clampedVolume);
+    m_mediaInfoTimer.start(250);
+#endif
 }
 
 void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString& text, const int modifiers) {
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(
+        BackendBridge::kActionSendKeyInput,
+        BackendBridge::kExtraKey, qtKey,
+        BackendBridge::kExtraText, text,
+        BackendBridge::kExtraModifiers, modifiers
+    );
+    setStatusMessage(QStringLiteral("Keyboard input sent to desktop."));
+    return;
+#else
     if (!m_connected) {
         setStatusMessage(QStringLiteral("Connect to a desktop device to use remote keyboard."));
         return;
@@ -235,6 +310,7 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     if (anySent) {
         setStatusMessage(QStringLiteral("Keyboard input sent to desktop."));
     }
+#endif
 }
 
 void MobileRemoteInputController::presenterPreviousSlide() {
@@ -273,7 +349,8 @@ void MobileRemoteInputController::setNowPlayingInfo(
     const bool playing,
     const double positionSeconds,
     const double durationSeconds,
-    const std::vector<uint8_t>& coverBytes
+    const std::vector<uint8_t>& coverBytes,
+    const int volume
 ) {
     const double safePosition = std::max(0.0, positionSeconds);
     const double safeDuration = std::max(0.0, durationSeconds);
@@ -290,26 +367,88 @@ void MobileRemoteInputController::setNowPlayingInfo(
             ? QString()
             : BuildCoverImageSource(coverArray));
 
+    m_backendPlaying = playing;
+    m_backendPositionSeconds = safePosition;
+
+    const bool oldPlaying = m_playing;
+    bool needsAnotherPoll = false;
+
+    if (m_isOptimisticPlayingActive) {
+        if (m_backendPlaying == m_playing) {
+            m_isOptimisticPlayingActive = false;
+            m_optimisticPlaybackTimer.stop();
+        } else {
+            needsAnotherPoll = true;
+        }
+    } else {
+        m_playing = m_backendPlaying;
+    }
+    const bool playbackChangedValue = (m_playing != oldPlaying);
+
+    if (m_isOptimisticPositionActive) {
+        bool seekProcessed = false;
+        const double seekDistance = std::abs(m_optimisticPositionSeconds - m_preSeekBackendPosition);
+        const double distanceFromTarget = std::abs(m_backendPositionSeconds - m_optimisticPositionSeconds);
+
+        if (seekDistance > 2.0) {
+            const double changeFromPreSeek = std::abs(m_backendPositionSeconds - m_preSeekBackendPosition);
+            if (distanceFromTarget < 2.0 && changeFromPreSeek > 1.5) {
+                seekProcessed = true;
+            }
+        } else {
+            if (distanceFromTarget < 1.0) {
+                seekProcessed = true;
+            }
+        }
+
+        if (seekProcessed) {
+            m_isOptimisticPositionActive = false;
+            m_optimisticPositionTimer.stop();
+        } else {
+            needsAnotherPoll = true;
+        }
+    }
+
+    m_backendVolume = volume;
+    if (m_isOptimisticVolumeActive) {
+        if (m_backendVolume == m_volume) {
+            m_isOptimisticVolumeActive = false;
+            m_optimisticVolumeTimer.stop();
+        } else {
+            needsAnotherPoll = true;
+        }
+    }
+
+#ifndef ANDROID_DEVICE
+    if (needsAnotherPoll) {
+        m_mediaInfoTimer.start(250);
+    }
+#endif
+
+    const double effectivePosition = m_isOptimisticPositionActive ? m_optimisticPositionSeconds : safePosition;
+    const QString effectiveElapsed = m_isOptimisticPositionActive ? formatTime(m_optimisticPositionSeconds) : normalizedElapsed;
+    const int effectiveVolume = m_isOptimisticVolumeActive ? m_volume : m_backendVolume;
+
     const bool changed = m_trackTitle != title ||
                          m_trackArtist != artist ||
                          m_trackCollection != collection ||
-                         m_elapsedTime != normalizedElapsed ||
+                         m_elapsedTime != effectiveElapsed ||
                          m_durationTime != normalizedDuration ||
-                         m_positionSeconds != safePosition ||
+                         m_positionSeconds != effectivePosition ||
                          m_durationSeconds != safeDuration ||
+                         m_volume != effectiveVolume ||
                          coverChanged;
-    const bool playbackChangedValue = m_playing != playing;
 
     m_trackTitle = title;
     m_trackArtist = artist;
     m_trackCollection = collection;
-    m_elapsedTime = normalizedElapsed;
+    m_elapsedTime = effectiveElapsed;
     m_durationTime = normalizedDuration;
-    m_positionSeconds = safePosition;
+    m_positionSeconds = effectivePosition;
     m_durationSeconds = safeDuration;
+    m_volume = effectiveVolume;
     m_coverBytes = std::move(coverArray);
     m_coverImageSource = coverSource;
-    m_playing = playing;
 
     if (changed) {
         emit nowPlayingChanged();
@@ -369,7 +508,8 @@ bool MobileRemoteInputController::event(QEvent* event) {
             mediaEvent->IsPlaying(),
             mediaEvent->GetPositionSeconds(),
             mediaEvent->GetDurationSeconds(),
-            mediaEvent->GetCoverBytes()
+            mediaEvent->GetCoverBytes(),
+            mediaEvent->GetVolume()
         );
         return true;
     }
@@ -408,6 +548,123 @@ bool MobileRemoteInputController::event(QEvent* event) {
 }
 
 void MobileRemoteInputController::refreshState() {
+#ifdef ANDROID_DEVICE
+    const QJsonObject snapshot = BackendBridge::ReadStateSnapshot();
+    const bool connected = snapshot.value(QStringLiteral("connected")).toBool(false);
+    if (m_connected != connected) {
+        m_connected = connected;
+        emit connectedChanged();
+    }
+
+    const bool ready = snapshot.value(QStringLiteral("remoteInputReady")).toBool(false);
+    if (m_ready != ready) {
+        m_ready = ready;
+        emit readyChanged();
+    }
+
+    const QString title = snapshot.value(QStringLiteral("mediaTitle")).toString();
+    const QString artist = snapshot.value(QStringLiteral("mediaArtist")).toString();
+    const QString collection = snapshot.value(QStringLiteral("mediaCollection")).toString();
+    const bool playing = snapshot.value(QStringLiteral("mediaPlaying")).toBool(false);
+    const double positionSeconds = snapshot.value(QStringLiteral("mediaPosition")).toDouble(0.0);
+    const double durationSeconds = snapshot.value(QStringLiteral("mediaDuration")).toDouble(0.0);
+    const int volume = snapshot.value(QStringLiteral("mediaVolume")).toInt(0);
+    const QString coverPath = snapshot.value(QStringLiteral("mediaCoverPath")).toString();
+
+    QString coverSource;
+    if (!coverPath.isEmpty()) {
+        coverSource = QStringLiteral("%1?rev=%2")
+            .arg(
+                QUrl::fromLocalFile(coverPath).toString(),
+                QString::number(QDateTime::currentMSecsSinceEpoch())
+            );
+    }
+
+    const QString elapsed = formatTime(positionSeconds);
+    const QString duration = formatTime(durationSeconds);
+
+    m_backendPlaying = playing;
+    m_backendPositionSeconds = positionSeconds;
+
+    const bool oldPlaying = m_playing;
+    if (m_isOptimisticPlayingActive) {
+        if (m_backendPlaying == m_playing) {
+            m_isOptimisticPlayingActive = false;
+            m_optimisticPlaybackTimer.stop();
+        }
+    } else {
+        m_playing = m_backendPlaying;
+    }
+    const bool playbackChangedVal = (m_playing != oldPlaying);
+    if (m_isOptimisticPositionActive) {
+        bool seekProcessed = false;
+        const double seekDistance = std::abs(m_optimisticPositionSeconds - m_preSeekBackendPosition);
+        const double distanceFromTarget = std::abs(m_backendPositionSeconds - m_optimisticPositionSeconds);
+
+        if (seekDistance > 2.0) {
+            const double changeFromPreSeek = std::abs(m_backendPositionSeconds - m_preSeekBackendPosition);
+            if (distanceFromTarget < 2.0 && changeFromPreSeek > 1.5) {
+                seekProcessed = true;
+            }
+        } else {
+            if (distanceFromTarget < 1.0) {
+                seekProcessed = true;
+            }
+        }
+
+        if (seekProcessed) {
+            m_isOptimisticPositionActive = false;
+            m_optimisticPositionTimer.stop();
+        }
+    }
+    m_backendVolume = volume;
+    if (m_isOptimisticVolumeActive) {
+        if (m_backendVolume == m_volume) {
+            m_isOptimisticVolumeActive = false;
+            m_optimisticVolumeTimer.stop();
+        }
+    }
+
+    const double effectivePosition = m_isOptimisticPositionActive ? m_optimisticPositionSeconds : positionSeconds;
+    const QString effectiveElapsed = m_isOptimisticPositionActive ? formatTime(m_optimisticPositionSeconds) : elapsed;
+    const int effectiveVolume = m_isOptimisticVolumeActive ? m_volume : m_backendVolume;
+
+    const bool nowPlayingChangedVal = m_trackTitle != title ||
+                                      m_trackArtist != artist ||
+                                      m_trackCollection != collection ||
+                                      m_positionSeconds != effectivePosition ||
+                                      m_durationSeconds != durationSeconds ||
+                                      m_volume != effectiveVolume ||
+                                      m_coverImageSource != coverSource ||
+                                      m_elapsedTime != effectiveElapsed ||
+                                      m_durationTime != duration;
+
+    m_trackTitle = title;
+    m_trackArtist = artist;
+    m_trackCollection = collection;
+    m_positionSeconds = effectivePosition;
+    m_durationSeconds = durationSeconds;
+    m_volume = effectiveVolume;
+    m_coverImageSource = coverSource;
+    m_elapsedTime = effectiveElapsed;
+    m_durationTime = duration;
+
+    if (!m_connected) {
+        setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
+    } else {
+        setStatusMessage(m_ready
+            ? QStringLiteral("Remote input is ready.")
+            : QStringLiteral("Remote input is starting."));
+    }
+
+    if (nowPlayingChangedVal) {
+        emit nowPlayingChanged();
+    }
+    if (playbackChangedVal) {
+        emit playbackChanged();
+    }
+    return;
+#else
     auto& module = ModulesManager::GetModuleReference<RemoteInputModule>();
     const ModuleState state = module->GetModuleState();
 
@@ -440,10 +697,11 @@ void MobileRemoteInputController::refreshState() {
 
     setReadyState(false);
     setStatusMessage(QStringLiteral("Remote input is unavailable."));
+#endif
 }
 
 void MobileRemoteInputController::requestNowPlayingUpdate() {
-    if (!m_sessionActive || !m_connected || !m_ready) {
+    if (!m_connected || !m_ready) {
         return;
     }
 
@@ -737,29 +995,39 @@ MobileRemoteInputController::KeyMapping MobileRemoteInputController::mapCharacte
 }
 
 void MobileRemoteInputController::updateAndroidMediaNotification() const {
-    #ifdef ANDROID_DEVICE
-        if (!m_sessionActive || !m_connected) {
-            hideAndroidMediaNotification();
-            return;
-        }
-
-        TrackMetadata meta;
-        meta.title = m_trackTitle.toStdString();
-        meta.artist = m_trackArtist.toStdString();
-        meta.album = m_trackCollection.toStdString();
-        meta.duration = m_durationSeconds;
-
-        if (!m_coverBytes.isEmpty())
-            meta.cover.assign(m_coverBytes.begin(), m_coverBytes.end());
-
-        MediaNotificationManager::Show();
-        MediaNotificationManager::UpdateMetadata(meta);
-        MediaNotificationManager::UpdatePlaybackState(m_playing, m_positionSeconds);
-    #endif
 }
 
 void MobileRemoteInputController::hideAndroidMediaNotification() const {
-    #ifdef ANDROID_DEVICE
-        MediaNotificationManager::Hide();
-    #endif
+}
+
+void MobileRemoteInputController::onOptimisticPlaybackTimeout() {
+    if (m_isOptimisticPlayingActive) {
+        m_isOptimisticPlayingActive = false;
+        if (m_playing != m_backendPlaying) {
+            m_playing = m_backendPlaying;
+            emit playbackChanged();
+            updateAndroidMediaNotification();
+        }
+    }
+}
+
+void MobileRemoteInputController::onOptimisticPositionTimeout() {
+    if (m_isOptimisticPositionActive) {
+        m_isOptimisticPositionActive = false;
+        if (m_positionSeconds != m_backendPositionSeconds) {
+            m_positionSeconds = m_backendPositionSeconds;
+            m_elapsedTime = formatTime(m_backendPositionSeconds);
+            emit nowPlayingChanged();
+        }
+    }
+}
+
+void MobileRemoteInputController::onOptimisticVolumeTimeout() {
+    if (m_isOptimisticVolumeActive) {
+        m_isOptimisticVolumeActive = false;
+        if (m_volume != m_backendVolume) {
+            m_volume = m_backendVolume;
+            emit nowPlayingChanged();
+        }
+    }
 }

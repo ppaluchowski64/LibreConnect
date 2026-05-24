@@ -7,6 +7,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <QSettings>
+#include <QTimer>
 #include <memory>
 
 #include <ConnectionManager.h>
@@ -47,10 +48,14 @@ class MobileConnectionController : public QObject
     Q_PROPERTY(QString defaultDownloadPath READ defaultDownloadPath NOTIFY defaultDownloadPathChanged)
     Q_PROPERTY(QString defaultDownloadPathStatus READ defaultDownloadPathStatus NOTIFY defaultDownloadPathStatusChanged)
     Q_PROPERTY(int batteryPercentage READ batteryPercentage NOTIFY batteryPercentageChanged)
+    Q_PROPERTY(bool androidActivityDestroying READ androidActivityDestroying)
 
 public:
     explicit MobileConnectionController(QObject* parent = nullptr);
     ~MobileConnectionController() override;
+
+    static void handleBackendConnectionPending(const QString& deviceId, const QString& deviceName, int connectionMode, const QString& pairingCode);
+    static void handleBackendConnectionApprovalRequested(const QString& deviceId, const QString& deviceName);
 
     bool connected() const { return m_connected; }
     QString lastError() const { return m_lastError; }
@@ -82,6 +87,7 @@ public:
     QString defaultDownloadPath() const { return m_defaultDownloadPath; }
     QString defaultDownloadPathStatus() const { return m_defaultDownloadPathStatus; }
     int batteryPercentage() const { return m_batteryPercentage; }
+    bool androidActivityDestroying() const;
 
     Q_INVOKABLE void disconnect();
     Q_INVOKABLE void refreshPairedDevices();
@@ -113,6 +119,7 @@ public:
     Q_INVOKABLE void refreshDefaultDownloadPath();
     Q_INVOKABLE void setDefaultDownloadPath(const QString& path);
     Q_INVOKABLE void exportLogs();
+    Q_INVOKABLE void minimizeApp();
 
 signals:
     void connectedChanged();
@@ -189,6 +196,9 @@ private:
     void setDefaultDownloadPathInternal(const QString& path);
     void setDefaultDownloadPathStatus(const QString& status);
     void setBatteryPercentage(int percentage);
+    void refreshBackendStateSnapshot();
+    void applyBackendConnectionPending(const QString& deviceId, const QString& deviceName, int connectionMode, const QString& pairingCode);
+    void applyBackendConnectionApprovalRequested(const QString& deviceId, const QString& deviceName);
 
 private:
     bool m_connected = false;
@@ -222,6 +232,8 @@ private:
     QString m_defaultDownloadPath;
     QString m_defaultDownloadPathStatus;
     int m_batteryPercentage = -1;
+    bool m_backendApprovalPending = false;
+    QTimer m_backendStatePollTimer;
     QSettings m_settings;
     std::unique_ptr<ConnectionApprovalRequestedEvent> m_approvalEvent;
 };

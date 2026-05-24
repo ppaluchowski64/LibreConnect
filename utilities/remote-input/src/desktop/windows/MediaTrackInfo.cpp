@@ -1,6 +1,7 @@
 #include "MediaTrackInfo.h"
 
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Media.Control.h>
 #include <winrt/Windows.Storage.Streams.h>
 
@@ -21,15 +22,52 @@ namespace {
             initialized = true;
         }
     }
+
+    winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSession GetActiveSession() {
+        try {
+            auto manager = winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+            auto session = manager.GetCurrentSession();
+
+            if (session) {
+                const std::string aumid = winrt::to_string(session.SourceAppUserModelId());
+                if (aumid.find("LibreConnect") != std::string::npos) {
+                    session = nullptr;
+                }
+            }
+
+            if (!session) {
+                auto sessions = manager.GetSessions();
+                winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSession fallbackSession{ nullptr };
+                for (auto s : sessions) {
+                    const std::string aumid = winrt::to_string(s.SourceAppUserModelId());
+                    if (aumid.find("LibreConnect") != std::string::npos) {
+                        continue;
+                    }
+                    if (!fallbackSession) {
+                        fallbackSession = s;
+                    }
+                    auto playback = s.GetPlaybackInfo();
+                    if (playback.PlaybackStatus() == winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing) {
+                        session = s;
+                        break;
+                    }
+                }
+                if (!session && fallbackSession) {
+                    session = fallbackSession;
+                }
+            }
+            return session;
+        } catch (...) {
+            return nullptr;
+        }
+    }
 }
 
 std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
     EnsureWinRtInitialized();
 
     try {
-        auto manager = winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
-        auto session = manager.GetCurrentSession();
-
+        auto session = GetActiveSession();
         if (!session)
             return std::nullopt;
 
@@ -77,11 +115,38 @@ void MediaTrackInfo::SetPosition(double seconds) {
     EnsureWinRtInitialized();
 
     try {
-        auto manager = winrt::Windows::Media::Control::GlobalSystemMediaTransportControlsSessionManager::RequestAsync().get();
+        auto session = GetActiveSession();
 
-        if (auto session = manager.GetCurrentSession()) {
+        if (session) {
             int64_t ticks = static_cast<int64_t>(seconds * 10000000.0);
             session.TryChangePlaybackPositionAsync(ticks).get();
         }
     } catch (...) {}
+}
+
+bool MediaTrackInfo::ControlPlayback(MediaSignal signal) {
+    EnsureWinRtInitialized();
+
+    try {
+        auto session = GetActiveSession();
+
+        if (!session)
+            return false;
+
+        switch (signal) {
+            case MediaSignal::PlayPause:
+                session.TryTogglePlayPauseAsync().get();
+                return true;
+            case MediaSignal::NextTrack:
+                session.TrySkipNextAsync().get();
+                return true;
+            case MediaSignal::PreviousTrack:
+                session.TrySkipPreviousAsync().get();
+                return true;
+            default:
+                break;
+        }
+    } catch (...) {}
+
+    return false;
 }

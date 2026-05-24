@@ -4,10 +4,10 @@
 
     #include <QJniObject>
     #include <QString>
-    #include <QtCore/qcoreapplication_platform.h>
+    #include <AndroidContextProvider.h>
 
     void FindMyBridge::StartAlert(const std::string& customUri) {
-        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        const QJniObject context = AndroidContextProvider::GetAndroidContext();
         if (!context.isValid()) return;
 
         const QJniObject jUri = QJniObject::fromString(QString::fromStdString(customUri));
@@ -22,7 +22,7 @@
     }
 
     void FindMyBridge::StopAlert() {
-        const QJniObject context = QNativeInterface::QAndroidApplication::context();
+        const QJniObject context = AndroidContextProvider::GetAndroidContext();
         if (!context.isValid()) return;
 
         QJniObject::callStaticMethod<void>(
@@ -34,3 +34,4 @@
     }
 
 #endif
+

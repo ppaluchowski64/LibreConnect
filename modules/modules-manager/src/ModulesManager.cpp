@@ -3,6 +3,8 @@
 #include <TransferChannelPool.h>
 #include <DebugLog.h>
 #include <QPointer>
+#include <array>
+#include <chrono>
 #include <Events.h>
 #include <NetworkMicrophoneModule.h>
 
@@ -41,6 +43,56 @@ bool RequestMacAccessibilityPermission() {
 
     constexpr size_t TRANSFER_CHANNEL_COUNT = 10;
 
+#ifdef ANDROID_DEVICE
+void SendAndroidPermissionSnapshot()
+{
+    auto sendStatus = [](const PermissionType type, const bool granted) {
+        ConnectionManager::Send(
+            granted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
+            type
+        );
+    };
+
+    const bool cameraGranted = PermissionManager::IsCameraAccessPermissionGranted();
+    const bool microphoneGranted = PermissionManager::IsMicrophoneAccessPermissionGranted();
+    const bool notificationsGranted = PermissionManager::IsNotificationEmitPermissionGranted() &&
+                                      PermissionManager::IsNotificationAccessPermissionGranted();
+    const bool fileSystemGranted = PermissionManager::IsFileAccessPermissionGranted() &&
+                                   PermissionManager::IsManagingExternalStoragePermissionGranted();
+    const bool batteryGranted = PermissionManager::IsBatteryOptimizationIgnored();
+    const bool smsGranted =
+        PermissionManager::IsReceiveSmsPermissionGranted() &&
+        PermissionManager::IsReadContactsPermissionGranted() &&
+        PermissionManager::IsReadSmsPermissionGranted() &&
+        PermissionManager::IsSendSmsPermissionGranted();
+
+    sendStatus(PermissionType::Camera, cameraGranted);
+    sendStatus(PermissionType::Microphone, microphoneGranted);
+    sendStatus(PermissionType::Notifications, notificationsGranted);
+    sendStatus(PermissionType::FileSystem, fileSystemGranted);
+    sendStatus(PermissionType::Battery, batteryGranted);
+    sendStatus(PermissionType::Sms, smsGranted);
+}
+
+asio::awaitable<void> SendAndroidPermissionSnapshotRetries()
+{
+    constexpr std::array delaysMs{0, 500, 1500, 3000};
+    asio::steady_timer timer(ThreadPool::GetContext());
+
+    for (const int delayMs : delaysMs) {
+        if (delayMs > 0) {
+            timer.expires_after(std::chrono::milliseconds(delayMs));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
+
+        if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
+            co_return;
+        }
+
+        SendAndroidPermissionSnapshot();
+    }
+}
+#endif
 }
 
 ModulesManager* ModulesManager::s_instance{nullptr};
@@ -61,6 +113,8 @@ bool ModulesManager::event(QEvent* event) {
 
 #ifdef DESKTOP_DEVICE
         asio::co_spawn(ThreadPool::GetContext(), TransferChannelPool::Connect(), asio::detached);
+#elif defined(ANDROID_DEVICE)
+        asio::co_spawn(ThreadPool::GetContext(), SendAndroidPermissionSnapshotRetries(), asio::detached);
 #endif
         return true;
     }
@@ -181,31 +235,7 @@ void ModulesManager::Initialize() {
 
 #ifdef ANDROID_DEVICE
     ConnectionManager::AddAwaitableResponseHandler(PC_PackageType::PERMISSION_SYNC_REQUEST, [](PC_Package&& package) -> asio::awaitable<void> {
-        auto sendStatus = [](const PermissionType type, const bool granted) {
-            ConnectionManager::Send(
-                granted ? PC_PackageType::PERMISSION_GRANTED : PC_PackageType::PERMISSION_REJECTED,
-                type
-            );
-        };
-
-        const bool cameraGranted = PermissionManager::IsCameraAccessPermissionGranted();
-        const bool microphoneGranted = PermissionManager::IsMicrophoneAccessPermissionGranted();
-        const bool notificationsGranted = PermissionManager::IsNotificationEmitPermissionGranted() && PermissionManager::IsNotificationAccessPermissionGranted();
-        const bool fileSystemGranted = PermissionManager::IsFileAccessPermissionGranted() && PermissionManager::IsManagingExternalStoragePermissionGranted();
-        const bool batteryGranted = PermissionManager::IsBatteryOptimizationIgnored();
-        const bool smsGranted =
-            PermissionManager::IsReceiveSmsPermissionGranted() &&
-            PermissionManager::IsReadContactsPermissionGranted() &&
-            PermissionManager::IsReadSmsPermissionGranted() &&
-            PermissionManager::IsSendSmsPermissionGranted();
-
-        sendStatus(PermissionType::Camera, cameraGranted);
-        sendStatus(PermissionType::Microphone, microphoneGranted);
-        sendStatus(PermissionType::Notifications, notificationsGranted);
-        sendStatus(PermissionType::FileSystem, fileSystemGranted);
-        sendStatus(PermissionType::Battery, batteryGranted);
-        sendStatus(PermissionType::Sms, smsGranted);
-
+        SendAndroidPermissionSnapshot();
         co_return;
     });
 

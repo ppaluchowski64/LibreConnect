@@ -363,7 +363,6 @@ bool SmsBridgeController::event(QEvent* event)
         m_messageFetchesInFlight.remove(conversationKey);
         updateBusyState();
 
-        // Message fetch payloads only carry the number; keep any existing contact name.
         ensureContactExists(conversationKey, QString(), number);
         QVector<MessageState> parsed;
         const auto& rawMessages = messagesEvent->GetMessages();
@@ -441,7 +440,6 @@ bool SmsBridgeController::event(QEvent* event)
             return true;
         }
 
-        // Incoming SMS events only include sender address, so do not overwrite known names.
         ensureContactExists(key, QString(), sender);
         MessageState message;
         message.id = generateLocalMessageId();

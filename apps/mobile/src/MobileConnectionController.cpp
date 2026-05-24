@@ -1,6 +1,7 @@
 #include "MobileConnectionController.h"
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -8,15 +9,20 @@
 #include <QMetaObject>
 #include <QSet>
 #include <QRandomGenerator>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QtMath>
 
+#include <atomic>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include <boost/uuid/uuid_io.hpp>
 
 #include <AddressResolver.h>
+#include <AsioCommon.h>
 #include <ConnectionManager.h>
 #include <DeviceInfo.h>
 #include <ModulesManager.h>
@@ -29,13 +35,125 @@
 #include <PermissionManager.h>
 #include <QJniObject>
 #include <QtCore/qcoreapplication_platform.h>
+#include <jni.h>
+#include "BackendBridge.h"
 #endif
 
 namespace
 {
+std::atomic_bool g_androidActivityDestroying{false};
+MobileConnectionController* g_mobileConnectionController = nullptr;
+
+struct PendingBackendConnectionPrompt {
+    QString deviceId;
+    QString deviceName;
+    int connectionMode{-1};
+    QString pairingCode;
+};
+
+std::optional<PendingBackendConnectionPrompt> g_pendingBackendConnectionPrompt;
+std::optional<std::pair<QString, QString>> g_pendingBackendApprovalPrompt;
+
 constexpr auto kFindMyPhoneStopPackage = PC_PackageType::FIND_MY_PHONE_STOP_RINGING;
 constexpr auto kFindMyPhoneRingtoneSetting = "findMyPhone/ringtoneUri";
 constexpr auto kFindMyPhoneAlertActiveSetting = "findMyPhone/alertActive";
+
+#ifdef ANDROID_DEVICE
+constexpr auto kMainServiceClass = "com.LibreConnect.mobile.MainService";
+constexpr auto kRespondConnectionPendingAction = "com.LibreConnect.mobile.action.RESPOND_CONNECTION_PENDING";
+constexpr auto kRespondConnectionApprovalAction = "com.LibreConnect.mobile.action.RESPOND_CONNECTION_APPROVAL";
+constexpr auto kAcceptedExtra = "com.LibreConnect.mobile.EXTRA_ACCEPTED";
+constexpr auto kApprovedExtra = "com.LibreConnect.mobile.EXTRA_APPROVED";
+constexpr auto kChallengeExtra = "com.LibreConnect.mobile.EXTRA_CHALLENGE";
+
+void SendBackendConnectionPendingResponse(const bool accepted, const QString& challenge)
+{
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return;
+    }
+
+    const QJniObject intent("android/content/Intent", "()V");
+    if (!intent.isValid()) {
+        return;
+    }
+
+    const QJniObject packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+    intent.callObjectMethod(
+        "setClassName",
+        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+        packageName.object<jstring>(),
+        QJniObject::fromString(kMainServiceClass).object<jstring>()
+    );
+    intent.callObjectMethod(
+        "setAction",
+        "(Ljava/lang/String;)Landroid/content/Intent;",
+        QJniObject::fromString(kRespondConnectionPendingAction).object<jstring>()
+    );
+    intent.callObjectMethod(
+        "putExtra",
+        "(Ljava/lang/String;Z)Landroid/content/Intent;",
+        QJniObject::fromString(kAcceptedExtra).object<jstring>(),
+        static_cast<jboolean>(accepted)
+    );
+    intent.callObjectMethod(
+        "putExtra",
+        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+        QJniObject::fromString(kChallengeExtra).object<jstring>(),
+        QJniObject::fromString(challenge).object<jstring>()
+    );
+    context.callObjectMethod("startService", "(Landroid/content/Intent;)Landroid/content/ComponentName;", intent.object<jobject>());
+}
+
+void SendBackendConnectionApprovalResponse(const bool approved)
+{
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return;
+    }
+
+    const QJniObject intent("android/content/Intent", "()V");
+    if (!intent.isValid()) {
+        return;
+    }
+
+    const QJniObject packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
+    intent.callObjectMethod(
+        "setClassName",
+        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+        packageName.object<jstring>(),
+        QJniObject::fromString(kMainServiceClass).object<jstring>()
+    );
+    intent.callObjectMethod(
+        "setAction",
+        "(Ljava/lang/String;)Landroid/content/Intent;",
+        QJniObject::fromString(kRespondConnectionApprovalAction).object<jstring>()
+    );
+    intent.callObjectMethod(
+        "putExtra",
+        "(Ljava/lang/String;Z)Landroid/content/Intent;",
+        QJniObject::fromString(kApprovedExtra).object<jstring>(),
+        static_cast<jboolean>(approved)
+    );
+    context.callObjectMethod("startService", "(Landroid/content/Intent;)Landroid/content/ComponentName;", intent.object<jobject>());
+}
+
+QString JStringToQString(JNIEnv* env, jstring value)
+{
+    if (!env || !value) {
+        return {};
+    }
+
+    const char* chars = env->GetStringUTFChars(value, nullptr);
+    if (!chars) {
+        return {};
+    }
+
+    const QString output = QString::fromUtf8(chars);
+    env->ReleaseStringUTFChars(value, chars);
+    return output;
+}
+#endif
 
 QString DeviceTypeToLabel(const DeviceType type)
 {
@@ -55,18 +173,77 @@ QString DeviceTypeToLabel(const DeviceType type)
         return QStringLiteral("Unknown");
     }
 }
+
+QJsonObject ReadBackendStateSnapshot()
+{
+    QString storageRoot;
+#ifdef ANDROID_DEVICE
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (context.isValid()) {
+        const QJniObject filesDir = context.callObjectMethod(
+            "getFilesDir",
+            "()Ljava/io/File;"
+        );
+        if (filesDir.isValid()) {
+            storageRoot = filesDir.callObjectMethod(
+                "getAbsolutePath",
+                "()Ljava/lang/String;"
+            ).toString();
+        }
+    }
+#endif
+    if (storageRoot.isEmpty()) {
+        storageRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    }
+
+    const QString statePath = storageRoot + QStringLiteral("/backend_state.json");
+    QFile file(statePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject()) {
+        return {};
+    }
+
+    return document.object();
+}
 }
 
 MobileConnectionController::MobileConnectionController(QObject* parent)
     : QObject(parent)
     , m_settings(QStringLiteral("LibreConnect"), QStringLiteral("LibreConnectMobile"))
 {
+    g_androidActivityDestroying.store(false);
+    g_mobileConnectionController = this;
+
     m_permissionsOnboardingCompleted = m_settings.value(
         QStringLiteral("permissions/onboardingCompleted"),
         false
     ).toBool();
 
+#ifdef ANDROID_DEVICE
+    const QJsonObject backendState = ReadBackendStateSnapshot();
+    if (backendState.value(QStringLiteral("connected")).toBool(false)) {
+        m_connected = true;
+        m_connectedPeerDeviceId = backendState.value(QStringLiteral("peerId")).toString();
+        m_pendingDeviceName = backendState.value(QStringLiteral("peerName")).toString();
+    }
+
+    m_backendStatePollTimer.setInterval(500);
+    QObject::connect(&m_backendStatePollTimer, &QTimer::timeout, this, &MobileConnectionController::refreshBackendStateSnapshot);
+    m_backendStatePollTimer.start();
+#else
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
+
+    m_connected = (ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED);
+    if (m_connected) {
+        m_connectedPeerDeviceId = QString::fromStdString(boost::uuids::to_string(ConnectionManager::GetPeerUUID()));
+        m_pendingDeviceName = QString::fromStdString(ConnectionManager::GetPeerDeviceName());
+    }
+#endif
+
     if (auto* guiApp = qobject_cast<QGuiApplication*>(qApp)) {
         QObject::connect(guiApp, &QGuiApplication::applicationStateChanged, this, [this](const Qt::ApplicationState state) {
             if (state != Qt::ApplicationActive) {
@@ -94,15 +271,148 @@ MobileConnectionController::MobileConnectionController(QObject* parent)
     m_findMyPhoneRingtoneUri = m_settings.value(QString::fromLatin1(kFindMyPhoneRingtoneSetting), QString()).toString().trimmed();
     ensureSelectedRingtoneOption();
     setFindMyPhoneAlertActive(m_settings.value(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false).toBool());
+
+    if (g_pendingBackendConnectionPrompt.has_value()) {
+        const auto prompt = g_pendingBackendConnectionPrompt.value();
+        g_pendingBackendConnectionPrompt.reset();
+        QTimer::singleShot(0, this, [this, prompt]() {
+            applyBackendConnectionPending(prompt.deviceId, prompt.deviceName, prompt.connectionMode, prompt.pairingCode);
+        });
+    }
+
+    if (g_pendingBackendApprovalPrompt.has_value()) {
+        const auto prompt = g_pendingBackendApprovalPrompt.value();
+        g_pendingBackendApprovalPrompt.reset();
+        QTimer::singleShot(0, this, [this, prompt]() {
+            applyBackendConnectionApprovalRequested(prompt.first, prompt.second);
+        });
+    }
 }
 
 MobileConnectionController::~MobileConnectionController()
 {
+    if (g_mobileConnectionController == this) {
+        g_mobileConnectionController = nullptr;
+    }
+}
+
+void MobileConnectionController::handleBackendConnectionPending(
+    const QString& deviceId,
+    const QString& deviceName,
+    const int connectionMode,
+    const QString& pairingCode)
+{
+    if (!g_mobileConnectionController) {
+        g_pendingBackendConnectionPrompt = PendingBackendConnectionPrompt{
+            deviceId,
+            deviceName,
+            connectionMode,
+            pairingCode
+        };
+        return;
+    }
+
+    QMetaObject::invokeMethod(g_mobileConnectionController, [deviceId, deviceName, connectionMode, pairingCode]() {
+        if (!g_mobileConnectionController) {
+            return;
+        }
+
+        g_mobileConnectionController->applyBackendConnectionPending(deviceId, deviceName, connectionMode, pairingCode);
+    }, Qt::QueuedConnection);
+}
+
+void MobileConnectionController::handleBackendConnectionApprovalRequested(const QString& deviceId, const QString& deviceName)
+{
+    if (!g_mobileConnectionController) {
+        g_pendingBackendApprovalPrompt = std::make_pair(deviceId, deviceName);
+        return;
+    }
+
+    QMetaObject::invokeMethod(g_mobileConnectionController, [deviceId, deviceName]() {
+        if (!g_mobileConnectionController) {
+            return;
+        }
+
+        g_mobileConnectionController->applyBackendConnectionApprovalRequested(deviceId, deviceName);
+    }, Qt::QueuedConnection);
+}
+
+void MobileConnectionController::applyBackendConnectionPending(
+    const QString& deviceId,
+    const QString& deviceName,
+    const int connectionMode,
+    const QString& pairingCode)
+{
+#ifdef ANDROID_DEVICE
+    m_connectedPeerDeviceId = deviceId;
+    emit incomingConnection(deviceName);
+
+    if (!deviceName.isEmpty() && m_pendingDeviceName != deviceName) {
+        m_pendingDeviceName = deviceName;
+        emit pendingDeviceNameChanged();
+    }
+
+    if (connectionMode == static_cast<int>(InitialConnectionMode::CONNECT_WITH_PAIR)) {
+        clearChallenge();
+        SendBackendConnectionPendingResponse(true, QString());
+        return;
+    }
+
+    m_challengeCode = pairingCode;
+    if (m_challengeCode.isEmpty()) {
+        const int codeValue = QRandomGenerator::global()->bounded(1000000);
+        m_challengeCode = QString("%1").arg(codeValue, 6, 10, QLatin1Char('0'));
+    }
+    emit challengeCodeChanged();
+
+    if (!m_challengeVisible) {
+        m_challengeVisible = true;
+        emit challengeVisibleChanged();
+    }
+
+    SendBackendConnectionPendingResponse(true, m_challengeCode);
+#else
+    (void)deviceId;
+    (void)deviceName;
+    (void)connectionMode;
+    (void)pairingCode;
+#endif
+}
+
+void MobileConnectionController::applyBackendConnectionApprovalRequested(const QString& deviceId, const QString& deviceName)
+{
+#ifdef ANDROID_DEVICE
+    m_connectedPeerDeviceId = deviceId;
+    clearChallenge();
+
+    if (!deviceName.isEmpty() && m_pendingDeviceName != deviceName) {
+        m_pendingDeviceName = deviceName;
+        emit pendingDeviceNameChanged();
+    }
+
+    m_backendApprovalPending = true;
+    if (!m_approvalVisible) {
+        m_approvalVisible = true;
+        emit approvalVisibleChanged();
+    }
+#else
+    (void)deviceId;
+    (void)deviceName;
+#endif
+}
+
+bool MobileConnectionController::androidActivityDestroying() const
+{
+    return g_androidActivityDestroying.load();
 }
 
 void MobileConnectionController::disconnect()
 {
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionDisconnect);
+#else
     ConnectionManager::Disconnect();
+#endif
 }
 
 void MobileConnectionController::refreshPairedDevices()
@@ -137,7 +447,11 @@ bool MobileConnectionController::removePairedDevice(const QString& deviceId)
     }
 
     if (m_connected && deviceId == activePeerDeviceId()) {
+#ifdef ANDROID_DEVICE
+        BackendBridge::SendAction(BackendBridge::kActionDisconnect);
+#else
         ConnectionManager::Disconnect();
+#endif
     }
 
     refreshPairedDevices();
@@ -157,6 +471,13 @@ bool MobileConnectionController::unpairCurrentDevice()
 void MobileConnectionController::acceptConnectionApproval()
 {
     if (!m_approvalEvent) {
+#ifdef ANDROID_DEVICE
+        if (m_backendApprovalPending) {
+            m_backendApprovalPending = false;
+            SendBackendConnectionApprovalResponse(true);
+            clearApproval();
+        }
+#endif
         return;
     }
 
@@ -167,8 +488,17 @@ void MobileConnectionController::acceptConnectionApproval()
 void MobileConnectionController::denyConnectionApproval()
 {
     if (!m_approvalEvent) {
+#ifdef ANDROID_DEVICE
+        if (m_backendApprovalPending) {
+            m_backendApprovalPending = false;
+            SendBackendConnectionApprovalResponse(false);
+            clearApproval();
+        }
+        return;
+#else
         ConnectionManager::Disconnect();
         return;
+#endif
     }
 
     m_approvalEvent->DenyConnection();
@@ -328,6 +658,12 @@ void MobileConnectionController::setFindMyPhoneRingtoneFile(const QUrl& fileUrl)
 
 void MobileConnectionController::refreshDefaultDownloadPath()
 {
+#ifdef ANDROID_DEVICE
+    BackendBridge::SendAction(BackendBridge::kActionRefreshDownloadPath);
+    setDefaultDownloadPathStatus(QStringLiteral("Loading default download path..."));
+    return;
+#endif
+
     if (!m_connected) {
         setDefaultDownloadPathStatus(QStringLiteral("Connect to a desktop device to load the default download path."));
         return;
@@ -364,6 +700,17 @@ void MobileConnectionController::refreshDefaultDownloadPath()
 
 void MobileConnectionController::setDefaultDownloadPath(const QString& path)
 {
+#ifdef ANDROID_DEVICE
+    const QString normPath = path.trimmed();
+    if (normPath.isEmpty()) {
+        setDefaultDownloadPathStatus(QStringLiteral("Enter a desktop folder path."));
+        return;
+    }
+    BackendBridge::SendAction(BackendBridge::kActionSetDownloadPath, BackendBridge::kExtraPath, normPath);
+    setDefaultDownloadPathStatus(QStringLiteral("Saving default download path..."));
+    return;
+#endif
+
     const QString normalizedPath = path.trimmed();
     if (!m_connected) {
         setDefaultDownloadPathStatus(QStringLiteral("Connect to a desktop device before changing the download path."));
@@ -422,6 +769,54 @@ void MobileConnectionController::exportLogs()
 #endif
 }
 
+void MobileConnectionController::minimizeApp()
+{
+#ifdef ANDROID_DEVICE
+    const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+    if (activity.isValid()) {
+        activity.callMethod<jboolean>("moveTaskToBack", "(Z)Z", true);
+    }
+#endif
+}
+
+#ifdef ANDROID_DEVICE
+extern "C" JNIEXPORT void JNICALL
+Java_org_qtproject_qt_android_bindings_QtActivity_nativeActivityDestroying(JNIEnv*, jclass)
+{
+    g_androidActivityDestroying.store(true);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_qtproject_qt_android_bindings_QtActivity_nativeBackendConnectionPending(
+    JNIEnv* env,
+    jclass,
+    jstring deviceId,
+    jstring deviceName,
+    jint connectionMode,
+    jstring pairingCode)
+{
+    MobileConnectionController::handleBackendConnectionPending(
+        JStringToQString(env, deviceId),
+        JStringToQString(env, deviceName),
+        static_cast<int>(connectionMode),
+        JStringToQString(env, pairingCode)
+    );
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_qtproject_qt_android_bindings_QtActivity_nativeBackendConnectionApprovalRequested(
+    JNIEnv* env,
+    jclass,
+    jstring deviceId,
+    jstring deviceName)
+{
+    MobileConnectionController::handleBackendConnectionApprovalRequested(
+        JStringToQString(env, deviceId),
+        JStringToQString(env, deviceName)
+    );
+}
+#endif
+
 void MobileConnectionController::setError(const QString& e)
 {
     if (m_lastError == e) {
@@ -463,6 +858,7 @@ void MobileConnectionController::clearChallenge()
 void MobileConnectionController::clearApproval()
 {
     m_approvalEvent.reset();
+    m_backendApprovalPending = false;
 
     if (m_approvalVisible) {
         m_approvalVisible = false;
@@ -494,9 +890,13 @@ void MobileConnectionController::stopFindMyPhoneAlertInternal(const bool notifyP
     FindMyBridge::StopAlert();
 #endif
 
+#ifdef ANDROID_DEVICE
+    (void)notifyPeer;
+#else
     if (notifyPeer && m_connected) {
         ConnectionManager::Send(kFindMyPhoneStopPackage);
     }
+#endif
 
     m_settings.setValue(QString::fromLatin1(kFindMyPhoneAlertActiveSetting), false);
     setFindMyPhoneAlertActive(false);
@@ -653,6 +1053,59 @@ void MobileConnectionController::setBatteryPercentage(const int percentage)
 
     m_batteryPercentage = percentage;
     emit batteryPercentageChanged();
+}
+
+void MobileConnectionController::refreshBackendStateSnapshot()
+{
+#ifdef ANDROID_DEVICE
+    const QJsonObject backendState = ReadBackendStateSnapshot();
+    const bool connected = backendState.value(QStringLiteral("connected")).toBool(false);
+    const QString peerId = backendState.value(QStringLiteral("peerId")).toString();
+    const QString peerName = backendState.value(QStringLiteral("peerName")).toString();
+    const QString downloadPath = backendState.value(QStringLiteral("downloadPath")).toString();
+    const QString downloadPathStatus = backendState.value(QStringLiteral("downloadPathStatus")).toString();
+
+    if (!downloadPath.isEmpty() && m_defaultDownloadPath != downloadPath) {
+        setDefaultDownloadPathInternal(downloadPath);
+    }
+    if (!downloadPathStatus.isEmpty() && m_defaultDownloadPathStatus != downloadPathStatus) {
+        setDefaultDownloadPathStatus(downloadPathStatus);
+    }
+
+    bool routeChanged = false;
+    if (m_connected != connected) {
+        m_connected = connected;
+        routeChanged = true;
+        emit connectedChanged();
+        emit permissionsStateChanged();
+    }
+
+    if (m_connectedPeerDeviceId != peerId) {
+        m_connectedPeerDeviceId = peerId;
+    }
+
+    if (m_pendingDeviceName != peerName) {
+        m_pendingDeviceName = peerName;
+        emit pendingDeviceNameChanged();
+    }
+
+    if (routeChanged) {
+        if (connected) {
+            clearError();
+            clearChallenge();
+            clearApproval();
+        } else {
+            clearChallenge();
+            clearApproval();
+            setBatteryPercentage(-1);
+        }
+
+        refreshPairedDevices();
+    }
+
+    const bool alertActive = backendState.value(QStringLiteral("findMyPhoneAlertActive")).toBool(false);
+    setFindMyPhoneAlertActive(alertActive);
+#endif
 }
 
 void MobileConnectionController::updatePermissionsFromSystem()
@@ -881,6 +1334,12 @@ void MobileConnectionController::setPermissionsBusy(const bool busy)
 
 void MobileConnectionController::sendPermissionStatusToPeer(const PermissionType type, const bool granted)
 {
+#ifdef ANDROID_DEVICE
+    (void)type;
+    (void)granted;
+    return;
+#endif
+
     if (!m_connected) {
         return;
     }

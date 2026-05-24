@@ -14,7 +14,7 @@
 #ifdef ANDROID_DEVICE
 #include <QJniEnvironment>
 #include <QJniObject>
-#include <QtCore/qcoreapplication_platform.h>
+#include <AndroidContextProvider.h>
 #endif
 
 #include "FileIconDensity.h"
@@ -60,7 +60,7 @@ void PostTransferProgressNotification(const FileEntry& entry, const size_t bytes
 
     const QJniEnvironment env;
     bool posted = false;
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (context.isValid()) {
         QJniObject::callStaticMethod<void>(
             "com/LibreConnect/mobile/NotificationBridge",
@@ -124,7 +124,7 @@ void PostTransferNotification(const FileEntry& entry, const bool success)
 
     const QJniEnvironment env;
     bool posted = false;
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (context.isValid()) {
         QJniObject::callStaticMethod<void>(
             "com/LibreConnect/mobile/NotificationBridge",
@@ -311,7 +311,7 @@ std::vector<uint8_t> FileShareModule::GetEntryIcon(const std::string& file, cons
     }
     Debug::Log("FileShareModule: GetEntryIcon request. Path: {}, Density: {}", file, static_cast<int>(density));
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     if (!context.isValid()) {
         Debug::LogWarning("FileShareModule: GetEntryIcon failed: Android context is invalid");
         return {};

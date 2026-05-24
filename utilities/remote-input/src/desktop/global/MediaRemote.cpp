@@ -1,5 +1,4 @@
 #include "MediaRemote.h"
-
 #include "NativeMediaMap.h"
 
 #ifdef __APPLE__
@@ -34,6 +33,10 @@ void MediaRemote::VolumeMute() {
 }
 
 void MediaRemote::ExecuteSignal(MediaSignal signal) {
+    if (MediaTrackInfo::ControlPlayback(signal)) {
+        return;
+    }
+
     int nativeCode = GetNativeMediaCode(signal);
     if (nativeCode == -1) return;
 

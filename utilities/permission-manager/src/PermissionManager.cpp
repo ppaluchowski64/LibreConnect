@@ -7,6 +7,7 @@
 #include <chrono>
 
 #include "DebugLog.h"
+#include <AndroidContextProvider.h>
 
 namespace {
 using namespace std::chrono_literals;
@@ -16,6 +17,11 @@ constexpr std::chrono::seconds kPermissionRequestTimeout = 120s;
 constexpr jint kAndroidPermissionGranted = 0;
 
 std::atomic<bool> g_permissionFlowInProgress{false};
+
+QJniObject GetAndroidContext()
+{
+    return AndroidContextProvider::GetAndroidContext();
+}
 
 class PermissionFlowLock final {
 public:
@@ -103,7 +109,7 @@ bool StartSettingsActivity(const QJniObject& intent) {
         newTaskFlag
     );
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         return false;
     }
@@ -126,7 +132,7 @@ bool OpenAppPermissionSettings() {
         return false;
     }
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         return false;
     }
@@ -192,7 +198,7 @@ bool RequestAndroidPermissionBlocking(const QString& permission, const int timeo
 asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
 
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 23) {
+    if (AndroidContextProvider::GetSdkVersion() < 23) {
         co_return true;
     }
 
@@ -222,7 +228,12 @@ asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() 
         co_return false;
     }
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
+    if (!context.isValid()) {
+        Debug::LogWarning("Failed to obtain Android context while requesting battery optimization settings.");
+        co_return false;
+    }
+
     const QString packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
 
     const QJniObject uriString = QJniObject::fromString("package:" + packageName);
@@ -289,7 +300,7 @@ asio::awaitable<bool> PermissionManager::RequestNotificationAccessPermission() {
 asio::awaitable<bool> PermissionManager::RequestNotificationEmitPermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
 
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 33) {
+    if (AndroidContextProvider::GetSdkVersion() < 33) {
         co_return true;
     }
 
@@ -329,7 +340,7 @@ asio::awaitable<bool> PermissionManager::RequestSendSmsPermission() {
 asio::awaitable<bool> PermissionManager::RequestFileAccessPermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
 
-    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30) {
+    if (AndroidContextProvider::GetSdkVersion() >= 30) {
         co_return true;
     }
 
@@ -339,13 +350,14 @@ asio::awaitable<bool> PermissionManager::RequestFileAccessPermission() {
 asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermission() {
     auto permissionFlowLock = co_await AcquirePermissionFlowLock();
 
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 30) {
+    if (AndroidContextProvider::GetSdkVersion() < 30) {
         co_return co_await RequestPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE"));
     }
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         Debug::LogWarning("Failed to obtain Android context while requesting managing external storage.");
+        co_return false;
     }
 
     const bool isExternalStorageManager = QJniObject::callStaticMethod<jboolean>(
@@ -368,15 +380,22 @@ asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermissio
 }
 
 asio::awaitable<void> PermissionManager::WaitForReturnToApp() {
+    // In the headless backend process, qApp is a QCoreApplication (not QGuiApplication),
+    // so applicationStateChanged signal is unavailable. Skip the wait in that case.
+    auto* guiApp = qobject_cast<QGuiApplication*>(qApp);
+    if (!guiApp) {
+        co_return;
+    }
+
     const auto executor = co_await asio::this_coro::executor;
     asio::steady_timer phaseTimer(executor);
-    bool appWentBackground = (qApp->applicationState() != Qt::ApplicationActive);
+    bool appWentBackground = (guiApp->applicationState() != Qt::ApplicationActive);
 
     // Some settings flows may not background the app (overlay/popup). If no
     // transition happens shortly, continue instead of waiting indefinitely.
     phaseTimer.expires_after(std::chrono::milliseconds(1500));
     QMetaObject::Connection connection = QObject::connect(
-        qApp, &QGuiApplication::applicationStateChanged,
+        guiApp, &QGuiApplication::applicationStateChanged,
         [&phaseTimer, &appWentBackground](const Qt::ApplicationState state) {
             if (state != Qt::ApplicationActive) {
                 appWentBackground = true;
@@ -389,13 +408,13 @@ asio::awaitable<void> PermissionManager::WaitForReturnToApp() {
     co_await phaseTimer.async_wait(asio::redirect_error(asio::use_awaitable, ec));
     QObject::disconnect(connection);
 
-    if (!appWentBackground || qApp->applicationState() == Qt::ApplicationActive) {
+    if (!appWentBackground || guiApp->applicationState() == Qt::ApplicationActive) {
         co_return;
     }
 
     phaseTimer.expires_after(std::chrono::seconds(120));
     connection = QObject::connect(
-        qApp, &QGuiApplication::applicationStateChanged,
+        guiApp, &QGuiApplication::applicationStateChanged,
         [&phaseTimer](const Qt::ApplicationState state) {
             if (state == Qt::ApplicationActive) {
                 phaseTimer.cancel();
@@ -441,7 +460,7 @@ bool PermissionManager::IsNotificationAccessPermissionGranted() {
 }
 
 bool PermissionManager::IsNotificationEmitPermissionGranted() {
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 33) {
+    if (AndroidContextProvider::GetSdkVersion() < 33) {
         return true;
     }
 
@@ -457,7 +476,7 @@ bool PermissionManager::IsMicrophoneAccessPermissionGranted() {
 }
 
 bool PermissionManager::IsFileAccessPermissionGranted() {
-    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 30) {
+    if (AndroidContextProvider::GetSdkVersion() >= 30) {
         return true;
     }
 
@@ -465,7 +484,7 @@ bool PermissionManager::IsFileAccessPermissionGranted() {
 }
 
 bool PermissionManager::IsManagingExternalStoragePermissionGranted() {
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 30) {
+    if (AndroidContextProvider::GetSdkVersion() < 30) {
         return IsFileAccessPermissionGranted();
     }
 
@@ -493,13 +512,13 @@ bool PermissionManager::IsSendSmsPermissionGranted() {
 }
 
 bool PermissionManager::IsNotificationListenerEnabled() {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) return false;
 
     const QString packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
     const QString className = packageName + ".NotificationListener";
 
-    if (QNativeInterface::QAndroidApplication::sdkVersion() >= 27) {
+    if (AndroidContextProvider::GetSdkVersion() >= 27) {
         const QJniObject notificationService = QJniObject::getStaticObjectField(
             "android/content/Context", "NOTIFICATION_SERVICE", "Ljava/lang/String;");
 
@@ -534,11 +553,11 @@ bool PermissionManager::IsNotificationListenerEnabled() {
 }
 
 bool PermissionManager::IsIgnoringBatteryOptimizations() {
-    if (QNativeInterface::QAndroidApplication::sdkVersion() < 23) {
+    if (AndroidContextProvider::GetSdkVersion() < 23) {
         return true;
     }
 
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         Debug::LogWarning("Failed to obtain Android context while checking battery optimization status.");
         return false;

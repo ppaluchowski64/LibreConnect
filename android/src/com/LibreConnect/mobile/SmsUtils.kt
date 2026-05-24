@@ -91,8 +91,8 @@ object SmsUtils {
                         } while (cursor.moveToNext())
                     }
                 }
-            } catch (_: SecurityException) {
-                // Ignore and continue with SMS conversation fallback.
+            } catch (e: SecurityException) {
+                Log.w("SmsUtils", "getAllContacts: READ_CONTACTS query failed with SecurityException", e)
             }
         }
 
@@ -129,7 +129,8 @@ object SmsUtils {
                         } while (cursor.moveToNext())
                     }
                 }
-            } catch (_: SecurityException) {
+            } catch (e: SecurityException) {
+                Log.w("SmsUtils", "getAllContacts: READ_SMS query failed with SecurityException", e)
             }
         }
 

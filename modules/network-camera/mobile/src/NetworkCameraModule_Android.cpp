@@ -7,7 +7,7 @@
 #include <QJsonArray>
 #include <qjsondocument.h>
 #include <QJsonObject>
-#include <QtCore/qcoreapplication_platform.h>
+#include <AndroidContextProvider.h>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -23,6 +23,10 @@ static std::mutex g_accessUnitPoolMutex{};
 static std::vector<std::vector<uint8_t>> g_accessUnitPool{};
 static constexpr size_t kMaxAccessUnitPoolSize = 8;
 static constexpr size_t kMaxReusableAccessUnitCapacity = 4 * 1024 * 1024;
+
+static QJniObject GetAndroidContext() {
+    return AndroidContextProvider::GetAndroidContext();
+}
 
 static std::vector<uint8_t> AcquireAccessUnitBuffer(const size_t requiredSize) {
     std::vector<uint8_t> accessUnit;
@@ -195,30 +199,59 @@ extern "C" JNIEXPORT void JNICALL Java_com_LibreConnect_mobile_MainService_nativ
 }
 
 QString NetworkCameraModule::QueryMainServiceCameraConfigurationsJson() {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         Debug::LogWarning("NetworkCameraModule: Android context unavailable for Camera query");
         return {};
     }
 
-    const QJniObject response = QJniObject::callStaticObjectMethod(
-        "com/LibreConnect/mobile/MainService",
-        "queryAvailableCameraConfigurations",
-        "(Landroid/content/Context;)Ljava/lang/String;",
-        context.object<jobject>()
-    );
-
-    if (!response.isValid()) {
-        const QJniEnvironment env;
-        if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
-            env->ExceptionClear();
-        }
-        Debug::LogWarning("NetworkCameraModule: MainService Camera query returned invalid JNI response");
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv) {
+        Debug::LogWarning("NetworkCameraModule: JNIEnv unavailable");
         return {};
     }
 
-    return response.toString();
+    jclass mainServiceClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/MainService");
+    if (!mainServiceClass) {
+        Debug::LogWarning("NetworkCameraModule: Failed to find MainService class");
+        return {};
+    }
+
+    jmethodID queryMethod = jniEnv->GetStaticMethodID(
+        mainServiceClass,
+        "queryAvailableCameraConfigurations",
+        "(Landroid/content/Context;)Ljava/lang/String;"
+    );
+    if (!queryMethod) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(mainServiceClass);
+        Debug::LogWarning("NetworkCameraModule: Failed to find queryAvailableCameraConfigurations method");
+        return {};
+    }
+
+    jstring responseJString = static_cast<jstring>(jniEnv->CallStaticObjectMethod(
+        mainServiceClass,
+        queryMethod,
+        context.object<jobject>()
+    ));
+
+    jniEnv->DeleteLocalRef(mainServiceClass);
+
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+        Debug::LogWarning("NetworkCameraModule: Exception when calling queryAvailableCameraConfigurations");
+        return {};
+    }
+
+    if (!responseJString) {
+        return {};
+    }
+
+    QString response = QJniObject(responseJString).toString();
+    jniEnv->DeleteLocalRef(responseJString);
+    return response;
 }
 
 bool NetworkCameraModule::IsCameraFormatSupportedByCodec(const AVCodec* codec, const int width, const int height, const int requestedFps) {
@@ -241,79 +274,79 @@ bool NetworkCameraModule::IsCameraFormatSupportedByCodec(const AVCodec* codec, c
 }
 
 std::vector<CameraSpecification> NetworkCameraModule::FetchCamerasSpecificationForCodec(const AVCodec* codec) {
-        const QString payload = QueryMainServiceCameraConfigurationsJson();
-        if (payload.isEmpty()) {
-            return {};
+    const QString payload = QueryMainServiceCameraConfigurationsJson();
+    if (payload.isEmpty()) {
+        return {};
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(payload.toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
+        Debug::LogWarning(
+            "NetworkCameraModule: Failed to parse Camera configuration JSON: {}",
+            parseError.errorString().toStdString()
+        );
+        return {};
+    }
+
+    const QJsonArray cameraArray = document.array();
+    std::vector<CameraSpecification> output;
+    output.reserve(static_cast<size_t>(cameraArray.size()));
+
+    for (const QJsonValue& cameraValue : cameraArray) {
+        if (!cameraValue.isObject()) {
+            continue;
         }
 
-        QJsonParseError parseError;
-        const QJsonDocument document = QJsonDocument::fromJson(payload.toUtf8(), &parseError);
-        if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
-            Debug::LogWarning(
-                "NetworkCameraModule: Failed to parse Camera configuration JSON: {}",
-                parseError.errorString().toStdString()
+        const QJsonObject cameraObject = cameraValue.toObject();
+        const QString cameraID = cameraObject.value("id").toString();
+        if (cameraID.isEmpty()) {
+            continue;
+        }
+
+        CameraSpecification specification;
+        specification.id = cameraID.toStdString();
+        specification.description = cameraObject.value("description").toString(cameraID).toStdString();
+        specification.isDefault = cameraObject.value("isDefault").toBool(false);
+
+        std::set<std::tuple<int32_t, int32_t, uint16_t>> uniqueFormats;
+        const QJsonArray formatsArray = cameraObject.value("formats").toArray();
+        for (const QJsonValue& formatValue : formatsArray) {
+            if (!formatValue.isObject()) {
+                continue;
+            }
+
+            const QJsonObject formatObject = formatValue.toObject();
+            const int width = formatObject.value("width").toInt(0);
+            const int height = formatObject.value("height").toInt(0);
+            const int fps = std::max(1, formatObject.value("framerate").toInt(0));
+
+            if (width <= 0 || height <= 0) {
+                continue;
+            }
+
+            if (!IsCameraFormatSupportedByCodec(codec, width, height, fps)) {
+                continue;
+            }
+
+            uniqueFormats.emplace(
+                static_cast<int32_t>(width),
+                static_cast<int32_t>(height),
+                static_cast<uint16_t>(fps)
             );
-            return {};
         }
 
-        const QJsonArray cameraArray = document.array();
-        std::vector<CameraSpecification> output;
-        output.reserve(static_cast<size_t>(cameraArray.size()));
-
-        for (const QJsonValue& cameraValue : cameraArray) {
-            if (!cameraValue.isObject()) {
-                continue;
-            }
-
-            const QJsonObject cameraObject = cameraValue.toObject();
-            const QString cameraID = cameraObject.value("id").toString();
-            if (cameraID.isEmpty()) {
-                continue;
-            }
-
-            CameraSpecification specification;
-            specification.id = cameraID.toStdString();
-            specification.description = cameraObject.value("description").toString(cameraID).toStdString();
-            specification.isDefault = cameraObject.value("isDefault").toBool(false);
-
-            std::set<std::tuple<int32_t, int32_t, uint16_t>> uniqueFormats;
-            const QJsonArray formatsArray = cameraObject.value("formats").toArray();
-            for (const QJsonValue& formatValue : formatsArray) {
-                if (!formatValue.isObject()) {
-                    continue;
-                }
-
-                const QJsonObject formatObject = formatValue.toObject();
-                const int width = formatObject.value("width").toInt(0);
-                const int height = formatObject.value("height").toInt(0);
-                const int fps = std::max(1, formatObject.value("framerate").toInt(0));
-
-                if (width <= 0 || height <= 0) {
-                    continue;
-                }
-
-                if (!IsCameraFormatSupportedByCodec(codec, width, height, fps)) {
-                    continue;
-                }
-
-                uniqueFormats.emplace(
-                    static_cast<int32_t>(width),
-                    static_cast<int32_t>(height),
-                    static_cast<uint16_t>(fps)
-                );
-            }
-
-            specification.formats.reserve(uniqueFormats.size());
-            for (const auto& [w, h, f] : uniqueFormats) {
-                specification.formats.emplace_back(w, h, f);
-            }
-
-            if (!specification.formats.empty()) {
-                output.emplace_back(std::move(specification));
-            }
+        specification.formats.reserve(uniqueFormats.size());
+        for (const auto& [w, h, f] : uniqueFormats) {
+            specification.formats.emplace_back(w, h, f);
         }
 
-        return output;
+        if (!specification.formats.empty()) {
+            output.emplace_back(std::move(specification));
+        }
+    }
+
+    return output;
 }
 
 void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit, const int32_t flags, const int64_t ptsUs, const int64_t enqueuedAtUs) {
@@ -350,7 +383,7 @@ void NetworkCameraModule::OnAndroidEncodedFrame(std::vector<uint8_t> accessUnit,
 }
 
 void NetworkCameraModule::UpdateMainServiceCameraRequest(const bool enabled) {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         return;
     }
@@ -404,23 +437,45 @@ void NetworkCameraModule::UpdateMainServiceCameraRequest(const bool enabled) {
 }
 
 bool NetworkCameraModule::StartMainServiceCameraFrameReceiver(const std::string& cameraID, const int32_t width, const int32_t height, const int32_t fps, const int32_t bitrate) {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetAndroidContext();
     if (!context.isValid()) {
         Debug::LogWarning("NetworkCameraModule: Cannot start Camera frame receiver (invalid Android context)");
         return false;
     }
 
-    QJniObject cameraIdArg;
-    jstring cameraIdJni = nullptr;
-    if (!cameraID.empty()) {
-        cameraIdArg = QJniObject::fromString(QString::fromStdString(cameraID));
-        cameraIdJni = cameraIdArg.object<jstring>();
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv) {
+        Debug::LogWarning("NetworkCameraModule: Cannot start Camera frame receiver (no JNIEnv)");
+        return false;
     }
 
-    const jboolean started = QJniObject::callStaticMethod<jboolean>(
-        "com/LibreConnect/mobile/MainService",
+    jclass mainServiceClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/MainService");
+    if (!mainServiceClass) {
+        Debug::LogWarning("NetworkCameraModule: Cannot start Camera frame receiver (MainService class not found)");
+        return false;
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        mainServiceClass,
         "startCameraFrameReceiver",
-        "(Landroid/content/Context;Ljava/lang/String;IIII)Z",
+        "(Landroid/content/Context;Ljava/lang/String;IIII)Z"
+    );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(mainServiceClass);
+        Debug::LogWarning("NetworkCameraModule: Cannot start Camera frame receiver (method not found)");
+        return false;
+    }
+
+    jstring cameraIdJni = nullptr;
+    if (!cameraID.empty()) {
+        cameraIdJni = jniEnv->NewStringUTF(cameraID.c_str());
+    }
+
+    const jboolean started = jniEnv->CallStaticBooleanMethod(
+        mainServiceClass,
+        method,
         context.object<jobject>(),
         cameraIdJni,
         static_cast<jint>(width),
@@ -429,16 +484,52 @@ bool NetworkCameraModule::StartMainServiceCameraFrameReceiver(const std::string&
         static_cast<jint>(bitrate)
     );
 
+    if (cameraIdJni) {
+        jniEnv->DeleteLocalRef(cameraIdJni);
+    }
+    jniEnv->DeleteLocalRef(mainServiceClass);
+
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+        return false;
+    }
+
     return started == JNI_TRUE;
 }
 
 void NetworkCameraModule::StopMainServiceCameraFrameReceiver() {
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/MainService",
+    QJniEnvironment env;
+    JNIEnv* jniEnv = env.jniEnv();
+    if (!jniEnv) {
+        return;
+    }
+
+    jclass mainServiceClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/MainService");
+    if (!mainServiceClass) {
+        return;
+    }
+
+    jmethodID method = jniEnv->GetStaticMethodID(
+        mainServiceClass,
         "stopCameraFrameReceiver",
         "()V"
     );
+    if (!method) {
+        jniEnv->ExceptionClear();
+        jniEnv->DeleteLocalRef(mainServiceClass);
+        return;
+    }
+
+    jniEnv->CallStaticVoidMethod(mainServiceClass, method);
+    jniEnv->DeleteLocalRef(mainServiceClass);
+
+    if (jniEnv->ExceptionCheck()) {
+        jniEnv->ExceptionDescribe();
+        jniEnv->ExceptionClear();
+    }
 }
+
 
 int32_t NetworkCameraModule::ComputeTargetBitrate(const int width, const int height, const int fps) {
     const int64_t pixels = static_cast<int64_t>(std::max(1, width)) * static_cast<int64_t>(std::max(1, height));
