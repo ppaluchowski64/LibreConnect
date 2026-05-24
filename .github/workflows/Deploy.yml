@@ -208,6 +208,8 @@ jobs:
           test -n "$(find release-assets -type f -name '*.rpm' -print -quit)"
           test -n "$(find release-assets -type f -name '*.apk' -print -quit)"
           test -n "$(find release-assets -type f -name '*.dmg' -print -quit)"
+          test -n "$(find release-assets -type f -name '*.pkg.tar.zst' -print -quit)"
+          test -n "$(find release-assets -type f -name '*.tar.gz' -print -quit)"
 
       - name: Create or update release
         uses: softprops/action-gh-release@v2
@@ -226,3 +228,5 @@ jobs:
             release-assets/**/*.rpm
             release-assets/**/*.apk
             release-assets/**/*.dmg
+            release-assets/**/*.pkg.tar.zst
+            release-assets/**/*.tar.gz

@@ -1,16 +1,16 @@
-name: Build Fedora Installer
+name: Build Universal Tarball Installer
 
 on:
   workflow_call:
     inputs:
       arch:
-        description: 'Target Architecture (x86_64, aarch64)'
+        description: 'Target Architecture (amd64, arm64)'
         required: true
         type: string
 
 jobs:
-  build-fedora-installer:
-    name: Build Fedora RPM ${{ inputs.arch }}
+  build-tarball-installer:
+    name: Build Universal Tarball ${{ inputs.arch }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -18,17 +18,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install RPM tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y rpm
-
       - name: Download Ubuntu build artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ inputs.arch == 'aarch64' && format('{0}-build-dir-Ubuntu-ARM-Latest', github.ref_name) || format('{0}-build-dir-Ubuntu-Latest', github.ref_name) }}
+          name: ${{ inputs.arch == 'arm64' && format('{0}-build-dir-Ubuntu-ARM-Latest', github.ref_name) || format('{0}-build-dir-Ubuntu-Latest', github.ref_name) }}
           path: artifacts/ubuntu
 
       - name: Find deploy directory
@@ -66,19 +59,18 @@ jobs:
           fi
           echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Build Fedora RPM
+      - name: Build Universal Tarball package
         shell: bash
         run: |
           set -euo pipefail
-          ARCH_FLAG="${{ inputs.arch == 'aarch64' && 'arm64' || 'x86_64' }}"
-          bash installers/linux/build-rpm.sh \
+          bash installers/linux/build-tarball.sh \
             --deploy-dir "$DEPLOY_DIR" \
             --version "$PACKAGE_VERSION" \
-            --output-dir "$GITHUB_WORKSPACE/out/fedora" \
-            --arch "$ARCH_FLAG"
+            --output-dir "$GITHUB_WORKSPACE/out/tarball" \
+            --arch "${{ inputs.arch }}"
 
-      - name: Upload Fedora installer artifact
+      - name: Upload Universal Tarball installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: installer-Fedora-${{ inputs.arch }}
-          path: out/fedora/*.rpm
+          name: installer-Tarball-${{ inputs.arch }}
+          path: out/tarball/*.tar.gz

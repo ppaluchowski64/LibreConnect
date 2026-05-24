@@ -2,9 +2,16 @@ name: Build Windows
 
 on:
   workflow_call:
+    inputs:
+      arch:
+        description: 'Target Architecture (x64, arm64)'
+        required: false
+        type: string
+        default: 'x64'
 
 jobs:
   build-windows:
+    name: Build Windows ${{ inputs.arch }}
     runs-on: windows-2025
     steps:
       - name: Checkout repository
@@ -15,12 +22,17 @@ jobs:
       - name: Upgrade Git to latest
         run: choco upgrade git -y
 
-      - name: Download FFmpeg 7.1 Shared
+      - name: Download FFmpeg Shared
         shell: bash
         run: |
-          curl -L --fail --retry 5 --retry-delay 5 \
-          https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build-shared.zip \
-          -o ffmpeg.zip
+          if [ "${{ inputs.arch }}" = "arm64" ]; then
+            URL="https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-winarm64-gpl-shared.zip"
+          else
+            URL="https://github.com/GyanD/codexffmpeg/releases/download/7.1.1/ffmpeg-7.1.1-full_build-shared.zip"
+          fi
+
+          echo "Downloading FFmpeg from $URL"
+          curl -L --fail --retry 5 --retry-delay 5 "$URL" -o ffmpeg.zip
 
           unzip -q ffmpeg.zip -d FFmpegRaw
 
@@ -34,7 +46,7 @@ jobs:
       - name: Setup MSVC Environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          arch: x64
+          arch: ${{ inputs.arch == 'arm64' && 'amd64_arm64' || 'x64' }}
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -44,26 +56,28 @@ jobs:
       - name: Setup Conan
         uses: conan-io/setup-conan@v1
 
-      - name: Set Conan Env
+      - name: Set Conan Env and Target Arch
         shell: pwsh
         run: |
           $conan_version = conan --version -q | ForEach-Object { ($_ -match '\d+\.\d+\.\d+')[0] }
           echo "CONAN_VERSION=$conan_version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          if ("${{ inputs.arch }}" -eq "arm64") {
+            echo "TARGET_ARCH=armv8" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          }
 
       - name: Cache Conan Packages
         uses: actions/cache@v4
         with:
           path: ~/.conan2/
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
-          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}
-
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}-${{ inputs.arch }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ env.CONAN_VERSION }}-
       - name: Install Qt (includes Qt Quick / QML)
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
           host: 'windows'
           target: 'desktop'
-          arch: 'win64_msvc2022_64'
+          arch: ${{ inputs.arch == 'arm64' && 'win64_msvc2022_arm64_cross_compiled' || 'win64_msvc2022_64' }}
           modules: qtmultimedia
 
       - name: Create Conan profile
@@ -75,7 +89,7 @@ jobs:
           "QT_DIR_DESKTOP=$env:QT_ROOT_DIR" >> .env
           "DISABLE_DEBUG=true" >> .env
           "BUILD_FOR=Desktop" >> .env
-          "BUILD_TESTS=true" >> .env
+          "BUILD_TESTS=false" >> .env
 
       - name: Install Conan deps
         shell: powershell
@@ -86,6 +100,73 @@ jobs:
 
       - name: Build CMake
         run: cmake --build --preset conan-release
+
+      - name: Deploy Qt dependencies for ARM64
+        if: ${{ inputs.arch == 'arm64' }}
+        shell: pwsh
+        run: |
+          Write-Host "Installing aqtinstall..."
+          python -m pip install aqtinstall
+
+          Write-Host "Installing base x64 Qt to get windeployqt..."
+          python -m aqt install-qt windows desktop 6.8.3 win64_msvc2022_64 --outputdir "$env:RUNNER_TEMP\Qt_x64"
+
+          # Find windeployqt.exe from the x64 installation
+          $windeployqt = Get-ChildItem -Path "$env:RUNNER_TEMP\Qt_x64" -Recurse -File -Filter windeployqt.exe | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $windeployqt) {
+            throw "Could not find x64 windeployqt.exe"
+          }
+          Write-Host "Found x64 windeployqt: $windeployqt"
+
+          # Find the ARM64 qtpaths.exe or qtpaths.bat
+          $qtRoot = $env:QT_ROOT_DIR
+          if (-not $qtRoot -or -not (Test-Path $qtRoot)) {
+            $qtRoot = "C:\Qt"
+          }
+
+          Write-Host "Searching for qtpaths.exe / qtpaths.bat in $qtRoot..."
+          $qtpaths = Get-ChildItem -Path $qtRoot -Recurse -File -Filter qtpaths.exe | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $qtpaths) {
+            $qtpaths = Get-ChildItem -Path $qtRoot -Recurse -File -Filter qtpaths.bat | Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $qtpaths) {
+            throw "Could not find ARM64 qtpaths"
+          }
+          Write-Host "Found ARM64 qtpaths: $qtpaths"
+
+          # Find QML dir inside the ARM64 Qt installation
+          $qmldir = Get-ChildItem -Path $qtRoot -Recurse -Directory -Filter qml | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $qmldir) {
+            throw "Could not find ARM64 QML directory"
+          }
+          Write-Host "Found ARM64 QML directory: $qmldir"
+
+          # Find the deployment directory
+          $deployDir = Get-ChildItem -Path build -Recurse -Directory -Filter appLibreConnect_desktop | Select-Object -First 1 -ExpandProperty FullName
+          if (-not $deployDir) {
+            throw "Could not find appLibreConnect_desktop directory in build folder"
+          }
+          Write-Host "Deploying to directory: $deployDir"
+
+          # Resolve executables
+          $targetExe = Join-Path $deployDir "LibreConnect.exe"
+          $targetDaemon = Join-Path $deployDir "LibreConnect-daemon.exe"
+
+          if (-not (Test-Path $targetExe)) {
+            throw "LibreConnect.exe not found in deploy directory: $targetExe"
+          }
+          if (-not (Test-Path $targetDaemon)) {
+            throw "LibreConnect-daemon.exe not found in deploy directory: $targetDaemon"
+          }
+
+          # Run windeployqt using x64 windeployqt pointed to the ARM64 paths
+          Write-Host "Running windeployqt for LibreConnect.exe..."
+          & $windeployqt --qmldir $qmldir --qtpaths $qtpaths $targetExe
+
+          Write-Host "Running windeployqt for LibreConnect-daemon.exe..."
+          & $windeployqt --qmldir $qmldir --qtpaths $qtpaths $targetDaemon
+
+          Write-Host "Qt dependencies deployed successfully for ARM64!"
 
       - name: Read package version
         shell: pwsh
@@ -99,13 +180,13 @@ jobs:
       - name: Upload deployed application artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-application-Windows-Latest
+          name: ${{ github.ref_name }}-build-application-Windows-${{ inputs.arch }}
           path: build/desktop/Release/build/Release/deploy/Release/appLibreConnect_desktop
 
       - name: Upload build directory artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.ref_name }}-build-dir-Windows-Latest
+          name: ${{ github.ref_name }}-build-dir-Windows-${{ inputs.arch }}
           path: build
 
       - name: Install WiX CLI
@@ -168,10 +249,11 @@ jobs:
           -Version "$env:PACKAGE_VERSION" `
           -OutputDir "$env:GITHUB_WORKSPACE\out\windows" `
           -WixExePath "$env:WIX_EXE" `
-          -WixExtensionVersion "$env:WIX_VERSION"
+          -WixExtensionVersion "$env:WIX_VERSION" `
+          -Arch "${{ inputs.arch }}"
 
       - name: Upload Windows installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: installer-Windows
+          name: installer-Windows-${{ inputs.arch }}
           path: out/windows

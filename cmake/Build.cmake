@@ -269,11 +269,21 @@ function(DeployQT Target)
             )
         endif()
 
-        add_custom_command(TARGET ${Target} POST_BUILD
-                COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
-                COMMENT "Deploying Qt dependencies for ${Target}..."
-                VERBATIM
-        )
+        if (EXISTS "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe")
+            add_custom_command(TARGET ${Target} POST_BUILD
+                    COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
+                    COMMENT "Deploying Qt dependencies for ${Target}..."
+                    VERBATIM
+            )
+        elseif (EXISTS "$ENV{QT_DIR_DESKTOP}/bin/windeployqt.exe")
+            add_custom_command(TARGET ${Target} POST_BUILD
+                    COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
+                    COMMENT "Deploying Qt dependencies for ${Target}..."
+                    VERBATIM
+            )
+        else()
+            message(STATUS "windeployqt not found. Skipping deployment.")
+        endif()
     elseif(APPLE AND NOT IOS)
         set_source_files_properties(${MAC_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
         target_sources(${Target} PRIVATE ${MAC_ICON})

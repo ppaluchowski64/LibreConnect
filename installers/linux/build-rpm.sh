@@ -382,13 +382,15 @@ EOF
 
 {
     cat <<EOF
+%global __os_install_post %{nil}
+%global debug_package %{nil}
+
 Name: ${PACKAGE_NAME}
 Version: ${VERSION}
 Release: ${RELEASE}%{?dist}
 Summary: ${DESCRIPTION}
 License: ${LICENSE}
 URL: ${HOMEPAGE}
-BuildArch: ${RPM_ARCH}
 AutoReqProv: no
 Requires: bash
 Requires: dkms
@@ -439,7 +441,19 @@ EOF
 EOF
 } > "${SPEC_FILE}"
 
-rpmbuild --define "_topdir ${RPM_TOPDIR}" -bb "${SPEC_FILE}"
+# Ensure rpmbuild knows that our host architecture is compatible with the target CPU for packaging
+# on environments where the architecture mapping is sparse (like Ubuntu/Debian runners).
+HOST_ARCH="$(uname -m)"
+if [[ "${RPM_ARCH}" != "noarch" && "${RPM_ARCH}" != "${HOST_ARCH}" ]]; then
+    touch ~/.rpmrc
+    if ! grep -q "buildarch_compat: ${HOST_ARCH}: ${RPM_ARCH}" ~/.rpmrc; then
+        echo "buildarch_compat: ${HOST_ARCH}: ${RPM_ARCH}" >> ~/.rpmrc
+        echo "buildarch_compat: x86_64: ${RPM_ARCH}" >> ~/.rpmrc
+        echo "buildarch_compat: amd64: ${RPM_ARCH}" >> ~/.rpmrc
+    fi
+fi
+
+rpmbuild --target "${RPM_ARCH}" --define "_topdir ${RPM_TOPDIR}" -bb "${SPEC_FILE}"
 
 OUT_RPM_SOURCE="$(find "${RPM_TOPDIR}/RPMS" -type f -name "*.rpm" | head -n 1)"
 if [[ -z "${OUT_RPM_SOURCE}" ]]; then
