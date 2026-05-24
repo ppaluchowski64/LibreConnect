@@ -143,6 +143,11 @@
         />
 
         <receiver
+                android:name="org.qtproject.qt.android.bindings.FrontendQuitReceiver"
+                android:exported="false"
+        />
+
+        <receiver
                 android:name=".RemoteInputMediaActionReceiver"
                 android:label="LibreConnect Remote Input Receiver"
                 android:process=":backend"

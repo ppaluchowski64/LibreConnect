@@ -163,6 +163,7 @@ Window {
             activeDeviceName: activeDeviceName,
             activeDeviceId: activeDeviceId,
             notificationSyncController: notificationSyncController,
+            mediaNotificationController: mediaNotificationController,
             clipboardSyncController: clipboardSyncController,
             smsBridgeController: smsBridgeController,
             permissionStateController: permissionStateController,
@@ -212,6 +213,10 @@ Window {
 
     function showMessages() {
         showFeature("messages")
+    }
+
+    function showMediaRemote() {
+        showFeature("mediaRemote")
     }
 
     function goBack() {

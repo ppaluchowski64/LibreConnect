@@ -1,6 +1,8 @@
 #include "MediaTrackInfo.h"
 
+#include <AndroidContextProvider.h>
 #include <QtCore/QJniObject>
+#include <QtCore/QJniEnvironment>
 #include <mutex>
 #include <chrono>
 #include <DebugLog.h>
@@ -90,12 +92,29 @@ std::optional<TrackMetadata> MediaTrackInfo::GetCurrentTrack() {
 void MediaTrackInfo::SetPosition(double seconds) {
     long long ms = static_cast<long long>(seconds * 1000.0);
 
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/NotificationListener",
-        "setPosition",
-        "(J)V",
-        static_cast<jlong>(ms)
-    );
+    AndroidContextProvider::WithJniEnv([ms](JNIEnv* env) {
+        jclass listenerClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/NotificationListener");
+        if (!listenerClass) {
+            Debug::LogWarning("Android MediaTrackInfo: failed to resolve NotificationListener for seek");
+            return;
+        }
+
+        jmethodID method = env->GetStaticMethodID(listenerClass, "setPosition", "(J)V");
+        if (!method) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(listenerClass);
+            Debug::LogWarning("Android MediaTrackInfo: failed to resolve NotificationListener.setPosition");
+            return;
+        }
+
+        env->CallStaticVoidMethod(listenerClass, method, static_cast<jlong>(ms));
+        env->DeleteLocalRef(listenerClass);
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+    });
 }
 
 bool MediaTrackInfo::ControlPlayback(MediaSignal signal) {

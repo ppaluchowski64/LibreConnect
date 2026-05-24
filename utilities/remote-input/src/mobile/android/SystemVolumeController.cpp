@@ -1,8 +1,9 @@
 #include "SystemVolumeController.h"
 
-#include <QtCore/QJniObject>
-#include <QtCore/QCoreApplication>
 #include <AndroidContextProvider.h>
+#include <DebugLog.h>
+
+#include <algorithm>
 
 namespace {
 QJniObject GetContext() {
@@ -16,31 +17,64 @@ int SystemVolumeController::GetVolume() {
     if (!context.isValid())
         return 0;
 
-    return QJniObject::callStaticMethod<jint>(
-        "com/LibreConnect/mobile/MediaRemoteBridge",
-        "getVolume",
-        "(Landroid/content/Context;)I",
-        context.object()
-    );
+    int result = 0;
+    AndroidContextProvider::WithJniEnv([&result, &context](JNIEnv* env) {
+        jclass bridgeClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/MediaRemoteBridge");
+        if (!bridgeClass) {
+            Debug::LogWarning("Android SystemVolumeController: failed to resolve MediaRemoteBridge for getVolume");
+            return;
+        }
+
+        jmethodID method = env->GetStaticMethodID(bridgeClass, "getVolume", "(Landroid/content/Context;)I");
+        if (!method) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(bridgeClass);
+            Debug::LogWarning("Android SystemVolumeController: failed to resolve MediaRemoteBridge.getVolume");
+            return;
+        }
+
+        result = env->CallStaticIntMethod(bridgeClass, method, context.object<jobject>());
+        env->DeleteLocalRef(bridgeClass);
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            result = 0;
+        }
+    });
+
+    return std::clamp(result, 0, 100);
 }
 
 void SystemVolumeController::SetVolume(int percentage) {
-    if (percentage < 0)
-        percentage = 0;
-
-    if (percentage > 100)
-        percentage = 100;
+    percentage = std::clamp(percentage, 0, 100);
 
     const QJniObject context = GetContext();
 
     if (!context.isValid())
         return;
 
-    QJniObject::callStaticMethod<void>(
-        "com/LibreConnect/mobile/MediaRemoteBridge",
-        "setVolume",
-        "(Landroid/content/Context;I)V",
-        context.object(),
-        static_cast<jint>(percentage)
-    );
+    AndroidContextProvider::WithJniEnv([percentage, &context](JNIEnv* env) {
+        jclass bridgeClass = AndroidContextProvider::FindClass(env, "com/LibreConnect/mobile/MediaRemoteBridge");
+        if (!bridgeClass) {
+            Debug::LogWarning("Android SystemVolumeController: failed to resolve MediaRemoteBridge for setVolume");
+            return;
+        }
+
+        jmethodID method = env->GetStaticMethodID(bridgeClass, "setVolume", "(Landroid/content/Context;I)V");
+        if (!method) {
+            env->ExceptionClear();
+            env->DeleteLocalRef(bridgeClass);
+            Debug::LogWarning("Android SystemVolumeController: failed to resolve MediaRemoteBridge.setVolume");
+            return;
+        }
+
+        env->CallStaticVoidMethod(bridgeClass, method, context.object<jobject>(), static_cast<jint>(percentage));
+        env->DeleteLocalRef(bridgeClass);
+
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+    });
 }

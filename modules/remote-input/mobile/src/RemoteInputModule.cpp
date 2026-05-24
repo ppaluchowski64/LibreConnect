@@ -2,6 +2,7 @@
 #include <ConnectionManager.h>
 #include <RemoteInputEvents.h>
 #include <MediaTrackInfo.h>
+#include <SystemVolumeController.h>
 #include <asio/post.hpp>
 
 #ifdef ANDROID_DEVICE
@@ -12,6 +13,7 @@
 #include <vector>
 #include <atomic>
 #include <chrono>
+#include <algorithm>
 
 constexpr size_t FUTURES_WAIT_DELAY = 10;
 constexpr std::chrono::milliseconds MEDIA_INFO_POLL_INTERVAL{1800};
@@ -48,7 +50,8 @@ void RemoteInputModule::SendMediaInfoUpdate(
     const bool playing,
     const double positionSeconds,
     const double durationSeconds,
-    const std::vector<uint8_t>& coverBytes
+    const std::vector<uint8_t>& coverBytes,
+    const int volume
 ) {
     ConnectionManager::Send(
         PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE,
@@ -59,7 +62,8 @@ void RemoteInputModule::SendMediaInfoUpdate(
         playing,
         positionSeconds,
         durationSeconds,
-        coverBytes
+        coverBytes,
+        volume
     );
 }
 
@@ -150,12 +154,34 @@ void RemoteInputModule::EnableResponseCallbacks() {
     ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT, [instance](PC_Package&& package) mutable {
         const MediaSignal key = package->GetValue<MediaSignal>();
         Debug::Log("Mobile RemoteInputModule: Received REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT package: key={}", static_cast<int>(key));
+        if (key == MediaSignal::VolumeDown) {
+            SystemVolumeController::SetVolume(SystemVolumeController::GetVolume() - 5);
+            return;
+        }
+
+        if (key == MediaSignal::VolumeUp) {
+            SystemVolumeController::SetVolume(SystemVolumeController::GetVolume() + 5);
+            return;
+        }
+
+        if (key == MediaSignal::VolumeMute) {
+            SystemVolumeController::SetVolume(0);
+            return;
+        }
+
         instance->m_remote.ExecuteSignal(key);
     });
     ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION, [instance](PC_Package&& package) mutable {
+        (void)instance;
         const double seconds = std::max(0.0, package->GetValue<double>());
         Debug::Log("Mobile RemoteInputModule: Received REMOTE_INPUT_MODULE_SET_MEDIA_POSITION package: position={:.2f}s", seconds);
         MediaTrackInfo::SetPosition(seconds);
+    });
+    ConnectionManager::AddResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_VOLUME, [instance](PC_Package&& package) mutable {
+        (void)instance;
+        const int volume = std::clamp(package->GetValue<int>(), 0, 100);
+        Debug::Log("Mobile RemoteInputModule: Received REMOTE_INPUT_MODULE_SET_VOLUME package: volume={}", volume);
+        SystemVolumeController::SetVolume(volume);
     });
 }
 
@@ -166,6 +192,7 @@ void RemoteInputModule::DisableResponseCallbacks() {
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_MEDIA_INFO_UPDATE);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SEND_MEDIA_INPUT);
     ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_MEDIA_POSITION);
+    ConnectionManager::RemoveResponseHandler(PC_PackageType::REMOTE_INPUT_MODULE_SET_VOLUME);
 }
 
 void RemoteInputModule::OnInitialize() {}
@@ -202,7 +229,8 @@ asio::awaitable<void> RemoteInputModule::OnEnable() {
                 metadata.playing,
                 metadata.position,
                 metadata.duration,
-                metadata.cover
+                metadata.cover,
+                SystemVolumeController::GetVolume()
             );
         });
     });

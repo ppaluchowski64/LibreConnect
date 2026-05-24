@@ -19,6 +19,7 @@ import android.annotation.SuppressLint
 import android.util.Log
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import org.qtproject.qt.android.bindings.FrontendQuitReceiver
 import org.qtproject.qt.android.bindings.QtActivity
 import java.io.File
 import java.nio.ByteBuffer
@@ -242,6 +243,7 @@ class MainService : Service() {
         if (action == ACTION_STOP_BACKEND) {
             Thread {
                 Log.d(TAG, "onStartCommand: async stop start")
+                requestFrontendQuit()
                 stopBackendIfNeeded()
                 Log.d(TAG, "onStartCommand: async stop calling stopSelf")
                 stopSelf()
@@ -507,6 +509,15 @@ class MainService : Service() {
         releaseMulticastLock()
         releaseWifiLock()
         releaseCpuWakeLock()
+    }
+
+    private fun requestFrontendQuit() {
+        val intent = Intent(this, FrontendQuitReceiver::class.java)
+        try {
+            sendBroadcast(intent)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Failed to request frontend quit", t)
+        }
     }
 
     private fun acquireMulticastLock() {

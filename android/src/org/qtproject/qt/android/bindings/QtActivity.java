@@ -3,7 +3,10 @@ package org.qtproject.qt.android.bindings;
 import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Process;
 import android.util.Log;
+
+import java.lang.ref.WeakReference;
 
 import com.LibreConnect.mobile.AndroidPermissionBridge;
 import com.LibreConnect.mobile.MainService;
@@ -11,11 +14,13 @@ import com.LibreConnect.mobile.MainService;
 import org.qtproject.qt.android.QtActivityBase;
 
 public class QtActivity extends QtActivityBase {
-    private static final String TAG = "main";
+    private static final String TAG = "LibreConnectNative";
+    private static WeakReference<QtActivity> activeActivity = new WeakReference<>(null);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         Log.d(TAG, "QtActivity.onCreate: before super");
+        activeActivity = new WeakReference<>(this);
         startBackendService();
         super.onCreate(savedInstanceState);
         Log.d(TAG, "QtActivity.onCreate: after super");
@@ -88,6 +93,7 @@ public class QtActivity extends QtActivityBase {
     @Override
     protected void onResume() {
         Log.d(TAG, "QtActivity.onResume: before super");
+        activeActivity = new WeakReference<>(this);
         super.onResume();
         Log.d(TAG, "QtActivity.onResume: after super");
         AndroidPermissionBridge.onActivityResumed(this);
@@ -111,6 +117,10 @@ public class QtActivity extends QtActivityBase {
     @Override
     protected void onDestroy() {
         Log.d(TAG, "QtActivity.onDestroy: before bridge cleanup");
+        QtActivity activity = activeActivity.get();
+        if (activity == this) {
+            activeActivity = new WeakReference<>(null);
+        }
         AndroidPermissionBridge.onActivityDestroyed(this);
         try {
             nativeActivityDestroying();
@@ -134,4 +144,21 @@ public class QtActivity extends QtActivityBase {
     private static native void nativeActivityDestroying();
     private static native void nativeBackendConnectionPending(String deviceId, String deviceName, int connectionMode, String pairingCode);
     private static native void nativeBackendConnectionApprovalRequested(String deviceId, String deviceName);
+
+    static void quitFromServiceNotification() {
+        QtActivity activity = activeActivity.get();
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    activity.finishAndRemoveTask();
+                } else {
+                    activity.finish();
+                }
+                Process.killProcess(Process.myPid());
+            });
+            return;
+        }
+
+        Process.killProcess(Process.myPid());
+    }
 }

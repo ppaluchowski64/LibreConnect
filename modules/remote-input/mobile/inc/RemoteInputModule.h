@@ -20,7 +20,8 @@ public:
         bool playing,
         double positionSeconds,
         double durationSeconds,
-        const std::vector<uint8_t>& coverBytes
+        const std::vector<uint8_t>& coverBytes,
+        int volume
     );
     static void SetMirroringEnabled(bool enabled);
     static bool IsMirroringEnabled();

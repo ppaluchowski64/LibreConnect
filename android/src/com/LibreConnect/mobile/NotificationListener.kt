@@ -485,6 +485,11 @@ class NotificationListener : NotificationListenerService() {
 
         val notification = sbn.notification
         val extras = notification.extras
+
+        if (isMediaTransportNotification(sbn, notification, extras)) {
+            return true
+        }
+
         val title = firstMeaningfulText(
             extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
             extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
@@ -507,6 +512,51 @@ class NotificationListener : NotificationListenerService() {
         }
 
         return false
+    }
+
+    private fun isMediaTransportNotification(
+        sbn: StatusBarNotification,
+        notification: Notification,
+        extras: android.os.Bundle
+    ): Boolean {
+        if (notification.category == Notification.CATEGORY_TRANSPORT) {
+            return true
+        }
+
+        val template = extras.getString("android.template").orEmpty()
+        if (template.contains("MediaStyle")) {
+            return true
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
+            && extras.containsKey(Notification.EXTRA_MEDIA_SESSION)) {
+            return true
+        }
+
+        val controller = currentMediaController ?: return false
+        if (controller.packageName != sbn.packageName) {
+            return false
+        }
+
+        val metadata = controller.metadata ?: return false
+        val mediaTitle = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)?.trim().orEmpty()
+        val mediaArtist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)?.trim().orEmpty()
+        if (mediaTitle.isEmpty() && mediaArtist.isEmpty()) {
+            return false
+        }
+
+        val notificationTitle = firstMeaningfulText(
+            extras.getCharSequence(Notification.EXTRA_TITLE)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+        ).orEmpty()
+        val notificationBody = firstMeaningfulText(
+            extras.getCharSequence(Notification.EXTRA_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString(),
+            extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+        ).orEmpty()
+
+        return (mediaTitle.isNotEmpty() && notificationTitle == mediaTitle)
+            || (mediaArtist.isNotEmpty() && notificationBody.contains(mediaArtist))
     }
 
     private fun firstMeaningfulText(vararg values: String?): String? {

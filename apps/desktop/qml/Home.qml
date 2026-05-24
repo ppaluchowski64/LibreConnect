@@ -9,6 +9,7 @@ Page {
     required property var windowRef
     required property var connectionController
     required property var notificationSyncController
+    required property var mediaNotificationController
     required property var clipboardSyncController
     required property var smsBridgeController
     required property var permissionStateController
@@ -31,6 +32,8 @@ Page {
             return "Virtual Microphone"
         if (selectedFeature === "messages")
             return "Messages"
+        if (selectedFeature === "mediaRemote")
+            return "Media Remote"
         if (selectedFeature === "notificationHistory")
             return "Notifications"
         if (selectedFeature === "settings")
@@ -89,6 +92,11 @@ Page {
                 pageUrl = "qrc:/LibreConnect/desktop/MessagesPage.qml"
                 pageProperties = {
                     smsBridgeController: root.smsBridgeController
+                }
+            } else if (selectedFeature === "mediaRemote") {
+                pageUrl = "qrc:/LibreConnect/desktop/MediaRemotePage.qml"
+                pageProperties = {
+                    mediaNotificationController: root.mediaNotificationController
                 }
             } else if (selectedFeature === "notificationHistory") {
                 pageUrl = "qrc:/LibreConnect/desktop/NotificationHistoryPage.qml"
@@ -902,6 +910,19 @@ Page {
                                 permissionPromptDialog.permissionMessage = "SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages."
                                 permissionPromptDialog.open()
                             }
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: 58
+
+                        FeatureListButton {
+                            text: "Media Remote"
+                            iconSource: "media.svg"
+                            darkIconSource: "media_dark.svg"
+                            anchors.fill: parent
+                            onClicked: root.selectFeature("mediaRemote")
                         }
                     }
 
