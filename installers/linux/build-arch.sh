@@ -165,8 +165,11 @@ package() {
     
     # Ensure correct permissions
     chmod 0755 \"\${pkgdir}/opt/libreconnect/usr/bin/LibreConnect\"
-    if [[ -f \"\${pkgdir}/opt/libreconnect/AppRun\" ]]; then
-        chmod 0755 \"\${pkgdir}/opt/libreconnect/AppRun\"
+    if [[ -f "${pkgdir}/opt/libreconnect/AppRun" ]]; then
+        chmod 0755 "${pkgdir}/opt/libreconnect/AppRun"
+    fi
+    if [[ -f "${pkgdir}/opt/libreconnect/AppRun.wrapped" ]]; then
+        chmod 0755 "${pkgdir}/opt/libreconnect/AppRun.wrapped"
     fi
     find \"\${pkgdir}/opt/libreconnect/scripts/linux/install\" -type f -name \"*.sh\" -exec chmod 0755 {} +
 

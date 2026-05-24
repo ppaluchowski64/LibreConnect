@@ -204,6 +204,9 @@ chmod 0755 "${PACKAGED_MAIN_EXE}"
 if [[ -f "${PAYLOAD_ROOT}${INSTALL_PREFIX}/AppRun" ]]; then
     chmod 0755 "${PAYLOAD_ROOT}${INSTALL_PREFIX}/AppRun"
 fi
+if [[ -f "${PAYLOAD_ROOT}${INSTALL_PREFIX}/AppRun.wrapped" ]]; then
+    chmod 0755 "${PAYLOAD_ROOT}${INSTALL_PREFIX}/AppRun.wrapped"
+fi
 if [[ -d "${PAYLOAD_ROOT}${INSTALL_PREFIX}/scripts/linux/install" ]]; then
     find "${PAYLOAD_ROOT}${INSTALL_PREFIX}/scripts/linux/install" -type f -name "*.sh" -exec chmod 0755 {} +
 fi

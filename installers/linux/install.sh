@@ -65,6 +65,9 @@ chmod 0755 "${INSTALL_PREFIX}/usr/bin/LibreConnect"
 if [[ -f "${INSTALL_PREFIX}/AppRun" ]]; then
     chmod 0755 "${INSTALL_PREFIX}/AppRun"
 fi
+if [[ -f "${INSTALL_PREFIX}/AppRun.wrapped" ]]; then
+    chmod 0755 "${INSTALL_PREFIX}/AppRun.wrapped"
+fi
 if [[ -d "${INSTALL_PREFIX}/scripts/linux/install" ]]; then
     find "${INSTALL_PREFIX}/scripts/linux/install" -type f -name "*.sh" -exec chmod 0755 {} +
 fi
