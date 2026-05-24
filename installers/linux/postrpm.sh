@@ -8,10 +8,17 @@ echo "[postrpm] Started at $(date -Is)"
 INSTALL_SCRIPTS_DIR="/opt/libreconnect/scripts/linux/install"
 WL_SCRIPT="${INSTALL_SCRIPTS_DIR}/wl-clipboard.sh"
 V4L2_SCRIPT="${INSTALL_SCRIPTS_DIR}/v4l2loopback.sh"
+UINPUT_SCRIPT="${INSTALL_SCRIPTS_DIR}/uinput-setup.sh"
 V4L2_HELPER="/opt/libreconnect/tools/v4l2loopback-helper"
 DAEMON_LAUNCHER="/usr/bin/libreconnect-daemon"
 
 export LIBRECONNECT_SKIP_PACKAGE_INSTALL=1
+
+if [ -x "$UINPUT_SCRIPT" ]; then
+    bash "$UINPUT_SCRIPT" || true
+else
+    echo "[postrpm] Missing script: $UINPUT_SCRIPT"
+fi
 
 if [ -x "$WL_SCRIPT" ]; then
     bash "$WL_SCRIPT" || true

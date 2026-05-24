@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
+
 set -e
 
 if [[ "${1:-}" = "remove" || "${1:-}" = "purge" ]]; then
+    rm -f /etc/udev/rules.d/99-uinput.rules || true
+    rm -f /etc/modules-load.d/uinput.conf || true
+    udevadm control --reload-rules || true
+    udevadm trigger || true
     rm -f /usr/libexec/v4l2loopback-helper || true
     rm -f /usr/share/polkit-1/rules.d/50-v4l2loopback.rules || true
     rm -f /usr/share/polkit-1/actions/org.example.v4l2loopback.policy || true
