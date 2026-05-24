@@ -3,7 +3,8 @@ param(
     [string]$Version = "1.0.0",
     [string]$OutputDir = "..\..\out",
     [string]$WixExePath = "",
-    [string]$WixExtensionVersion = ""
+    [string]$WixExtensionVersion = "",
+    [string]$Arch = "x64"
 )
 
 Set-StrictMode -Version Latest
@@ -122,7 +123,7 @@ if ($wixResolvedVersion) {
 }
 
 $installerWxs = Join-Path $scriptDir "installer.wxs"
-$msiPath = Join-Path $outputFull "LibreConnect-$Version-x64.msi"
+$msiPath = Join-Path $outputFull "LibreConnect-$Version-$Arch.msi"
 $intermediateDir = Join-Path $outputFull "obj"
 New-Item -ItemType Directory -Force -Path $intermediateDir | Out-Null
 
@@ -135,7 +136,7 @@ if ($WixExtensionVersion) {
 
 Invoke-External -Exe $wixExe -Description "Building MSI with WiX v6" -Arguments @(
     "build",
-    "-arch", "x64",
+    "-arch", $Arch,
     "-ext", $uiExtensionRef,
     "-ext", $utilExtensionRef,
     "-d", "DeployDir=$deployFull",

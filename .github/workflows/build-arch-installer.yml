@@ -1,4 +1,4 @@
-name: Build Fedora Installer
+name: Build Arch Installer
 
 on:
   workflow_call:
@@ -9,21 +9,14 @@ on:
         type: string
 
 jobs:
-  build-fedora-installer:
-    name: Build Fedora RPM ${{ inputs.arch }}
+  build-arch-installer:
+    name: Build Arch package ${{ inputs.arch }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
-
-      - name: Install RPM tooling
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y rpm
 
       - name: Download Ubuntu build artifact
         uses: actions/download-artifact@v4
@@ -66,19 +59,19 @@ jobs:
           fi
           echo "PACKAGE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Build Fedora RPM
+      - name: Build Arch Linux package
         shell: bash
         run: |
           set -euo pipefail
-          ARCH_FLAG="${{ inputs.arch == 'aarch64' && 'arm64' || 'x86_64' }}"
-          bash installers/linux/build-rpm.sh \
+          ARCH_FLAG="${{ inputs.arch == 'aarch64' && 'aarch64' || 'x86_64' }}"
+          bash installers/linux/build-arch.sh \
             --deploy-dir "$DEPLOY_DIR" \
             --version "$PACKAGE_VERSION" \
-            --output-dir "$GITHUB_WORKSPACE/out/fedora" \
+            --output-dir "$GITHUB_WORKSPACE/out/arch" \
             --arch "$ARCH_FLAG"
 
-      - name: Upload Fedora installer artifact
+      - name: Upload Arch installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: installer-Fedora-${{ inputs.arch }}
-          path: out/fedora/*.rpm
+          name: installer-Arch-${{ inputs.arch }}
+          path: out/arch/*.pkg.tar.zst

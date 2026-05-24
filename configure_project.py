@@ -302,6 +302,10 @@ def run_conan_install(build_type: str, output_folder: Path):
         f"-s build_type={build_type}"
     ]
 
+    target_arch = os.environ.get("TARGET_ARCH")
+    if target_arch:
+        cmd_parts.append(f"-s arch={target_arch}")
+
     if platform == "win32":
         cmd_parts.append("-s compiler.runtime=dynamic")
 

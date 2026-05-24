@@ -9,6 +9,13 @@ on:
 jobs:
   build-windows:
     uses: ./.github/workflows/build-windows.yml
+    with:
+      arch: x64
+
+  build-windows-arm:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      arch: arm64
 
   build-ubuntu:
     uses: ./.github/workflows/build-ubuntu.yml
@@ -16,10 +23,41 @@ jobs:
   build-ubuntu-arm:
     uses: ./.github/workflows/build-ubuntu-arm.yml
 
-  build-fedora-installer:
-    needs:
-      - build-ubuntu
+  build-fedora-x86:
+    needs: build-ubuntu
     uses: ./.github/workflows/build-fedora-installer.yml
+    with:
+      arch: x86_64
+
+  build-fedora-arm:
+    needs: build-ubuntu-arm
+    uses: ./.github/workflows/build-fedora-installer.yml
+    with:
+      arch: aarch64
+
+  build-arch-x86:
+    needs: build-ubuntu
+    uses: ./.github/workflows/build-arch-installer.yml
+    with:
+      arch: x86_64
+
+  build-arch-arm:
+    needs: build-ubuntu-arm
+    uses: ./.github/workflows/build-arch-installer.yml
+    with:
+      arch: aarch64
+
+  build-tarball-x86:
+    needs: build-ubuntu
+    uses: ./.github/workflows/build-tarball-installer.yml
+    with:
+      arch: amd64
+
+  build-tarball-arm:
+    needs: build-ubuntu-arm
+    uses: ./.github/workflows/build-tarball-installer.yml
+    with:
+      arch: arm64
 
   build-macos:
     uses: ./.github/workflows/build-macos.yml
