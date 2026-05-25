@@ -49,7 +49,7 @@ asio::awaitable<void> ClipboardSyncModule::SendClipboardTextAwaitable(std::strin
 
     constexpr size_t MAX_FRAG_SIZE = MAX_PACKAGE_SIZE - 128;
 
-    if (text.size() > MAX_PACKAGE_SIZE) {
+    if (GetObjectSerializedSize(text) > MAX_PACKAGE_SIZE) {
         const size_t fragmentCount = std::ceil(static_cast<double>(text.size()) / MAX_FRAG_SIZE);
 
         Debug::Log("ClipboardSyncModule: Package too large, fragmentation is required (frag: {})", fragmentCount);
