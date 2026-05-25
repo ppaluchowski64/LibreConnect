@@ -75,6 +75,8 @@ done
 DEPLOY_DIR="$(resolve_path "$SCRIPT_DIR" "$DEPLOY_DIR_REL")"
 OUTPUT_DIR="$(resolve_path "$SCRIPT_DIR" "$OUTPUT_DIR_REL")"
 MAIN_EXE="${DEPLOY_DIR}/usr/bin/LibreConnect"
+CMAKE_BUILD_DIR="$(cd "${DEPLOY_DIR}/../../.." && pwd)"
+V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
 LINUX_INSTALL_SCRIPTS_DIR="${ROOT_DIR}/scripts/linux/install"
 INSTALL_TEMPLATE="${SCRIPT_DIR}/install.sh"
 UNINSTALL_TEMPLATE="${SCRIPT_DIR}/uninstall.sh"
@@ -127,6 +129,14 @@ mkdir -p "${PKG_ROOT}/res"
 # Copy payload elements
 echo "Preparing package layout..."
 cp -a "${DEPLOY_DIR}/." "${PKG_ROOT}/app/"
+
+if [[ -f "${V4L2_HELPER_BIN}" ]]; then
+    echo "Including v4l2loopback-helper..."
+    mkdir -p "${PKG_ROOT}/app/tools"
+    cp -a "${V4L2_HELPER_BIN}" "${PKG_ROOT}/app/tools/v4l2loopback-helper"
+    chmod 0755 "${PKG_ROOT}/app/tools/v4l2loopback-helper"
+fi
+
 cp -a "${LINUX_INSTALL_SCRIPTS_DIR}/." "${PKG_ROOT}/scripts/"
 cp -a "${SOURCE_ICON}" "${PKG_ROOT}/res/libreconnect_logo.png"
 cp -a "${LICENSE_FILE}" "${PKG_ROOT}/LICENSE"

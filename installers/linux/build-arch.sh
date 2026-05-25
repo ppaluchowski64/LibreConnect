@@ -112,6 +112,8 @@ mkdir -p "$OUTPUT_DIR"
 LINUX_INSTALL_SCRIPTS_DIR="$(realpath "${ROOT_DIR}/scripts/linux/install")"
 SOURCE_ICON="$(realpath "${ROOT_DIR}/apps/desktop/res/libreconnect_logo.png")"
 LICENSE_FILE="$(realpath "${ROOT_DIR}/LICENSE")"
+CMAKE_BUILD_DIR="$(cd "${DEPLOY_DIR}/../../.." && pwd)"
+V4L2_HELPER_BIN="${CMAKE_BUILD_DIR}/v4l2loopback-helper"
 
 # Execute in Docker
 docker run --rm \
@@ -119,6 +121,7 @@ docker run --rm \
   -v "${LINUX_INSTALL_SCRIPTS_DIR}:/scripts_install:ro" \
   -v "${SOURCE_ICON}:/libreconnect_logo.png:ro" \
   -v "${LICENSE_FILE}:/LICENSE:ro" \
+  $([[ -f "${V4L2_HELPER_BIN}" ]] && echo "-v ${V4L2_HELPER_BIN}:/v4l2loopback-helper:ro") \
   -v "${OUTPUT_DIR}:/output" \
   -e VERSION="${VERSION}" \
   -e ARCH_TARGET="${ARCH_TARGET}" \
@@ -158,6 +161,11 @@ package() {
     # 1. Install application files to /opt/libreconnect
     mkdir -p \"\${pkgdir}/opt/libreconnect\"
     cp -a /deploy/. \"\${pkgdir}/opt/libreconnect/\"
+
+    if [[ -f /v4l2loopback-helper ]]; then
+        mkdir -p \"\${pkgdir}/opt/libreconnect/tools\"
+        install -Dm0755 /v4l2loopback-helper \"\${pkgdir}/opt/libreconnect/tools/v4l2loopback-helper\"
+    fi
     
     # Copy install helper scripts
     mkdir -p \"\${pkgdir}/opt/libreconnect/scripts/linux/install\"
