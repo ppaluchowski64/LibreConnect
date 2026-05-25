@@ -20,6 +20,7 @@ class VirtualCameraController : public QObject
     Q_PROPERTY(QVariantList formatList READ formatList NOTIFY formatListChanged)
     Q_PROPERTY(int selectedCameraIndex READ selectedCameraIndex WRITE setSelectedCameraIndex NOTIFY selectedCameraIndexChanged)
     Q_PROPERTY(int selectedFormatIndex READ selectedFormatIndex WRITE setSelectedFormatIndex NOTIFY selectedFormatIndexChanged)
+    Q_PROPERTY(bool cameraFlipped READ cameraFlipped NOTIFY cameraFlippedChanged)
 
 public:
     explicit VirtualCameraController(QObject* parent = nullptr);
@@ -31,12 +32,14 @@ public:
     QVariantList formatList() const { return m_formatList; }
     int selectedCameraIndex() const { return m_selectedCameraIndex; }
     int selectedFormatIndex() const { return m_selectedFormatIndex; }
+    bool cameraFlipped() const;
 
     void setSelectedCameraIndex(int selectedCameraIndex);
     void setSelectedFormatIndex(int selectedFormatIndex);
 
     Q_INVOKABLE void setVirtualCameraEnabled(bool enabled);
     Q_INVOKABLE void refreshAvailableCameras();
+    Q_INVOKABLE void flipCamera();
 
 signals:
     void enabledChanged();
@@ -46,6 +49,7 @@ signals:
     void formatListChanged();
     void selectedCameraIndexChanged();
     void selectedFormatIndexChanged();
+    void cameraFlippedChanged();
 
 private:
     void refreshState();

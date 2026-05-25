@@ -294,12 +294,24 @@ Page {
                         }
                     }
 
-                    ThemedButton {
-                        text: virtualCameraController.enabled ? "Disable Virtual Camera" : (virtualCameraController.busy ? "Working..." : "Enable Virtual Camera")
-                        width: 220
-                        height: 42
-                        enabled: !virtualCameraController.busy
-                        onClicked: virtualCameraController.setVirtualCameraEnabled(!virtualCameraController.enabled)
+                    Row {
+                        spacing: 12
+
+                        ThemedButton {
+                            text: virtualCameraController.enabled ? "Disable Virtual Camera" : (virtualCameraController.busy ? "Working..." : "Enable Virtual Camera")
+                            width: 220
+                            height: 42
+                            enabled: !virtualCameraController.busy
+                            onClicked: virtualCameraController.setVirtualCameraEnabled(!virtualCameraController.enabled)
+                        }
+
+                        ThemedButton {
+                            text: "Flip Horizontal"
+                            width: 160
+                            height: 42
+                            visible: virtualCameraController.enabled && !virtualCameraController.busy
+                            onClicked: virtualCameraController.flipCamera()
+                        }
                     }
                 }
             }

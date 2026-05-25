@@ -78,6 +78,19 @@ void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
     module->Enable(true);
 }
 
+bool VirtualCameraController::cameraFlipped() const
+{
+    auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
+    return module->IsCameraFlipped();
+}
+
+void VirtualCameraController::flipCamera()
+{
+    auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
+    module->FlipCamera();
+    emit cameraFlippedChanged();
+}
+
 void VirtualCameraController::refreshAvailableCameras()
 {
     auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
