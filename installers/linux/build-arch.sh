@@ -343,24 +343,24 @@ License: GPL-3.0-only
 LAUNCHER
 }
 EOF
-    sed -i "s/__VERSION__/${VERSION}/g" PKGBUILD
-    sed -i "s/__ARCH_TARGET__/${ARCH_TARGET}/g" PKGBUILD
+    sed -i \"s/__VERSION__/\${VERSION}/g\" PKGBUILD
+    sed -i \"s/__ARCH_TARGET__/\${ARCH_TARGET}/g\" PKGBUILD
 
     echo 'Generating install script...'
     cat > libreconnect.install << 'EOF'
 post_install() {
     # Run post-install helper scripts
-    local scripts_dir="/opt/libreconnect/scripts/linux/install"
+    local scripts_dir=\"/opt/libreconnect/scripts/linux/install\"
     export LIBRECONNECT_SKIP_PACKAGE_INSTALL=1
 
-    if [[ -x "$scripts_dir/uinput-setup.sh" ]]; then
-        bash "$scripts_dir/uinput-setup.sh" || true
+    if [[ -x \"\$scripts_dir/uinput-setup.sh\" ]]; then
+        bash \"\$scripts_dir/uinput-setup.sh\" || true
     fi
-    if [[ -x "$scripts_dir/wl-clipboard.sh" ]]; then
-        bash "$scripts_dir/wl-clipboard.sh" || true
+    if [[ -x \"\$scripts_dir/wl-clipboard.sh\" ]]; then
+        bash \"\$scripts_dir/wl-clipboard.sh\" || true
     fi
-    if [[ -x "$scripts_dir/v4l2loopback.sh" ]]; then
-        V4L2_HELPER_PATH="/opt/libreconnect/tools/v4l2loopback-helper" bash "$scripts_dir/v4l2loopback.sh" || true
+    if [[ -x \"\$scripts_dir/v4l2loopback.sh\" ]]; then
+        V4L2_HELPER_PATH=\"/opt/libreconnect/tools/v4l2loopback-helper\" bash \"\$scripts_dir/v4l2loopback.sh\" || true
     fi
 
 
