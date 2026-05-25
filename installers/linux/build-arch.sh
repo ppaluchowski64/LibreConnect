@@ -160,7 +160,7 @@ options=('!strip' '!zipman')
 package() {
     # 1. Install application files to /opt/libreconnect
     mkdir -p \"\${pkgdir}/opt/libreconnect\"
-    cp -a /deploy/. \"\${pkgdir}/opt/libreconnect/\"
+    cp -aL /deploy/. \"\${pkgdir}/opt/libreconnect/\"
 
     if [[ -f /v4l2loopback-helper ]]; then
         mkdir -p \"\${pkgdir}/opt/libreconnect/tools\"
@@ -179,6 +179,7 @@ package() {
     if [[ -f \"\${pkgdir}/opt/libreconnect/AppRun.wrapped\" ]]; then
         chmod 0755 \"\${pkgdir}/opt/libreconnect/AppRun.wrapped\"
     fi
+    find \"\${pkgdir}/opt/libreconnect\" -type f -name \"*.so*\" -exec chmod 0755 {} +
     find \"\${pkgdir}/opt/libreconnect/scripts/linux/install\" -type f -name \"*.sh\" -exec chmod 0755 {} +
 
     # 2. Build launcher wrappers inside /opt/libreconnect
