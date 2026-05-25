@@ -253,9 +253,14 @@ echo "Running post-install hooks..."
 INSTALL_SCRIPTS_DIR="${INSTALL_PREFIX}/scripts/linux/install"
 WL_SCRIPT="${INSTALL_SCRIPTS_DIR}/wl-clipboard.sh"
 V4L2_SCRIPT="${INSTALL_SCRIPTS_DIR}/v4l2loopback.sh"
+UINPUT_SCRIPT="${INSTALL_SCRIPTS_DIR}/uinput-setup.sh"
 V4L2_HELPER="${INSTALL_PREFIX}/tools/v4l2loopback-helper"
 
 export LIBRECONNECT_SKIP_PACKAGE_INSTALL=1
+
+if [[ -x "$UINPUT_SCRIPT" ]]; then
+    bash "$UINPUT_SCRIPT" || true
+fi
 
 if [[ -x "$WL_SCRIPT" ]]; then
     bash "$WL_SCRIPT" || true
@@ -274,7 +279,7 @@ if command -v update-desktop-database >/dev/null 2>&1; then
     update-desktop-database -q /usr/share/applications || true
 fi
 
-# 10. Start daemon for current user
+# 10. Start daemon for users
 start_daemon_for_user() {
     local user_name="$1"
     if [[ -z "$user_name" || "$user_name" = "root" ]]; then
@@ -294,14 +299,30 @@ start_daemon_for_user() {
     runuser -u "$user_name" -- sh -lc "nohup \"$daemon_path\" >/dev/null 2>&1 &" || true
 }
 
+USERS_TO_START=()
 if [[ -n "${SUDO_USER:-}" ]]; then
-    start_daemon_for_user "$SUDO_USER"
-elif command -v logname >/dev/null 2>&1; then
-    CURRENT_LOGIN_USER="$(logname 2>/dev/null || true)"
-    if [[ -n "$CURRENT_LOGIN_USER" ]]; then
-        start_daemon_for_user "$CURRENT_LOGIN_USER"
-    fi
+    USERS_TO_START+=("$SUDO_USER")
 fi
+
+CURRENT_LOGIN_USER="$(logname 2>/dev/null || true)"
+if [[ -n "$CURRENT_LOGIN_USER" ]]; then
+    USERS_TO_START+=("$CURRENT_LOGIN_USER")
+fi
+
+if command -v loginctl >/dev/null 2>&1; then
+    while read -r uid user; do
+        if [[ -n "$uid" && "$uid" =~ ^[0-9]+$ && "$uid" -ge 1000 ]]; then
+            USERS_TO_START+=("$user")
+        fi
+    done < <(loginctl list-users --no-legend 2>/dev/null || true)
+fi
+
+# Unique users, excluding root
+FINAL_USERS=$(printf "%s\n" "${USERS_TO_START[@]}" | grep -v "^root$" | sort -u || true)
+
+for user in $FINAL_USERS; do
+    start_daemon_for_user "$user"
+done
 
 echo "LibreConnect has been successfully installed!"
 echo "You can launch it from your desktop applications menu, or by running: libreconnect"
