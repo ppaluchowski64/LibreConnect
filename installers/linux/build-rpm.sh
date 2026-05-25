@@ -395,6 +395,7 @@ Summary: ${DESCRIPTION}
 License: ${LICENSE}
 URL: ${HOMEPAGE}
 AutoReqProv: no
+Requires: acl
 Requires: bash
 Requires: dkms
 Requires: gcc

@@ -60,14 +60,29 @@ start_daemon_for_user() {
     runuser -u "$user_name" -- sh -lc "nohup \"$DAEMON_LAUNCHER\" >/dev/null 2>&1 &" || true
 }
 
+USERS_TO_START=()
 if [ -n "${SUDO_USER:-}" ]; then
-    start_daemon_for_user "$SUDO_USER"
-elif command -v logname >/dev/null 2>&1; then
-    CURRENT_LOGIN_USER="$(logname 2>/dev/null || true)"
-    if [ -n "$CURRENT_LOGIN_USER" ]; then
-        start_daemon_for_user "$CURRENT_LOGIN_USER"
-    fi
+    USERS_TO_START+=("$SUDO_USER")
 fi
+
+CURRENT_LOGIN_USER="$(logname 2>/dev/null || true)"
+if [ -n "$CURRENT_LOGIN_USER" ]; then
+    USERS_TO_START+=("$CURRENT_LOGIN_USER")
+fi
+
+if command -v loginctl >/dev/null 2>&1; then
+    while read -r uid user; do
+        if [ -n "$uid" ] && [[ "$uid" =~ ^[0-9]+$ ]] && [ "$uid" -ge 1000 ]; then
+            USERS_TO_START+=("$user")
+        fi
+    done < <(loginctl list-users --no-legend 2>/dev/null || true)
+fi
+
+FINAL_USERS=$(printf "%s\n" "${USERS_TO_START[@]}" | grep -v "^root$" | sort -u || true)
+
+for user in $FINAL_USERS; do
+    start_daemon_for_user "$user"
+done
 
 echo "[postrpm] Finished at $(date -Is)"
 exit 0

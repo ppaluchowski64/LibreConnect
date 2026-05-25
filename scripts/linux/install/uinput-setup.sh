@@ -28,23 +28,45 @@ fi
 UDEV_RULE="/etc/udev/rules.d/99-uinput.rules"
 echo "[uinput-setup] Creating udev rule at $UDEV_RULE"
 cat <<EOF | run_as_root tee "$UDEV_RULE" >/dev/null
-KERNEL=="uinput", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput", TAG+="uaccess"
+KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", GROUP="uinput", OPTIONS+="static_node=uinput", TAG+="uaccess"
 EOF
 
 echo "[uinput-setup] Reloading udev rules"
 run_as_root udevadm control --reload-rules
-run_as_root udevadm trigger
+run_as_root udevadm trigger --verbose --sysname-match=uinput
 
+USERS_TO_ADD=()
 if [[ -n "${SUDO_USER:-}" ]]; then
-    echo "[uinput-setup] Adding user $SUDO_USER to uinput group"
-    run_as_root usermod -aG uinput "$SUDO_USER"
-elif command -v logname >/dev/null 2>&1; then
-    CURRENT_LOGIN_USER="$(logname 2>/dev/null || true)"
-
-    if [[ -n "$CURRENT_LOGIN_USER" ]]; then
-        echo "[uinput-setup] Adding user $CURRENT_LOGIN_USER to uinput group"
-        run_as_root usermod -aG uinput "$CURRENT_LOGIN_USER"
-    fi
+    USERS_TO_ADD+=("$SUDO_USER")
 fi
+
+CURRENT_LOGIN_USER="$(logname 2>/dev/null || true)"
+if [[ -n "$CURRENT_LOGIN_USER" ]]; then
+    USERS_TO_ADD+=("$CURRENT_LOGIN_USER")
+fi
+
+if command -v loginctl >/dev/null 2>&1; then
+    # Add users with active sessions (UID >= 1000)
+    while read -r uid user; do
+        if [[ -n "$uid" && "$uid" =~ ^[0-9]+$ && "$uid" -ge 1000 ]]; then
+            USERS_TO_ADD+=("$user")
+        fi
+    done < <(loginctl list-users --no-legend 2>/dev/null || true)
+fi
+
+FINAL_USERS=$(printf "%s\n" "${USERS_TO_ADD[@]}" | grep -v "^root$" | sort -u || true)
+
+for user in $FINAL_USERS; do
+    echo "[uinput-setup] Adding user $user to uinput group"
+    run_as_root usermod -aG uinput "$user" || true
+    
+    # Try to grant immediate access via ACLs if setfacl is available
+    if command -v setfacl >/dev/null 2>&1; then
+        if [[ -c /dev/uinput ]]; then
+            echo "[uinput-setup] Granting immediate access to /dev/uinput for user $user via ACL"
+            run_as_root setfacl -m "u:$user:rw" /dev/uinput || true
+        fi
+    fi
+done
 
 echo "[uinput-setup] uinput configuration complete."

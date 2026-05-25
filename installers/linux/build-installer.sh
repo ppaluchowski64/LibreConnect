@@ -358,7 +358,7 @@ Section: net
 Priority: optional
 Architecture: ${ARCH}
 Maintainer: ${MAINTAINER}
-Depends: bash
+Depends: acl, bash
 Installed-Size: ${INSTALLED_SIZE}
 Homepage: ${HOMEPAGE}
 Description: ${DESCRIPTION}

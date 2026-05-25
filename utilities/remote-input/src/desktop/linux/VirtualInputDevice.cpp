@@ -9,8 +9,10 @@
 
 VirtualInputDevice::VirtualInputDevice(const char* deviceName) {
     m_uinput_fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
-    if (m_uinput_fd < 0)
-        throw std::runtime_error("Cannot create virtual device: /dev/uinput missing or no permissions");
+    if (m_uinput_fd < 0) {
+        throw std::runtime_error("Cannot create virtual device: /dev/uinput missing or no permissions. "
+                                 "Ensure you are in the 'uinput' group or udev rules are correctly configured.");
+    }
 
     ioctl(m_uinput_fd, UI_SET_EVBIT, EV_KEY);
     ioctl(m_uinput_fd, UI_SET_EVBIT, EV_SYN);
