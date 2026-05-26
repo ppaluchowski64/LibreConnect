@@ -144,11 +144,13 @@ Control slideshow presentations remotely.
 Locate your misplaced mobile device from your computer.
 - Triggers an audible alert at maximum volume.
 - Overrides "Do Not Disturb" and silent modes.
+<img width="332" height="196" alt="image" src="https://github.com/user-attachments/assets/409d599b-529e-498f-aee7-7e65705ba1dd" />
 
 ### Streamer Mode
 A built-in privacy feature designed for those who share or stream their screens.
 - Instantly masks sensitive data within the application.
 - Replaces hostnames, IP addresses, and contact information with generic placeholders (e.g., "Connected Device", "Unknown Contact") to prevent accidental disclosure.
+<img width="1255" height="363" alt="image" src="https://github.com/user-attachments/assets/cb30ad1c-345b-4e1b-8b09-c88da74d76c1" />
 
 ---
 
