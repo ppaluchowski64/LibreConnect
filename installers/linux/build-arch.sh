@@ -143,7 +143,10 @@ docker run --rm \
     BUILD_DIR='/home/builduser/build'
     mkdir -p \$BUILD_DIR
     cd \$BUILD_DIR
-    
+        
+    echo 'Setting packager name...'
+    echo 'PACKAGER=\"Pablo Majster <104451887+ppaluchowski64@users.noreply.github.com>\"' >> /etc/makepkg.conf
+
     echo 'Generating PKGBUILD...'
     cat > PKGBUILD << 'EOF'
 pkgname=libreconnect
