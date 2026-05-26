@@ -547,6 +547,10 @@ void WithJniEnv(Fn&& fn)
 void PublishBackendEvent(const QEvent& event)
 {
     if (event.type() == RemoteMediaInfoEvent::Type) {
+        if (!AndroidContextProvider::HasServiceContext()) {
+            return;
+        }
+
         const auto& mediaEvent = static_cast<const RemoteMediaInfoEvent&>(event);
         {
             std::lock_guard<std::mutex> lock(g_mediaMutex);
@@ -729,6 +733,14 @@ void PublishBackendEvent(const QEvent& event)
     }
 
     if (event.type() == DisconnectedEvent::Type || event.type() == ConnectedEvent::Type) {
+        if (!AndroidContextProvider::HasServiceContext()) {
+            return;
+        }
+
+        if (ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED) {
+            return;
+        }
+
         try {
             auto& remoteInput = ModulesManager::GetModuleReference<RemoteInputModule>();
             remoteInput->Disable(true);
