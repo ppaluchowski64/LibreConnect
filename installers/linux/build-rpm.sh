@@ -20,7 +20,7 @@ OUTPUT_DIR_REL="../../out"
 PACKAGE_NAME="libreconnect"
 ARCH="x86_64"
 RELEASE="1"
-MAINTAINER="LibreConnect"
+MAINTAINER="Pablo Majster"
 DESCRIPTION="Privacy-focused peer-to-peer device connectivity app"
 LONG_DESCRIPTION="LibreConnect links desktop and mobile devices over local, encrypted peer-to-peer connections"
 HOMEPAGE="https://github.com/ppaluchowski64/LibreConnect"
@@ -379,7 +379,7 @@ Upstream-Name: LibreConnect
 Source: ${HOMEPAGE}
 
 Files: *
-Copyright: LibreConnect contributors
+Copyright: LibreConnect Contributors
 License: GPL-3.0-only
 EOF
 

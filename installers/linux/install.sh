@@ -223,7 +223,7 @@ cat > "/usr/share/metainfo/com.libreconnect.desktop.metainfo.xml" <<EOF
   <url type="homepage">${HOMEPAGE}</url>
   <url type="bugtracker">${HOMEPAGE}/issues</url>
   <url type="vcs-browser">${HOMEPAGE}</url>
-  <developer_name>LibreConnect</developer_name>
+  <developer_name>Pablo Majster</developer_name>
   <categories>
     <category>Network</category>
     <category>Utility</category>
@@ -240,7 +240,7 @@ Upstream-Name: LibreConnect
 Source: ${HOMEPAGE}
 
 Files: *
-Copyright: LibreConnect contributors
+Copyright: LibreConnect Contributors
 License: GPL-3.0-only
 EOF
 

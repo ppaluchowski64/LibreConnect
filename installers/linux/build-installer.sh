@@ -19,7 +19,7 @@ fi
 OUTPUT_DIR_REL="../../out"
 PACKAGE_NAME="libreconnect"
 ARCH="amd64"
-MAINTAINER="LibreConnect"
+MAINTAINER="Pablo Majster"
 DESCRIPTION="Privacy-focused peer-to-peer device connectivity app"
 LONG_DESCRIPTION="LibreConnect links desktop and mobile devices over local, encrypted peer-to-peer connections"
 HOMEPAGE="https://github.com/ppaluchowski64/LibreConnect"
@@ -316,7 +316,7 @@ cat > "${PKG_ROOT}/usr/share/metainfo/com.libreconnect.desktop.metainfo.xml" <<E
   <url type="homepage">${HOMEPAGE}</url>
   <url type="bugtracker">${HOMEPAGE}/issues</url>
   <url type="vcs-browser">${HOMEPAGE}</url>
-  <developer_name>LibreConnect</developer_name>
+  <developer_name>${MAINTAINER}</developer_name>
   <categories>
     <category>Network</category>
     <category>Utility</category>
@@ -371,7 +371,7 @@ Upstream-Name: LibreConnect
 Source: ${HOMEPAGE}
 
 Files: *
-Copyright: LibreConnect contributors
+Copyright: LibreConnect Contributors
 License: GPL-3.0-only
 EOF
 

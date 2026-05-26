@@ -319,7 +319,7 @@ LAUNCHER
   <url type=\"homepage\">https://github.com/ppaluchowski64/LibreConnect</url>
   <url type=\"bugtracker\">https://github.com/ppaluchowski64/LibreConnect/issues</url>
   <url type=\"vcs-browser\">https://github.com/ppaluchowski64/LibreConnect</url>
-  <developer_name>LibreConnect</developer_name>
+  <developer_name>Pablo Majster</developer_name>
   <categories>
     <category>Network</category>
     <category>Utility</category>
@@ -339,7 +339,7 @@ Upstream-Name: LibreConnect
 Source: https://github.com/ppaluchowski64/LibreConnect
 
 Files: *
-Copyright: LibreConnect contributors
+Copyright: LibreConnect Contributors
 License: GPL-3.0-only
 LAUNCHER
 }
