@@ -20,54 +20,6 @@ LibreConnect is built from the ground up with privacy as its foundational princi
 
 ---
 
-## Download
-
-The simplest way to get LibreConnect is to download the latest installation package for your platform from our [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
-
-### Linux Repositories (Recommended)
-For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically. Using these repositories is recommended over manual package installation.
-
-#### Debian / Ubuntu / Linux Mint
-**1. Configure the repository:**
-```bash
-sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://libreconnect.one/apt/libreconnect-archive-keyring.asc | sudo gpg --dearmor -o /etc/apt/keyrings/libreconnect-archive-keyring.gpg
-echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/libreconnect-archive-keyring.gpg] https://libreconnect.one/apt stable main" | sudo tee /etc/apt/sources.list.d/libreconnect.list
-```
-
-**2. Install the application:**
-```bash
-sudo apt update
-sudo apt install -y libreconnect
-```
-
-#### Fedora / RHEL / CentOS
-**1. Configure the repository:**
-```bash
-sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos.d/libreconnect.repo
-```
-
-**2. Install the application:**
-```bash
-sudo dnf install -y libreconnect
-```
-
-#### Arch Linux / Manjaro / EndeavourOS
-**1. Configure the repository:**
-```bash
-curl -fsSL https://libreconnect.one/pacman/libreconnect-packages.gpg | sudo pacman-key --add -
-sudo pacman-key --lsign-key 01E6938CCB71C239
-echo -e "\n[libreconnect]\nSigLevel = Required DatabaseRequired\nServer = https://libreconnect.one/pacman/\$arch" | sudo tee -a /etc/pacman.conf
-```
-
-**2. Install the application:**
-```bash
-sudo pacman -Sy
-sudo pacman -S --noconfirm libreconnect
-```
-
----
-
 ## Key Features
 
 ### Device Info
@@ -76,20 +28,17 @@ Get an instant overview of your connected devices.
 - Real-time battery level tracking for both mobile devices and computers (where hardware permits).
 <img width="336" height="127" alt="image" src="https://github.com/user-attachments/assets/0af4b8fd-962d-4e52-afd5-29f32646ffca" />
 
-
 ### Virtual Camera
 Transform your smartphone into a high-quality webcam for your computer. The system recognizes the phone as a native camera device.
 - Adjustable resolution and orientation.
 - Status notifications on the mobile device with quick-disable functionality.
 <img width="2097" height="1215" alt="image" src="https://github.com/user-attachments/assets/7ec36cc8-6522-4ee5-9c31-3e6468d3ed55" />
 
-
 ### Virtual Microphone
 Use your mobile device as a wireless microphone for your desktop.
 - Seamless integration with system audio inputs.
 - Active status notifications for privacy awareness.
 <img width="1696" height="1046" alt="image" src="https://github.com/user-attachments/assets/472ba009-d103-4ab7-a3f2-fb4a63fbf738" />
-
 
 ### File Manager
 Access and manage your Android file system directly from your desktop.
@@ -105,7 +54,6 @@ Receive and manage mobile notifications on your desktop.
 - Dismiss notifications on your phone directly from your computer.
 <img width="918" height="438" alt="image" src="https://github.com/user-attachments/assets/bf26945c-3b43-42fc-9890-e8e3ed9dff5a" />
 
-
 ### Clipboard Sync
 Synchronize your clipboard across all devices.
 - **Desktop to Mobile:** Automatic synchronization.
@@ -118,27 +66,25 @@ Read and reply to text messages from your computer.
 - Seamless message sending as if using the phone directly.
 <img width="933" height="777" alt="image" src="https://github.com/user-attachments/assets/43f7c247-93e8-43c9-b6fd-9155e6025ba5" />
 
-
 ### Media Remote
 Bidirectional multimedia control for both computers and mobile devices.
 - Synchronized metadata: Title, Artist, Album, Cover Art, and Playback Position.
 - System-level media notifications for quick control without opening the app.
 - Remote volume adjustment.
 <img width="1566" height="893" alt="image" src="https://github.com/user-attachments/assets/b57353ca-b068-4fa3-86bf-62fe2bbd645b" />
-<img width="629" height="1153" alt="image" src="https://github.com/user-attachments/assets/0b86e181-fe0b-44ab-bede-2df08493831b" />
-
 
 ### Remote Keyboard
 Utilize your mobile device as a remote keyboard for your computer.
-<img width="629" height="1246" alt="image" src="https://github.com/user-attachments/assets/b1f25f77-0ccb-47eb-8885-e825a90c3020" />
 
+<p align="left">
+  <img width="300" alt="image" src="https://github.com/user-attachments/assets/b1f25f77-0ccb-47eb-8885-e825a90c3020" />
+</p>
 
 ### Presenter Mode
 Control slideshow presentations remotely.
 - Start/End presentation mode.
 - Slide navigation.
-<img width="632" height="1149" alt="image" src="https://github.com/user-attachments/assets/91b86c14-7ea3-4424-a596-9cf292497104" />
-
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/91b86c14-7ea3-4424-a596-9cf292497104" />
 
 ### Find My Phone
 Locate your misplaced mobile device from your computer.
@@ -166,6 +112,68 @@ LibreConnect aims to support as many modern platforms as possible, with the curr
 | **Android**      | .apk           | ARM64                   |
 
 *Note: iOS is currently not supported due to platform restrictions regarding background processes and permissions.*
+
+---
+
+## Download
+
+The simplest way to get LibreConnect is to download the latest installation package for your platform from our [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
+
+### Recommended Installation Methods
+
+For certain operating systems, we provide automated installation methods to ensure you always have the latest features and security updates.
+
+#### Android
+We offer two primary ways to keep LibreConnect updated on Android. You can use **Obtainium** to track our GitHub releases directly, or add our repository to **F-Droid**.
+
+<a href="https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/%7B%22id%22%3A%22com.LibreConnect.mobile%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fppaluchowski64%2FLibreConnect%22%2C%22name%22%3A%22LibreConnect%22%2C%22preferredAssetFilter%22%3A%22.*-arm64-v8a%5C%5C.apk%22%7D">
+  <img src="https://github.com/user-attachments/assets/713d71c5-3dec-4ec4-a3f2-8d28d025a9c6" alt="Add to Obtainium" height="125">
+</a>
+<a href="https://libreconnect.one/fdroid/repo/index.html">
+  <img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="125">
+</a>
+
+#### Linux
+For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically.
+
+##### Debian / Ubuntu / Linux Mint
+**1. Configure the repository:**
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://libreconnect.one/apt/libreconnect-archive-keyring.asc | sudo gpg --dearmor -o /etc/apt/keyrings/libreconnect-archive-keyring.gpg
+echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/libreconnect-archive-keyring.gpg] https://libreconnect.one/apt stable main" | sudo tee /etc/apt/sources.list.d/libreconnect.list
+```
+
+**2. Install the application:**
+```bash
+sudo apt update
+sudo apt install -y libreconnect
+```
+
+##### Fedora / RHEL / CentOS
+**1. Configure the repository:**
+```bash
+sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos.d/libreconnect.repo
+```
+
+**2. Install the application:**
+```bash
+sudo dnf install -y libreconnect
+```
+
+##### Arch Linux / Manjaro / EndeavourOS
+**1. Configure the repository:**
+```bash
+curl -fsSL https://libreconnect.one/pacman/libreconnect-packages.gpg | sudo pacman-key --add -
+sudo pacman-key --lsign-key 01E6938CCB71C239
+echo -e "\n[libreconnect]\nSigLevel = Required DatabaseRequired\nServer = https://libreconnect.one/pacman/\$arch" | sudo tee -a /etc/pacman.conf
+```
+
+**2. Install the application:**
+```bash
+sudo pacman -Sy
+sudo pacman -S --noconfirm libreconnect
+```
 
 ---
 
