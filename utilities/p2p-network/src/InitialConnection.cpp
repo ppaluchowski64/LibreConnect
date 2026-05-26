@@ -595,6 +595,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionApprovalCallback(con
     }
 
     Debug::Log("InitialConnection: Final approval accepted. Seeking Primary...");
+    m_suppressDisconnectErrors = true;
     ConnectionManager::SeekPrimary(data, [ref = shared_from_this(), initialConnectionData = data](const TCPEndpoint endpoint) mutable {
         initialConnectionData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
         initialConnectionData.deviceInfo.deviceAddress = endpoint.address().to_string();
@@ -630,6 +631,7 @@ asio::awaitable<void> InitialConnection::CoProcessConnectionPendingCallback(cons
     }
 
     Debug::Log("InitialConnection: No challenge required. Moving to Primary Seek.");
+    m_suppressDisconnectErrors = true;
 
     auto responseData = data;
     responseData.deviceInfo = DeviceInfo::GetThisDeviceInfo();
