@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKIP_PACKAGE_INSTALL="${LIBRECONNECT_SKIP_PACKAGE_INSTALL:-0}"
@@ -28,86 +28,8 @@ matches_distro() {
     [[ "$like_value" == *" ${needle} "* ]]
 }
 
-install_dependencies_debian() {
-    run_as_root apt update
-    run_as_root apt install -y \
-        dkms \
-        git \
-        build-essential \
-        "linux-headers-$(uname -r)" \
-        libv4l-dev
-}
-
-install_dependencies_fedora() {
-    run_as_root dnf install -y \
-        dkms \
-        git \
-        gcc \
-        make \
-        "kernel-devel-$(uname -r)" \
-        libv4l-devel || run_as_root dnf install -y \
-        dkms \
-        git \
-        gcc \
-        make \
-        kernel-devel \
-        libv4l-devel
-}
-
-if [[ "$SKIP_PACKAGE_INSTALL" != "1" ]]; then
-    if [[ -f /etc/os-release ]]; then
-        # shellcheck disable=SC1091
-        source /etc/os-release
-        if matches_distro debian; then
-            install_dependencies_debian
-        elif matches_distro fedora || matches_distro rhel; then
-            install_dependencies_fedora
-        else
-            echo "Unsupported distro for auto dependency install (${ID:-unknown}). Skipping package install."
-        fi
-    fi
-else
-    echo "Package installation disabled (LIBRECONNECT_SKIP_PACKAGE_INSTALL=1)."
-fi
-
-for required_cmd in dkms git make modprobe; do
-    if ! command_exists "$required_cmd"; then
-        echo "Required command not found: $required_cmd" >&2
-        exit 1
-    fi
-done
-
-MODULE="v4l2loopback"
-VERSION="git"
-SRC="/usr/src/${MODULE}-${VERSION}"
-
-if [[ ! -d "$SRC" ]]; then
-    run_as_root git clone https://github.com/v4l2loopback/v4l2loopback.git "$SRC"
-fi
-
-if ! dkms status | grep -q "^${MODULE}/${VERSION}"; then
-    run_as_root dkms add -m "$MODULE" -v "$VERSION"
-fi
-
-run_as_root dkms build -m "$MODULE" -v "$VERSION"
-run_as_root dkms install -m "$MODULE" -v "$VERSION"
-
-if [[ -d "$SRC/utils" ]]; then
-    make -C "$SRC/utils"
-    if [[ -f "$SRC/utils/v4l2loopback-ctl" ]]; then
-        run_as_root install -m 0755 "$SRC/utils/v4l2loopback-ctl" /usr/local/bin/v4l2loopback-ctl
-    fi
-fi
-
-run_as_root mkdir -p /etc/modprobe.d
-cat <<'EOF' | run_as_root tee /etc/modprobe.d/v4l2loopback.conf >/dev/null
-options v4l2loopback exclusive_caps=1
-EOF
-
-run_as_root modprobe -r v4l2loopback || true
-run_as_root modprobe v4l2loopback || true
-
 if [[ -f "$HELPER_PATH" ]]; then
+    echo "Installing v4l2loopback-helper to /usr/libexec/..."
     run_as_root install -Dm0755 "$HELPER_PATH" /usr/libexec/v4l2loopback-helper
 
     run_as_root mkdir -p /usr/share/polkit-1/rules.d /usr/share/polkit-1/actions
@@ -142,6 +64,93 @@ EOF
 EOF
 
     run_as_root systemctl restart polkit || true
+    echo "v4l2loopback-helper installed successfully."
 else
-    echo "v4l2loopback-helper not found at: $HELPER_PATH"
+    echo "WARNING: v4l2loopback-helper not found at: $HELPER_PATH (skipping helper install)"
 fi
+
+
+install_dependencies_debian() {
+    run_as_root apt update
+    run_as_root apt install -y \
+        dkms \
+        git \
+        build-essential \
+        "linux-headers-$(uname -r)" \
+        libv4l-dev
+}
+
+install_dependencies_fedora() {
+    run_as_root dnf install -y \
+        dkms \
+        git \
+        gcc \
+        make \
+        "kernel-devel-$(uname -r)" \
+        libv4l-devel || run_as_root dnf install -y \
+        dkms \
+        git \
+        gcc \
+        make \
+        kernel-devel \
+        libv4l-devel
+}
+
+if [[ "$SKIP_PACKAGE_INSTALL" != "1" ]]; then
+    if [[ -f /etc/os-release ]]; then
+        source /etc/os-release
+        if matches_distro debian; then
+            install_dependencies_debian
+        elif matches_distro fedora || matches_distro rhel; then
+            install_dependencies_fedora
+        else
+            echo "Unsupported distro for auto dependency install (${ID:-unknown}). Skipping package install."
+        fi
+    fi
+else
+    echo "Package installation disabled (LIBRECONNECT_SKIP_PACKAGE_INSTALL=1)."
+fi
+
+
+MISSING_CMDS=()
+for required_cmd in dkms git make modprobe; do
+    if ! command_exists "$required_cmd"; then
+        MISSING_CMDS+=("$required_cmd")
+    fi
+done
+
+if [[ ${#MISSING_CMDS[@]} -gt 0 ]]; then
+    echo "Skipping v4l2loopback kernel module build (missing: ${MISSING_CMDS[*]})."
+    echo "Install v4l2loopback-dkms via your package manager, or install the missing tools and re-run this script."
+    exit 0
+fi
+
+MODULE="v4l2loopback"
+VERSION="git"
+SRC="/usr/src/${MODULE}-${VERSION}"
+
+if [[ ! -d "$SRC" ]]; then
+    run_as_root git clone https://github.com/v4l2loopback/v4l2loopback.git "$SRC"
+fi
+
+if ! dkms status | grep -q "^${MODULE}/${VERSION}"; then
+    run_as_root dkms add -m "$MODULE" -v "$VERSION"
+fi
+
+run_as_root dkms build -m "$MODULE" -v "$VERSION"
+run_as_root dkms install -m "$MODULE" -v "$VERSION"
+
+if [[ -d "$SRC/utils" ]]; then
+    make -C "$SRC/utils"
+    if [[ -f "$SRC/utils/v4l2loopback-ctl" ]]; then
+        run_as_root install -m 0755 "$SRC/utils/v4l2loopback-ctl" /usr/local/bin/v4l2loopback-ctl
+    fi
+fi
+
+run_as_root mkdir -p /etc/modprobe.d
+cat <<'EOF' | run_as_root tee /etc/modprobe.d/v4l2loopback.conf >/dev/null
+options v4l2loopback exclusive_caps=1
+EOF
+
+run_as_root modprobe -r v4l2loopback || true
+run_as_root modprobe v4l2loopback || true

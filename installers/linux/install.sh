@@ -2,9 +2,6 @@
 
 set -euo pipefail
 
-# Universal installer script for LibreConnect
-# Installs application files to /opt/libreconnect
-
 INSTALL_PREFIX="/opt/libreconnect"
 PACKAGE_NAME="libreconnect"
 DESCRIPTION="Privacy-focused peer-to-peer device connectivity app"
@@ -12,7 +9,6 @@ LONG_DESCRIPTION="LibreConnect links desktop and mobile devices over local, encr
 HOMEPAGE="https://github.com/ppaluchowski64/LibreConnect"
 LICENSE="GPL-3.0-only"
 
-# Ensure script is run as root
 if [[ "$EUID" -ne 0 ]]; then
     echo "ERROR: Please run this installer as root (e.g. using sudo)." >&2
     exit 1
@@ -37,10 +33,12 @@ echo "Checking and installing dependencies..."
 if command -v apt-get >/dev/null 2>&1; then
     echo "Detected Debian/Ubuntu system. Installing dependencies..."
     apt-get update
-    apt-get install -y wl-clipboard dkms gcc make git libv4l-dev || true
+    apt-get install -y wl-clipboard dkms gcc make git build-essential \
+        "linux-headers-$(uname -r)" libv4l-dev || true
 elif command -v dnf >/dev/null 2>&1; then
     echo "Detected Fedora/RHEL/CentOS system. Installing dependencies..."
-    dnf install -y wl-clipboard dkms gcc make git libv4l-devel || true
+    dnf install -y wl-clipboard dkms gcc make git \
+        "kernel-devel-$(uname -r)" libv4l-devel || true
 elif command -v pacman >/dev/null 2>&1; then
     echo "Detected Arch Linux system. Installing dependencies..."
     pacman -Sy --noconfirm --needed wl-clipboard v4l2loopback-dkms git gcc make || true
@@ -48,19 +46,16 @@ else
     echo "WARNING: Could not automatically install dependencies. Please ensure 'wl-clipboard' and 'v4l2loopback' are installed."
 fi
 
-# 2. Copy application files
 echo "Copying application files to ${INSTALL_PREFIX}..."
 rm -rf "$INSTALL_PREFIX"
 mkdir -p "$INSTALL_PREFIX"
 cp -a "${APP_SOURCE_DIR}/." "$INSTALL_PREFIX/"
 
-# Copy extra post-install scripts to install directory if available
 if [[ -d "$SCRIPTS_SOURCE_DIR" ]]; then
     mkdir -p "${INSTALL_PREFIX}/scripts/linux"
     cp -a "$SCRIPTS_SOURCE_DIR" "${INSTALL_PREFIX}/scripts/linux/install"
 fi
 
-# Set executable permissions
 chmod 0755 "${INSTALL_PREFIX}/usr/bin/LibreConnect"
 if [[ -f "${INSTALL_PREFIX}/AppRun" ]]; then
     chmod 0755 "${INSTALL_PREFIX}/AppRun"
@@ -72,7 +67,6 @@ if [[ -d "${INSTALL_PREFIX}/scripts/linux/install" ]]; then
     find "${INSTALL_PREFIX}/scripts/linux/install" -type f -name "*.sh" -exec chmod 0755 {} +
 fi
 
-# 3. Create wrapper scripts in /opt/libreconnect
 LAUNCHER_REL="libreconnect-run.sh"
 DAEMON_LAUNCHER_REL="libreconnect-daemon-run.sh"
 DAEMON_EXE_NAME="LibreConnect-daemon"
