@@ -9,7 +9,6 @@
 #include <NetworkMicrophoneModule.h>
 
 #ifdef Q_OS_ANDROID
-#include <QJniObject>
 #include <PermissionManager.h>
 #endif
 
@@ -76,7 +75,7 @@ void SendAndroidPermissionSnapshot()
 
 asio::awaitable<void> SendAndroidPermissionSnapshotRetries()
 {
-    constexpr std::array delaysMs{0, 500, 1500, 3000};
+    constexpr std::array delaysMs{0, 500, 1500, 3000, 6000, 10000, 20000, 40000};
     asio::steady_timer timer(ThreadPool::GetContext());
 
     for (const int delayMs : delaysMs) {
@@ -172,6 +171,9 @@ void ModulesManager::Initialize() {
     }
 
     std::lock_guard<std::mutex> lock(s_mutex);
+    if (s_initialized.load()) {
+        return;
+    }
 
     if (s_instance == nullptr) {
         s_instance = new ModulesManager();
@@ -296,6 +298,8 @@ void ModulesManager::Initialize() {
             event = std::make_unique<ModuleRequestedPermissionRejected>(type);
         }
         ConnectionManager::SendEvent(event);
+
+        asio::co_spawn(ThreadPool::GetContext(), SendAndroidPermissionSnapshotRetries(), asio::detached);
 
         co_return;
     });

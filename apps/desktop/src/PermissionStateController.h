@@ -46,6 +46,7 @@ protected:
 
 private:
     void clearPermissionState();
+    void requestPermissionSyncSnapshot();
     void setPermissionState(PermissionType permissionType, bool granted);
 
     bool m_connected = false;
@@ -57,4 +58,5 @@ private:
     bool m_accessibilityGranted = false;
     bool m_desktopNotificationsGranted = false;
     bool m_microphoneGranted = false;
+    int m_syncRequestGeneration = 0;
 };

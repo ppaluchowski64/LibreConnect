@@ -59,7 +59,6 @@ constexpr auto kFindMyPhoneRingtoneSetting = "findMyPhone/ringtoneUri";
 constexpr auto kFindMyPhoneAlertActiveSetting = "findMyPhone/alertActive";
 
 #ifdef ANDROID_DEVICE
-constexpr auto kMainServiceClass = "com.LibreConnect.mobile.MainService";
 constexpr auto kRespondConnectionPendingAction = "com.LibreConnect.mobile.action.RESPOND_CONNECTION_PENDING";
 constexpr auto kRespondConnectionApprovalAction = "com.LibreConnect.mobile.action.RESPOND_CONNECTION_APPROVAL";
 constexpr auto kAcceptedExtra = "com.LibreConnect.mobile.EXTRA_ACCEPTED";
@@ -68,74 +67,18 @@ constexpr auto kChallengeExtra = "com.LibreConnect.mobile.EXTRA_CHALLENGE";
 
 void SendBackendConnectionPendingResponse(const bool accepted, const QString& challenge)
 {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    if (!context.isValid()) {
-        return;
-    }
-
-    const QJniObject intent("android/content/Intent", "()V");
-    if (!intent.isValid()) {
-        return;
-    }
-
-    const QJniObject packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
-    intent.callObjectMethod(
-        "setClassName",
-        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-        packageName.object<jstring>(),
-        QJniObject::fromString(kMainServiceClass).object<jstring>()
+    BackendBridge::SendAction(
+        kRespondConnectionPendingAction,
+        kAcceptedExtra,
+        accepted,
+        kChallengeExtra,
+        challenge
     );
-    intent.callObjectMethod(
-        "setAction",
-        "(Ljava/lang/String;)Landroid/content/Intent;",
-        QJniObject::fromString(kRespondConnectionPendingAction).object<jstring>()
-    );
-    intent.callObjectMethod(
-        "putExtra",
-        "(Ljava/lang/String;Z)Landroid/content/Intent;",
-        QJniObject::fromString(kAcceptedExtra).object<jstring>(),
-        static_cast<jboolean>(accepted)
-    );
-    intent.callObjectMethod(
-        "putExtra",
-        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-        QJniObject::fromString(kChallengeExtra).object<jstring>(),
-        QJniObject::fromString(challenge).object<jstring>()
-    );
-    context.callObjectMethod("startService", "(Landroid/content/Intent;)Landroid/content/ComponentName;", intent.object<jobject>());
 }
 
 void SendBackendConnectionApprovalResponse(const bool approved)
 {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    if (!context.isValid()) {
-        return;
-    }
-
-    const QJniObject intent("android/content/Intent", "()V");
-    if (!intent.isValid()) {
-        return;
-    }
-
-    const QJniObject packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;");
-    intent.callObjectMethod(
-        "setClassName",
-        "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
-        packageName.object<jstring>(),
-        QJniObject::fromString(kMainServiceClass).object<jstring>()
-    );
-    intent.callObjectMethod(
-        "setAction",
-        "(Ljava/lang/String;)Landroid/content/Intent;",
-        QJniObject::fromString(kRespondConnectionApprovalAction).object<jstring>()
-    );
-    intent.callObjectMethod(
-        "putExtra",
-        "(Ljava/lang/String;Z)Landroid/content/Intent;",
-        QJniObject::fromString(kApprovedExtra).object<jstring>(),
-        static_cast<jboolean>(approved)
-    );
-    context.callObjectMethod("startService", "(Landroid/content/Intent;)Landroid/content/ComponentName;", intent.object<jobject>());
+    BackendBridge::SendAction(kRespondConnectionApprovalAction, kApprovedExtra, approved);
 }
 
 QString JStringToQString(JNIEnv* env, jstring value)
@@ -176,26 +119,10 @@ QString DeviceTypeToLabel(const DeviceType type)
 
 QJsonObject ReadBackendStateSnapshot()
 {
-    QString storageRoot;
 #ifdef ANDROID_DEVICE
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
-    if (context.isValid()) {
-        const QJniObject filesDir = context.callObjectMethod(
-            "getFilesDir",
-            "()Ljava/io/File;"
-        );
-        if (filesDir.isValid()) {
-            storageRoot = filesDir.callObjectMethod(
-                "getAbsolutePath",
-                "()Ljava/lang/String;"
-            ).toString();
-        }
-    }
-#endif
-    if (storageRoot.isEmpty()) {
-        storageRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    }
-
+    return BackendBridge::ReadStateSnapshot();
+#else
+    const QString storageRoot = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     const QString statePath = storageRoot + QStringLiteral("/backend_state.json");
     QFile file(statePath);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -208,6 +135,7 @@ QJsonObject ReadBackendStateSnapshot()
     }
 
     return document.object();
+#endif
 }
 }
 
