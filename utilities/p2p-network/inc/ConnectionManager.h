@@ -57,6 +57,14 @@ public:
     static void SendRequestResponse(const size_t requestID, PC_PackageType type, Args&&... args) {
         std::call_once(s_flag, Initialize);
 
+        if (s_instance->m_primaryConnection->GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogWarning(
+                "ConnectionManager: Dropping response package type {} because primary is not connected",
+                static_cast<int>(type)
+            );
+            return;
+        }
+
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE_RESPONSE);
         s_instance->m_primaryConnection->SendWithFlag(type, packageFlag, static_cast<size_t>(requestID), std::forward<Args>(args)...);
     }
@@ -65,6 +73,14 @@ public:
     // ReSharper disable once CppParameterMayBeConst
     static asio::awaitable<std::optional<std::unique_ptr<Package<PC_PackageType>>>> SendRequest(PC_PackageType type, Args&&... args) {
         std::call_once(s_flag, Initialize);
+
+        if (s_instance->m_primaryConnection->GetConnectionState() != ConnectionState::CONNECTED) {
+            Debug::LogWarning(
+                "ConnectionManager: Dropping request package type {} because primary is not connected",
+                static_cast<int>(type)
+            );
+            co_return std::nullopt;
+        }
 
         constexpr uint8_t packageFlag = static_cast<uint8_t>(PackageFlag::REQUEST_AWAITABLE);
         const size_t requestID = s_instance->m_currentRequestID.fetch_add(1);

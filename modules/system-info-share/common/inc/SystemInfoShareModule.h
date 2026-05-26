@@ -4,6 +4,8 @@
 #include <BaseModule.h>
 #include <asio/awaitable.hpp>
 
+#include <atomic>
+
 #include <QEvent>
 
 class PeerBatteryLevelUpdateEvent final : public QEvent {
@@ -23,7 +25,8 @@ private:
 
 class SystemInfoShareModule : public BaseModule {
 private:
-    asio::awaitable<void> SendBatteryInfo() const;
+    asio::awaitable<void> SendBatteryInfo(uint64_t senderGeneration) const;
+    mutable std::atomic<uint64_t> m_batterySenderGeneration{0};
 
 protected:
     void EnableResponseCallbacks() override;

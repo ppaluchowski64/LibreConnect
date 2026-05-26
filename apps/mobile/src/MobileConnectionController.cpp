@@ -1112,11 +1112,11 @@ void MobileConnectionController::refreshBackendStateSnapshot()
         emit permissionsStateChanged();
     }
 
-    if (m_connectedPeerDeviceId != peerId) {
+    if (!peerId.isEmpty() && m_connectedPeerDeviceId != peerId) {
         m_connectedPeerDeviceId = peerId;
     }
 
-    if (m_pendingDeviceName != peerName) {
+    if (!peerName.isEmpty() && m_pendingDeviceName != peerName) {
         m_pendingDeviceName = peerName;
         emit pendingDeviceNameChanged();
     }

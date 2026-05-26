@@ -1,13 +1,13 @@
 #include <SystemInfoShareModule.h>
 #include <SystemInfo.h>
 
-asio::awaitable<void> SystemInfoShareModule::SendBatteryInfo() const {
+asio::awaitable<void> SystemInfoShareModule::SendBatteryInfo(const uint64_t senderGeneration) const {
     float currentBattery = -1;
 
     asio::steady_timer timer(m_context.get_executor());
-    while (GetModuleState() != ModuleState::Disabled) {
+    while (m_batterySenderGeneration.load() == senderGeneration && !ShouldAbortEnable()) {
         const float result = SystemInfo::GetBatteryLevel();
-        if (result != currentBattery) {
+        if (result != currentBattery && ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED) {
             currentBattery = result;
             ConnectionManager::Send(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_NEW_BATTERY_LEVEL, currentBattery);
         }
@@ -60,14 +60,16 @@ void SystemInfoShareModule::DisableResponseCallbacks() {
 void SystemInfoShareModule::OnInitialize() {}
 
 asio::awaitable<void> SystemInfoShareModule::OnEnable() {
+    const uint64_t senderGeneration = m_batterySenderGeneration.fetch_add(1) + 1;
     m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_ENABLE);
     ConnectionManager::Send(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_STATE_CHANGED, true);
-    asio::co_spawn(m_context, SendBatteryInfo(), asio::detached);
+    asio::co_spawn(m_context, SendBatteryInfo(senderGeneration), asio::detached);
     co_return;
 }
 
 asio::awaitable<void> SystemInfoShareModule::OnDisable() {
+    m_batterySenderGeneration.fetch_add(1);
     m_peerModuleEnabled.store(false);
     ConnectionManager::Send(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_DISABLE);
     ConnectionManager::Send(PC_PackageType::SYSTEM_INFO_SHARE_MODULE_STATE_CHANGED, false);

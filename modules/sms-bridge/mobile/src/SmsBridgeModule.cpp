@@ -186,41 +186,43 @@ void SmsBridgeModule::EnableResponseCallbacks() {
         std::string path{};
 
 #ifdef ANDROID_DEVICE
-        const QJniObject context = AndroidContextProvider::GetAndroidContext();
-        const QJniObject jUri = QJniObject::fromString(QString::fromStdString(target));
+        {
+            const QJniObject context = AndroidContextProvider::GetAndroidContext();
+            const QJniObject jUri = QJniObject::fromString(QString::fromStdString(target));
 
-        QJniEnvironment jniEnvWrapper;
-        JNIEnv* jniEnv = jniEnvWrapper.jniEnv();
-        if (jniEnv && context.isValid()) {
-            jclass smsUtilsClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/SmsUtils");
-            if (smsUtilsClass) {
-                jmethodID method = jniEnv->GetStaticMethodID(
-                    smsUtilsClass,
-                    "saveAttachmentToCache",
-                    "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;"
-                );
-                if (method) {
-                    jobject resultObj = jniEnv->CallStaticObjectMethod(
-                        smsUtilsClass, method,
-                        context.object<jobject>(),
-                        jUri.object<jstring>()
+            QJniEnvironment jniEnvWrapper;
+            JNIEnv* jniEnv = jniEnvWrapper.jniEnv();
+            if (jniEnv && context.isValid()) {
+                jclass smsUtilsClass = AndroidContextProvider::FindClass(jniEnv, "com/LibreConnect/mobile/SmsUtils");
+                if (smsUtilsClass) {
+                    jmethodID method = jniEnv->GetStaticMethodID(
+                        smsUtilsClass,
+                        "saveAttachmentToCache",
+                        "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;"
                     );
-                    if (jniEnv->ExceptionCheck()) {
-                        jniEnv->ExceptionDescribe();
-                        jniEnv->ExceptionClear();
-                    } else if (resultObj) {
-                        const QJniObject result = QJniObject::fromLocalRef(resultObj);
-                        if (result.isValid()) {
-                            path = result.toString().toStdString();
+                    if (method) {
+                        jobject resultObj = jniEnv->CallStaticObjectMethod(
+                            smsUtilsClass, method,
+                            context.object<jobject>(),
+                            jUri.object<jstring>()
+                        );
+                        if (jniEnv->ExceptionCheck()) {
+                            jniEnv->ExceptionDescribe();
+                            jniEnv->ExceptionClear();
+                        } else if (resultObj) {
+                            const QJniObject result = QJniObject::fromLocalRef(resultObj);
+                            if (result.isValid()) {
+                                path = result.toString().toStdString();
+                            }
                         }
+                    } else {
+                        jniEnv->ExceptionClear();
+                        Debug::LogError("SmsBridgeModule: Failed to find saveAttachmentToCache method");
                     }
+                    jniEnv->DeleteLocalRef(smsUtilsClass);
                 } else {
-                    jniEnv->ExceptionClear();
-                    Debug::LogError("SmsBridgeModule: Failed to find saveAttachmentToCache method");
+                    Debug::LogError("SmsBridgeModule: Failed to find SmsUtils class for MMS");
                 }
-                jniEnv->DeleteLocalRef(smsUtilsClass);
-            } else {
-                Debug::LogError("SmsBridgeModule: Failed to find SmsUtils class for MMS");
             }
         }
 #endif
