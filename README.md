@@ -26,79 +26,80 @@ LibreConnect is built from the ground up with privacy as its foundational princi
 Get an instant overview of your connected devices.
 - Monitor hostname and device identification.
 - Real-time battery level tracking for both mobile devices and computers (where hardware permits).
-*Placeholder: [Device Info Screenshot]*
+<img width="336" height="127" alt="image" src="https://github.com/user-attachments/assets/0af4b8fd-962d-4e52-afd5-29f32646ffca" />
+
 
 ### Virtual Camera
 Transform your smartphone into a high-quality webcam for your computer. The system recognizes the phone as a native camera device.
 - Adjustable resolution and orientation.
 - Status notifications on the mobile device with quick-disable functionality.
-*Placeholder: [Virtual Camera Screenshot]*
+<img width="2097" height="1215" alt="image" src="https://github.com/user-attachments/assets/7ec36cc8-6522-4ee5-9c31-3e6468d3ed55" />
+
 
 ### Virtual Microphone
 Use your mobile device as a wireless microphone for your desktop.
 - Seamless integration with system audio inputs.
 - Active status notifications for privacy awareness.
-*Placeholder: [Virtual Microphone Screenshot]*
+<img width="1696" height="1046" alt="image" src="https://github.com/user-attachments/assets/472ba009-d103-4ab7-a3f2-fb4a63fbf738" />
+
 
 ### File Manager
 Access and manage your Android file system directly from your desktop.
 - Browse files with thumbnail previews.
 - Open mobile files directly on your computer.
 - Drag-and-drop support for near-instant file transfers.
-*Placeholder: [File Manager Screenshot]*
-
-### Share Provider
-Integrated with the Android system share menu, allowing you to send files, images, or links from your phone to your computer instantly.
-- Configurable destination folders.
-*Placeholder: [Share Provider Screenshot]*
+- Share Provider: Integrated with the Android system share menu, allowing you to send files, images, or links from your phone to your computer instantly.
+<img width="1260" height="788" alt="image" src="https://github.com/user-attachments/assets/ebd239ce-2a1c-495d-86f5-ae2d254734cf" />
 
 ### Notification Sync
 Receive and manage mobile notifications on your desktop.
 - View all active notifications in the desktop UI.
 - Dismiss notifications on your phone directly from your computer.
-*Placeholder: [Notification Sync Screenshot]*
+<img width="918" height="438" alt="image" src="https://github.com/user-attachments/assets/bf26945c-3b43-42fc-9890-e8e3ed9dff5a" />
+
 
 ### Clipboard Sync
 Synchronize your clipboard across all devices.
 - **Desktop to Mobile:** Automatic synchronization.
 - **Mobile to Desktop:** Manual synchronization via Quick Settings tile (due to Android security restrictions).
 - Optional manual-only mode for both platforms.
-*Placeholder: [Clipboard Sync Screenshot]*
 
 ### SMS/MMS Messaging
 Read and reply to text messages from your computer.
 - Full conversation history access.
 - Seamless message sending as if using the phone directly.
-*Placeholder: [SMS/MMS Screenshot]*
+<img width="933" height="777" alt="image" src="https://github.com/user-attachments/assets/43f7c247-93e8-43c9-b6fd-9155e6025ba5" />
+
 
 ### Media Remote
 Bidirectional multimedia control for both computers and mobile devices.
 - Synchronized metadata: Title, Artist, Album, Cover Art, and Playback Position.
 - System-level media notifications for quick control without opening the app.
 - Remote volume adjustment.
-*Placeholder: [Media Remote Screenshot]*
+<img width="1566" height="893" alt="image" src="https://github.com/user-attachments/assets/b57353ca-b068-4fa3-86bf-62fe2bbd645b" />
+
 
 ### Remote Keyboard
 Utilize your mobile device as a remote keyboard for your computer.
-*Placeholder: [Remote Keyboard Screenshot]*
+<img width="629" height="1246" alt="image" src="https://github.com/user-attachments/assets/b1f25f77-0ccb-47eb-8885-e825a90c3020" />
+
 
 ### Presenter Mode
 Control slideshow presentations remotely.
 - Start/End presentation mode.
 - Slide navigation.
-*Placeholder: [Presenter Mode Screenshot]*
+<img width="632" height="1149" alt="image" src="https://github.com/user-attachments/assets/91b86c14-7ea3-4424-a596-9cf292497104" />
+
 
 ### Find My Phone
 Locate your misplaced mobile device from your computer.
 - Triggers an audible alert at maximum volume.
 - Overrides "Do Not Disturb" and silent modes.
-*Placeholder: [Find My Phone Screenshot]*
 
 ### Streamer Mode
 A built-in privacy feature designed for those who share or stream their screens.
 - Instantly masks sensitive data within the application.
 - Replaces hostnames, IP addresses, and contact information with generic placeholders (e.g., "Connected Device", "Unknown Contact") to prevent accidental disclosure.
-*Placeholder: [Streamer Mode Screenshot]*
 
 ---
 
@@ -178,9 +179,6 @@ sudo pacman -S --noconfirm libreconnect
 3. A 6-digit verification code will appear on the mobile device.
 4. Enter this code into the desktop application.
 5. Complete the second factor of authentication by confirming the pairing request on your mobile device.
-
-*Placeholder: [Pairing Process Screenshot 1]*
-*Placeholder: [Pairing Process Screenshot 2]*
 
 ---
 
