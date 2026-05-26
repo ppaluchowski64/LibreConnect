@@ -315,13 +315,8 @@ asio::awaitable<BorrowedTransferChannel> TransferChannelPool::BorrowTransferChan
             }
             const std::shared_ptr<TransferChannel> channel = opt.value();
 
-            if (channel->GetConnectionState() != ConnectionState::CONNECTED || channel->IsUsed(false)) {
+            if (channel->GetConnectionState() != ConnectionState::CONNECTED || channel->IsUsed(false) || channel->IsUsed(true)) {
                 continue;
-            }
-
-            if (!reserveIncomingPost) {
-                Debug::Log("TransferChannelPool: Borrow granted on channel {}", i);
-                co_return BorrowedTransferChannel{i, std::move(channel), nullptr};
             }
 
             const std::shared_ptr<void> reservationGuard = s_instance->TryReserve(i);
@@ -329,8 +324,12 @@ asio::awaitable<BorrowedTransferChannel> TransferChannelPool::BorrowTransferChan
                 continue;
             }
 
-            if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false)) {
-                Debug::Log("TransferChannelPool: Reserved borrow granted on channel {}", i);
+            if (channel->GetConnectionState() == ConnectionState::CONNECTED && !channel->IsUsed(false) && !channel->IsUsed(true)) {
+                Debug::Log(
+                    "TransferChannelPool: Borrow granted on channel {}{}",
+                    i,
+                    reserveIncomingPost ? " (reserved incoming post)" : ""
+                );
                 co_return BorrowedTransferChannel{i, std::move(channel), reservationGuard};
             }
         }

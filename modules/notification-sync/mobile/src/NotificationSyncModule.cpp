@@ -265,8 +265,8 @@ asio::awaitable<void> NotificationSyncModule::OnEnable() {
 
     ClearNotificationDatas();
 
-    const QJniObject context = AndroidContextProvider::GetAndroidContext();
     {
+        const QJniObject context = AndroidContextProvider::GetAndroidContext();
         QJniEnvironment env;
         JNIEnv* jniEnv = env.jniEnv();
         if (jniEnv && context.isValid()) {

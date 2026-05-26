@@ -133,7 +133,7 @@ QJniObject AndroidContextProvider::GetServiceContext() {
     if (!g_serviceContext) {
         return {};
     }
-    return QJniObject::fromLocalRef(QJniEnvironment().jniEnv()->NewLocalRef(g_serviceContext));
+    return QJniObject(g_serviceContext);
 }
 
 jclass AndroidContextProvider::FindClass(JNIEnv* env, const char* className) {

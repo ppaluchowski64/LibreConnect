@@ -272,53 +272,55 @@ asio::awaitable<bool> PermissionManager::RequestDisablingBatteryOptimizations() 
         co_return true;
     }
 
-    const QJniObject action = QJniObject::getStaticObjectField(
-    "android/provider/Settings",
-    "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
-    "Ljava/lang/String;"
-    );
+    {
+        const QJniObject action = QJniObject::getStaticObjectField(
+            "android/provider/Settings",
+            "ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+            "Ljava/lang/String;"
+        );
 
-    if (!action.isValid()) {
-        Debug::LogWarning("Failed to resolve ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS.");
-        co_return false;
-    }
+        if (!action.isValid()) {
+            Debug::LogWarning("Failed to resolve ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS.");
+            co_return false;
+        }
 
-    const QJniObject intent(
-        "android/content/Intent",
-        "(Ljava/lang/String;)V",
-        action.object<jstring>()
-    );
+        const QJniObject intent(
+            "android/content/Intent",
+            "(Ljava/lang/String;)V",
+            action.object<jstring>()
+        );
 
-    if (!intent.isValid()) {
-        Debug::LogWarning("Failed to create Intent for battery optimization settings.");
-        co_return false;
-    }
+        if (!intent.isValid()) {
+            Debug::LogWarning("Failed to create Intent for battery optimization settings.");
+            co_return false;
+        }
 
-    const QJniObject context = GetAndroidContext();
-    if (!context.isValid()) {
-        Debug::LogWarning("Failed to obtain Android context while requesting battery optimization settings.");
-        co_return false;
-    }
+        const QJniObject context = GetAndroidContext();
+        if (!context.isValid()) {
+            Debug::LogWarning("Failed to obtain Android context while requesting battery optimization settings.");
+            co_return false;
+        }
 
-    const QString packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
+        const QString packageName = context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString();
 
-    const QJniObject uriString = QJniObject::fromString("package:" + packageName);
-    const QJniObject uri = QJniObject::callStaticObjectMethod(
-        "android/net/Uri",
-        "parse",
-        "(Ljava/lang/String;)Landroid/net/Uri;",
-        uriString.object<jstring>()
-    );
+        const QJniObject uriString = QJniObject::fromString("package:" + packageName);
+        const QJniObject uri = QJniObject::callStaticObjectMethod(
+            "android/net/Uri",
+            "parse",
+            "(Ljava/lang/String;)Landroid/net/Uri;",
+            uriString.object<jstring>()
+        );
 
-    intent.callObjectMethod(
-        "setData",
-        "(Landroid/net/Uri;)Landroid/content/Intent;",
-        uri.object<jobject>()
-    );
+        intent.callObjectMethod(
+            "setData",
+            "(Landroid/net/Uri;)Landroid/content/Intent;",
+            uri.object<jobject>()
+        );
 
-    if (!StartSettingsActivity(intent)) {
-        Debug::LogWarning("Failed to start battery optimization settings activity.");
-        co_return false;
+        if (!StartSettingsActivity(intent)) {
+            Debug::LogWarning("Failed to start battery optimization settings activity.");
+            co_return false;
+        }
     }
 
     co_await WaitForReturnToApp();
@@ -332,31 +334,33 @@ asio::awaitable<bool> PermissionManager::RequestNotificationAccessPermission() {
         co_return true;
     }
 
-    const QJniObject action = QJniObject::getStaticObjectField(
-        "android/provider/Settings",
-        "ACTION_NOTIFICATION_LISTENER_SETTINGS",
-        "Ljava/lang/String;"
-    );
+    {
+        const QJniObject action = QJniObject::getStaticObjectField(
+            "android/provider/Settings",
+            "ACTION_NOTIFICATION_LISTENER_SETTINGS",
+            "Ljava/lang/String;"
+        );
 
-    if (!action.isValid()) {
-        Debug::LogWarning("Failed to resolve ACTION_NOTIFICATION_LISTENER_SETTINGS.");
-        co_return false;
-    }
+        if (!action.isValid()) {
+            Debug::LogWarning("Failed to resolve ACTION_NOTIFICATION_LISTENER_SETTINGS.");
+            co_return false;
+        }
 
-    const QJniObject intent(
-        "android/content/Intent",
-        "(Ljava/lang/String;)V",
-        action.object<jstring>()
-    );
+        const QJniObject intent(
+            "android/content/Intent",
+            "(Ljava/lang/String;)V",
+            action.object<jstring>()
+        );
 
-    if (!intent.isValid()) {
-        Debug::LogWarning("Failed to create Intent for notification listener settings.");
-        co_return false;
-    }
+        if (!intent.isValid()) {
+            Debug::LogWarning("Failed to create Intent for notification listener settings.");
+            co_return false;
+        }
 
-    if (!StartSettingsActivity(intent)) {
-        Debug::LogWarning("Failed to start notification listener settings activity.");
-        co_return false;
+        if (!StartSettingsActivity(intent)) {
+            Debug::LogWarning("Failed to start notification listener settings activity.");
+            co_return false;
+        }
     }
 
     co_await WaitForReturnToApp();
@@ -420,25 +424,27 @@ asio::awaitable<bool> PermissionManager::RequestManagingExternalStoragePermissio
         co_return co_await RequestPermission(QString("android.permission.WRITE_EXTERNAL_STORAGE"));
     }
 
-    const QJniObject context = GetAndroidContext();
-    if (!context.isValid()) {
-        Debug::LogWarning("Failed to obtain Android context while requesting managing external storage.");
-        co_return false;
-    }
-
     const bool isExternalStorageManager = QJniObject::callStaticMethod<jboolean>(
         "android/os/Environment", "isExternalStorageManager");
 
     if (isExternalStorageManager) co_return true;
 
-    const QJniObject action = QJniObject::fromString("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION");
-    const QJniObject packageName = QJniObject::fromString("package:" + context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString());
-    const QJniObject uri = QJniObject::callStaticObjectMethod("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", packageName.object());
+    {
+        const QJniObject context = GetAndroidContext();
+        if (!context.isValid()) {
+            Debug::LogWarning("Failed to obtain Android context while requesting managing external storage.");
+            co_return false;
+        }
 
-    const QJniObject intent("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V", action.object(), uri.object());
-    if (!StartSettingsActivity(intent)) {
-        Debug::LogWarning("Failed to start manage external storage settings activity.");
-        co_return false;
+        const QJniObject action = QJniObject::fromString("android.settings.MANAGE_APP_ALL_FILES_ACCESS_PERMISSION");
+        const QJniObject packageName = QJniObject::fromString("package:" + context.callObjectMethod("getPackageName", "()Ljava/lang/String;").toString());
+        const QJniObject uri = QJniObject::callStaticObjectMethod("android/net/Uri", "parse", "(Ljava/lang/String;)Landroid/net/Uri;", packageName.object());
+
+        const QJniObject intent("android/content/Intent", "(Ljava/lang/String;Landroid/net/Uri;)V", action.object(), uri.object());
+        if (!StartSettingsActivity(intent)) {
+            Debug::LogWarning("Failed to start manage external storage settings activity.");
+            co_return false;
+        }
     }
 
     co_await WaitForReturnToApp();

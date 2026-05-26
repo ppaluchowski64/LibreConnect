@@ -34,6 +34,14 @@ public:
 
     template <Serializable... Args>
     void Send(PC_PackageType type, Args&&... args) {
+        if (m_connectionState.load() != ConnectionState::CONNECTED) {
+            Debug::LogWarning(
+                "PrimaryConnection: Dropping outbound package type {} because primary is not connected",
+                static_cast<int>(type)
+            );
+            return;
+        }
+
         static thread_local moodycamel::ProducerToken producerToken(m_packageOut);
 
         m_packageOut.enqueue(producerToken, Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...));
@@ -42,6 +50,14 @@ public:
 
     template <Serializable... Args>
     void SendWithFlag(const PC_PackageType type, const uint8_t flag, Args&&... args) {
+        if (m_connectionState.load() != ConnectionState::CONNECTED) {
+            Debug::LogWarning(
+                "PrimaryConnection: Dropping outbound package type {} because primary is not connected",
+                static_cast<int>(type)
+            );
+            return;
+        }
+
         static thread_local moodycamel::ProducerToken producerToken(m_packageOut);
         std::unique_ptr<Package<PC_PackageType>> package = Package<PC_PackageType>::CreateUnique(type, std::forward<Args>(args)...);
         package->GetHeader().flags = flag;
