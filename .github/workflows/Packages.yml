@@ -1,13 +1,9 @@
 name: Packages
 
 on:
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: GitHub Release tag to publish into package repositories; use latest by default.
-        required: false
-        type: string
-        default: latest
+  release:
+    types:
+      - published
 
 permissions:
   contents: read
@@ -67,7 +63,7 @@ jobs:
 
       - name: Fetch latest Release installers
         shell: bash
-        run: bash packages/fetch-release-assets.sh "${{ inputs.release_tag }}" release-assets
+        run: bash packages/fetch-release-assets.sh "${{ github.event.release.tag_name }}" release-assets
 
       - name: Generate F-Droid repository
         shell: bash
