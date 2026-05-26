@@ -104,7 +104,7 @@ A built-in privacy feature designed for those who share or stream their screens.
 
 ## Supported Platforms
 
-LibreConnect supports the platforms listed below. For the latest binaries and installation packages, please visit the [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
+LibreConnect aims to support as many modern platforms as possible, with the currently supported systems listed below.
 
 | Operating System | Package Format | Supported Architectures |
 |------------------|----------------|-------------------------|
@@ -114,6 +114,54 @@ LibreConnect supports the platforms listed below. For the latest binaries and in
 | **Android**      | .apk           | ARM64                   |
 
 *Note: iOS is currently not supported due to platform restrictions regarding background processes and permissions.*
+
+---
+
+## Download
+
+The simplest way to get LibreConnect is to download the latest installation package for your platform from our [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
+
+### Linux Repositories (Recommended)
+For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically. Using these repositories is recommended over manual package installation.
+
+#### Debian / Ubuntu / Linux Mint
+**1. Configure the repository:**
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://libreconnect.one/apt/libreconnect-archive-keyring.asc | sudo gpg --dearmor -o /etc/apt/keyrings/libreconnect-archive-keyring.gpg
+echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/libreconnect-archive-keyring.gpg] https://libreconnect.one/apt stable main" | sudo tee /etc/apt/sources.list.d/libreconnect.list
+```
+
+**2. Install the application:**
+```bash
+sudo apt update
+sudo apt install -y libreconnect
+```
+
+#### Fedora / RHEL / CentOS
+**1. Configure the repository:**
+```bash
+sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos.d/libreconnect.repo
+```
+
+**2. Install the application:**
+```bash
+sudo dnf install -y libreconnect
+```
+
+#### Arch Linux / Manjaro / EndeavourOS
+**1. Configure the repository:**
+```bash
+curl -fsSL https://libreconnect.one/pacman/libreconnect-packages.gpg | sudo pacman-key --add -
+sudo pacman-key --lsign-key 01E6938CCB71C239
+echo -e "\n[libreconnect]\nSigLevel = Required DatabaseRequired\nServer = https://libreconnect.one/pacman/\$arch" | sudo tee -a /etc/pacman.conf
+```
+
+**2. Install the application:**
+```bash
+sudo pacman -Sy
+sudo pacman -S --noconfirm libreconnect
+```
 
 ---
 
