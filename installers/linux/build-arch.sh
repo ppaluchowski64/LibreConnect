@@ -129,8 +129,6 @@ docker run --rm \
   /bin/bash -c "
     set -euo pipefail
     
-    printf 'PACKAGER="%s"\n' "Pablo Majster <104451887+ppaluchowski64@users.noreply.github.com>" >> /etc/makepkg.conf
-    
     echo 'Initializing Arch keyring...'
     pacman -Sy --noconfirm archlinux-keyring
 
@@ -149,6 +147,7 @@ docker run --rm \
     echo 'Generating PKGBUILD...'
     cat > PKGBUILD << 'EOF'
 pkgname=libreconnect
+packager=\"Pablo Majster <104451887+ppaluchowski64@users.noreply.github.com>\"
 pkgver=__VERSION__
 pkgrel=1
 pkgdesc=\"Privacy-focused peer-to-peer device connectivity app\"
