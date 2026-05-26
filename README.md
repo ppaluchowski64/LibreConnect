@@ -20,6 +20,54 @@ LibreConnect is built from the ground up with privacy as its foundational princi
 
 ---
 
+## Download
+
+The simplest way to get LibreConnect is to download the latest installation package for your platform from our [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
+
+### Linux Repositories (Recommended)
+For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically. Using these repositories is recommended over manual package installation.
+
+#### Debian / Ubuntu / Linux Mint
+**1. Configure the repository:**
+```bash
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://libreconnect.one/apt/libreconnect-archive-keyring.asc | sudo gpg --dearmor -o /etc/apt/keyrings/libreconnect-archive-keyring.gpg
+echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/libreconnect-archive-keyring.gpg] https://libreconnect.one/apt stable main" | sudo tee /etc/apt/sources.list.d/libreconnect.list
+```
+
+**2. Install the application:**
+```bash
+sudo apt update
+sudo apt install -y libreconnect
+```
+
+#### Fedora / RHEL / CentOS
+**1. Configure the repository:**
+```bash
+sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos.d/libreconnect.repo
+```
+
+**2. Install the application:**
+```bash
+sudo dnf install -y libreconnect
+```
+
+#### Arch Linux / Manjaro / EndeavourOS
+**1. Configure the repository:**
+```bash
+curl -fsSL https://libreconnect.one/pacman/libreconnect-packages.gpg | sudo pacman-key --add -
+sudo pacman-key --lsign-key 01E6938CCB71C239
+echo -e "\n[libreconnect]\nSigLevel = Required DatabaseRequired\nServer = https://libreconnect.one/pacman/\$arch" | sudo tee -a /etc/pacman.conf
+```
+
+**2. Install the application:**
+```bash
+sudo pacman -Sy
+sudo pacman -S --noconfirm libreconnect
+```
+
+---
+
 ## Key Features
 
 ### Device Info
@@ -77,6 +125,7 @@ Bidirectional multimedia control for both computers and mobile devices.
 - System-level media notifications for quick control without opening the app.
 - Remote volume adjustment.
 <img width="1566" height="893" alt="image" src="https://github.com/user-attachments/assets/b57353ca-b068-4fa3-86bf-62fe2bbd645b" />
+<img width="629" height="1153" alt="image" src="https://github.com/user-attachments/assets/0b86e181-fe0b-44ab-bede-2df08493831b" />
 
 
 ### Remote Keyboard
@@ -115,54 +164,6 @@ LibreConnect aims to support as many modern platforms as possible, with the curr
 | **Android**      | .apk           | ARM64                   |
 
 *Note: iOS is currently not supported due to platform restrictions regarding background processes and permissions.*
-
----
-
-## Download
-
-The simplest way to get LibreConnect is to download the latest installation package for your platform from our [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
-
-### Linux Repositories (Recommended)
-For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically. Using these repositories is recommended over manual package installation.
-
-#### Debian / Ubuntu / Linux Mint
-**1. Configure the repository:**
-```bash
-sudo install -d -m 0755 /etc/apt/keyrings
-curl -fsSL https://libreconnect.one/apt/libreconnect-archive-keyring.asc | sudo gpg --dearmor -o /etc/apt/keyrings/libreconnect-archive-keyring.gpg
-echo "deb [arch=amd64,arm64 signed-by=/etc/apt/keyrings/libreconnect-archive-keyring.gpg] https://libreconnect.one/apt stable main" | sudo tee /etc/apt/sources.list.d/libreconnect.list
-```
-
-**2. Install the application:**
-```bash
-sudo apt update
-sudo apt install -y libreconnect
-```
-
-#### Fedora / RHEL / CentOS
-**1. Configure the repository:**
-```bash
-sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos.d/libreconnect.repo
-```
-
-**2. Install the application:**
-```bash
-sudo dnf install -y libreconnect
-```
-
-#### Arch Linux / Manjaro / EndeavourOS
-**1. Configure the repository:**
-```bash
-curl -fsSL https://libreconnect.one/pacman/libreconnect-packages.gpg | sudo pacman-key --add -
-sudo pacman-key --lsign-key 01E6938CCB71C239
-echo -e "\n[libreconnect]\nSigLevel = Required DatabaseRequired\nServer = https://libreconnect.one/pacman/\$arch" | sudo tee -a /etc/pacman.conf
-```
-
-**2. Install the application:**
-```bash
-sudo pacman -Sy
-sudo pacman -S --noconfirm libreconnect
-```
 
 ---
 
