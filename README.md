@@ -1,189 +1,147 @@
-# LibreConnect
+<h1 align="center">
+  <img src="apps/desktop/res/libreconnect_logo.png" alt="LibreConnect Logo" width="150"><br>
+  LibreConnect
+</h1>
 
-LibreConnect is a privacy-focused, peer-to-peer connectivity app that links desktop and mobile devices without relying on third-party cloud relays for core communication.
+<p align="center">
+  An application for seamless communication and integration between computers and mobile devices, developed with a strong focus on user privacy. LibreConnect provides a unified ecosystem that bridges the gap between your devices while ensuring your data remains under your control.
+</p>
 
-## What this project solves
+---
 
-LibreConnect is built to solve everyday cross-device friction:
+## Core Philosophy: Privacy by Design
 
-- pairing desktop and mobile devices on the same network
-- sharing files directly between paired devices
-- streaming camera data securely over the local network
-- syncing notifications and clipboard content across platforms
-- using a phone as a media remote, remote keyboard, and presenter controller
-- accessing Android SMS conversations from the desktop app
-- triggering Find My Phone actions on a paired mobile device
-- doing all of the above with end-to-end encrypted transport and local-first architecture
+LibreConnect is built from the ground up with privacy as its foundational principle. Unlike many similar solutions, it does not rely on intermediary servers or cloud infrastructure.
 
-## Core functionalities
+- **Local Network Only:** All communication occurs exclusively within your local network.
+- **Peer-to-Peer (P2P):** Devices connect directly to each other, eliminating third-party bottlenecks and potential points of interception.
+- **End-to-End Encryption (E2E):** All data transmitted between devices is encrypted end-to-end, providing an additional layer of security even in trusted local environments.
+- **Open Source:** The codebase is entirely transparent and open for auditing, ensuring no hidden telemetry or data collection.
 
-- Local network device discovery
-  - discovers nearby devices on the same network
-  - supports pairing and trust establishment between devices
-- Secure peer-to-peer communication
-  - encrypted transport between connected devices
-  - bidirectional messaging/event exchange model
-- Cross-device file transfer
-  - transfer of files and folders between paired devices
-  - integrity validation during transfers
-- Camera/media streaming scenarios
-  - real-time media transport between devices
-  - desktop virtual camera integration on supported platforms
-- Notification sharing/synchronization
-  - propagates selected notification events across connected devices
-  - adapts behavior to each target platform
-- Clipboard synchronization
-  - syncs clipboard content between paired devices
-  - supports desktop-to-mobile and mobile-to-desktop workflows
-- Remote input / presenter controls
-  - media controls, remote keyboard input, and presenter-mode actions from mobile to desktop
-  - uses platform-specific input backends on desktop platforms
-- SMS bridge and device utilities
-  - exposes Android SMS conversations and send actions in the desktop app
-  - includes utility actions such as Find My Phone and shared system/device information
-- Cross-platform client experience
-  - desktop and mobile frontends built with shared architecture
-  - modular feature system so capabilities can be enabled/extended over time
+---
 
-## Dependencies
+## Key Features
 
-### Build/tooling
+### Device Info
+Get an instant overview of your connected devices.
+- Monitor hostname and device identification.
+- Real-time battery level tracking for both mobile devices and computers (where hardware permits).
+*Placeholder: [Device Info Screenshot]*
 
-- [CMake](https://cmake.org/) `4.3.0` (via Conan tool requirement)
-- [Ninja](https://ninja-build.org/) `1.13.2`
-- [Conan](https://conan.io/) (package/dependency manager)
-- [pkgconf](https://github.com/pkgconf/pkgconf) `2.5.1`
-- [Python 3](https://www.python.org/) (for `configure_project.py`)
+### Virtual Camera
+Transform your smartphone into a high-quality webcam for your computer. The system recognizes the phone as a native camera device.
+- Adjustable resolution and orientation.
+- Status notifications on the mobile device with quick-disable functionality.
+*Placeholder: [Virtual Camera Screenshot]*
 
-### Core runtime libraries
+### Virtual Microphone
+Use your mobile device as a wireless microphone for your desktop.
+- Seamless integration with system audio inputs.
+- Active status notifications for privacy awareness.
+*Placeholder: [Virtual Microphone Screenshot]*
 
-- [Qt 6](https://www.qt.io/product/qt6) (Core, Gui, Quick, Qml, QuickControls2, Multimedia, Network, and DBus on Linux desktop)
-- [FFmpeg](https://ffmpeg.org/) `7.1.3`
-- [OpenSSL](https://www.openssl.org/) `3.6.1`
-- [Asio](https://think-async.com/Asio/) `1.36.0`
-- [Boost](https://www.boost.org/) `1.90.0`
-- [fmt](https://fmt.dev/) `12.1.0`
-- [magic_enum](https://github.com/Neargye/magic_enum) `0.9.7`
-- [nlohmann/json](https://github.com/nlohmann/json) `3.12.0`
-- [concurrentqueue](https://github.com/cameron314/concurrentqueue) `1.0.4`
-- [libsrtp](https://github.com/cisco/libsrtp) `2.6.0`
-- [xxHash](https://github.com/Cyan4973/xxHash) `0.8.3`
+### File Manager
+Access and manage your Android file system directly from your desktop.
+- Browse files with thumbnail previews.
+- Open mobile files directly on your computer.
+- Drag-and-drop support for near-instant file transfers.
+*Placeholder: [File Manager Screenshot]*
 
-### Platform-specific dependencies
+### Share Provider
+Integrated with the Android system share menu, allowing you to send files, images, or links from your phone to your computer instantly.
+- Configurable destination folders.
+*Placeholder: [Share Provider Screenshot]*
 
-- Desktop tests:
-  - [GoogleTest](https://github.com/google/googletest) `1.17.0`
-  - [Google Benchmark](https://github.com/google/benchmark) `1.9.4`
-- Windows:
-  - [WIL (Windows Implementation Library)](https://github.com/microsoft/wil) `1.0.250325.1`
-  - [WinToast](https://github.com/mohabouje/WinToast) (vendored under `vendor/WinToast`)
-- Android:
-  - [FFmpeg](https://ffmpeg.org/) `7.1.3`
-- Linux:
-  - [ALSA](https://www.alsa-project.org/) `1.2.10`
+### Notification Sync
+Receive and manage mobile notifications on your desktop.
+- View all active notifications in the desktop UI.
+- Dismiss notifications on your phone directly from your computer.
+*Placeholder: [Notification Sync Screenshot]*
 
-### Fetched at configure/build time
+### Clipboard Sync
+Synchronize your clipboard across all devices.
+- **Desktop to Mobile:** Automatic synchronization.
+- **Mobile to Desktop:** Manual synchronization via Quick Settings tile (due to Android security restrictions).
+- Optional manual-only mode for both platforms.
+*Placeholder: [Clipboard Sync Screenshot]*
 
-- [Debug-Log](https://github.com/ddj4747/Debug-Log) (CMake `FetchContent`)
-- [mediaremote-adapter](https://github.com/ungive/mediaremote-adapter) (CMake `FetchContent`, macOS only)
+### SMS/MMS Messaging
+Read and reply to text messages from your computer.
+- Full conversation history access.
+- Seamless message sending as if using the phone directly.
+*Placeholder: [SMS/MMS Screenshot]*
 
-## Prerequisites
+### Media Remote
+Bidirectional multimedia control for both computers and mobile devices.
+- Synchronized metadata: Title, Artist, Album, Cover Art, and Playback Position.
+- System-level media notifications for quick control without opening the app.
+- Remote volume adjustment.
+*Placeholder: [Media Remote Screenshot]*
 
-- C++20-capable compiler
-- Conan profile initialized:
+### Remote Keyboard
+Utilize your mobile device as a remote keyboard for your computer.
+*Placeholder: [Remote Keyboard Screenshot]*
 
-```bash
-conan profile detect --force
-```
+### Presenter Mode
+Control slideshow presentations remotely.
+- Start/End presentation mode.
+- Slide navigation.
+*Placeholder: [Presenter Mode Screenshot]*
 
-- A filled `.env` file (project root) with required variables:
-  - `BUILD_FOR=Desktop`, `BUILD_FOR=Android`, or `BUILD_FOR=All`
-  - `DISABLE_DEBUG=true|false`
-  - `BUILD_TESTS=true|false`
-  - Qt path(s):
-    - `QT_DIR_DESKTOP` for desktop builds
-    - `QT_DIR_ANDROID` for Android builds
-  - Android-only values when `BUILD_FOR=Android`:
-    - `ANDROID_NDK_DIR`
-    - `ANDROID_SDK_DIR`
-    - `ANDROID_ARCH` (`armv8`, `armv7`, `x86_64`)
-    - `ANDROID_CLANG_VERSION`
-    - `ANDROID_OS_API_LEVEL`
+### Find My Phone
+Locate your misplaced mobile device from your computer.
+- Triggers an audible alert at maximum volume.
+- Overrides "Do Not Disturb" and silent modes.
+*Placeholder: [Find My Phone Screenshot]*
 
-## Build
+### Streamer Mode
+A built-in privacy feature designed for those who share or stream their screens.
+- Instantly masks sensitive data within the application.
+- Replaces hostnames, IP addresses, and contact information with generic placeholders (e.g., "Connected Device", "Unknown Contact") to prevent accidental disclosure.
+*Placeholder: [Streamer Mode Screenshot]*
 
-### 1) Install/prepare dependencies
+---
 
-```bash
-python configure_project.py
-```
+## Supported Platforms
 
-This script:
+LibreConnect supports the platforms listed below. For the latest binaries and installation packages, please visit the [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
 
-- validates `.env`
-- resolves Conan dependencies per target platform
-- prepares FFmpeg integration for desktop builds
-- installs additional system/deployment dependencies on Linux when required
+| Operating System | Package Format | Supported Architectures |
+|------------------|----------------|-------------------------|
+| **Windows**      | .msi           | x86_64, ARM64           |
+| **Linux**        | .deb, .rpm, .pkg.tar.zst, .tar.gz | x86_64, ARM64 |
+| **macOS**        | .dmg           | ARM64 (Apple Silicon)   |
+| **Android**      | .apk           | ARM64                   |
 
-### 2) Configure + build with CMake presets
+*Note: iOS is currently not supported due to platform restrictions regarding background processes and permissions.*
 
-Desktop release:
+---
 
-```bash
-cmake --preset desktop-release
-cmake --build --preset desktop-release
-```
+## Getting Started
 
-Desktop debug (if enabled by `.env`):
+### Initial Setup
+1. Install and launch LibreConnect on both your computer and your mobile device.
+2. Ensure both devices are connected to the same local network.
+3. On the mobile device, grant all requested permissions to ensure full functionality.
 
-```bash
-cmake --preset desktop-debug
-cmake --build --preset desktop-debug
-```
+### Pairing Process
+1. In the desktop application, your mobile device should appear with its name and an Android icon.
+2. Select the device and click **Pair** (or double-click the device entry).
+3. A 6-digit verification code will appear on the mobile device.
+4. Enter this code into the desktop application.
+5. Complete the second factor of authentication by confirming the pairing request on your mobile device.
 
-Android release:
+*Placeholder: [Pairing Process Screenshot 1]*
+*Placeholder: [Pairing Process Screenshot 2]*
 
-```bash
-cmake --preset android-release
-cmake --build --preset android-release
-```
+---
 
-Android debug (if enabled by `.env`):
+## Contributing
 
-```bash
-cmake --preset android-debug
-cmake --build --preset android-debug
-```
+We welcome contributions from the community. If you are interested in improving LibreConnect, please refer to our [CONTRIBUTING.md](CONTRIBUTING.md) file for guidelines on how to get started.
 
-## Test
-
-If desktop tests are enabled (`BUILD_TESTS=true`), run:
-
-```bash
-ctest --preset desktop-release
-```
-
-or:
-
-```bash
-ctest --preset desktop-debug
-```
-
-For Android builds, `BUILD_TESTS=true` enables additional mobile test targets and test apps in `tests/`.
-
-## CI coverage
-
-GitHub Actions currently builds:
-
-- Windows desktop
-- Linux desktop (x64 + ARM64)
-- macOS desktop
-- Android (armv8)
-
-Workflow file: `.github/workflows/Build.yml`
-
-Release packaging is handled separately by `.github/workflows/Deploy.yml`.
+---
 
 ## License
 
-This project is licensed under **GNU General Public License v3.0**. See [LICENSE](LICENSE).
+LibreConnect is released under the **GNU GPL v3.0** license. See the [LICENSE](LICENSE) file for more details.
