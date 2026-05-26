@@ -115,16 +115,28 @@ LibreConnect aims to support as many modern platforms as possible, with the curr
 
 *Note: iOS is currently not supported due to platform restrictions regarding background processes and permissions.*
 
----
-
 ## Download
 
 The simplest way to get LibreConnect is to download the latest installation package for your platform from our [Releases](https://github.com/ppaluchowski64/LibreConnect/releases) page.
 
-### Linux Repositories (Recommended)
-For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically. Using these repositories is recommended over manual package installation.
+### Recommended Installation Methods
 
-#### Debian / Ubuntu / Linux Mint
+For certain operating systems, we provide automated installation methods to ensure you always have the latest features and security updates.
+
+#### Android
+We offer two primary ways to keep LibreConnect updated on Android. You can use **Obtainium** to track our GitHub releases directly, or add our repository to **F-Droid**.
+
+<a href="https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/%7B%22id%22%3A%22com.LibreConnect.mobile%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fppaluchowski64%2FLibreConnect%22%2C%22name%22%3A%22LibreConnect%22%2C%22preferredAssetFilter%22%3A%22.*-arm64-v8a%5C%5C.apk%22%7D">
+  <img src="https://github.com/user-attachments/assets/713d71c5-3dec-4ec4-a3f2-8d28d025a9c6" alt="Add to Obtainium" height="125">
+</a>
+<a href="https://libreconnect.one/fdroid/repo">
+  <img src="https://f-droid.org/badge/get-it-on.png" alt="Get it on F-Droid" height="125">
+</a>
+
+#### Linux
+For Linux users, we maintain native repositories that allow your system package manager to handle updates automatically.
+
+##### Debian / Ubuntu / Linux Mint
 **1. Configure the repository:**
 ```bash
 sudo install -d -m 0755 /etc/apt/keyrings
@@ -138,7 +150,7 @@ sudo apt update
 sudo apt install -y libreconnect
 ```
 
-#### Fedora / RHEL / CentOS
+##### Fedora / RHEL / CentOS
 **1. Configure the repository:**
 ```bash
 sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos.d/libreconnect.repo
@@ -149,7 +161,7 @@ sudo curl -fsSL https://libreconnect.one/dnf/libreconnect.repo -o /etc/yum.repos
 sudo dnf install -y libreconnect
 ```
 
-#### Arch Linux / Manjaro / EndeavourOS
+##### Arch Linux / Manjaro / EndeavourOS
 **1. Configure the repository:**
 ```bash
 curl -fsSL https://libreconnect.one/pacman/libreconnect-packages.gpg | sudo pacman-key --add -
