@@ -141,6 +141,20 @@ EOF
 </policyconfig>
 EOF
 
+    restart_polkit() {
+        if command -v systemctl >/dev/null 2>&1; then
+            run_as_root systemctl restart polkit.service 2>/dev/null || true
+        elif command -v rc-service >/dev/null 2>&1; then
+            run_as_root rc-service polkit restart 2>/dev/null || true
+        elif command -v sv >/dev/null 2>&1; then
+            run_as_root sv restart polkit 2>/dev/null || true
+        elif command -v service >/dev/null 2>&1; then
+            run_as_root service polkit restart 2>/dev/null || true
+        fi
+    }
+
+    restart_polkit
+
     run_as_root systemctl restart polkit || true
 else
     echo "v4l2loopback-helper not found at: $HELPER_PATH"

@@ -51,7 +51,7 @@ if command -v loginctl >/dev/null 2>&1; then
         if [[ -n "$uid" && "$uid" =~ ^[0-9]+$ && "$uid" -ge 1000 ]]; then
             USERS_TO_ADD+=("$user")
         fi
-    done < <(loginctl list-users --no-legend 2>/dev/null || true)
+    done < <(loginctl list-users --no-legend | awk '{print $1" "$2}' 2>/dev/null || true)
 fi
 
 FINAL_USERS=$(printf "%s\n" "${USERS_TO_ADD[@]}" | grep -v "^root$" | sort -u || true)

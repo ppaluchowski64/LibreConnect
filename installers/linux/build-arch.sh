@@ -129,6 +129,8 @@ docker run --rm \
   /bin/bash -c "
     set -euo pipefail
     
+    echo 'PACKAGER="Pablo Majster <104451887+ppaluchowski64@users.noreply.github.com>"' >> /etc/makepkg.conf
+    
     echo 'Initializing Arch keyring...'
     pacman -Sy --noconfirm archlinux-keyring
 
