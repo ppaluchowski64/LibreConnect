@@ -126,7 +126,7 @@ For certain operating systems, we provide automated installation methods to ensu
 #### Android
 We offer two primary ways to keep LibreConnect updated on Android. You can use **Obtainium** to track our GitHub releases directly, or add our repository to **F-Droid**.
 
-<a href="https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/%7B%22id%22%3A%22com.LibreConnect.mobile%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fppaluchowski64%2FLibreConnect%22%2C%22name%22%3A%22LibreConnect%22%2C%22preferredAssetFilter%22%3A%22.*-arm64-v8a%5C%5C.apk%22%7D">
+<a href="https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://app/%7B%22id%22%3A%22com.LibreConnect.mobile%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Fppaluchowski64%2FLibreConnect%22%2C%22name%22%3A%22LibreConnect%22%2C%22author%22%3A%22Pablo%20Majster%22%2C%22preferredAssetFilter%22%3A%22.*-arm64-v8a%5C%5C.apk%22%7D">
   <img src="https://github.com/user-attachments/assets/713d71c5-3dec-4ec4-a3f2-8d28d025a9c6" alt="Add to Obtainium" height="125">
 </a>
 <a href="https://libreconnect.one/fdroid/repo/index.html">

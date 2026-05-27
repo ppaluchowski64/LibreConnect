@@ -1,0 +1,8 @@
+{
+  "id": "com.LibreConnect.mobile",
+  "url": "https://github.com/ppaluchowski64/LibreConnect",
+  "name": "LibreConnect",
+  "author": "Pablo Majster",
+  "source": "GitHub",
+  "preferredAssetFilter": ".*-arm64-v8a\\.apk"
+}
