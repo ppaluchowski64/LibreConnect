@@ -96,13 +96,47 @@ void AndroidContextProvider::SetServiceContext(JNIEnv* env, jobject serviceConte
         return;
     }
 
-    std::lock_guard<std::mutex> lock(g_contextMutex);
+    jobject contextToCache = serviceContext;
+    jobject applicationContext = nullptr;
+    jclass contextClass = env->GetObjectClass(serviceContext);
+    if (contextClass) {
+        jmethodID getApplicationContextMethod = env->GetMethodID(
+            contextClass,
+            "getApplicationContext",
+            "()Landroid/content/Context;"
+        );
+        if (getApplicationContextMethod) {
+            applicationContext = env->CallObjectMethod(serviceContext, getApplicationContextMethod);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                applicationContext = nullptr;
+            } else if (applicationContext) {
+                contextToCache = applicationContext;
+            }
+        } else {
+            env->ExceptionClear();
+        }
+        env->DeleteLocalRef(contextClass);
+    } else {
+        env->ExceptionClear();
+    }
 
+    jobject globalContext = env->NewGlobalRef(contextToCache);
+    if (applicationContext) {
+        env->DeleteLocalRef(applicationContext);
+    }
+
+    if (!globalContext) {
+        Debug::LogWarning("AndroidContextProvider: Failed to cache service context");
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(g_contextMutex);
     if (g_serviceContext) {
         env->DeleteGlobalRef(g_serviceContext);
     }
 
-    g_serviceContext = env->NewGlobalRef(serviceContext);
+    g_serviceContext = globalContext;
     Debug::Log("AndroidContextProvider: Service context cached");
 }
 

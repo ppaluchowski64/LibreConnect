@@ -13,6 +13,9 @@ namespace BackendBridge
     void SendAction(const char* action, const char* extraKey, int value);
     void SendAction(const char* action, const char* extraKey, double value);
     void SendAction(const char* action, const char* extraKey, const QString& value);
+    void SendAction(const char* action,
+                    const char* key1, bool val1,
+                    const char* key2, const QString& val2);
 
     void SendAction(const char* action,
                     const char* key1, int val1,

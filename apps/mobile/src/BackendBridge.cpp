@@ -9,11 +9,27 @@
 
 namespace BackendBridge
 {
+namespace
+{
+QJniObject GetApplicationContext()
+{
+    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    if (!context.isValid()) {
+        return {};
+    }
+
+    const QJniObject applicationContext = context.callObjectMethod(
+        "getApplicationContext",
+        "()Landroid/content/Context;"
+    );
+    return applicationContext.isValid() ? applicationContext : context;
+}
+}
 
 QJsonObject ReadStateSnapshot()
 {
     QString storageRoot;
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetApplicationContext();
     if (context.isValid()) {
         const QJniObject filesDir = context.callObjectMethod(
             "getFilesDir",
@@ -47,7 +63,7 @@ QJsonObject ReadStateSnapshot()
 
 static void BuildAndSendIntent(const char* action, std::function<void(QJniObject&)> configureExtras = {})
 {
-    const QJniObject context = QNativeInterface::QAndroidApplication::context();
+    const QJniObject context = GetApplicationContext();
     if (!context.isValid()) {
         return;
     }
@@ -131,6 +147,26 @@ void SendAction(const char* action, const char* extraKey, const QString& value)
             "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
             QJniObject::fromString(QString::fromLatin1(extraKey)).object<jstring>(),
             QJniObject::fromString(value).object<jstring>()
+        );
+    });
+}
+
+void SendAction(const char* action,
+                const char* key1, const bool val1,
+                const char* key2, const QString& val2)
+{
+    BuildAndSendIntent(action, [&](QJniObject& intent) {
+        intent.callObjectMethod(
+            "putExtra",
+            "(Ljava/lang/String;Z)Landroid/content/Intent;",
+            QJniObject::fromString(QString::fromLatin1(key1)).object<jstring>(),
+            static_cast<jboolean>(val1)
+        );
+        intent.callObjectMethod(
+            "putExtra",
+            "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+            QJniObject::fromString(QString::fromLatin1(key2)).object<jstring>(),
+            QJniObject::fromString(val2).object<jstring>()
         );
     });
 }

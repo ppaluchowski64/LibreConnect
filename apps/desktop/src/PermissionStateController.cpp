@@ -2,7 +2,9 @@
 
 #include <ConnectionManager.h>
 #include <Events.h>
+#include <ModulesManager.h>
 #include <QTimer>
+#include <array>
 #ifdef MACOS_DEVICE
 #include <NotificationEmitter.h>
 #endif
@@ -13,9 +15,8 @@ PermissionStateController::PermissionStateController(QObject* parent)
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
     m_connected = ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED;
     if (m_connected) {
-        QTimer::singleShot(0, this, [] {
-            ConnectionManager::Send(PC_PackageType::PERMISSION_SYNC_REQUEST);
-        });
+        ModulesManager::Initialize();
+        requestPermissionSyncSnapshot();
     }
 }
 
@@ -55,7 +56,9 @@ void PermissionStateController::requestPermission(const int permissionType)
         return;
     }
 
+    ModulesManager::Initialize();
     ConnectionManager::Send(PC_PackageType::PERMISSION_REQUEST, type);
+    requestPermissionSyncSnapshot();
 }
 
 void PermissionStateController::requestDesktopNotificationPermission()
@@ -81,7 +84,12 @@ bool PermissionStateController::event(QEvent* event)
         }
 
         clearPermissionState();
-        ConnectionManager::Send(PC_PackageType::PERMISSION_SYNC_REQUEST);
+        if (isConnected) {
+            ModulesManager::Initialize();
+            requestPermissionSyncSnapshot();
+        } else {
+            ++m_syncRequestGeneration;
+        }
         return true;
     }
 
@@ -92,6 +100,7 @@ bool PermissionStateController::event(QEvent* event)
         }
 
         clearPermissionState();
+        ++m_syncRequestGeneration;
         return true;
     }
 
@@ -126,6 +135,25 @@ void PermissionStateController::clearPermissionState()
 
     if (changed) {
         emit permissionStateChanged();
+    }
+}
+
+void PermissionStateController::requestPermissionSyncSnapshot()
+{
+    if (!m_connected) {
+        return;
+    }
+
+    const int generation = ++m_syncRequestGeneration;
+    constexpr std::array delaysMs{0, 500, 1500, 3000, 6000, 10000, 20000, 40000};
+    for (const int delayMs : delaysMs) {
+        QTimer::singleShot(delayMs, this, [this, generation] {
+            if (generation != m_syncRequestGeneration || !m_connected) {
+                return;
+            }
+
+            ConnectionManager::Send(PC_PackageType::PERMISSION_SYNC_REQUEST);
+        });
     }
 }
 
