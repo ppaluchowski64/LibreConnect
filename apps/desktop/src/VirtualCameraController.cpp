@@ -1,10 +1,18 @@
 #include "VirtualCameraController.h"
 #include <ModulesManager.h>
+#include <SystemInfo.h>
 #include <regex>
 
 VirtualCameraController::VirtualCameraController(QObject* parent)
     : QObject(parent)
 {
+    m_available = SystemInfo::IsVirtualCameraSupported();
+    if (!m_available) {
+        m_unavailableReason = SystemInfo::VirtualCameraUnavailableReason();
+        m_statusMessage = m_unavailableReason;
+        return;
+    }
+
     m_pollTimer.setInterval(1000);
     connect(&m_pollTimer, &QTimer::timeout, this, &VirtualCameraController::refreshAvailableCameras);
     m_pollTimer.start();
@@ -36,6 +44,13 @@ void VirtualCameraController::setSelectedFormatIndex(const int selectedFormatInd
 
 void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
 {
+    if (!m_available) {
+        setEnabledState(false);
+        setBusy(false);
+        setStatusMessage(m_unavailableReason);
+        return;
+    }
+
     auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
 
     if (!enabled) {
@@ -80,12 +95,20 @@ void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
 
 bool VirtualCameraController::cameraFlipped() const
 {
+    if (!m_available) {
+        return false;
+    }
+
     auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
     return module->IsCameraFlipped();
 }
 
 void VirtualCameraController::flipCamera()
 {
+    if (!m_available) {
+        return;
+    }
+
     auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
     module->FlipCamera();
     emit cameraFlippedChanged();
@@ -93,6 +116,10 @@ void VirtualCameraController::flipCamera()
 
 void VirtualCameraController::refreshAvailableCameras()
 {
+    if (!m_available) {
+        return;
+    }
+
     auto& module = ModulesManager::GetModuleReference<NetworkCameraModule>();
     m_cameraSpecifications = module->GetCamerasSpecification();
 

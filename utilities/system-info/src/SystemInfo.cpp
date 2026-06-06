@@ -26,6 +26,35 @@
 
 #include <SystemInfo.h>
 
+#ifdef Q_OS_WIN
+namespace
+{
+using RtlGetVersionFn = LONG(WINAPI*)(OSVERSIONINFOW*);
+
+bool IsWindows11OrGreater()
+{
+    const HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+    if (ntdll == nullptr) {
+        return false;
+    }
+
+    const auto rtlGetVersion = reinterpret_cast<RtlGetVersionFn>(GetProcAddress(ntdll, "RtlGetVersion"));
+    if (rtlGetVersion == nullptr) {
+        return false;
+    }
+
+    OSVERSIONINFOW versionInfo{};
+    versionInfo.dwOSVersionInfoSize = sizeof(versionInfo);
+    if (rtlGetVersion(&versionInfo) != 0) {
+        return false;
+    }
+
+    return versionInfo.dwMajorVersion > 10
+        || (versionInfo.dwMajorVersion == 10 && versionInfo.dwBuildNumber >= 22000);
+}
+}
+#endif
+
 #ifdef Q_OS_ANDROID
 namespace
 {
@@ -188,6 +217,30 @@ float SystemInfo::GetBatteryLevel() {
 #endif
 
     return -1;
+}
+
+bool SystemInfo::IsVirtualCameraSupported()
+{
+#if defined(Q_OS_WIN)
+    return IsWindows11OrGreater();
+#elif defined(Q_OS_MAC) || defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    return false;
+#else
+    return true;
+#endif
+}
+
+QString SystemInfo::VirtualCameraUnavailableReason()
+{
+#if defined(Q_OS_WIN)
+    return QStringLiteral("Virtual cameras are only supported on Windows 11 or newer.");
+#elif defined(Q_OS_MAC)
+    return QStringLiteral("Virtual Camera is not supported on macOS.");
+#elif defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
+    return QStringLiteral("Virtual Camera is only available in the desktop app.");
+#else
+    return QString();
+#endif
 }
 
 #ifdef Q_OS_ANDROID

@@ -64,6 +64,8 @@ Page {
             color: Theme.panelColor
             border.color: Theme.panelBorderColor
             clip: true
+            enabled: virtualCameraController.available
+            opacity: virtualCameraController.available ? 1.0 : 0.55
 
             Flickable {
                 id: panelFlickable

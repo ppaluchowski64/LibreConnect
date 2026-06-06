@@ -15,6 +15,8 @@ class VirtualCameraController : public QObject
 
     Q_PROPERTY(bool enabled READ enabled NOTIFY enabledChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool available READ available CONSTANT)
+    Q_PROPERTY(QString unavailableReason READ unavailableReason CONSTANT)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QStringList cameraDescriptions READ cameraDescriptions NOTIFY cameraDescriptionsChanged)
     Q_PROPERTY(QVariantList formatList READ formatList NOTIFY formatListChanged)
@@ -27,6 +29,8 @@ public:
 
     bool enabled() const { return m_enabled; }
     bool busy() const { return m_busy; }
+    bool available() const { return m_available; }
+    QString unavailableReason() const { return m_unavailableReason; }
     QString statusMessage() const { return m_statusMessage; }
     QStringList cameraDescriptions() const { return m_cameraDescriptions; }
     QVariantList formatList() const { return m_formatList; }
@@ -63,8 +67,10 @@ private:
     std::vector<CameraSpecification> m_cameraSpecifications;
     QStringList m_cameraDescriptions;
     QVariantList m_formatList;
+    bool m_available = true;
     bool m_enabled = false;
     bool m_busy = false;
+    QString m_unavailableReason;
     QString m_statusMessage = QStringLiteral("Waiting for available cameras from the connected device.");
     int m_selectedCameraIndex = -1;
     int m_selectedFormatIndex = -1;

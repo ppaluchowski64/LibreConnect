@@ -14,6 +14,8 @@ Page {
     required property var smsBridgeController
     required property var permissionStateController
     required property var temporaryStorageController
+    required property bool virtualCameraAvailable
+    required property string virtualCameraUnavailableReason
     property string activeDeviceName: "Connected Device"
     property string activeDeviceId: ""
     property string initialFeature: ""
@@ -49,6 +51,12 @@ Page {
             permissionPromptDialog.permissionTitle = "Messages Permission Required"
             permissionPromptDialog.permissionMessage = "SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages."
             permissionPromptDialog.open()
+            return
+        }
+
+        if (nextFeature === "cameras" && !root.virtualCameraAvailable) {
+            if (windowRef && windowRef.showVirtualCamera !== undefined)
+                windowRef.showVirtualCamera()
             return
         }
 
@@ -811,24 +819,32 @@ Page {
                     Item {
                         width: parent.width
                         height: 58
+                        readonly property bool cameraFeatureEnabled: root.permissionStateController.cameraGranted
+                                                                  && root.virtualCameraAvailable
 
                         FeatureListButton {
                             text: "Cameras"
                             iconSource: "camera.svg"
                             darkIconSource: "camera_dark.svg"
                             anchors.fill: parent
-                            enabled: root.permissionStateController.cameraGranted
+                            enabled: parent.cameraFeatureEnabled
                             onClicked: windowRef.showVirtualCamera()
                         }
 
                         MouseArea {
                             anchors.fill: parent
-                            visible: !root.permissionStateController.cameraGranted
+                            visible: !parent.cameraFeatureEnabled
                             onClicked: {
                                 permissionPromptDialog.permissionType = 1
                                 permissionPromptDialog.permissionTitle = "Camera Permission Required"
-                                permissionPromptDialog.permissionMessage = "Camera access is disabled on the mobile app. Grant camera permission to use the Cameras feature."
-                                permissionPromptDialog.open()
+                                if (!root.permissionStateController.cameraGranted) {
+                                    permissionPromptDialog.permissionMessage = "Camera access is disabled on the mobile app. Grant camera permission to use the Cameras feature."
+                                    permissionPromptDialog.open()
+                                    return
+                                }
+
+                                if (windowRef && windowRef.showVirtualCamera !== undefined)
+                                    windowRef.showVirtualCamera()
                             }
                         }
                     }

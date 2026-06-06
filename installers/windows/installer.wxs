@@ -25,6 +25,14 @@
 
         <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
         <Property Id="CREATE_DESKTOP_SHORTCUT" Value="1" Secure="yes" />
+        <Property Id="WINDOWS_BUILD_NUMBER">
+            <RegistrySearch
+                Id="WindowsBuildNumberSearch"
+                Root="HKLM"
+                Key="SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+                Name="CurrentBuildNumber"
+                Type="raw" />
+        </Property>
 
         <WixVariable Id="WixUILicenseRtf" Value="LICENSE.rtf" />
         <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Launch LibreConnect" />
@@ -87,8 +95,8 @@
         <CustomAction Id="RunVirtualCameraTeardownScript" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="no" Return="ignore" ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[#VirtualCameraTeardownScriptFile]&quot;" />
 
         <InstallExecuteSequence>
-            <Custom Action="RunVirtualCameraSetupScript" After="InstallFiles" Condition='NOT REMOVE~="ALL"' />
-            <Custom Action="RunVirtualCameraTeardownScript" Before="RemoveFiles" Condition='REMOVE~="ALL"' />
+            <Custom Action="RunVirtualCameraSetupScript" After="InstallFiles" Condition='NOT REMOVE~="ALL" AND WINDOWS_BUILD_NUMBER >= 22000' />
+            <Custom Action="RunVirtualCameraTeardownScript" Before="RemoveFiles" Condition='REMOVE~="ALL" AND WINDOWS_BUILD_NUMBER >= 22000' />
             <Custom Action="LaunchDaemon" After="InstallFinalize" Condition='NOT REMOVE~="ALL"' />
         </InstallExecuteSequence>
 

@@ -376,6 +376,10 @@ endfunction()
 function(LinkVirtualCameraLibs target)
     if (WIN32)
         target_link_libraries(${target} PUBLIC virtual-camera-platform-implementation)
+        if (MSVC)
+            target_link_libraries(${target} PRIVATE delayimp.lib)
+            target_link_options(${target} PRIVATE "/DELAYLOAD:virtual-camera-platform-implementation.dll")
+        endif()
         add_custom_command(TARGET ${target} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 $<TARGET_FILE:virtual-camera-platform-implementation>

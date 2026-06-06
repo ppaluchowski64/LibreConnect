@@ -34,6 +34,8 @@ Window {
     readonly property int homeMinimumWindowHeight: 660
     readonly property bool isMacOS: Qt.platform.os === "osx"
     readonly property bool isLinux: Qt.platform.os === "linux"
+    readonly property bool virtualCameraAvailable: VirtualCameraAvailable
+    readonly property string virtualCameraUnavailableReason: VirtualCameraUnavailableReason
     title: currentWindowTitleSuffix.length > 0
            ? baseWindowTitle + " - " + currentWindowTitleSuffix
            : baseWindowTitle
@@ -168,6 +170,8 @@ Window {
             smsBridgeController: smsBridgeController,
             permissionStateController: permissionStateController,
             temporaryStorageController: temporaryStorageController,
+            virtualCameraAvailable: virtualCameraAvailable,
+            virtualCameraUnavailableReason: virtualCameraUnavailableReason,
             initialFeature: initialFeature === undefined ? "" : initialFeature
         })
     }
@@ -199,7 +203,7 @@ Window {
     }
 
     function showVirtualCamera() {
-        if (isMacOS) {
+        if (!virtualCameraAvailable) {
             virtualCameraUnsupportedDialog.open()
             return
         }
@@ -371,7 +375,7 @@ Window {
 
         contentItem: Text {
             id: virtualCameraUnsupportedText
-            text: "Virtual Camera is not supported on macOS."
+            text: virtualCameraUnavailableReason
             width: virtualCameraUnsupportedDialog.contentWidth
             color: Theme.textColor
             font.family: Theme.fontFamily

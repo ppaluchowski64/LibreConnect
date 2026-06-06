@@ -22,6 +22,7 @@
 #include <ConnectionManager.h>
 #include <DebugLog.h>
 #include <Events.h>
+#include <SystemInfo.h>
 #include "DeviceDiscovery.h"
 #include "DeviceModel.h"
 #include "DeviceConnectionController.h"
@@ -304,6 +305,8 @@ int main(int argc, char *argv[])
     ThemeController themeController;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("Theme"), &themeController);
+    engine.rootContext()->setContextProperty(QStringLiteral("VirtualCameraAvailable"), SystemInfo::IsVirtualCameraSupported());
+    engine.rootContext()->setContextProperty(QStringLiteral("VirtualCameraUnavailableReason"), SystemInfo::VirtualCameraUnavailableReason());
 
     qmlRegisterType<DeviceDiscovery>("LibreConnect.desktop", 1, 0, "DeviceDiscovery");
     qmlRegisterType<DeviceModel>("LibreConnect.desktop", 1, 0, "DeviceModel");
