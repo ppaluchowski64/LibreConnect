@@ -35,6 +35,11 @@ set(CMAKE_AUTOUIC ON)
 
 include(FetchContent)
 
+if (WIN32)
+    set(CMAKE_INSTALL_UCRT_LIBRARIES ON)
+    include(InstallRequiredSystemLibraries)
+endif()
+
 include(cmake/Tests.cmake)
 include(cmake/Build.cmake)
 include(cmake/ENV_Loader.cmake)

@@ -54,7 +54,10 @@
         </Feature>
 
         <ComponentGroup Id="HarvestedFiles" Directory="INSTALLFOLDER">
-            <Files Include="$(var.DeployDir)\**" />
+            <Files Include="$(var.DeployDir)\**">
+                <Exclude Files="$(var.DeployDir)\vc_redist.x64.exe" />
+                <Exclude Files="$(var.DeployDir)\vc_redist.arm64.exe" />
+            </Files>
         </ComponentGroup>
 
         <DirectoryRef Id="INSTALLFOLDER">

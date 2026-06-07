@@ -284,6 +284,19 @@ function(DeployQT Target)
         else()
             message(STATUS "windeployqt not found. Skipping deployment.")
         endif()
+
+        foreach(lib ${CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS})
+            get_filename_component(lib_name "${lib}" NAME)
+
+            # Only core C++ runtime and UCRT base
+            if (lib_name MATCHES "^(msvcp140|vcruntime140|ucrtbase).*\\.dll$")
+                add_custom_command(TARGET ${Target} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${lib}" "$<TARGET_FILE_DIR:${Target}>"
+                        COMMENT "Copying essential system runtime library ${lib_name}..."
+                        VERBATIM
+                )
+            endif()
+        endforeach()
     elseif(APPLE AND NOT IOS)
         set_source_files_properties(${MAC_ICON} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
         target_sources(${Target} PRIVATE ${MAC_ICON})
