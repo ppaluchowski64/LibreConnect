@@ -37,9 +37,18 @@ void ThreadPool::StartImpl() {
     s_instance->m_threads.reserve(threadCount);
     Debug::Log("ThreadPool: starting {} worker threads", threadCount);
 
-    for (int i = 0; i < threadCount; i++) {
+    for (unsigned int i = 0; i < threadCount; ++i) {
         s_instance->m_threads.emplace_back([]() {
-            s_instance->m_context.run();
+            while (true) {
+                try {
+                    s_instance->m_context.run();
+                    break;
+                } catch (const std::exception& error) {
+                    Debug::LogError("ThreadPool: I/O handler failed: {}", error.what());
+                } catch (...) {
+                    Debug::LogError("ThreadPool: I/O handler failed with an unknown exception");
+                }
+            }
         });
     }
 }

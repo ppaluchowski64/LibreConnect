@@ -12,10 +12,20 @@
 
 #include <FileSystemManager.h>
 #include <FileIconDensity.h>
+#include <RemoteFileBuffer.h>
+#include <future>
 
 class FileShareModule final : public BaseModule {
 public:
     FileShareModule() = default;
+
+    struct ExportEntry {
+        FileEntry entry;
+        std::filesystem::path relativePath;
+        bool directory = false;
+    };
+    std::future<std::vector<ExportEntry>> DescribeExport(std::vector<FileEntry> entries) const;
+    std::shared_ptr<RemoteFileBuffer> StreamExportFile(FileEntry entry) const;
 
     static void SetIncomingPostDirectory(const std::filesystem::path& path);
 
@@ -32,6 +42,8 @@ public:
     void DeleteEntries(std::vector<FileEntry> entries) const;
 
 private:
+    asio::awaitable<std::vector<ExportEntry>> DescribeExportAwaitable(std::vector<FileEntry> entries) const;
+    asio::awaitable<void> StreamExportFileAwaitable(FileEntry entry, std::shared_ptr<RemoteFileBuffer> buffer) const;
     bool TryBeginDirectoryRequest(const std::string& path) const;
     void EndDirectoryRequest(const std::string& path) const;
 

@@ -20,8 +20,11 @@ public:
     size_t GetTotalBytes() const { return m_totalBytes; }
     size_t GetBytesTransferred() const { return m_bytesTransferred; }
     TransferOperation GetOperation() const { return m_operation; }
+    size_t GetCurrentFileBytes() const { return m_currentFileBytes; }
+    size_t GetCurrentFileSize() const { return m_currentFileSize; }
 
     void SetBytesTransferred(const size_t bytesTransferred) { m_bytesTransferred = bytesTransferred; }
+    void SetCurrentFileProgress(const size_t bytes, const size_t total) { m_currentFileBytes = bytes; m_currentFileSize = total; }
 
     EntryTransferProgressEvent* clone() const override {
         return new EntryTransferProgressEvent(*this);
@@ -32,6 +35,8 @@ private:
     size_t m_totalBytes;
     size_t m_bytesTransferred;
     TransferOperation m_operation;
+    size_t m_currentFileBytes = 0;
+    size_t m_currentFileSize = 0;
 
 };
 

@@ -56,10 +56,58 @@ asio::awaitable<void> DrainSocketBytes(SSLSocket& socket, std::vector<uint8_t>& 
 }
 }
 
-TransferChannel::TransferChannel() : m_socket(nullptr), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) {}
+TransferChannel::TransferChannel() : m_strand(asio::make_strand(ThreadPool::GetContext())), m_socket(nullptr), m_bufferIn(TRANSFER_BUFFER_SIZE), m_bufferOut(TRANSFER_BUFFER_SIZE) {}
+
+asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
+    return asio::co_spawn(m_strand, CoConnect(endpoint), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port) {
+    return asio::co_spawn(m_strand, CoSeek(flag, port), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::Disconnect() {
+    return asio::co_spawn(m_strand, CoDisconnect(), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path path) {
+    return asio::co_spawn(m_strand, CoReceiveDirectory(std::move(path)), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::SendDirectory(std::filesystem::path path) {
+    return asio::co_spawn(m_strand, CoSendDirectory(std::move(path)), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
+    return asio::co_spawn(m_strand, CoReceiveFile(std::move(path)), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
+    return asio::co_spawn(m_strand, CoSendFile(std::move(path)), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::SendDirectoryEntries(std::vector<FileEntry> entries) {
+    return asio::co_spawn(m_strand, CoSendDirectoryEntries(std::move(entries)), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileEntry>& entries) {
+    return asio::co_spawn(m_strand, CoReceiveDirectoryEntries(entries), asio::use_awaitable);
+}
+
+asio::awaitable<void> TransferChannel::ReceiveFileData(size_t expectedSize, FileSink sink) {
+    return asio::co_spawn(m_strand, CoReceiveFileData(expectedSize, std::move(sink)), asio::use_awaitable);
+}
 
 size_t TransferChannel::FetchTransferProgress() const {
     return m_progress.load();
+}
+
+size_t TransferChannel::FetchCurrentFileProgress() const {
+    return m_currentFileProgress.load();
+}
+
+size_t TransferChannel::FetchCurrentFileSize() const {
+    return m_currentFileSize.load();
 }
 
 bool TransferChannel::IsUsed(const bool outTransfer) const {
@@ -70,7 +118,7 @@ ConnectionState TransferChannel::GetConnectionState() const {
     return m_connectionState.load();
 }
 
-asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
+asio::awaitable<void> TransferChannel::CoConnect(TCPEndpoint endpoint) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
     IOContext& context = ThreadPool::GetContext();
     m_sslContext = ConnectionManager::GetSSLContextClient();
@@ -79,12 +127,13 @@ asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
         m_connectionState.store(ConnectionState::CONNECTING);
 
         co_await CleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(context, *m_sslContext);
+        const std::shared_ptr<SSLSocket> socket = std::make_shared<SSLSocket>(m_strand, *m_sslContext);
+        std::atomic_store(&m_socket, socket);
 
-        co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
-        co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
+        co_await asio::async_connect(socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
+        co_await socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
 
-        Debug::Log("Accepted TLS connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
+        Debug::Log("Accepted TLS connection to {}:{}", socket->lowest_layer().remote_endpoint().address().to_string(), socket->lowest_layer().remote_endpoint().port());
         m_connectionState.store(ConnectionState::CONNECTED);
 
     } catch (std::system_error& error) {
@@ -93,7 +142,7 @@ asio::awaitable<void> TransferChannel::Connect(TCPEndpoint endpoint) {
     }
 }
 
-asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port) {
+asio::awaitable<void> TransferChannel::CoSeek(AwaitableFlag& flag, uint16_t& port) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
     IOContext& context = ThreadPool::GetContext();
     m_sslContext = ConnectionManager::GetSSLContextServer();
@@ -102,23 +151,25 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
         m_connectionState.store(ConnectionState::CONNECTING);
 
         co_await CleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(context, *m_sslContext);
+        const std::shared_ptr<SSLSocket> socket = std::make_shared<SSLSocket>(m_strand, *m_sslContext);
+        std::atomic_store(&m_socket, socket);
 
-        m_acceptor = std::make_unique<TCPAcceptor>(context);
+        const std::shared_ptr<TCPAcceptor> acceptor = std::make_shared<TCPAcceptor>(m_strand);
+        std::atomic_store(&m_acceptor, acceptor);
         asio::ip::tcp::endpoint endpoint(asio::ip::tcp::v4(), 0);
 
-        m_acceptor->open(endpoint.protocol());
-        m_acceptor->set_option(asio::socket_base::reuse_address(true));
-        m_acceptor->bind(endpoint);
-        m_acceptor->listen();
+        acceptor->open(endpoint.protocol());
+        acceptor->set_option(asio::socket_base::reuse_address(true));
+        acceptor->bind(endpoint);
+        acceptor->listen();
 
-        port = m_acceptor->local_endpoint().port();
+        port = acceptor->local_endpoint().port();
         flag.Signal();
 
-        co_await m_acceptor->async_accept(m_socket->lowest_layer(), asio::use_awaitable);
-        co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
+        co_await acceptor->async_accept(socket->lowest_layer(), asio::use_awaitable);
+        co_await socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
 
-        Debug::Log("Accepted TLS connection to {}:{}", m_socket->lowest_layer().remote_endpoint().address().to_string(), m_socket->lowest_layer().remote_endpoint().port());
+        Debug::Log("Accepted TLS connection to {}:{}", socket->lowest_layer().remote_endpoint().address().to_string(), socket->lowest_layer().remote_endpoint().port());
         m_connectionState.store(ConnectionState::CONNECTED);
 
     } catch (std::system_error& error) {
@@ -130,15 +181,18 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
     }
 }
 
-asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path path) {
+asio::awaitable<void> TransferChannel::CoReceiveDirectory(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
-    if (m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket || m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
         throw std::runtime_error("Transfer channel is unavailable for receiving");
     }
 
     m_receive.store(true);
     struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_receive};
     m_progress.store(0);
+    m_currentFileSize.store(0);
+    m_currentFileProgress.store(0);
 
     try {
         std::filesystem::create_directories(path);
@@ -155,7 +209,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
         do {
             size_t fileHeaderSize = 0;
-            co_await asio::async_read(*m_socket, asio::mutable_buffer(headerBuffer.data(), headerBuffer.size()), asio::use_awaitable);
+            co_await asio::async_read(*socket, asio::mutable_buffer(headerBuffer.data(), headerBuffer.size()), asio::use_awaitable);
 
             size_t offset = 0;
             DeserializeObject(fileHeaderSize, headerBuffer, offset);
@@ -166,7 +220,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
             }
 
             asio::mutable_buffer mutableBuffer(buffer.data(), fileHeaderSize);
-            co_await asio::async_read(*m_socket, mutableBuffer, asio::use_awaitable);
+            co_await asio::async_read(*socket, mutableBuffer, asio::use_awaitable);
 
             offset = 0;
             fileHeader.Deserialize(buffer, offset);
@@ -182,7 +236,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
                     fileHeader.relativePath,
                     canonicalBasePath.string()
                 );
-                co_await DrainSocketBytes(*m_socket, m_bufferIn, fileHeader.fileSize);
+                co_await DrainSocketBytes(*socket, m_bufferIn, fileHeader.fileSize);
                 continue;
             }
 
@@ -201,16 +255,19 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
 }
 
-asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path path) {
+asio::awaitable<void> TransferChannel::CoSendDirectory(const std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
 
-    if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
+    if (!socket || m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
         throw std::runtime_error("Transfer channel is unavailable for sending");
     }
 
     m_send.store(true);
     struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_send};
     m_progress.store(0);
+    m_currentFileSize.store(0);
+    m_currentFileProgress.store(0);
 
     try {
         std::vector<std::filesystem::path> fileList;
@@ -231,7 +288,7 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
             SerializeObject(fileHeader.GetSerializedSize(), buffer, offset);
             fileHeader.Serialize(buffer, offset);
 
-            co_await asio::async_write(*m_socket, asio::buffer(buffer), asio::use_awaitable);
+            co_await asio::async_write(*socket, asio::buffer(buffer), asio::use_awaitable);
         }
 
         for (size_t i = 0; i < fileList.size(); ++i) {
@@ -248,7 +305,7 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
             SerializeObject(fileHeader.GetSerializedSize(), buffer, offset);
             fileHeader.Serialize(buffer, offset);
 
-            co_await asio::async_write(*m_socket, asio::buffer(buffer), asio::use_awaitable);
+            co_await asio::async_write(*socket, asio::buffer(buffer), asio::use_awaitable);
             const bool sent = co_await Send(currentFilePath);
             if (!sent) {
                 throw std::runtime_error("Failed to send directory file");
@@ -263,15 +320,18 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
 
 }
 
-asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
+asio::awaitable<void> TransferChannel::CoReceiveFile(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
-    if (m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket || m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
         throw std::runtime_error("Transfer channel is unavailable for receiving");
     }
 
     m_receive.store(true);
     struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_receive};
     m_progress.store(0);
+    m_currentFileSize.store(0);
+    m_currentFileProgress.store(0);
 
     FileHeader fileHeader{};
     size_t offset = 0;
@@ -279,7 +339,7 @@ asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
     std::vector<uint8_t> buffer(fileHeader.GetSerializedSize());
     const asio::mutable_buffer mutableBuffer(buffer.data(), buffer.size());
 
-    co_await asio::async_read(*m_socket, mutableBuffer, asio::use_awaitable);
+    co_await asio::async_read(*socket, mutableBuffer, asio::use_awaitable);
     fileHeader.Deserialize(buffer, offset);
 
     const bool received = co_await Receive(path, fileHeader.fileSize);
@@ -289,16 +349,19 @@ asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
 
 }
 
-asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
+asio::awaitable<void> TransferChannel::CoSendFile(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
 
-    if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
+    if (!socket || m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
         throw std::runtime_error("Transfer channel is unavailable for sending");
     }
 
     m_send.store(true);
     struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_send};
     m_progress.store(0);
+    m_currentFileSize.store(0);
+    m_currentFileProgress.store(0);
 
     const FileHeader fileHeader{
         "",
@@ -312,7 +375,7 @@ asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
     fileHeader.Serialize(buffer, offset);
     const asio::const_buffer constBuffer(buffer.data(), buffer.size());
 
-    co_await asio::async_write(*m_socket, constBuffer, asio::use_awaitable);
+    co_await asio::async_write(*socket, constBuffer, asio::use_awaitable);
     const bool sent = co_await Send(path);
     if (!sent) {
         throw std::runtime_error("Failed to send file");
@@ -320,7 +383,7 @@ asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
 
 }
 
-asio::awaitable<void> TransferChannel::SendDirectoryEntries(std::vector<FileEntry>&& entries) {
+asio::awaitable<void> TransferChannel::CoSendDirectoryEntries(std::vector<FileEntry> entries) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
     if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
         Debug::LogWarning(
@@ -402,18 +465,20 @@ asio::awaitable<void> TransferChannel::SendDirectoryEntries(std::vector<FileEntr
     m_send.store(false);
 }
 
-asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileEntry>& entries) {
+asio::awaitable<void> TransferChannel::CoReceiveDirectoryEntries(std::vector<FileEntry>& entries) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
-    if (m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket || m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
         Debug::LogWarning(
             "TransferChannel: ReceiveDirectoryEntries skipped. State: {}, ReceiveInUse: {}",
             static_cast<int>(m_connectionState.load()),
             m_receive.load()
         );
-        co_return;
+        throw std::runtime_error("Directory channel is unavailable");
     }
 
     m_receive.store(true);
+    struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_receive};
     m_progress.store(0);
     constexpr size_t frameHeaderSize = sizeof(size_t) * 2;
 
@@ -422,7 +487,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileE
 
     {
         const asio::mutable_buffer buffer(m_bufferIn.data(), sizeof(size_t));
-        co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
+        co_await asio::async_read(*socket, buffer, asio::use_awaitable);
         DeserializeObject(totalCount, m_bufferIn, offset);
     }
     Debug::Log("TransferChannel: ReceiveDirectoryEntries started. Expected entries: {}", totalCount);
@@ -434,7 +499,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileE
 
     while (true) {
         const asio::mutable_buffer headerBuffer(m_bufferIn.data(), frameHeaderSize);
-        co_await asio::async_read(*m_socket, headerBuffer, asio::use_awaitable);
+        co_await asio::async_read(*socket, headerBuffer, asio::use_awaitable);
 
         size_t payloadSize = 0;
         size_t count = 0;
@@ -454,7 +519,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileE
 
         if (payloadSize > 0) {
             const asio::mutable_buffer payloadBuffer(m_bufferIn.data() + frameHeaderSize, payloadSize);
-            co_await asio::async_read(*m_socket, payloadBuffer, asio::use_awaitable);
+            co_await asio::async_read(*socket, payloadBuffer, asio::use_awaitable);
         }
 
         offset = frameHeaderSize;
@@ -490,6 +555,10 @@ asio::awaitable<void> TransferChannel::ReceiveDirectoryEntries(std::vector<FileE
 
 asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path destination, size_t length) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket) co_return false;
+    m_currentFileProgress.store(0);
+    m_currentFileSize.store(length);
 
     try {
         std::filesystem::create_directories(destination.parent_path());
@@ -506,7 +575,7 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
         while (offset < length) {
             const size_t bufferSize = std::min(m_bufferIn.size(), length - offset);
             asio::mutable_buffer buffer(m_bufferIn.data(), bufferSize);
-            co_await asio::async_read(*m_socket, buffer, asio::use_awaitable);
+            co_await asio::async_read(*socket, buffer, asio::use_awaitable);
 
             fileStream.write(reinterpret_cast<const char*>(m_bufferIn.data()), bufferSize);
             if (!fileStream.good()) {
@@ -517,6 +586,7 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
 
             offset += bufferSize;
             m_progress.fetch_add(bufferSize);
+            m_currentFileProgress.store(offset);
         }
 
     } catch (std::system_error& error) {
@@ -530,10 +600,12 @@ asio::awaitable<bool> TransferChannel::Receive(const std::filesystem::path desti
 
 asio::awaitable<bool> TransferChannel::SendBuffer(const size_t size) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket) co_return false;
 
     try {
         const asio::const_buffer buffer(m_bufferOut.data(), size);
-        co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
+        co_await asio::async_write(*socket, buffer, asio::use_awaitable);
         m_progress.fetch_add(size);
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
@@ -546,6 +618,8 @@ asio::awaitable<bool> TransferChannel::SendBuffer(const size_t size) {
 
 asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket) co_return false;
 
     try {
         std::ifstream fileStream(file, std::ios::binary);
@@ -556,6 +630,8 @@ asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
 
         const size_t length = std::filesystem::file_size(file);
         size_t offset = 0;
+        m_currentFileProgress.store(0);
+        m_currentFileSize.store(length);
 
         while (offset < length) {
             const size_t bufferSize = std::min(m_bufferOut.size(), length - offset);
@@ -569,9 +645,10 @@ asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
             }
             asio::const_buffer buffer(m_bufferOut.data(), bufferSize);
 
-            co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
+            co_await asio::async_write(*socket, buffer, asio::use_awaitable);
 
             m_progress.fetch_add(bufferSize);
+            m_currentFileProgress.store(offset);
         }
 
     } catch (std::system_error& error) {
@@ -583,7 +660,7 @@ asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
     co_return true;
 }
 
-asio::awaitable<void> TransferChannel::Disconnect() {
+asio::awaitable<void> TransferChannel::CoDisconnect() {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
     if (m_connectionState.load() == ConnectionState::DISCONNECTED || m_connectionState.load() == ConnectionState::DISCONNECTING) {
@@ -597,9 +674,13 @@ asio::awaitable<void> TransferChannel::Disconnect() {
 
 asio::awaitable<void> TransferChannel::CleanupConnection() {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
-    co_await CleanupSSLSocket(m_socket.get());
-    m_socket.reset();
-    m_acceptor.reset();
+    const std::shared_ptr<TCPAcceptor> acceptor = std::atomic_exchange(&m_acceptor, std::shared_ptr<TCPAcceptor>{});
+    if (acceptor) {
+        std::error_code errorCode;
+        acceptor->close(errorCode);
+    }
+    const std::shared_ptr<SSLSocket> socket = std::atomic_exchange(&m_socket, std::shared_ptr<SSLSocket>{});
+    co_await CleanupSSLSocket(socket.get());
 }
 
 void TransferChannel::FileHeader::Serialize(std::vector<uint8_t>& buffer, size_t& offset) const {
@@ -616,4 +697,39 @@ void TransferChannel::FileHeader::Deserialize(const std::vector<uint8_t>& buffer
 
 size_t TransferChannel::FileHeader::GetSerializedSize() const {
     return GetObjectSerializedSize(relativePath) + GetObjectSerializedSize(fileSize) + GetObjectSerializedSize(last);
+}
+
+asio::awaitable<void> TransferChannel::CoReceiveFileData(const size_t expectedSize, FileSink sink) {
+    const std::shared_ptr<TransferChannel> self = shared_from_this();
+    const std::shared_ptr<SSLSocket> socket = std::atomic_load(&m_socket);
+    if (!socket || m_connectionState.load() != ConnectionState::CONNECTED || m_receive.exchange(true)) {
+        throw std::runtime_error("Transfer channel is unavailable for streaming");
+    }
+    struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_receive};
+    m_progress.store(0);
+    m_currentFileProgress.store(0);
+    m_currentFileSize.store(expectedSize);
+    try {
+        FileHeader header{};
+        std::vector<uint8_t> bytes(header.GetSerializedSize());
+        co_await asio::async_read(*socket, asio::buffer(bytes), asio::use_awaitable);
+        size_t offset = 0;
+        header.Deserialize(bytes, offset);
+        if (header.fileSize != expectedSize || !header.relativePath.empty() || !header.last) {
+            throw std::runtime_error("Remote file changed while preparing the transfer");
+        }
+        size_t received = 0;
+        while (received < expectedSize) {
+            const size_t count = std::min(m_bufferIn.size(), expectedSize - received);
+            co_await asio::async_read(*socket, asio::buffer(m_bufferIn.data(), count), asio::use_awaitable);
+            co_await sink(std::span<const uint8_t>(m_bufferIn.data(), count));
+            received += count;
+            m_progress.store(received);
+            m_currentFileProgress.store(received);
+        }
+    } catch (...) {
+        // The stream cannot be reused after a partial frame.
+        asio::co_spawn(m_strand, [self]() -> asio::awaitable<void> { co_await self->CoDisconnect(); }, asio::detached);
+        throw;
+    }
 }

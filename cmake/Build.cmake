@@ -1,11 +1,11 @@
 function(BuildStaticLibrary StaticLibraryName RootPath)
-    file(GLOB_RECURSE SOURCE_FILES
+    file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
     )
 
-    file(GLOB_RECURSE HEADER_FILES
+    file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
     )
@@ -16,7 +16,7 @@ function(BuildStaticLibrary StaticLibraryName RootPath)
 endfunction()
 
 function(BuildApplicationModule ModuleName CommonPath RootPath)
-    file(GLOB_RECURSE SOURCE_FILES
+    file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
@@ -26,7 +26,7 @@ function(BuildApplicationModule ModuleName CommonPath RootPath)
             ${CMAKE_CURRENT_SOURCE_DIR}/${CommonPath}/src/*.cc
     )
 
-    file(GLOB_RECURSE HEADER_FILES
+    file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
 
@@ -42,13 +42,13 @@ function(BuildApplicationModule ModuleName CommonPath RootPath)
 endfunction()
 
 function(BuildSharedLibrary SharedLibraryName RootPath)
-    file(GLOB_RECURSE SOURCE_FILES
+    file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
     )
 
-    file(GLOB_RECURSE HEADER_FILES
+    file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
     )
@@ -70,13 +70,13 @@ function(BuildTestProgram ExecutableName Path)
 endfunction()
 
 function(BuildProgram ExecutableName RootPath)
-    file(GLOB_RECURSE SOURCE_FILES
+    file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cxx
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/src/*.cc
     )
 
-    file(GLOB_RECURSE HEADER_FILES
+    file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.h
             ${CMAKE_CURRENT_SOURCE_DIR}/${RootPath}/inc/*.hpp
     )
@@ -89,7 +89,7 @@ function(BuildProgram ExecutableName RootPath)
 endfunction()
 
 function(BuildQTExecutable ExecutableName RootPath ModuleURI)
-    file(GLOB_RECURSE SOURCE_FILES
+    file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS
             ${RootPath}/src/*.cpp
             ${RootPath}/src/*.cxx
             ${RootPath}/src/*.cc
@@ -100,17 +100,17 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
         list(APPEND SOURCE_FILES ${${EXTRA_SOURCES_VAR}})
     endif()
 
-    file(GLOB_RECURSE HEADER_FILES
+    file(GLOB_RECURSE HEADER_FILES CONFIGURE_DEPENDS
             ${RootPath}/inc/*.h
             ${RootPath}/inc/*.hpp
     )
 
-    file(GLOB_RECURSE QML_FILES
+    file(GLOB_RECURSE QML_FILES CONFIGURE_DEPENDS
             RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
             ${RootPath}/qml/*.qml
     )
 
-    file(GLOB_RECURSE RESOURCES
+    file(GLOB_RECURSE RESOURCES CONFIGURE_DEPENDS
             RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
             ${RootPath}/res/*.png
             ${RootPath}/res/*.jpg

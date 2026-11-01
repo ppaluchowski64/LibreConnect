@@ -46,6 +46,7 @@ def libreConnectVersionCode = libreConnectVersionParts[0] * 10000 +
 
 android {
     compileSdk 34
+    buildToolsVersion '35.0.0'
     namespace "com.LibreConnect.mobile"
 
     compileOptions {

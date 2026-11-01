@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import LibreConnect.desktop 1.0
@@ -16,7 +17,13 @@ Page {
     property bool pathEditMode: false
     property string sortColumn: "modified"
     property bool sortAscending: false
+    property int iconSize: 40
+    property string filterMedia: "All types"
+    property string filterExtensions: ""
+    property string filterFrom: ""
+    property string filterTo: ""
     property var sortedRemoteEntries: sortEntries(fileManagerController.remoteEntries)
+    onSortedRemoteEntriesChanged: pruneSelectionToVisibleEntries()
     readonly property int selectedCount: selectedRemotePaths.length
     readonly property string windowTitleSuffix: "File Manager"
 
@@ -28,6 +35,296 @@ Page {
         id: fileManagerController
         onCurrentRemotePathChanged: root.rebuildPathSegments()
         onRemoteEntriesChanged: root.pruneSelectionToVisibleEntries()
+    }
+
+    function filterIcon(name) {
+        return "qrc:/LibreConnect/desktop/" + name + (Theme.dark ? "_dark" : "") + ".svg"
+    }
+
+    component FilterLabel: Label {
+        color: Theme.textColor
+        font.family: Theme.fontFamily
+        font.pixelSize: 13
+        font.weight: Font.DemiBold
+    }
+
+    component FilterField: Basic.TextField {
+        implicitHeight: 42
+        color: Theme.textColor
+        placeholderTextColor: Theme.subtleTextColor
+        selectionColor: Theme.selectedColor
+        selectedTextColor: Theme.selectedTextColor
+        font.family: Theme.fontFamily
+        font.pixelSize: 14
+        leftPadding: 12
+        rightPadding: 12
+        background: Rectangle {
+            radius: 10
+            color: Theme.backgroundColor
+            border.color: parent.activeFocus ? Theme.selectedBorderColor : Theme.panelBorderColor
+            border.width: parent.activeFocus ? 2 : 1
+        }
+    }
+
+    component FilterButton: ThemedButton {
+        implicitHeight: 40
+        leftPadding: 14
+        rightPadding: 14
+        font.pixelSize: 13
+    }
+
+    Basic.Dialog {
+        id: filterDialog
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(480, root.width - 32)
+        padding: 24
+        background: Rectangle {
+            color: Theme.panelColor
+            radius: 18
+            border.color: Theme.panelBorderColor
+        }
+        header: Item {}
+
+        function validDate(value) {
+            if (!value)
+                return true
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+                return false
+            const date = new Date(value + "T00:00:00")
+            return !isNaN(date.getTime()) && Qt.formatDate(date, "yyyy-MM-dd") === value
+        }
+
+        onOpened: {
+            mediaFilter.currentIndex = Math.max(0, mediaFilter.model.indexOf(root.filterMedia))
+            extensionFilter.text = root.filterExtensions
+            fromFilter.text = root.filterFrom
+            toFilter.text = root.filterTo
+            filterError.visible = false
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Rectangle {
+                    Layout.preferredWidth: 44; Layout.preferredHeight: 44; radius: 12
+                    color: Theme.selectedColor
+                    Image { anchors.centerIn: parent; width: 24; height: 24; source: root.filterIcon("filter") }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    FilterLabel { text: "Filter files"; font.pixelSize: 21 }
+                    Label { text: "Find exactly what you need"; color: Theme.mutedTextColor; font.family: Theme.fontFamily }
+                }
+                FilterButton {
+                    text: "×"
+                    implicitWidth: 36
+                    Accessible.name: "Close filters"
+                    onClicked: filterDialog.close()
+                }
+            }
+            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4; implicitHeight: 1; color: Theme.panelBorderColor }
+            FilterLabel { text: "Media type" }
+            Basic.ComboBox {
+                id: mediaFilter
+                Layout.fillWidth: true
+                implicitHeight: 44
+                model: ["All types", "Image", "Video", "Audio", "Text", "Document", "Archive", "Executable", "Unknown"]
+                readonly property var iconNames: ["files", "image", "video", "audio", "text", "document", "archive", "executable", "unknown"]
+                leftPadding: 12
+                rightPadding: 32
+                contentItem: RowLayout {
+                    spacing: 10
+                    Image { Layout.preferredWidth: 22; Layout.preferredHeight: 22; source: root.filterIcon(mediaFilter.iconNames[mediaFilter.currentIndex] || "files") }
+                    Label { Layout.fillWidth: true; text: mediaFilter.currentText; color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 14 }
+                }
+                indicator: Text { x: parent.width - width - 14; anchors.verticalCenter: parent.verticalCenter; text: "⌄"; color: Theme.mutedTextColor; font.pixelSize: 18 }
+                background: Rectangle { radius: 10; color: Theme.backgroundColor; border.color: mediaFilter.activeFocus ? Theme.selectedBorderColor : Theme.panelBorderColor }
+                delegate: Basic.ItemDelegate {
+                    id: categoryDelegate
+                    required property int index
+                    required property string modelData
+                    width: mediaFilter.width - 12
+                    height: 40
+                    highlighted: mediaFilter.highlightedIndex === index
+                    contentItem: RowLayout {
+                        spacing: 10
+                        Image { Layout.preferredWidth: 22; Layout.preferredHeight: 22; source: root.filterIcon(mediaFilter.iconNames[index]) }
+                        Label { Layout.fillWidth: true; text: modelData; color: Theme.textColor; font.family: Theme.fontFamily }
+                    }
+                    background: Rectangle { radius: 8; color: categoryDelegate.highlighted ? Theme.selectedColor : "transparent" }
+                }
+                popup: Basic.Popup {
+                    y: mediaFilter.height + 6
+                    width: mediaFilter.width
+                    padding: 6
+                    implicitHeight: contentItem.implicitHeight + 12
+                    background: Rectangle { radius: 12; color: Theme.panelColor; border.color: Theme.panelBorderColor }
+                    contentItem: ListView {
+                        clip: true
+                        implicitHeight: Math.min(contentHeight, 280)
+                        model: mediaFilter.popup.visible ? mediaFilter.delegateModel : null
+                        currentIndex: mediaFilter.highlightedIndex
+                        ScrollIndicator.vertical: ScrollIndicator {}
+                    }
+                }
+            }
+            FilterLabel { text: "File extensions"; Layout.topMargin: 4 }
+            FilterField { id: extensionFilter; Layout.fillWidth: true; placeholderText: "png, jpg, mp3…" }
+            Label { text: "Separate extensions with commas"; color: Theme.subtleTextColor; font.family: Theme.fontFamily; font.pixelSize: 12 }
+            FilterLabel { text: "Date modified"; Layout.topMargin: 4 }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Label { text: "From"; color: Theme.mutedTextColor; font.family: Theme.fontFamily }
+                    RowLayout {
+                        FilterField { id: fromFilter; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD" }
+                        FilterButton { implicitWidth: 42; iconSource: root.filterIcon("calendar"); Accessible.name: "Choose start date"; onClicked: datePicker.openFor(fromFilter) }
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Label { text: "Through"; color: Theme.mutedTextColor; font.family: Theme.fontFamily }
+                    RowLayout {
+                        FilterField { id: toFilter; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD" }
+                        FilterButton { implicitWidth: 42; iconSource: root.filterIcon("calendar"); Accessible.name: "Choose end date"; onClicked: datePicker.openFor(toFilter) }
+                    }
+                }
+            }
+            Label {
+                id: filterError
+                Layout.fillWidth: true
+                visible: false
+                wrapMode: Text.WordWrap
+                color: Theme.dangerColor
+                font.family: Theme.fontFamily
+                text: "Enter valid dates in YYYY-MM-DD format; the start must be before the end."
+            }
+            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Folders stay visible so you can keep browsing."; color: Theme.subtleTextColor; font.family: Theme.fontFamily; font.pixelSize: 12 }
+            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; implicitHeight: 1; color: Theme.panelBorderColor }
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                FilterButton {
+                    text: "Reset"
+                    onClicked: {
+                        mediaFilter.currentIndex = 0
+                        extensionFilter.clear()
+                        fromFilter.clear()
+                        toFilter.clear()
+                        filterError.visible = false
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                FilterButton { text: "Cancel"; onClicked: filterDialog.close() }
+                FilterButton {
+                    id: applyFiltersButton
+                    text: "Apply filters"
+                    iconSource: root.filterIcon("filter")
+                    background: Rectangle { radius: 10; color: applyFiltersButton.down ? Qt.darker(Theme.selectedColor, 1.12) : Theme.selectedColor; border.color: Theme.selectedBorderColor }
+                    onClicked: {
+                        const from = fromFilter.text.trim()
+                        const to = toFilter.text.trim()
+                        if (!filterDialog.validDate(from) || !filterDialog.validDate(to) || (from && to && from > to)) {
+                            filterError.visible = true
+                            return
+                        }
+                        root.filterMedia = mediaFilter.currentText
+                        root.filterExtensions = extensionFilter.text.trim()
+                        root.filterFrom = from
+                        root.filterTo = to
+                        filterDialog.close()
+                    }
+                }
+            }
+        }
+    }
+
+    Basic.Dialog {
+        id: datePicker
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(352, root.width - 32)
+        padding: 20
+        header: Item {}
+        background: Rectangle { radius: 18; color: Theme.panelColor; border.color: Theme.panelBorderColor }
+        property var targetField: null
+        property int displayedYear: new Date().getFullYear()
+        property int displayedMonth: new Date().getMonth()
+
+        function openFor(field) {
+            targetField = field
+            const selected = filterDialog.validDate(field.text) && field.text
+                           ? new Date(field.text + "T00:00:00") : new Date()
+            displayedYear = selected.getFullYear()
+            displayedMonth = selected.getMonth()
+            open()
+        }
+
+        function moveMonth(offset) {
+            const date = new Date(displayedYear, displayedMonth + offset, 1)
+            displayedYear = date.getFullYear()
+            displayedMonth = date.getMonth()
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            RowLayout {
+                Layout.fillWidth: true
+                FilterButton { text: "‹"; implicitWidth: 36; Accessible.name: "Previous month"; onClicked: datePicker.moveMonth(-1) }
+                FilterLabel {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: Qt.formatDate(new Date(datePicker.displayedYear, datePicker.displayedMonth, 1), "MMMM yyyy")
+                }
+                FilterButton { text: "›"; implicitWidth: 36; Accessible.name: "Next month"; onClicked: datePicker.moveMonth(1) }
+            }
+            DayOfWeekRow {
+                Layout.fillWidth: true
+                locale: grid.locale
+                delegate: Text {
+                    required property var model
+                    text: model.shortName
+                    horizontalAlignment: Text.AlignHCenter
+                    color: Theme.mutedTextColor
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                }
+            }
+            MonthGrid {
+                id: grid
+                Layout.fillWidth: true
+                Layout.preferredHeight: 240
+                month: datePicker.displayedMonth
+                year: datePicker.displayedYear
+                delegate: Rectangle {
+                    required property var model
+                    readonly property bool selected: datePicker.targetField && datePicker.targetField.text === Qt.formatDate(model.date, "yyyy-MM-dd")
+                    radius: 8
+                    color: selected ? Theme.selectedColor : dayHover.hovered ? Theme.buttonColor : "transparent"
+                    border.color: model.today ? Theme.selectedBorderColor : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: parent.model.day
+                        color: parent.model.month === grid.month ? Theme.textColor : Theme.subtleTextColor
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 14
+                        font.bold: parent.selected || parent.model.today
+                    }
+                    HoverHandler { id: dayHover }
+                }
+                onClicked: function(date) {
+                    datePicker.targetField.text = Qt.formatDate(date, "yyyy-MM-dd")
+                    datePicker.close()
+                }
+            }
+            FilterButton { Layout.alignment: Qt.AlignRight; text: "Cancel"; onClicked: datePicker.close() }
+        }
     }
 
     function rebuildPathSegments() {
@@ -194,7 +491,23 @@ Page {
     }
 
     function sortEntries(entries) {
-        const sorted = entries ? entries.slice() : []
+        const extensions = filterExtensions.toLowerCase().split(/[,;\s]+/).filter(function(value) { return value.length > 0 }).map(function(value) { return value.replace(/^\*?\./, "") })
+        const from = filterFrom ? new Date(filterFrom + "T00:00:00").getTime() : NaN
+        const to = filterTo ? new Date(filterTo + "T23:59:59.999").getTime() : NaN
+        const sorted = entries ? entries.filter(function(entry) {
+            if (entry.isDirectory)
+                return true
+            if (filterMedia !== "All types" && entry.typeLabel !== filterMedia)
+                return false
+            const name = String(entry.name || "").toLowerCase()
+            const extension = name.lastIndexOf(".") >= 0 ? name.substring(name.lastIndexOf(".") + 1) : ""
+            if (extensions.length > 0 && extensions.indexOf(extension) < 0)
+                return false
+            if ((!isNaN(from) || !isNaN(to)) && !entry.modifiedKnown)
+                return false
+            const modified = Number(entry.modified) * 1000
+            return (isNaN(from) || modified >= from) && (isNaN(to) || modified <= to)
+        }) : []
         sorted.sort(function(lhs, rhs) {
             if (lhs.isDirectory !== rhs.isDirectory)
                 return lhs.isDirectory ? -1 : 1
@@ -237,7 +550,7 @@ Page {
     }
 
     function iconColumnWidth(totalWidth) {
-        return 24
+        return iconSize
     }
 
     function nameColumnWidth(totalWidth) {
@@ -923,6 +1236,16 @@ Page {
             }
         }
 
+        RowLayout {
+            Layout.fillWidth: true
+            ThemedButton { text: "Filters…"; onClicked: filterDialog.open() }
+            Text {
+                Layout.fillWidth: true
+                text: root.filterMedia !== "All types" || root.filterExtensions || root.filterFrom || root.filterTo ? "Filters active" : "All files"
+                color: Theme.subtleTextColor
+            }
+        }
+
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -1028,6 +1351,15 @@ Page {
                 clip: true
                 spacing: 8
                 model: root.sortedRemoteEntries
+                WheelHandler {
+                    acceptedModifiers: Qt.ControlModifier
+                    onWheel: function(event) {
+                        const delta = event.angleDelta.y !== 0 ? event.angleDelta.y : event.pixelDelta.y
+                        if (delta !== 0)
+                            root.iconSize = Math.max(24, Math.min(96, root.iconSize + (delta > 0 ? 8 : -8)))
+                        event.accepted = true
+                    }
+                }
                 ScrollBar.vertical: ScrollBar {
                     id: entriesScrollBar
                     parent: scrollGutter
@@ -1048,7 +1380,7 @@ Page {
                     }
 
                     width: entriesView.width
-                    height: 58
+                    height: Math.max(58, root.iconSize + 24)
                     radius: 10
                     color: root.isPathSelected(modelData.path)
                            ? Theme.selectedColor
@@ -1265,37 +1597,71 @@ Page {
                     font.family: Theme.fontFamily
                     text: fileManagerController.busy
                           ? "Loading files from the connected device..."
-                          : "No entries in this folder."
+                          : (fileManagerController.remoteEntries.length > 0 ? "No files match these filters." : "No entries in this folder.")
                 }
             }
         }
 
-        Text {
-            visible: fileManagerController.multipleTransfers && fileManagerController.busy
-            text: "Current entry"
-            color: Theme.textColor
-        }
-
-        ProgressBar {
+        ColumnLayout {
             Layout.fillWidth: true
-            from: 0
-            to: 1
-            value: fileManagerController.transferProgress
-            visible: fileManagerController.busy || fileManagerController.transferProgress > 0
+            spacing: 6
+            visible: fileManagerController.transferActive && fileManagerController.busy
+            Text { text: "Current file"; color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 13 }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Basic.ProgressBar {
+                    id: currentProgress
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 1
+                    value: fileManagerController.currentFileProgress
+                    background: Rectangle { implicitHeight: 8; radius: 4; color: Theme.buttonColor; border.color: Theme.panelBorderColor }
+                    contentItem: Item {
+                        implicitHeight: 8
+                        Rectangle { width: parent.width * currentProgress.visualPosition; height: parent.height; radius: 4; color: Theme.selectedBorderColor }
+                    }
+                }
+                Text {
+                    Layout.preferredWidth: 42
+                    text: Math.round(Math.max(0, Math.min(1, currentProgress.value)) * 100) + "%"
+                    horizontalAlignment: Text.AlignRight
+                    color: Theme.textColor
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 13
+                }
+            }
         }
 
-        Text {
-            visible: fileManagerController.multipleTransfers && fileManagerController.busy
-            text: "Overall transfer (entries)"
-            color: Theme.textColor
-        }
-
-        ProgressBar {
+        ColumnLayout {
             Layout.fillWidth: true
-            from: 0
-            to: 1
-            value: fileManagerController.batchTransferProgress
-            visible: fileManagerController.multipleTransfers && fileManagerController.busy
+            spacing: 6
+            visible: fileManagerController.transferActive && fileManagerController.busy
+            Text { text: "Overall transfer"; color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 13 }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+                Basic.ProgressBar {
+                    id: overallProgress
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 1
+                    value: fileManagerController.batchTransferProgress
+                    background: Rectangle { implicitHeight: 8; radius: 4; color: Theme.buttonColor; border.color: Theme.panelBorderColor }
+                    contentItem: Item {
+                        implicitHeight: 8
+                        Rectangle { width: parent.width * overallProgress.visualPosition; height: parent.height; radius: 4; color: Theme.selectedBorderColor }
+                    }
+                }
+                Text {
+                    Layout.preferredWidth: 42
+                    text: Math.round(Math.max(0, Math.min(1, overallProgress.value)) * 100) + "%"
+                    horizontalAlignment: Text.AlignRight
+                    color: Theme.textColor
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 13
+                }
+            }
         }
 
         RowLayout {

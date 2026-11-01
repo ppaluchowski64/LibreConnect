@@ -53,7 +53,7 @@ void ConnectionManager::SeekPrimary(const InitialConnectionData& data, std::func
     s_instance->m_primaryConnection->Seek(s_instance->m_sslContextServer, data, std::forward<std::function<void(TCPEndpoint)>>(callback));
 }
 
-void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
+void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint, const uint64_t generation) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Seeking initial connection on {}:{}", endpoint.address().to_string(), endpoint.port());
 
@@ -61,6 +61,9 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
 
     {
         std::lock_guard<std::mutex> lock(s_mutex);
+        if (!s_instance->m_acceptingConnections || generation != s_instance->m_acceptGeneration) {
+            return;
+        }
         bool placed = false;
 
         for (auto& elem : s_instance->m_initialConnectionsIn) {
@@ -74,21 +77,30 @@ void ConnectionManager::SeekInitialConnection(TCPEndpoint endpoint) {
         if (!placed) {
             s_instance->m_initialConnectionsIn.push_back(connection);
         }
+
     }
 
     connection->TemporaryOwnership(connection);
-    connection->Seek(std::move(endpoint), [](TCPEndpoint ep) {
+    connection->Seek(std::move(endpoint), [generation](TCPEndpoint ep) {
         Debug::Log("ConnectionManager: Initial connection seek triggered recursing seek");
-        SeekInitialConnection(std::move(ep));
+        SeekInitialConnection(std::move(ep), generation);
     });
+
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!s_instance->m_acceptingConnections || generation != s_instance->m_acceptGeneration) {
+        connection->Disconnect();
+    }
 }
 
 void ConnectionManager::StartAcceptingConnections() {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Starting to accept connections");
 
+    uint64_t generation = 0;
     {
         std::lock_guard<std::mutex> lock(s_mutex);
+        s_instance->m_acceptingConnections = true;
+        generation = ++s_instance->m_acceptGeneration;
 
         if (s_instance->m_initialConnectionOut != nullptr) {
             Debug::Log("ConnectionManager: Disconnecting existing outgoing initial connection");
@@ -99,7 +111,7 @@ void ConnectionManager::StartAcceptingConnections() {
     }
 
     const TCPEndpoint endpoint(asio::ip::tcp::v4(), 0);
-    SeekInitialConnection(endpoint);
+    SeekInitialConnection(endpoint, generation);
 }
 
 void ConnectionManager::StopAcceptingConnections() {
@@ -107,6 +119,8 @@ void ConnectionManager::StopAcceptingConnections() {
     Debug::Log("ConnectionManager: Stopping all connection acceptance");
 
     std::lock_guard<std::mutex> lock(s_mutex);
+    s_instance->m_acceptingConnections = false;
+    ++s_instance->m_acceptGeneration;
 
     if (s_instance->m_initialConnectionOut != nullptr) {
         s_instance->m_initialConnectionOut->Disconnect();
@@ -290,10 +304,17 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
     s_instance->m_primaryConnection->Disconnect(errorCode, true);
 
     std::vector<std::shared_ptr<InitialConnection>> inboundConnections;
+    uint64_t acceptGeneration = 0;
+    bool restartListener = false;
     {
         std::lock_guard<std::mutex> lock(s_mutex);
+        restartListener = s_instance->m_acceptingConnections;
+        acceptGeneration = ++s_instance->m_acceptGeneration;
         if (s_instance->m_initialConnectionOut != nullptr) {
             s_instance->m_initialConnectionOut->Disconnect();
+            if (restartListener) {
+                s_instance->m_initialConnectionOut = InitialConnection::Create();
+            }
         }
 
         std::erase_if(s_instance->m_initialConnectionsIn, [](const std::weak_ptr<InitialConnection>& connection) {
@@ -310,6 +331,10 @@ void ConnectionManager::Disconnect(const std::error_code errorCode) {
 
     for (const auto& connection : inboundConnections) {
         connection->Disconnect();
+    }
+
+    if (restartListener) {
+        SeekInitialConnection(TCPEndpoint(asio::ip::tcp::v4(), 0), acceptGeneration);
     }
 }
 

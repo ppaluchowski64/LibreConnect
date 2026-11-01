@@ -1,13 +1,13 @@
 #pragma once
-
-#include <filesystem>
+#include <FileShareModule.h>
 #include <functional>
+#include <memory>
+#include <string>
 #include <vector>
 
-class WindowsVirtualFileDrag
-{
-public:
-    using ResolvePathsFn = std::function<std::vector<std::filesystem::path>()>;
-
-    static bool Start(ResolvePathsFn resolver);
+class WindowsVirtualFileDrag {
+  public:
+    enum class Result { Completed, Cancelled, Failed };
+    using ProgressFn = std::function<void(const std::string &, uint64_t, uint64_t, uint64_t, uint64_t)>;
+    static Result Start(std::shared_ptr<FileShareModule> module, std::vector<FileEntry> entries, ProgressFn progress);
 };

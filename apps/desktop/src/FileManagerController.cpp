@@ -1,4 +1,7 @@
 #include "FileManagerController.h"
+#ifdef _WIN32
+#include "WindowsVirtualFileDrag.h"
+#endif
 #include "PlatformVirtualFileDrag.h"
 
 #include <QGuiApplication>
@@ -19,6 +22,7 @@
 #include <DebugLog.h>
 #include <ConnectionManager.h>
 #include <FileShareEvents.h>
+#include <Events.h>
 #include <FileShareModule.h>
 #include <FileEntry.h>
 #include <FileSystemManager.h>
@@ -528,6 +532,8 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
         ? QString::fromStdString(entries.front().GetName().value_or(std::string()))
         : QStringLiteral("%1 entries").arg(entries.size());
     m_pendingAction = PendingAction::Copy;
+    m_exportBatchTotal = static_cast<int>(entries.size());
+    m_exportBatchCompleted = 0;
     setTransferProgress(0.0);
 
     auto& module = ModulesManager::GetModuleReference<FileShareModule>();
@@ -584,6 +590,8 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     }
 
     m_pendingAction = PendingAction::DragExport;
+    m_exportBatchTotal = static_cast<int>(entries.size());
+    m_exportBatchCompleted = 0;
     m_waitingForModule = false;
     m_pendingEntryPath.clear();
     m_pendingLocalPath.clear();
@@ -614,7 +622,36 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
         dragSource = this;
     }
 
-#ifdef __APPLE__
+#ifdef _WIN32
+    const QPointer<FileManagerController> guard(this);
+    const std::shared_ptr<FileShareModule> module = ModulesManager::GetModuleReference<FileShareModule>();
+    const WindowsVirtualFileDrag::Result result = WindowsVirtualFileDrag::Start(module, std::move(entries),
+        [guard](const std::string& name, const uint64_t bytes, const uint64_t size, const uint64_t completed, const uint64_t total) {
+            if (!guard) return;
+            QMetaObject::invokeMethod(guard.data(), [guard, name, bytes, size, completed, total]() {
+                if (!guard || guard->m_pendingAction != PendingAction::DragExport) return;
+                guard->m_currentFileProgress = size == 0 ? 1.0 : static_cast<double>(bytes) / size;
+                guard->m_transferProgress = total == 0 ? 1.0 : static_cast<double>(completed) / total;
+                guard->m_exportBatchTotal = 0; // Streamed export reports byte-weighted progress directly.
+                guard->setBusy(true);
+                emit guard->transferProgressChanged();
+                guard->setStatusMessage(QStringLiteral("Transferring %1 to the drop destination…").arg(QString::fromStdString(name)));
+            }, Qt::QueuedConnection);
+        });
+    // Native drag loops process Qt events; navigation/disconnect may delete this controller.
+    if (!guard) return;
+    setBusy(false);
+    setDragExportInProgress(false);
+    m_pendingAction = PendingAction::None;
+    m_activeEntryName.clear();
+    m_activeEntryPath.clear();
+    setTransferProgress(result == WindowsVirtualFileDrag::Result::Completed ? 1.0 : 0.0);
+    setStatusMessage(result == WindowsVirtualFileDrag::Result::Completed
+        ? QStringLiteral("Files transferred to the drop destination.")
+        : result == WindowsVirtualFileDrag::Result::Cancelled ? QStringLiteral("Drag cancelled.")
+        : QStringLiteral("Transfer stopped. Check the connection and retry."));
+    return;
+#elif defined(__APPLE__)
     std::vector<PlatformVirtualFileDrag::PromisedFile> promisedFiles;
     promisedFiles.reserve(entries.size());
     for (const FileEntry& entry : entries) {
@@ -877,6 +914,31 @@ void FileManagerController::requestEntryIcon(const QString& remotePath)
 
 bool FileManagerController::event(QEvent* event)
 {
+    if (event->type() == DisconnectedEvent::Type) {
+        m_waitingForModule = false;
+        m_pendingAction = PendingAction::None;
+        m_pendingDownloadQueue.clear();
+        m_pendingUploadQueue.clear();
+        m_pendingCopyQueue.clear();
+        m_pendingOpenQueue.clear();
+        m_pendingIconQueue.clear();
+        m_queuedIconRequests.clear();
+        m_iconRequestsInFlight.clear();
+        m_pendingEntryPath.clear();
+        m_pendingLocalPath.clear();
+        m_activeEntryPath.clear();
+        m_activeEntryName.clear();
+        m_downloadBatchActive = false;
+        m_uploadBatchActive = false;
+        setTransferProgress(0.0);
+        setDragExportInProgress(false);
+        setBusy(false);
+        setRemoteEntries({});
+        m_entryLookup.clear();
+        setStatusMessage(QStringLiteral("Connection lost. Reconnect to browse files."));
+        return true;
+    }
+
     if (event->type() == ModuleErrorEvent::Type) {
         auto* moduleErrorEvent = static_cast<ModuleErrorEvent*>(event);
         const QString message = QStringLiteral("%1 module error: %2.")
@@ -974,6 +1036,8 @@ bool FileManagerController::event(QEvent* event)
         const size_t totalBytes = progressEvent->GetTotalBytes();
         const size_t transferredBytes = progressEvent->GetBytesTransferred();
         const double progress = totalBytes == 0 ? 0.0 : static_cast<double>(transferredBytes) / static_cast<double>(totalBytes);
+        const size_t currentFileSize = progressEvent->GetCurrentFileSize();
+        m_currentFileProgress = currentFileSize == 0 ? 0.0 : std::min(1.0, static_cast<double>(progressEvent->GetCurrentFileBytes()) / static_cast<double>(currentFileSize));
         setTransferProgress(progress);
         setBusy(true);
         if (m_pendingAction == PendingAction::DragExport) {
@@ -1002,6 +1066,8 @@ bool FileManagerController::event(QEvent* event)
         }
 
         if (m_pendingAction == PendingAction::Copy || m_pendingAction == PendingAction::DragExport) {
+            ++m_exportBatchCompleted;
+            setTransferProgress(0.0);
             return true;
         }
 
@@ -1614,6 +1680,9 @@ void FileManagerController::setDragExportInProgress(const bool dragExportInProgr
 
 void FileManagerController::setTransferProgress(const double transferProgress)
 {
+    if (transferProgress <= 0.0) {
+        m_currentFileProgress = 0.0;
+    }
     if (qFuzzyCompare(m_transferProgress, transferProgress)) {
         emit transferProgressChanged();
         return;

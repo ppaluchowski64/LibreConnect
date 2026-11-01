@@ -82,10 +82,10 @@ private:
 
     asio::awaitable<void> CoCleanupConnection();
     asio::awaitable<void> CoDisconnect(std::error_code errorCode, bool callConnectionManagerDisconnect = true);
-    asio::awaitable<void> CoSend();
-    asio::awaitable<void> CoReceive();
-    asio::awaitable<void> CoSendHeartbeat();
-    asio::awaitable<void> CoHeartbeatMonitor();
+    asio::awaitable<void> CoSend(uint64_t generation, std::shared_ptr<SSLSocket> socket);
+    asio::awaitable<void> CoReceive(uint64_t generation, std::shared_ptr<SSLSocket> socket);
+    asio::awaitable<void> CoSendHeartbeat(uint64_t generation);
+    asio::awaitable<void> CoHeartbeatMonitor(uint64_t generation);
     void ClearQueuedPackages();
 
     static void SavePairData(const InitialConnectionData& data);
@@ -95,7 +95,8 @@ private:
     IOContextStrand m_strand;
 
     std::shared_ptr<SSLContext_> m_sslContext;
-    std::unique_ptr<SSLSocket> m_socket;
+    std::shared_ptr<SSLSocket> m_socket;
+    std::shared_ptr<TCPAcceptor> m_acceptor;
 
     std::mutex m_peerDataMutex;
     std::optional<DeviceInfo> m_peerData;
@@ -109,6 +110,7 @@ private:
     std::atomic<uint64_t> m_inboundQueuedBytes{0};
     std::atomic<bool> m_heartbeatReceived{false};
     std::atomic<bool> m_disconnectedEventSent{false};
+    std::atomic<uint64_t> m_connectionGeneration{0};
     std::atomic<ConnectionState> m_connectionState{ConnectionState::DISCONNECTED};
 
 };

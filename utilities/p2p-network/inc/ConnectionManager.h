@@ -116,7 +116,7 @@ private:
     static void ConnectPrimary(const InitialConnectionData& data);
     static void SeekPrimary(const InitialConnectionData& data, std::function<void(TCPEndpoint)>&& callback = nullptr);
 
-    static void SeekInitialConnection(TCPEndpoint endpoint);
+    static void SeekInitialConnection(TCPEndpoint endpoint, uint64_t generation);
 
     static void Initialize();
     static std::shared_ptr<SSLContext_> CreateSSLContext(bool isServer, uuid targetUUID = boost::uuids::nil_uuid(), bool allowUnpinnedPairing = false);
@@ -151,6 +151,8 @@ private:
 
     std::shared_ptr<InitialConnection> m_initialConnectionOut;
     std::vector<std::weak_ptr<InitialConnection>> m_initialConnectionsIn;
+    bool m_acceptingConnections = false;
+    uint64_t m_acceptGeneration = 0;
 
     std::vector<QPointer<QObject>> m_eventObjects;
     TCPEndpoint m_seekingEndpoint;

@@ -179,6 +179,7 @@ asio::awaitable<void> FileShareModule::FetchDirectoryEntriesAwaitable(std::strin
     if (!response) {
         Debug::LogError("FileShareModule: Directory entries request failed");
         ProcessError(ModuleFailReason::Timeout);
+        co_return;
     }
 
     response.value()->GetValue(index);
@@ -294,6 +295,7 @@ asio::awaitable<bool> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
             const size_t progress = channel->FetchTransferProgress();
             reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+            reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetCurrentFileProgress(channel->FetchCurrentFileProgress(), channel->FetchCurrentFileSize());
             ConnectionManager::SendEvent(event);
 
             timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
@@ -396,12 +398,13 @@ asio::awaitable<std::vector<std::filesystem::path>> FileShareModule::PrepareEntr
         const std::filesystem::path expectedPath = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
 
         try {
-            co_await FetchEntryAwaitable(entry, destinationDirectory.string());
+            const bool success = co_await FetchEntryAwaitable(entry, destinationDirectory.string());
+            if (!success) break;
             if (std::filesystem::exists(expectedPath)) {
                 preparedPaths.push_back(expectedPath);
             }
         } catch (...) {
-            // Skip failed entries and continue preparing remaining ones.
+            break; // A failed export must not continue issuing requests.
         }
     }
 
@@ -483,6 +486,7 @@ asio::awaitable<void> FileShareModule::PostEntryAwaitable(const std::filesystem:
         while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
             const size_t progress = channel->FetchTransferProgress();
             reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+            reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetCurrentFileProgress(channel->FetchCurrentFileProgress(), channel->FetchCurrentFileSize());
             ConnectionManager::SendEvent(event);
 
             timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
@@ -696,6 +700,7 @@ void FileShareModule::EnableResponseCallbacks() {
             while (future.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
                 const size_t progress = channel->FetchTransferProgress();
                 reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetBytesTransferred(progress);
+                reinterpret_cast<EntryTransferProgressEvent*>(event.get())->SetCurrentFileProgress(channel->FetchCurrentFileProgress(), channel->FetchCurrentFileSize());
                 ConnectionManager::SendEvent(event);
 
                 timer.expires_after(std::chrono::milliseconds(PROGRESS_EVENT_DELAY_MS));
@@ -849,4 +854,81 @@ const char* FileShareModule::GetModuleName() const {
 
 ModuleType FileShareModule::GetModuleType() const {
     return ModuleType::NetworkFileSystem;
+}
+
+std::future<std::vector<FileShareModule::ExportEntry>> FileShareModule::DescribeExport(std::vector<FileEntry> entries) const {
+    return asio::co_spawn(m_context, DescribeExportAwaitable(std::move(entries)), asio::use_future);
+}
+
+asio::awaitable<std::vector<FileShareModule::ExportEntry>> FileShareModule::DescribeExportAwaitable(std::vector<FileEntry> entries) const {
+    const std::shared_ptr<const BaseModule> lifetime = shared_from_this();
+    std::vector<ExportEntry> result;
+    struct Pending { FileEntry entry; std::filesystem::path parent; size_t depth; };
+    std::vector<Pending> pending;
+    for (const FileEntry& entry : entries) pending.push_back({entry, {}, 0});
+    while (!pending.empty()) {
+        if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED || GetModuleState() != ModuleState::Enabled) {
+            throw std::runtime_error("Connection lost while preparing drag export");
+        }
+        Pending item = std::move(pending.back());
+        pending.pop_back();
+        const std::string name = item.entry.GetName().value_or("");
+        if (name.empty() || name == "." || name == ".." || name.find_first_of("/\\") != std::string::npos || item.depth > 64 || result.size() >= 100000) {
+            throw std::runtime_error("Unsupported remote export path");
+        }
+        const std::filesystem::path relative = item.parent / std::filesystem::path(std::u8string(name.begin(), name.end()));
+        const bool directory = item.entry.GetType() == FileType::Directory;
+        result.push_back({item.entry, relative, directory});
+        if (!directory) {
+            if (!item.entry.GetSize().has_value()) throw std::runtime_error("Remote file size is unavailable");
+            continue;
+        }
+        const std::string path = item.entry.GetPath().value_or("") + "/" + name;
+        const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_DIRECTORY_ENTRIES_REQUEST, path);
+        if (!response) throw std::runtime_error("Remote directory request failed");
+        const size_t index = response.value()->GetValue<size_t>();
+        const std::optional<std::shared_ptr<TransferChannel>> channel = TransferChannelPool::Get(index);
+        if (!channel) throw std::runtime_error("Remote directory channel is unavailable");
+        std::vector<FileEntry> children;
+        co_await channel.value()->ReceiveDirectoryEntries(children);
+        for (const FileEntry& child : children) pending.push_back({child, relative, item.depth + 1});
+    }
+    co_return result;
+}
+
+std::shared_ptr<RemoteFileBuffer> FileShareModule::StreamExportFile(FileEntry entry) const {
+    const std::shared_ptr<RemoteFileBuffer> buffer = std::make_shared<RemoteFileBuffer>();
+    const std::shared_ptr<const BaseModule> lifetime = shared_from_this();
+    asio::co_spawn(m_context, StreamExportFileAwaitable(std::move(entry), buffer),
+        [buffer, lifetime](std::exception_ptr error) { buffer->Finish(!error); });
+    return buffer;
+}
+
+asio::awaitable<void> FileShareModule::StreamExportFileAwaitable(FileEntry entry, std::shared_ptr<RemoteFileBuffer> buffer) const {
+    if (buffer->Cancelled() || ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
+        throw std::runtime_error("Export cancelled");
+    }
+    const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
+    if (!response) throw std::runtime_error("Connection lost during export");
+    const uint8_t index = response.value()->GetValue<uint8_t>();
+    const size_t total = response.value()->GetValue<size_t>();
+    const std::optional<std::shared_ptr<TransferChannel>> channel = TransferChannelPool::Get(index);
+    if (!channel) throw std::runtime_error("Export channel is unavailable");
+    const std::shared_ptr<TransferChannel> receiver = channel.value();
+    buffer->SetCancelAction([receiver]() { asio::co_spawn(ThreadPool::GetContext(), receiver->Disconnect(), asio::detached); });
+    if (total != entry.GetSize().value_or(0) || buffer->Cancelled()) {
+        buffer->Cancel();
+        throw std::runtime_error("Remote file changed or export cancelled");
+    }
+    co_await receiver->ReceiveFileData(total, [buffer](std::span<const uint8_t> bytes) -> asio::awaitable<void> {
+        const asio::any_io_executor executor = co_await asio::this_coro::executor;
+        asio::steady_timer timer(executor);
+        while (!buffer->TryWrite(bytes)) {
+            if (buffer->Cancelled() || ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
+                throw std::runtime_error("Export cancelled");
+            }
+            timer.expires_after(std::chrono::milliseconds(5));
+            co_await timer.async_wait(asio::use_awaitable);
+        }
+    });
 }

@@ -11,6 +11,7 @@
 #include <QStringList>
 #include <QList>
 
+#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -27,6 +28,8 @@ class FileManagerController : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool dragExportInProgress READ dragExportInProgress NOTIFY dragExportInProgressChanged)
     Q_PROPERTY(double transferProgress READ transferProgress NOTIFY transferProgressChanged)
+    Q_PROPERTY(double currentFileProgress READ currentFileProgress NOTIFY transferProgressChanged)
+    Q_PROPERTY(bool transferActive READ transferActive NOTIFY transferProgressChanged)
     Q_PROPERTY(double batchTransferProgress READ batchTransferProgress NOTIFY transferProgressChanged)
     Q_PROPERTY(bool multipleTransfers READ multipleTransfers NOTIFY transferProgressChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
@@ -41,13 +44,22 @@ public:
     bool busy() const { return m_busy; }
     bool dragExportInProgress() const { return m_dragExportInProgress; }
     double transferProgress() const { return m_transferProgress; }
-    bool multipleTransfers() const { return (m_downloadBatchActive && m_downloadBatchTotal > 1) || (m_uploadBatchActive && m_uploadBatchTotal > 1); }
+    double currentFileProgress() const { return m_currentFileProgress; }
+    bool transferActive() const {
+        return m_pendingAction == PendingAction::Download || m_pendingAction == PendingAction::Upload ||
+               m_pendingAction == PendingAction::Open || m_pendingAction == PendingAction::Copy ||
+               m_pendingAction == PendingAction::DragExport;
+    }
+    bool multipleTransfers() const { return (m_downloadBatchActive && m_downloadBatchTotal > 1) || (m_uploadBatchActive && m_uploadBatchTotal > 1) || ((m_pendingAction == PendingAction::Copy || m_pendingAction == PendingAction::DragExport) && m_exportBatchTotal > 1); }
     double batchTransferProgress() const {
         if (m_downloadBatchActive && m_downloadBatchTotal > 0) {
             return (m_downloadBatchCompleted + m_transferProgress) / m_downloadBatchTotal;
         }
         if (m_uploadBatchActive && m_uploadBatchTotal > 0) {
             return (m_uploadBatchCompleted + m_transferProgress) / m_uploadBatchTotal;
+        }
+        if ((m_pendingAction == PendingAction::Copy || m_pendingAction == PendingAction::DragExport) && m_exportBatchTotal > 0) {
+            return std::min(1.0, (m_exportBatchCompleted + m_transferProgress) / m_exportBatchTotal);
         }
         return m_transferProgress;
     }
@@ -148,6 +160,9 @@ private:
     int m_uploadBatchTotal = 0;
     int m_uploadBatchCompleted = 0;
     int m_uploadBatchFailed = 0;
+    int m_exportBatchTotal = 0;
+    int m_exportBatchCompleted = 0;
     double m_transferProgress = 0.0;
+    double m_currentFileProgress = 0.0;
     PendingAction m_pendingAction = PendingAction::None;
 };

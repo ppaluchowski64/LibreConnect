@@ -134,6 +134,7 @@ std::string PrimaryConnection::GetPeerDeviceName() {
 
 asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLContext_> sslContext, const InitialConnectionData data) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+    const uint64_t generation = ++m_connectionGeneration;
     m_sslContext = sslContext;
     m_disconnectedEventSent.store(false);
     m_connectionState.store(ConnectionState::CONNECTING);
@@ -144,14 +145,17 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
         Debug::Log("PrimaryConnection: Attempting to connect to {}:{}", endpoint.address().to_string(), endpoint.port());
 
         co_await CoCleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
+        if (generation != m_connectionGeneration.load()) co_return;
+        const std::shared_ptr<SSLSocket> socket = std::make_shared<SSLSocket>(m_context, *m_sslContext);
+        m_socket = socket;
 
-        co_await asio::async_connect(m_socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
+        co_await asio::async_connect(socket->lowest_layer(), std::initializer_list<TCPEndpoint>{endpoint}, asio::use_awaitable);
 
         Debug::Log("PrimaryConnection: TCP Connection established. Starting SSL handshake...");
-        co_await m_socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
+        co_await socket->async_handshake(SSLStreamBase::client, asio::use_awaitable);
+        if (generation != m_connectionGeneration.load()) co_return;
 
-        if (!VerifyPairingPeerFingerprint(m_socket.get(), data)) {
+        if (!VerifyPairingPeerFingerprint(socket.get(), data)) {
             throw std::system_error(
                 std::make_error_code(std::errc::permission_denied),
                 "PAIR_AND_CONNECT peer fingerprint verification failed"
@@ -176,10 +180,10 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
         ConnectionManager::s_instance->m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
 
-        asio::co_spawn(m_strand, CoSend(), asio::detached);
-        asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::co_spawn(m_strand, CoSendHeartbeat(), asio::detached);
-        asio::co_spawn(m_strand, CoHeartbeatMonitor(), asio::detached);
+        asio::co_spawn(m_strand, CoSend(generation, socket), asio::detached);
+        asio::co_spawn(m_strand, CoReceive(generation, socket), asio::detached);
+        asio::co_spawn(m_strand, CoSendHeartbeat(generation), asio::detached);
+        asio::co_spawn(m_strand, CoHeartbeatMonitor(generation), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
@@ -193,6 +197,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
         }
 
     } catch (std::system_error& error) {
+        if (generation != m_connectionGeneration.load()) co_return;
         Debug::Log("PrimaryConnection: Connection failed: {} (code: {})", error.what(), error.code().value());
         HandleAsioError(error.code());
         Disconnect(error.code());
@@ -203,22 +208,26 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
 asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext_> sslContext, InitialConnectionData data, std::function<void(TCPEndpoint)> callback) {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+    const uint64_t generation = ++m_connectionGeneration;
     m_sslContext = sslContext;
     m_disconnectedEventSent.store(false);
     m_connectionState.store(ConnectionState::CONNECTING);
 
     try {
         co_await CoCleanupConnection();
-        m_socket = std::make_unique<SSLSocket>(m_context, *m_sslContext);
+        if (generation != m_connectionGeneration.load()) co_return;
+        const std::shared_ptr<SSLSocket> socket = std::make_shared<SSLSocket>(m_context, *m_sslContext);
+        m_socket = socket;
 
-        TCPAcceptor acceptor(m_context);
+        const std::shared_ptr<TCPAcceptor> acceptor = std::make_shared<TCPAcceptor>(m_context);
+        m_acceptor = acceptor;
         TCPEndpoint listenEndpoint(asio::ip::tcp::v4(), 0);
-        acceptor.open(listenEndpoint.protocol());
-        acceptor.set_option(asio::socket_base::reuse_address(true));
-        acceptor.bind(listenEndpoint);
-        acceptor.listen();
+        acceptor->open(listenEndpoint.protocol());
+        acceptor->set_option(asio::socket_base::reuse_address(true));
+        acceptor->bind(listenEndpoint);
+        acceptor->listen();
 
-        listenEndpoint = acceptor.local_endpoint();
+        listenEndpoint = acceptor->local_endpoint();
         Debug::Log("PrimaryConnection: Seeking connection: Listening on port {}", listenEndpoint.port());
 
         asio::post(
@@ -230,12 +239,13 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
             }
         );
 
-        co_await acceptor.async_accept(m_socket->lowest_layer(), asio::use_awaitable);
+        co_await acceptor->async_accept(socket->lowest_layer(), asio::use_awaitable);
         Debug::Log("PrimaryConnection: Incoming connection accepted. Starting SSL handshake as server...");
 
-        co_await m_socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
+        co_await socket->async_handshake(SSLStreamBase::server, asio::use_awaitable);
+        if (generation != m_connectionGeneration.load()) co_return;
 
-        if (!VerifyPairingPeerFingerprint(m_socket.get(), data)) {
+        if (!VerifyPairingPeerFingerprint(socket.get(), data)) {
             throw std::system_error(
                 std::make_error_code(std::errc::permission_denied),
                 "PAIR_AND_CONNECT peer fingerprint verification failed"
@@ -252,10 +262,10 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         }
         ConnectionManager::s_instance->m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
-        asio::co_spawn(m_strand, CoSend(), asio::detached);
-        asio::co_spawn(m_strand, CoReceive(), asio::detached);
-        asio::co_spawn(m_strand, CoSendHeartbeat(), asio::detached);
-        asio::co_spawn(m_strand, CoHeartbeatMonitor(), asio::detached);
+        asio::co_spawn(m_strand, CoSend(generation, socket), asio::detached);
+        asio::co_spawn(m_strand, CoReceive(generation, socket), asio::detached);
+        asio::co_spawn(m_strand, CoSendHeartbeat(generation), asio::detached);
+        asio::co_spawn(m_strand, CoHeartbeatMonitor(generation), asio::detached);
 
         const std::unique_ptr<QEvent> event = std::make_unique<ConnectedEvent>(EventResult::SUCCESS);
         ConnectionManager::SendEvent(event);
@@ -274,6 +284,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         }
 
     } catch (std::system_error& error) {
+        if (generation != m_connectionGeneration.load()) co_return;
         Debug::Log("PrimaryConnection: Seek failed: {} (code: {})", error.what(), error.code().value());
         HandleAsioError(error.code());
         Disconnect(error.code());
@@ -292,6 +303,7 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     Debug::Log("PrimaryConnection: Disconnecting primary connection. Reason: {} (code: {})", errorCode.message(), errorCode.value());
 
     m_connectionState.store(ConnectionState::DISCONNECTING);
+    ++m_connectionGeneration;
     m_sendFlag.Signal();
     m_receiveFlag->Signal();
     ConnectionManager::CancelPendingRequests();
@@ -316,24 +328,29 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
 
 asio::awaitable<void> PrimaryConnection::CoCleanupConnection() {
     const std::shared_ptr<PrimaryConnection> self = shared_from_this();
+    if (m_acceptor) {
+        std::error_code errorCode;
+        m_acceptor->close(errorCode);
+        m_acceptor.reset();
+    }
     co_await CleanupSSLSocket(m_socket.get());
     m_socket.reset();
 }
 
-asio::awaitable<void> PrimaryConnection::CoSend() {
+asio::awaitable<void> PrimaryConnection::CoSend(const uint64_t generation, const std::shared_ptr<SSLSocket> socket) {
     try {
         const std::shared_ptr<PrimaryConnection> self = shared_from_this();
         moodycamel::ConsumerToken token(m_packageOut);
 
         Debug::Log("PrimaryConnection: Starting CoSend loop.");
 
-        while (m_connectionState.load() == ConnectionState::CONNECTED) {
+        while (m_connectionState.load() == ConnectionState::CONNECTED && generation == m_connectionGeneration.load()) {
             co_await m_sendFlag.Wait();
 
             std::vector<uint8_t> buffer;
             buffer.resize(PackageHeader::GetSerializedSize());
 
-            while (m_connectionState.load() == ConnectionState::CONNECTED) {
+            while (m_connectionState.load() == ConnectionState::CONNECTED && generation == m_connectionGeneration.load()) {
                 if (std::unique_ptr<Package<PC_PackageType>> package; m_packageOut.try_dequeue(token, package)) {
                     PackageHeader& header = package->GetHeader();
 
@@ -345,7 +362,7 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
                         asio::const_buffer(package->GetRawBody(), header.size)
                     };
 
-                    co_await asio::async_write(*m_socket, constBuffers, asio::use_awaitable);
+                    co_await asio::async_write(*socket, constBuffers, asio::use_awaitable);
                 } else {
                     break;
                 }
@@ -356,11 +373,13 @@ asio::awaitable<void> PrimaryConnection::CoSend() {
             Debug::Log("PrimaryConnection: CoSend error: {}", error.what());
         }
         HandleAsioError(error.code());
-        Disconnect(error.code());
+        if (generation == m_connectionGeneration.load()) {
+            Disconnect(error.code());
+        }
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoReceive() {
+asio::awaitable<void> PrimaryConnection::CoReceive(const uint64_t generation, const std::shared_ptr<SSLSocket> socket) {
     try {
         const std::shared_ptr<PrimaryConnection> self = shared_from_this();
         moodycamel::ProducerToken token(m_packageIn);
@@ -369,14 +388,14 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
 
         Debug::Log("PrimaryConnection: Starting CoReceive loop.");
 
-        while (m_connectionState.load() == ConnectionState::CONNECTED) {
+        while (m_connectionState.load() == ConnectionState::CONNECTED && generation == m_connectionGeneration.load()) {
             asio::mutable_buffer headerMutableBuffer(headerBuffer.data(), headerBuffer.size());
-            co_await asio::async_read(*m_socket, headerMutableBuffer, asio::use_awaitable);
+            co_await asio::async_read(*socket, headerMutableBuffer, asio::use_awaitable);
 
             size_t offset = 0;
             header.Deserialize(headerBuffer, offset);
 
-            if (m_connectionState.load() != ConnectionState::CONNECTED) break;
+            if (m_connectionState.load() != ConnectionState::CONNECTED || generation != m_connectionGeneration.load()) break;
 
             if (header.size > MAX_PACKAGE_SIZE) {
                 Debug::LogError("Package over the limit {} bytes", header.size);
@@ -387,9 +406,9 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             std::unique_ptr<Package<PC_PackageType>> package = std::make_unique<Package<PC_PackageType>>(header);
             asio::mutable_buffer packageBuffer(package->GetRawBody(), header.size);
 
-            co_await asio::async_read(*m_socket, packageBuffer, asio::use_awaitable);
+            co_await asio::async_read(*socket, packageBuffer, asio::use_awaitable);
 
-            if (m_connectionState.load() != ConnectionState::CONNECTED) break;
+            if (m_connectionState.load() != ConnectionState::CONNECTED || generation != m_connectionGeneration.load()) break;
 
             if (header.type == static_cast<uint16_t>(PC_PackageType::HEARTBEAT)) {
                 m_heartbeatReceived.store(true);
@@ -411,15 +430,17 @@ asio::awaitable<void> PrimaryConnection::CoReceive() {
             Debug::Log("PrimaryConnection: CoReceive error: {}", error.what());
         }
         HandleAsioError(error.code());
-        Disconnect(error.code());
+        if (generation == m_connectionGeneration.load()) {
+            Disconnect(error.code());
+        }
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoSendHeartbeat() {
+asio::awaitable<void> PrimaryConnection::CoSendHeartbeat(const uint64_t generation) {
     try {
         asio::steady_timer timer(m_context.get_executor());
 
-        while (m_connectionState.load() == ConnectionState::CONNECTED) {
+        while (m_connectionState.load() == ConnectionState::CONNECTED && generation == m_connectionGeneration.load()) {
             Send(PC_PackageType::HEARTBEAT);
             timer.expires_after(std::chrono::milliseconds(HEARTBEAT_INTERVAL));
             co_await timer.async_wait(asio::use_awaitable);
@@ -430,17 +451,23 @@ asio::awaitable<void> PrimaryConnection::CoSendHeartbeat() {
             Debug::Log("PrimaryConnection: CoSendHeartbeat error: {}", error.what());
         }
         HandleAsioError(error.code());
-        Disconnect(error.code());
+        if (generation == m_connectionGeneration.load()) {
+            Disconnect(error.code());
+        }
     }
 }
 
-asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor() {
+asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor(const uint64_t generation) {
     try {
         asio::steady_timer timer(m_context.get_executor());
 
-        while (m_connectionState.load() == ConnectionState::CONNECTED) {
+        while (m_connectionState.load() == ConnectionState::CONNECTED && generation == m_connectionGeneration.load()) {
             timer.expires_after(std::chrono::milliseconds(HEARTBEAT_MONITOR_INTERVAL));
             co_await timer.async_wait(asio::use_awaitable);
+
+            if (generation != m_connectionGeneration.load() || m_connectionState.load() != ConnectionState::CONNECTED) {
+                co_return;
+            }
 
             const bool receivedHeartbeat = m_heartbeatReceived.exchange(false);
             if (!receivedHeartbeat) {
@@ -455,7 +482,9 @@ asio::awaitable<void> PrimaryConnection::CoHeartbeatMonitor() {
             Debug::Log("PrimaryConnection: CoSendHeartbeat error: {}", error.what());
         }
         HandleAsioError(error.code());
-        Disconnect(error.code());
+        if (generation == m_connectionGeneration.load()) {
+            Disconnect(error.code());
+        }
     }
 }
 

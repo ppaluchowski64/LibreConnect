@@ -87,6 +87,7 @@ private:
 
     AwaitableFlag m_sendFlag;
     TCPSocket m_socket;
+    std::shared_ptr<TCPAcceptor> m_acceptor;
     std::string m_challengeResult;
     InitialConnectionMode m_requestedConnectionMode{InitialConnectionMode::CONNECTION_WITHOUT_PAIR};
     bool m_finalHandshakeCompleted{false};

@@ -21,7 +21,8 @@ bool PlatformVirtualFileDrag::Start(QObject* dragSource, ResolvePathsFn resolver
 {
 #ifdef _WIN32
     Q_UNUSED(dragSource);
-    return WindowsVirtualFileDrag::Start(std::move(resolver));
+    Q_UNUSED(resolver);
+    return false; // Windows exports use streamed descriptors through WindowsVirtualFileDrag.
 #else
     QObject* source = dragSource ? dragSource : QGuiApplication::focusObject();
     if (!source) {

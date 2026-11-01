@@ -225,21 +225,23 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
 
     try {
         m_socket = TCPSocket(m_context);
-        TCPAcceptor acceptor(m_context);
-        acceptor.open(endpoint.protocol());
-        acceptor.set_option(asio::socket_base::reuse_address(true));
-        acceptor.bind(endpoint);
-        acceptor.listen();
+        const std::shared_ptr<TCPAcceptor> acceptor = std::make_shared<TCPAcceptor>(m_context);
+        m_acceptor = acceptor;
+        acceptor->open(endpoint.protocol());
+        acceptor->set_option(asio::socket_base::reuse_address(true));
+        acceptor->bind(endpoint);
+        acceptor->listen();
 
         Debug::Log("InitialConnection: Listening for connections on {}:{}", endpoint.address().to_string(), endpoint.port());
-        ConnectionManager::SetSeekingEndpoint(acceptor.local_endpoint());
+        ConnectionManager::SetSeekingEndpoint(acceptor->local_endpoint());
 
-        co_await acceptor.async_accept(m_socket, asio::use_awaitable);
+        co_await acceptor->async_accept(m_socket, asio::use_awaitable);
         Debug::Log("InitialConnection: Accepted connection from {}:{}",  m_socket.remote_endpoint().address().to_string(), m_socket.remote_endpoint().port());
 
-        TCPEndpoint acceptorEndpoint = acceptor.local_endpoint();
+        TCPEndpoint acceptorEndpoint = acceptor->local_endpoint();
         std::error_code closeError;
-        acceptor.close(closeError);
+        acceptor->close(closeError);
+        m_acceptor.reset();
         if (closeError) {
             HandleAsioError(closeError);
         }
@@ -257,6 +259,10 @@ asio::awaitable<void> InitialConnection::CoSeek(TCPEndpoint endpoint, std::funct
         asio::co_spawn(m_strand, CoReceive(), asio::detached);
 
     } catch (std::system_error& error) {
+        m_acceptor.reset();
+        if (error.code() == asio::error::operation_aborted) {
+            co_return;
+        }
         Debug::Log("InitialConnection: CoSeek Error - {}", error.what());
         HandleAsioError(error.code());
         Disconnect();
@@ -271,6 +277,12 @@ asio::awaitable<void> InitialConnection::CoDisconnect(const bool cancelSeeking) 
     Debug::Log("InitialConnection: Closing socket and cleaning up...");
     m_connectionState = ConnectionState::DISCONNECTING;
     m_sendFlag.Signal();
+
+    if (m_acceptor) {
+        std::error_code errorCode;
+        m_acceptor->close(errorCode);
+        m_acceptor.reset();
+    }
 
     const auto drainDeadline = BanClock::now() + DISCONNECT_DRAIN_TIMEOUT;
     while ((m_sendInFlight || !m_packagesOut.empty()) && BanClock::now() < drainDeadline) {

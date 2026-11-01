@@ -1,7 +1,7 @@
 include(GoogleTest)
 
 function(BuildTests ExecutableName PathInTestFolder)
-    file(GLOB_RECURSE TEST_FILES
+    file(GLOB_RECURSE TEST_FILES CONFIGURE_DEPENDS
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/${PathInTestFolder}/*.cpp
     )
 
