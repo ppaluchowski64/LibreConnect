@@ -562,12 +562,27 @@ def prepare_desktop_deps():
             print("Error: Could not locate FFmpeg installation (Checked FFMPEG_DIR and PATH).")
             sys.exit(1)
     elif sys.platform.startswith("linux"):
-        build_dir = os.path.abspath("build")
-        run(["brew", "install", "ffmpeg@7"])
-        ffmpeg_path = subprocess.check_output(["brew", "--prefix", "ffmpeg@7"], text=True).strip()
-
-        shutil.copytree(f"{ffmpeg_path}/include", "./build/ffmpeg/include", dirs_exist_ok=True)
-        shutil.copytree(f"{ffmpeg_path}/lib", "./build/ffmpeg/lib", dirs_exist_ok=True)
+        if os.environ.get("LIBRECONNECT_USE_SYSTEM_FFMPEG") == "1":
+            include_dir = Path(subprocess.check_output(
+                ["pkg-config", "--variable=includedir", "libavcodec"], text=True).strip())
+            lib_dir = Path(subprocess.check_output(
+                ["pkg-config", "--variable=libdir", "libavcodec"], text=True).strip())
+            names = ("avcodec", "avdevice", "avfilter", "avformat", "avutil",
+                     "postproc", "swresample", "swscale")
+            for name in names:
+                shutil.copytree(include_dir / f"lib{name}", Path("build/ffmpeg/include") / f"lib{name}", dirs_exist_ok=True)
+                libraries = list(lib_dir.glob(f"lib{name}.so*"))
+                if not libraries:
+                    raise FileNotFoundError(f"No shared library found for lib{name} in {lib_dir}")
+                for library in libraries:
+                    destination = Path("build/ffmpeg/lib") / library.name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(library, destination)
+        else:
+            run(["brew", "install", "ffmpeg@7"])
+            ffmpeg_path = subprocess.check_output(["brew", "--prefix", "ffmpeg@7"], text=True).strip()
+            shutil.copytree(f"{ffmpeg_path}/include", "./build/ffmpeg/include", dirs_exist_ok=True)
+            shutil.copytree(f"{ffmpeg_path}/lib", "./build/ffmpeg/lib", dirs_exist_ok=True)
     elif platform == "darwin":
         print("Skipping FFmpeg setup on macOS (virtual camera is unsupported).")
 

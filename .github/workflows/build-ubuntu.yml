@@ -5,35 +5,26 @@ on:
 
 jobs:
   build-ubuntu:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install Homebrew
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential curl file git \
-            libgstreamer1.0-0 \
-            libgstreamer-plugins-base1.0-0 \
-            libgstreamer-plugins-bad1.0-0 \
-            libasound2-dev
-
-          NONINTERACTIVE=1 /bin/bash -c \
-          "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-          echo "/home/linuxbrew/.linuxbrew/bin" >> $GITHUB_PATH
-          echo "/home/linuxbrew/.linuxbrew/sbin" >> $GITHUB_PATH
-
-      - name: Verify Brew
-        run: brew --version
+          sudo apt-get install -y build-essential curl file git pkg-config \
+            libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
+            libgstreamer-plugins-bad1.0-0 libasound2-dev libkrb5-dev \
+            libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev \
+            libavutil-dev libpostproc-dev libswresample-dev libswscale-dev
 
       - name: Install Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.x"
+          python-version: "3.12"
 
       - name: Setup Conan
         uses: conan-io/setup-conan@v1
@@ -55,6 +46,7 @@ jobs:
         uses: jurplel/install-qt-action@v4
         with:
           version: '6.8.3'
+          setup-python: 'false'
           host: 'linux'
           target: 'desktop'
           arch: 'linux_gcc_64'
@@ -71,6 +63,8 @@ jobs:
           echo "BUILD_TESTS=true" >> .env
 
       - name: Install Conan deps
+        env:
+          LIBRECONNECT_USE_SYSTEM_FFMPEG: "1"
         run: python configure_project.py
 
       - name: Configure CMake

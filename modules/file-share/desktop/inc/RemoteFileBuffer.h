@@ -8,8 +8,6 @@
 #include <span>
 #include <vector>
 
-// Bounded bridge between the asynchronous receiver and the shell's IStream.
-// No file contents are staged on disk and the I/O pool never waits on a consumer.
 class RemoteFileBuffer final {
   public:
     struct ReadResult {
@@ -90,7 +88,7 @@ class RemoteFileBuffer final {
         try {
             action();
         } catch (...) {
-            // Cancellation also runs from COM destructors: never unwind into the shell.
+
         }
     }
 

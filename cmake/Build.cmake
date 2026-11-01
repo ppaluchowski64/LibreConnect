@@ -329,6 +329,11 @@ function(DeployQT Target)
     elseif(ANDROID)
 
     elseif(UNIX)
+        # The daemon is copied into the desktop bundle after linking.
+        if (NOT Target STREQUAL "appLibreConnect_desktop")
+            return()
+        endif()
+
         find_program(LINUXDEPLOY_EXECUTABLE linuxdeploy)
         find_program(PLUGIN_QT_EXECUTABLE linuxdeploy-plugin-qt)
 
