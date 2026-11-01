@@ -114,6 +114,24 @@ std::vector<CameraSpecification> FetchCamerasSpecification() {
     return camerasSpecifications;
 }
 
+static bool GetEncoderPixelFormats(const AVCodec* codec, const AVPixelFormat*& formats) {
+    formats = nullptr;
+    if (!codec) {
+        return false;
+    }
+
+#if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(61, 19, 100)
+    const void* configurations = nullptr;
+    if (avcodec_get_supported_config(nullptr, codec, AV_CODEC_CONFIG_PIX_FORMAT, 0, &configurations, nullptr) < 0) {
+        return false;
+    }
+    formats = static_cast<const AVPixelFormat*>(configurations);
+#else
+    formats = codec->pix_fmts;
+#endif
+    return true;
+}
+
 static bool CanUseEncoder(const AVCodec* codec) {
     if (!codec) return false;
 
@@ -145,8 +163,13 @@ static bool CanUseEncoder(const AVCodec* codec) {
             return ret == 0;
         };
 
-        if (codec->pix_fmts) {
-            for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+        const AVPixelFormat* formats = nullptr;
+        if (!GetEncoderPixelFormats(codec, formats)) {
+            return false;
+        }
+
+        if (formats) {
+            for (const AVPixelFormat* p = formats; *p != AV_PIX_FMT_NONE; ++p) {
                 if (TryOpen(*p)) {
                     return true;
                 }
@@ -190,11 +213,14 @@ static bool CanUseEncoder(const AVCodec* codec) {
 
     ctx->hw_device_ctx = av_buffer_ref(hw_device);
 
-    if (codec->pix_fmts) {
-        ctx->pix_fmt = codec->pix_fmts[0];
-    } else {
-        ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    const AVPixelFormat* formats = nullptr;
+    if (!GetEncoderPixelFormats(codec, formats)) {
+        av_buffer_unref(&hw_device);
+        avcodec_free_context(&ctx);
+        return false;
     }
+
+    ctx->pix_fmt = formats && formats[0] != AV_PIX_FMT_NONE ? formats[0] : AV_PIX_FMT_YUV420P;
 
     ctx->width = 1920;
     ctx->height = 1080;
@@ -310,11 +336,12 @@ namespace CameraUtilitiesLC {
     }
 
     bool CodecSupportsPixelFormat(const AVCodec* codec, const AVPixelFormat format) {
-        if (!codec || !codec->pix_fmts || format == AV_PIX_FMT_NONE) {
+        const AVPixelFormat* formats = nullptr;
+        if (format == AV_PIX_FMT_NONE || !GetEncoderPixelFormats(codec, formats) || !formats) {
             return false;
         }
 
-        for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+        for (const AVPixelFormat* p = formats; *p != AV_PIX_FMT_NONE; ++p) {
             if (*p == format) {
                 return true;
             }
@@ -328,7 +355,12 @@ namespace CameraUtilitiesLC {
             return AV_PIX_FMT_NONE;
         }
 
-        if (!codec->pix_fmts) {
+        const AVPixelFormat* formats = nullptr;
+        if (!GetEncoderPixelFormats(codec, formats)) {
+            return AV_PIX_FMT_NONE;
+        }
+
+        if (!formats) {
             return inputFormat;
         }
 
@@ -344,7 +376,7 @@ namespace CameraUtilitiesLC {
             return AV_PIX_FMT_YUV420P;
         }
 
-        for (const AVPixelFormat* p = codec->pix_fmts; *p != AV_PIX_FMT_NONE; ++p) {
+        for (const AVPixelFormat* p = formats; *p != AV_PIX_FMT_NONE; ++p) {
             if (sws_isSupportedOutput(*p)) {
                 return *p;
             }
