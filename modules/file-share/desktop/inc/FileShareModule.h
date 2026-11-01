@@ -36,7 +36,7 @@ private:
     void EndDirectoryRequest(const std::string& path) const;
 
     asio::awaitable<void> FetchDirectoryEntriesAwaitable(std::string path) const;
-    asio::awaitable<void> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
+    asio::awaitable<bool> FetchEntryAwaitable(FileEntry entry, std::string destination) const;
     asio::awaitable<void> PostEntryAwaitable(std::filesystem::path path, std::filesystem::path destination) const;
     asio::awaitable<void> OpenEntryAwaitable(FileEntry entry) const;
     asio::awaitable<std::vector<std::filesystem::path>> PrepareEntriesForExternalDragAwaitable(std::vector<FileEntry> entries) const;

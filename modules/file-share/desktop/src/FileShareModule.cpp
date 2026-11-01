@@ -202,7 +202,7 @@ void FileShareModule::FetchEntry(const FileEntry& entry, const std::string& dest
     asio::co_spawn(m_context, FetchEntryAwaitable(entry, destination), asio::detached);
 }
 
-asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
+asio::awaitable<bool> FileShareModule::FetchEntryAwaitable(FileEntry entry, std::string destination) const {
     const std::string entryPath = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
     const std::string entryName = entry.GetName().has_value() ? entry.GetName().value() : std::string();
     Debug::Log("FileShareModule: Fetch entry requested. Source: {}, Destination: {}", entryPath, destination);
@@ -211,14 +211,14 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
-        co_return;
+        co_return false;
     }
     if (entryName.empty()) {
         Debug::LogError("FileShareModule: Fetch entry failed: empty source name");
         ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
-        co_return;
+        co_return false;
     }
 
     std::filesystem::path filePath(destination);
@@ -227,7 +227,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         ProcessError(ModuleFailReason::IncorrectConfig);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
-        co_return;
+        co_return false;
     }
 
     const std::optional<PC_Package> response = co_await ConnectionManager::SendRequest(PC_PackageType::FILE_SHARE_TRANSFER_FETCH_REQUEST, entry);
@@ -236,7 +236,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         ProcessError(ModuleFailReason::Timeout);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
-        co_return;
+        co_return false;
     }
 
     const uint8_t channelIndex = response.value()->GetValue<uint8_t>();
@@ -248,7 +248,9 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         Debug::LogError("FileShareModule: Transfer channel {} doesn't exists", channelIndex);
         ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
-        co_return;
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
+        co_return false;
     }
 
     const auto& channel = opt.value();
@@ -257,13 +259,15 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
         ProcessError(ModuleFailReason::InternalError);
         const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
         ConnectionManager::SendEvent(event);
-        co_return;
+        co_return false;
     }
     if (channel->IsUsed(false)) {
         Debug::LogError("FileShareModule: Transfer channel {} is in use", channelIndex);
         ProcessError(ModuleFailReason::InternalError);
         ConnectionManager::Disconnect();
-        co_return;
+        const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, false);
+        ConnectionManager::SendEvent(event);
+        co_return false;
     }
 
     const FileType type = entry.GetType() ? entry.GetType().value() : FileType::Unknown;
@@ -278,7 +282,7 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     }
     Debug::Log("FileShareModule: Fetch entry transfer started to {}", filePath.string());
 
-    const auto future = type == FileType::Directory ?
+    auto future = type == FileType::Directory ?
         asio::co_spawn(m_context, channel->ReceiveDirectory(filePath), asio::use_future) :
         asio::co_spawn(m_context, channel->ReceiveFile(filePath), asio::use_future);
 
@@ -298,52 +302,59 @@ asio::awaitable<void> FileShareModule::FetchEntryAwaitable(FileEntry entry, std:
     }
 
     const size_t transferred = channel->FetchTransferProgress();
-    const bool success = totalTransferSize == transferred;
+    bool success = totalTransferSize == transferred;
+    try {
+        future.get();
+    } catch (const std::exception& error) {
+        Debug::LogError("FileShareModule: Fetch transfer failed: {}", error.what());
+        success = false;
+    }
     Debug::Log("FileShareModule: Fetch entry transfer finished. Success: {}, Bytes: {}/{}", success, transferred, totalTransferSize);
     const std::unique_ptr<QEvent> event = std::make_unique<EntryTransferResultEvent>(entry, success);
     ConnectionManager::SendEvent(event);
+    co_return success;
 }
 
 
 void FileShareModule::CopyEntriesToClipboard(std::vector<FileEntry> entries) const {
-    asio::post(m_context, [this, entries = std::move(entries)]() {
-        std::vector<asio::detail::promise_async_result<void(std::exception_ptr), std::allocator<void>>::return_type> futures;
+    asio::co_spawn(m_context, [this, entries = std::move(entries)]() mutable -> asio::awaitable<void> {
         std::vector<std::filesystem::path> paths;
         const std::filesystem::path operationDirectory = CreateFileShareTempSessionDirectory(CLIPBOARD_TEMP_CATEGORY);
         if (operationDirectory.empty()) {
             const std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), false);
             ConnectionManager::SendEvent(event);
-            return;
+            co_return;
         }
 
-        futures.reserve(entries.size());
         paths.reserve(entries.size());
 
-        for (const auto& entry : entries) {
-            const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
-            const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
-            std::filesystem::path destinationDirectory = CreateHashedSubdirectory(operationDirectory, path);
-            if (destinationDirectory.empty()) {
-                continue;
+        try {
+            for (const FileEntry& entry : entries) {
+                const std::string path = entry.GetPath().has_value() ? entry.GetPath().value() : std::string();
+                const std::string name = entry.GetName().has_value() ? entry.GetName().value() : std::string();
+                const std::filesystem::path destinationDirectory = CreateHashedSubdirectory(operationDirectory, path);
+                if (destinationDirectory.empty()) {
+                    break;
+                }
+                const std::filesystem::path entryDestination = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
+
+                if (!co_await FetchEntryAwaitable(entry, destinationDirectory.string())) {
+                    break;
+                }
+                paths.push_back(entryDestination);
             }
-            std::filesystem::path entryDestination = destinationDirectory / std::filesystem::path(reinterpret_cast<const char8_t*>(name.data()));
-
-            paths.push_back(entryDestination);
-            futures.push_back(asio::co_spawn(m_context, FetchEntryAwaitable(entry, destinationDirectory.string()), asio::use_future));
+        } catch (const std::exception& error) {
+            Debug::LogError("FileShareModule: Clipboard transfer failed: {}", error.what());
         }
 
-        for (auto& future : futures) {
-            future.get();
-        }
-
-        bool result = FileSystemManager::CopyToClipboard(paths, { operationDirectory });
+        const bool result = paths.size() == entries.size() && FileSystemManager::CopyToClipboard(paths, { operationDirectory });
         if (!result) {
             std::error_code ec;
             std::filesystem::remove_all(operationDirectory, ec);
         }
         const std::unique_ptr<QEvent> event = std::make_unique<EntriesCopyResultEvent>(std::move(entries), result);
         ConnectionManager::SendEvent(event);
-    });
+    }, asio::detached);
 }
 
 std::vector<std::filesystem::path> FileShareModule::PrepareEntriesForExternalDrag(std::vector<FileEntry> entries) const {

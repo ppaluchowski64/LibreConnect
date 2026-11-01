@@ -189,6 +189,11 @@ asio::awaitable<void> TransferChannelPool::Seek() {
 
     for (size_t i = 0; i < count; ++i) {
         co_await (*ports)[i].flag->Wait();
+        if ((*ports)[i].port == 0) {
+            Debug::LogError("TransferChannelPool: Failed to open listener for channel {}", i);
+            s_connectionState.store(ConnectionState::DISCONNECTED);
+            co_return;
+        }
         if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED) {
             Debug::LogWarning("TransferChannelPool: Seek aborted because primary connection dropped before port publish");
             s_connectionState.store(ConnectionState::DISCONNECTED);
@@ -298,6 +303,11 @@ asio::awaitable<BorrowedTransferChannel> TransferChannelPool::BorrowTransferChan
     asio::steady_timer timer(executor);
 
     while (true) {
+        if (ConnectionManager::GetConnectionState() != ConnectionState::CONNECTED ||
+            s_connectionState.load() != ConnectionState::CONNECTED) {
+            throw std::runtime_error("Transfer channel pool disconnected while waiting for a channel");
+        }
+
         size_t count = 0;
         {
             std::lock_guard<std::mutex> lock(s_instance->m_channelsMutex);

@@ -1270,12 +1270,32 @@ Page {
             }
         }
 
+        Text {
+            visible: fileManagerController.multipleTransfers && fileManagerController.busy
+            text: "Current entry"
+            color: Theme.textColor
+        }
+
         ProgressBar {
             Layout.fillWidth: true
             from: 0
             to: 1
             value: fileManagerController.transferProgress
             visible: fileManagerController.busy || fileManagerController.transferProgress > 0
+        }
+
+        Text {
+            visible: fileManagerController.multipleTransfers && fileManagerController.busy
+            text: "Overall transfer (entries)"
+            color: Theme.textColor
+        }
+
+        ProgressBar {
+            Layout.fillWidth: true
+            from: 0
+            to: 1
+            value: fileManagerController.batchTransferProgress
+            visible: fileManagerController.multipleTransfers && fileManagerController.busy
         }
 
         RowLayout {

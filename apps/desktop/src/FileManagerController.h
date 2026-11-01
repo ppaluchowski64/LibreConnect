@@ -27,6 +27,8 @@ class FileManagerController : public QObject
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool dragExportInProgress READ dragExportInProgress NOTIFY dragExportInProgressChanged)
     Q_PROPERTY(double transferProgress READ transferProgress NOTIFY transferProgressChanged)
+    Q_PROPERTY(double batchTransferProgress READ batchTransferProgress NOTIFY transferProgressChanged)
+    Q_PROPERTY(bool multipleTransfers READ multipleTransfers NOTIFY transferProgressChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
 
 public:
@@ -39,6 +41,16 @@ public:
     bool busy() const { return m_busy; }
     bool dragExportInProgress() const { return m_dragExportInProgress; }
     double transferProgress() const { return m_transferProgress; }
+    bool multipleTransfers() const { return (m_downloadBatchActive && m_downloadBatchTotal > 1) || (m_uploadBatchActive && m_uploadBatchTotal > 1); }
+    double batchTransferProgress() const {
+        if (m_downloadBatchActive && m_downloadBatchTotal > 0) {
+            return (m_downloadBatchCompleted + m_transferProgress) / m_downloadBatchTotal;
+        }
+        if (m_uploadBatchActive && m_uploadBatchTotal > 0) {
+            return (m_uploadBatchCompleted + m_transferProgress) / m_uploadBatchTotal;
+        }
+        return m_transferProgress;
+    }
     QString statusMessage() const { return m_statusMessage; }
 
     Q_INVOKABLE void setLocalDownloadDirectory(const QUrl& directoryUrl);

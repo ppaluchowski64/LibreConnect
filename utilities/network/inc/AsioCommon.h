@@ -139,11 +139,8 @@ inline asio::awaitable<void> CleanupSSLSocket(SSLSocket* socket) {
         HandleAsioError(ec);
     }
 
-    co_await socket->async_shutdown(asio::redirect_error(asio::use_awaitable, ec));
-    if (ec && ec != asio::error::eof && ec != asio::error::not_connected) {
-        HandleAsioError(ec);
-    }
-
+    // The peer may have disappeared without sending TLS close_notify. Waiting for
+    // async_shutdown here can prevent disconnect and reconnection indefinitely.
     ec.clear();
     tcpSocket.shutdown(asio::socket_base::shutdown_both, ec);
     if (ec && ec != asio::error::not_connected) {

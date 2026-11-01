@@ -1005,9 +1005,9 @@ bool FileManagerController::event(QEvent* event)
             return true;
         }
 
-        setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
         if (m_pendingAction == PendingAction::Upload) {
             ++m_uploadBatchCompleted;
+            setTransferProgress(0.0);
             if (!resultEvent->Success()) {
                 ++m_uploadBatchFailed;
             }
@@ -1035,6 +1035,7 @@ bool FileManagerController::event(QEvent* event)
                         .arg(m_uploadBatchFailed));
             }
         } else if (m_pendingAction == PendingAction::Open) {
+            setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
             setBusy(false);
             setStatusMessage(resultEvent->Success()
                 ? QStringLiteral("Opened %1.").arg(m_activeEntryName)
@@ -1042,6 +1043,7 @@ bool FileManagerController::event(QEvent* event)
         } else {
             if (m_downloadBatchActive) {
                 ++m_downloadBatchCompleted;
+                setTransferProgress(0.0);
                 if (!resultEvent->Success()) {
                     ++m_downloadBatchFailed;
                 }
@@ -1059,6 +1061,7 @@ bool FileManagerController::event(QEvent* event)
                         .arg(m_downloadBatchTotal)
                         .arg(m_downloadBatchFailed));
             } else {
+                setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
                 setBusy(false);
                 setStatusMessage(resultEvent->Success()
                     ? QStringLiteral("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
@@ -1612,6 +1615,7 @@ void FileManagerController::setDragExportInProgress(const bool dragExportInProgr
 void FileManagerController::setTransferProgress(const double transferProgress)
 {
     if (qFuzzyCompare(m_transferProgress, transferProgress)) {
+        emit transferProgressChanged();
         return;
     }
 

@@ -122,6 +122,9 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
         m_connectionState.store(ConnectionState::CONNECTED);
 
     } catch (std::system_error& error) {
+        if (port == 0) {
+            flag.Signal();
+        }
         HandleAsioError(error.code());
         asio::co_spawn(context, [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
     }
@@ -130,10 +133,11 @@ asio::awaitable<void> TransferChannel::Seek(AwaitableFlag& flag, uint16_t& port)
 asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
     if (m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
-        co_return;
+        throw std::runtime_error("Transfer channel is unavailable for receiving");
     }
 
     m_receive.store(true);
+    struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_receive};
     m_progress.store(0);
 
     try {
@@ -142,8 +146,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
         const std::filesystem::path canonicalBasePath = std::filesystem::weakly_canonical(path, errorCode);
         if (errorCode) {
             Debug::LogError("Failed to canonicalize destination directory '{}' ({})", path.string(), errorCode.message());
-            m_receive.store(false);
-            co_return;
+            throw std::system_error(errorCode);
         }
 
         FileHeader fileHeader{};
@@ -159,8 +162,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
             if (fileHeaderSize > buffer.size()) {
                 Debug::LogError("The header size ({}) is exceeding the buffer size ({})", fileHeaderSize, buffer.size());
-                m_receive.store(false);
-                co_return;
+                throw std::runtime_error("Invalid directory transfer header");
             }
 
             asio::mutable_buffer mutableBuffer(buffer.data(), fileHeaderSize);
@@ -186,8 +188,7 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
 
             const bool received = co_await Receive(filePath.value(), fileHeader.fileSize);
             if (!received) {
-                m_receive.store(false);
-                co_return;
+                throw std::runtime_error("Failed to receive directory file");
             }
 
         } while (!fileHeader.last);
@@ -195,17 +196,21 @@ asio::awaitable<void> TransferChannel::ReceiveDirectory(std::filesystem::path pa
     } catch (std::system_error& error) {
         HandleAsioError(error.code());
         asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
+        throw;
     }
 
-    m_receive.store(false);
 }
 
 asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
-    if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) co_return;
+    if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
+        throw std::runtime_error("Transfer channel is unavailable for sending");
+    }
 
     m_send.store(true);
+    struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_send};
+    m_progress.store(0);
 
     try {
         std::vector<std::filesystem::path> fileList;
@@ -246,26 +251,26 @@ asio::awaitable<void> TransferChannel::SendDirectory(const std::filesystem::path
             co_await asio::async_write(*m_socket, asio::buffer(buffer), asio::use_awaitable);
             const bool sent = co_await Send(currentFilePath);
             if (!sent) {
-                m_send.store(false);
-                co_return;
+                throw std::runtime_error("Failed to send directory file");
             }
         }
 
     } catch (const std::exception& e) {
         Debug::LogError("Directory transfer failed");
         asio::co_spawn(ThreadPool::GetContext(), [self]() -> asio::awaitable<void> { co_await self->Disconnect(); }, asio::detached);
+        throw;
     }
 
-    m_send.store(false);
 }
 
 asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
     if (m_connectionState.load() != ConnectionState::CONNECTED || m_receive.load()) {
-        co_return;
+        throw std::runtime_error("Transfer channel is unavailable for receiving");
     }
 
     m_receive.store(true);
+    struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_receive};
     m_progress.store(0);
 
     FileHeader fileHeader{};
@@ -279,21 +284,20 @@ asio::awaitable<void> TransferChannel::ReceiveFile(std::filesystem::path path) {
 
     const bool received = co_await Receive(path, fileHeader.fileSize);
     if (!received) {
-        m_receive.store(false);
-        co_return;
+        throw std::runtime_error("Failed to receive file");
     }
 
-    m_receive.store(false);
 }
 
 asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
     const std::shared_ptr<TransferChannel> self = shared_from_this();
 
     if (m_connectionState.load() != ConnectionState::CONNECTED || m_send.load()) {
-        co_return;
+        throw std::runtime_error("Transfer channel is unavailable for sending");
     }
 
     m_send.store(true);
+    struct ResetFlag { std::atomic<bool>& flag; ~ResetFlag() { flag.store(false); } } reset{m_send};
     m_progress.store(0);
 
     const FileHeader fileHeader{
@@ -311,11 +315,9 @@ asio::awaitable<void> TransferChannel::SendFile(std::filesystem::path path) {
     co_await asio::async_write(*m_socket, constBuffer, asio::use_awaitable);
     const bool sent = co_await Send(path);
     if (!sent) {
-        m_send.store(false);
-        co_return;
+        throw std::runtime_error("Failed to send file");
     }
 
-    m_send.store(false);
 }
 
 asio::awaitable<void> TransferChannel::SendDirectoryEntries(std::vector<FileEntry>&& entries) {
@@ -560,6 +562,11 @@ asio::awaitable<bool> TransferChannel::Send(const std::filesystem::path file) {
             offset += bufferSize;
 
             fileStream.read(reinterpret_cast<char*>(m_bufferOut.data()), bufferSize);
+            if (fileStream.gcount() != static_cast<std::streamsize>(bufferSize)) {
+                Debug::LogError("Failed while reading source file '{}'", file.string());
+                co_await Disconnect();
+                co_return false;
+            }
             asio::const_buffer buffer(m_bufferOut.data(), bufferSize);
 
             co_await asio::async_write(*m_socket, buffer, asio::use_awaitable);
