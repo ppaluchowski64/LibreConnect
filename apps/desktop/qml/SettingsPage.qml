@@ -6,16 +6,16 @@ import LibreConnect.desktop 1.0
 Page {
     id: root
 
-    readonly property string windowTitleSuffix: "Settings"
+    readonly property string windowTitleSuffix: qsTr("Settings")
     required property var notificationSyncController
     required property var clipboardSyncController
     required property var permissionStateController
     required property var temporaryStorageController
 
     property var themeModes: [
-        { label: "System", value: "system" },
-        { label: "Light", value: "light" },
-        { label: "Dark", value: "dark" }
+        { label: qsTr("System"), value: "system" },
+        { label: qsTr("Light"), value: "light" },
+        { label: qsTr("Dark"), value: "dark" }
     ]
 
     function currentThemeIndex() {
@@ -61,13 +61,185 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Settings"
+                text: qsTr("Settings")
                 font.family: Theme.fontFamily
                 font.pixelSize: 30
                 font.bold: true
                 color: Theme.textColor
                 verticalAlignment: Text.AlignVCenter
             }
+
+        Rectangle {
+            id: languageCard
+            Layout.fillWidth: true
+            implicitHeight: languageCardColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: languageCardColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                Column {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Text {
+                        text: qsTr("Language")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: Theme.textColor
+                    }
+
+                    Text {
+                        text: qsTr("Choose the app language. Restart LibreConnect to apply changes.")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 15
+                        wrapMode: Text.WordWrap
+                        color: Theme.mutedTextColor
+                        width: parent.width - 4
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    ComboBox {
+                        id: languageCombo
+                        Layout.preferredWidth: 240
+                        Layout.minimumWidth: 240
+                        Layout.maximumWidth: 240
+                        Layout.preferredHeight: 42
+                        Layout.minimumHeight: 42
+                        Layout.maximumHeight: 42
+                        model: Language.availableLanguages
+                        textRole: "name"
+                        valueRole: "code"
+                        currentIndex: {
+                            const languages = Language.availableLanguages
+                            for (let i = 0; i < languages.length; ++i) {
+                                if (languages[i].code === Language.currentLanguage)
+                                    return i
+                            }
+                            return 0
+                        }
+                        onActivated: Language.setLanguage(currentValue)
+
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 15
+
+                        contentItem: Text {
+                            anchors.fill: parent
+                            leftPadding: 10
+                            rightPadding: languageCombo.indicator.width + languageCombo.spacing
+                            text: languageCombo.displayText
+                            font: languageCombo.font
+                            color: Theme.textColor
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+
+                        indicator: Text {
+                            x: Math.round(languageCombo.width - width - 10)
+                            y: Math.round((languageCombo.height - height) / 2)
+                            text: "v"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            color: Theme.textColor
+                        }
+
+                        background: Rectangle {
+                            radius: 8
+                            color: languageCombo.hovered
+                                   ? (Theme.dark ? Qt.lighter(Theme.buttonColor, 1.12) : Qt.darker(Theme.buttonColor, 1.05))
+                                   : Theme.buttonColor
+                            border.color: Theme.panelBorderColor
+                            border.width: 1
+                        }
+
+                        delegate: ItemDelegate {
+                            id: languageOptionDelegate
+                            width: languageCombo.width
+                            height: 42
+                            hoverEnabled: true
+                            highlighted: languageCombo.highlightedIndex === index
+
+                            contentItem: Text {
+                                anchors.fill: parent
+                                leftPadding: 10
+                                rightPadding: 10
+                                text: modelData.name
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 15
+                                color: (languageOptionDelegate.highlighted || languageOptionDelegate.hovered) ? Theme.selectedTextColor : Theme.textColor
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+
+                            background: Rectangle {
+                                color: languageOptionDelegate.highlighted
+                                       ? Theme.selectedColor
+                                       : (languageOptionDelegate.hovered ? Theme.buttonColor : Theme.panelColor)
+                                border.color: Theme.panelBorderColor
+                                border.width: 1
+                            }
+                        }
+
+                        popup: Popup {
+                            id: languagePopup
+                            modal: true
+                            closePolicy: Popup.CloseOnPressOutside | Popup.CloseOnEscape
+                            dim: false
+                            x: 0
+                            y: Math.round(languageCombo.height + 4)
+                            width: Math.round(languageCombo.width)
+                            implicitHeight: Math.min(contentItem.implicitHeight, 260)
+                            padding: 1
+                            onOpened: {
+                                if (languageCombo.currentIndex >= 0)
+                                    languagePopupList.positionViewAtIndex(languageCombo.currentIndex, ListView.Contain)
+                            }
+
+                            contentItem: ListView {
+                                id: languagePopupList
+                                clip: true
+                                implicitHeight: contentHeight
+                                boundsBehavior: Flickable.StopAtBounds
+                                model: languageCombo.delegateModel
+                                ScrollBar.vertical: ScrollBar {
+                                    policy: ScrollBar.AsNeeded
+                                }
+                            }
+
+                            background: Rectangle {
+                                radius: 8
+                                color: Theme.panelColor
+                                border.color: Theme.panelBorderColor
+                                border.width: 1
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: Language.restartRequired
+                    text: qsTr("Restart LibreConnect to apply the language change.")
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 14
+                    wrapMode: Text.WordWrap
+                    color: Theme.mutedTextColor
+                }
+            }
+        }
 
         Rectangle {
             id: themeCard
@@ -89,7 +261,7 @@ Page {
                     spacing: 8
 
                     Text {
-                        text: "Theme"
+                        text: qsTr("Theme")
                         font.family: Theme.fontFamily
                         font.pixelSize: 20
                         font.bold: true
@@ -97,7 +269,7 @@ Page {
                     }
 
                     Text {
-                        text: "Choose light, dark, or system theme. Changes apply instantly."
+                        text: qsTr("Choose light, dark, or system theme. Changes apply instantly.")
                         font.family: Theme.fontFamily
                         font.pixelSize: 15
                         wrapMode: Text.WordWrap
@@ -350,7 +522,7 @@ Page {
                     spacing: 14
 
                     Text {
-                        text: "Streamer Mode"
+                        text: qsTr("Streamer Mode")
                         font.family: Theme.fontFamily
                         font.pixelSize: 20
                         font.bold: true
@@ -367,7 +539,7 @@ Page {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Hide sensitive info from the UI to protect your privacy while streaming or sharing your screen."
+                    text: qsTr("Hide sensitive info from the UI to protect your privacy while streaming or sharing your screen.")
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
@@ -394,7 +566,7 @@ Page {
                     spacing: 14
 
                     Text {
-                        text: "Notification Sync"
+                        text: qsTr("Notification Sync")
                         font.family: Theme.fontFamily
                         font.pixelSize: 20
                         font.bold: true
@@ -447,7 +619,7 @@ Page {
                     spacing: 14
 
                     Text {
-                        text: "Auto Clipboard Sync"
+                        text: qsTr("Auto Clipboard Sync")
                         font.family: Theme.fontFamily
                         font.pixelSize: 20
                         font.bold: true
@@ -488,7 +660,7 @@ Page {
                 spacing: 12
 
                 Text {
-                    text: "Temporary Storage"
+                    text: qsTr("Temporary Storage")
                     font.family: Theme.fontFamily
                     font.pixelSize: 20
                     font.bold: true
@@ -498,8 +670,8 @@ Page {
                 Text {
                     Layout.fillWidth: true
                     text: temporaryStorageController.temporaryStoragePath.length > 0
-                          ? ("Location: " + temporaryStorageController.temporaryStoragePath)
-                          : "Location unavailable."
+                          ? qsTr("Location: %1").arg(temporaryStorageController.temporaryStoragePath)
+                          : qsTr("Location unavailable.")
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
@@ -523,7 +695,7 @@ Page {
                     }
 
                     ThemedButton {
-                        text: "Clear Temporary Storage"
+                        text: qsTr("Clear Temporary Storage")
                         width: 220
                         enabled: temporaryStorageController.temporaryStoragePath.length > 0
                         onClicked: temporaryStorageController.clearTemporaryStorage()
@@ -574,8 +746,8 @@ Page {
 
             Text {
                 text: notificationPermissionDialog.mobilePermissionMissing
-                      ? "Phone Notification Permission Required"
-                      : "macOS Notification Permission Required"
+                      ? qsTr("Phone Notification Permission Required")
+                      : qsTr("macOS Notification Permission Required")
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -586,8 +758,8 @@ Page {
 
             Text {
                 text: notificationPermissionDialog.mobilePermissionMissing
-                      ? "Grant notification permissions on the mobile app to use notification sync."
-                      : "Allow LibreConnect in System Settings > Notifications to show synced notifications on this Mac."
+                      ? qsTr("Grant notification permissions on the mobile app to use notification sync.")
+                      : qsTr("Allow LibreConnect in System Settings > Notifications to show synced notifications on this Mac.")
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -600,7 +772,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 120
                     height: 40
                     font.pixelSize: 14
@@ -608,7 +780,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: notificationPermissionDialog.mobilePermissionMissing ? "Prompt on Phone" : "Allow on Mac"
+                    text: notificationPermissionDialog.mobilePermissionMissing ? qsTr("Prompt on Phone") : qsTr("Allow on Mac")
                     width: 170
                     height: 40
                     font.pixelSize: 14
