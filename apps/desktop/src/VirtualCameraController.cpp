@@ -56,19 +56,19 @@ void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
     if (!enabled) {
         setEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping virtual camera..."));
+        setStatusMessage(tr("Stopping virtual camera..."));
         module->Disable(true);
         return;
     }
 
     if (m_selectedCameraIndex < 0 || m_selectedCameraIndex >= static_cast<int>(m_cameraSpecifications.size())) {
-        setStatusMessage(QStringLiteral("Select a camera before enabling the virtual camera."));
+        setStatusMessage(tr("Select a camera before enabling the virtual camera."));
         return;
     }
 
     const CameraSpecification& camera = m_cameraSpecifications.at(m_selectedCameraIndex);
     if (m_selectedFormatIndex < 0 || m_selectedFormatIndex >= static_cast<int>(camera.formats.size())) {
-        setStatusMessage(QStringLiteral("Select a format before enabling the virtual camera."));
+        setStatusMessage(tr("Select a format before enabling the virtual camera."));
         return;
     }
 
@@ -89,7 +89,7 @@ void VirtualCameraController::setVirtualCameraEnabled(const bool enabled)
     module->SetCameraSettings(settings);
     setEnabledState(true);
     setBusy(true);
-    setStatusMessage(QStringLiteral("Starting virtual camera..."));
+    setStatusMessage(tr("Starting virtual camera..."));
     module->Enable(true);
 }
 
@@ -135,21 +135,21 @@ void VirtualCameraController::refreshState()
     if (state == ModuleState::Enabled) {
         setEnabledState(true);
         setBusy(false);
-        setStatusMessage(QStringLiteral("Virtual camera is enabled."));
+        setStatusMessage(tr("Virtual camera is enabled."));
         return;
     }
 
     if (state == ModuleState::Enabling) {
         setEnabledState(true);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Starting virtual camera..."));
+        setStatusMessage(tr("Starting virtual camera..."));
         return;
     }
 
     if (state == ModuleState::Disabling) {
         setEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping virtual camera..."));
+        setStatusMessage(tr("Stopping virtual camera..."));
         return;
     }
 
@@ -157,7 +157,7 @@ void VirtualCameraController::refreshState()
         if (state == ModuleState::Disabled) {
             setEnabledState(false);
             setBusy(false);
-            setStatusMessage(QStringLiteral("Select a camera and format, then enable the virtual camera."));
+            setStatusMessage(tr("Select a camera and format, then enable the virtual camera."));
         }
         return;
     }
@@ -165,7 +165,7 @@ void VirtualCameraController::refreshState()
     if (state == ModuleState::Disabled) {
         setEnabledState(false);
         setBusy(false);
-        setStatusMessage(QStringLiteral("No cameras have been reported by the connected device yet."));
+        setStatusMessage(tr("No cameras have been reported by the connected device yet."));
     }
 }
 

@@ -51,7 +51,7 @@ Page {
         }
 
         Text {
-            text: qsTr("(Please ensure the app for your relevant OS is \ndownloaded and open before you continue.)")
+            text: qsTr("(Please ensure the app for your relevant OS is\ndownloaded and open before you continue.)")
             font.family: Theme.fontFamily
             font.pixelSize: 20
             font.italic: true

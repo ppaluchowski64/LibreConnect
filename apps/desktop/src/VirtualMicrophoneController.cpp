@@ -69,17 +69,17 @@ void VirtualMicrophoneController::refreshAudioDevices()
 void VirtualMicrophoneController::createAudioDevice()
 {
     if (!createDeviceSupported()) {
-        setStatusMessage(QStringLiteral("Creating virtual microphone devices is only supported on Linux."));
+        setStatusMessage(tr("Creating virtual microphone devices is only supported on Linux."));
         return;
     }
 
     const QString trimmedName = m_newDeviceName.trimmed();
     if (trimmedName.isEmpty()) {
-        setStatusMessage(QStringLiteral("Enter a device name before creating a virtual microphone."));
+        setStatusMessage(tr("Enter a device name before creating a virtual microphone."));
         return;
     }
 
-    setStatusMessage(QStringLiteral("Creating virtual microphone device..."));
+    setStatusMessage(tr("Creating virtual microphone device..."));
     auto& module = ModulesManager::GetModuleReference<NetworkMicrophoneModule>();
     module->CreateAudioDevice(trimmedName.toStdString());
 }
@@ -91,21 +91,21 @@ void VirtualMicrophoneController::setVirtualMicrophoneEnabled(const bool enabled
     if (!enabled) {
         setEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping virtual microphone..."));
+        setStatusMessage(tr("Stopping virtual microphone..."));
         module->Disable(true);
         return;
     }
 
     const QString deviceId = selectedDeviceId();
     if (deviceId.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select a virtual audio device before enabling the microphone stream."));
+        setStatusMessage(tr("Select a virtual audio device before enabling the microphone stream."));
         return;
     }
 
     module->SelectDevice(deviceId.toStdString());
     setEnabledState(true);
     setBusy(true);
-    setStatusMessage(QStringLiteral("Starting virtual microphone..."));
+    setStatusMessage(tr("Starting virtual microphone..."));
     module->Enable(true);
 }
 
@@ -151,7 +151,7 @@ bool VirtualMicrophoneController::event(QEvent* event)
     if (event->type() == VirtualMicrophoneErrorEvent::Type) {
         const auto* errorEvent = static_cast<VirtualMicrophoneErrorEvent*>(event);
         setBusy(false);
-        setStatusMessage(QStringLiteral("Virtual microphone error: %1").arg(static_cast<int>(errorEvent->GetError())));
+        setStatusMessage(tr("Virtual microphone error: %1").arg(static_cast<int>(errorEvent->GetError())));
         return true;
     }
 
@@ -166,21 +166,21 @@ void VirtualMicrophoneController::refreshState()
     if (state == ModuleState::Enabled) {
         setEnabledState(true);
         setBusy(false);
-        setStatusMessage(QStringLiteral("Virtual microphone is enabled."));
+        setStatusMessage(tr("Virtual microphone is enabled."));
         return;
     }
 
     if (state == ModuleState::Enabling) {
         setEnabledState(true);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Starting virtual microphone..."));
+        setStatusMessage(tr("Starting virtual microphone..."));
         return;
     }
 
     if (state == ModuleState::Disabling) {
         setEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping virtual microphone..."));
+        setStatusMessage(tr("Stopping virtual microphone..."));
         return;
     }
 
@@ -189,8 +189,8 @@ void VirtualMicrophoneController::refreshState()
         setBusy(false);
         setStatusMessage(
             m_audioDevices.isEmpty()
-                ? QStringLiteral("No virtual microphone devices have been detected.")
-                : QStringLiteral("Select a virtual audio device, then enable the microphone stream.")
+                ? tr("No virtual microphone devices have been detected.")
+                : tr("Select a virtual audio device, then enable the microphone stream.")
         );
     }
 }

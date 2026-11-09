@@ -62,6 +62,6 @@ qt_add_translations(appLibreConnect_desktop
         TS_FILES
             ${CMAKE_SOURCE_DIR}/translations/libreconnect_desktop_zh_CN.ts
         RESOURCE_PREFIX "/i18n"
-        SOURCE_TARGETS appLibreConnect_desktop
+        SOURCE_TARGETS appLibreConnect_desktop system-info
         NO_GENERATE_PLURALS_TS_FILE
 )

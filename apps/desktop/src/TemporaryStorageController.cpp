@@ -19,9 +19,9 @@ TemporaryStorageController::TemporaryStorageController(QObject* parent)
 {
     refreshTemporaryStoragePath();
     if (m_temporaryStoragePath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Temporary storage path is unavailable."));
+        setStatusMessage(tr("Temporary storage path is unavailable."));
     } else {
-        setStatusMessage(QStringLiteral("Some temporary files may not be deleted fully. Click Clear Temporary Storage to clear."));
+        setStatusMessage(tr("Some temporary files may not be deleted fully. Click Clear Temporary Storage to clear."));
     }
 }
 
@@ -29,14 +29,14 @@ bool TemporaryStorageController::clearTemporaryStorage()
 {
     refreshTemporaryStoragePath();
     if (m_temporaryStoragePath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Temporary storage path is unavailable."));
+        setStatusMessage(tr("Temporary storage path is unavailable."));
         return false;
     }
 
     const bool success = FileSystemManager::ClearTemporaryStorage();
     setStatusMessage(success
-        ? QStringLiteral("Temporary storage cleared.")
-        : QStringLiteral("Failed to clear temporary storage. Some files may still be in use."));
+        ? tr("Temporary storage cleared.")
+        : tr("Failed to clear temporary storage. Some files may still be in use."));
     return success;
 }
 

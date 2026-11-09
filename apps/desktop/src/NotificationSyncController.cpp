@@ -29,17 +29,15 @@ NotificationSyncController::NotificationSyncController(QObject* parent)
 QString NotificationSyncController::permissionMessage() const
 {
     if (!m_permissionsGranted && !m_localPermissionGranted) {
-        return QStringLiteral(
-            "Notification sync needs notification permissions on the mobile device and permission to show notifications on this Mac."
-        );
+        return tr("Notification sync needs notification permissions on the mobile device and permission to show notifications on this Mac.");
     }
 
     if (!m_permissionsGranted) {
-        return QStringLiteral("Notification sync is unavailable until notification permissions are granted on the mobile device.");
+        return tr("Notification sync is unavailable until notification permissions are granted on the mobile device.");
     }
 
     if (!m_localPermissionGranted) {
-        return QStringLiteral(
+        return tr(
             "Notification sync is unavailable until LibreConnect is allowed to show notifications on this Mac. "
             "Allow it in System Settings > Notifications."
         );
@@ -63,7 +61,7 @@ QVariantList NotificationSyncController::notifications() const
         map.insert(QStringLiteral("timestampText"),
             notification.timestamp > 0
                 ? QDateTime::fromMSecsSinceEpoch(notification.timestamp).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
-                : QStringLiteral("Unknown time"));
+                : tr("Unknown time"));
         map.insert(QStringLiteral("dismissable"), notification.dismissable);
         map.insert(QStringLiteral("icon"), notification.iconPath);
         result.push_back(map);
@@ -113,22 +111,22 @@ void NotificationSyncController::refreshState()
         setBusy(false);
         clearNotifications();
         setStatusMessage(m_requestedEnabled
-            ? QStringLiteral("Notification sync will start after connecting to the device.")
-            : QStringLiteral("Notification sync is disabled."));
+            ? tr("Notification sync will start after connecting to the device.")
+            : tr("Notification sync is disabled."));
         return;
     }
 
     if (state == ModuleState::Enabling) {
         setEnabledState(true);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Starting notification sync..."));
+        setStatusMessage(tr("Starting notification sync..."));
         return;
     }
 
     if (state == ModuleState::Disabling) {
         setEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping notification sync..."));
+        setStatusMessage(tr("Stopping notification sync..."));
         return;
     }
 
@@ -157,14 +155,14 @@ void NotificationSyncController::refreshState()
         if (m_disableAttemptPending) {
             setEnabledState(false);
             setBusy(true);
-            setStatusMessage(QStringLiteral("Stopping notification sync..."));
+            setStatusMessage(tr("Stopping notification sync..."));
             module->Disable(true);
             return;
         }
 
         setEnabledState(true);
         setBusy(false);
-        setStatusMessage(QStringLiteral("Notification sync is enabled on the connected device."));
+        setStatusMessage(tr("Notification sync is enabled on the connected device."));
         return;
     }
 
@@ -189,13 +187,13 @@ void NotificationSyncController::refreshState()
             if (!m_permissionsGranted) {
                 setEnabledState(m_requestedEnabled);
                 setBusy(false);
-                setStatusMessage(QStringLiteral("Notification sync is waiting for notification permissions on the connected device."));
+                setStatusMessage(tr("Notification sync is waiting for notification permissions on the connected device."));
                 return;
             }
 
             setEnabledState(true);
             setBusy(true);
-            setStatusMessage(QStringLiteral("Starting notification sync..."));
+            setStatusMessage(tr("Starting notification sync..."));
             m_enableAttemptPending = false;
             module->Enable(true);
             return;
@@ -208,7 +206,7 @@ void NotificationSyncController::refreshState()
         }
         setStatusMessage(!m_permissionsGranted || !m_localPermissionGranted
             ? permissionMessage()
-            : QStringLiteral("Notification sync is disabled."));
+            : tr("Notification sync is disabled."));
         return;
     }
 
@@ -216,7 +214,7 @@ void NotificationSyncController::refreshState()
     setBusy(false);
     setStatusMessage(!m_permissionsGranted || !m_localPermissionGranted
         ? permissionMessage()
-        : QStringLiteral("Notification sync is disabled."));
+        : tr("Notification sync is disabled."));
 }
 
 bool NotificationSyncController::event(QEvent* event)

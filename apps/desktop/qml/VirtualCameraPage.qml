@@ -5,7 +5,7 @@ import LibreConnect.desktop 1.0
 Page {
     id: root
 
-    readonly property string windowTitleSuffix: "Virtual Camera"
+    readonly property string windowTitleSuffix: qsTr("Virtual Camera")
 
     property string selectedAspectRatio: ""
     property var availableAspectRatios: {
@@ -47,7 +47,7 @@ Page {
             spacing: 16
 
             Text {
-                text: "Virtual Camera"
+                text: qsTr("Virtual Camera")
                 font.family: Theme.fontFamily
                 font.pixelSize: 30
                 font.bold: true
@@ -189,7 +189,7 @@ Page {
                     }
 
                     Text {
-                        text: "Aspect Ratio:"
+                        text: qsTr("Aspect Ratio:")
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
                         color: Theme.textColor
@@ -232,7 +232,7 @@ Page {
                     }
 
                     Text {
-                        text: "Resolution:"
+                        text: qsTr("Resolution:")
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
                         color: Theme.textColor
@@ -277,7 +277,7 @@ Page {
                                         anchors.horizontalCenter: parent.horizontalCenter
                                     }
                                     Text {
-                                        text: modelData.fps + " FPS"
+                                        text: modelData.fps + qsTr(" FPS")
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 12
                                         color: virtualCameraController.selectedFormatIndex === modelData.index ? (Theme.selectedTextColor) : Theme.mutedTextColor
@@ -300,7 +300,7 @@ Page {
                         spacing: 12
 
                         ThemedButton {
-                            text: virtualCameraController.enabled ? "Disable Virtual Camera" : (virtualCameraController.busy ? "Working..." : "Enable Virtual Camera")
+                            text: virtualCameraController.enabled ? qsTr("Disable Virtual Camera") : (virtualCameraController.busy ? qsTr("Working...") : qsTr("Enable Virtual Camera"))
                             width: 220
                             height: 42
                             enabled: !virtualCameraController.busy
@@ -308,7 +308,7 @@ Page {
                         }
 
                         ThemedButton {
-                            text: "Flip Horizontal"
+                            text: qsTr("Flip Horizontal")
                             width: 160
                             height: 42
                             visible: virtualCameraController.enabled && !virtualCameraController.busy

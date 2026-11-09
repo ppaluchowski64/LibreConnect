@@ -11,7 +11,7 @@ Window {
     minimumHeight: 480
     visible: true
     color: Theme.backgroundColor
-    title: "LibreConnect - File Manager"
+    title: qsTr("LibreConnect - File Manager")
 
     signal windowClosed()
 

@@ -7,7 +7,7 @@ Page {
     id: root
 
     required property var notificationSyncController
-    readonly property string windowTitleSuffix: "Notifications"
+    readonly property string windowTitleSuffix: qsTr("Notifications")
 
     background: Rectangle {
         color: "transparent"
@@ -20,7 +20,7 @@ Page {
 
         Text {
             Layout.fillWidth: true
-            text: "Notifications"
+            text: qsTr("Notifications")
             font.family: Theme.fontFamily
             font.pixelSize: 30
             font.bold: true
@@ -30,8 +30,8 @@ Page {
         Text {
             Layout.fillWidth: true
             text: notificationSyncController.enabled
-                  ? "Live list of active notifications on your phone."
-                  : "Enable Notification Sync in Settings to view active notifications."
+                  ? qsTr("Live list of active notifications on your phone.")
+                  : qsTr("Enable Notification Sync in Settings to view active notifications.")
             font.family: Theme.fontFamily
             font.pixelSize: 15
             wrapMode: Text.WordWrap
@@ -75,13 +75,13 @@ Page {
                         required property var modelData
                         readonly property string appNameText: (typeof modelData.appName === "string" && modelData.appName.length > 0)
                                                                 ? modelData.appName
-                                                                : "Unknown app"
+                                                                : qsTr("Unknown app")
                         readonly property string titleText: (typeof modelData.title === "string" && modelData.title.length > 0)
                                                               ? modelData.title
-                                                              : "(No title)"
+                                                              : qsTr("(No title)")
                         readonly property string bodyText: (typeof modelData.content === "string" && modelData.content.length > 0)
                                                              ? modelData.content
-                                                             : "(No description)"
+                                                             : qsTr("(No description)")
                         readonly property string iconSource: (typeof modelData.icon === "string") ? modelData.icon : ""
                         readonly property bool isDismissable: modelData.dismissable !== false
 
@@ -137,7 +137,7 @@ Page {
 
                                 ThemedButton {
                                     anchors.fill: parent
-                                    text: "Dismiss"
+                                    text: qsTr("Dismiss")
                                     visible: isDismissable
                                     enabled: notificationSyncController.enabled
                                     onClicked: {
@@ -156,7 +156,7 @@ Page {
 
                                     Text {
                                         anchors.centerIn: parent
-                                        text: "Locked"
+                                        text: qsTr("Locked")
                                         color: Theme.subtleTextColor
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 12
@@ -215,7 +215,7 @@ Page {
                                     width: parent.width
                                     text: (typeof modelData.timestampText === "string" && modelData.timestampText.length > 0)
                                           ? modelData.timestampText
-                                          : "Unknown time"
+                                          : qsTr("Unknown time")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 12
                                     color: Theme.mutedTextColor
@@ -247,7 +247,7 @@ Page {
 
                     Text {
                         width: parent.width
-                        text: "Notifications Sync Is Off"
+                        text: qsTr("Notifications Sync Is Off")
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontFamily
                         font.pixelSize: 24
@@ -258,7 +258,7 @@ Page {
 
                     Text {
                         width: parent.width
-                        text: "Turn on notification sync from Settings to view and dismiss phone notifications here."
+                        text: qsTr("Turn on notification sync from Settings to view and dismiss phone notifications here.")
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
@@ -275,7 +275,7 @@ Page {
 
                     Text {
                         width: parent.width
-                        text: "No Active Notifications"
+                        text: qsTr("No Active Notifications")
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontFamily
                         font.pixelSize: 24
@@ -285,7 +285,7 @@ Page {
 
                     Text {
                         width: parent.width
-                        text: "New phone notifications will appear here when they are active."
+                        text: qsTr("New phone notifications will appear here when they are active.")
                         horizontalAlignment: Text.AlignHCenter
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
@@ -318,7 +318,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Cannot Dismiss"
+                text: qsTr("Cannot Dismiss")
                 color: Theme.textColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 24
@@ -328,7 +328,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "This notification is marked as non-dismissable by Android or could not be dismissed right now."
+                text: qsTr("This notification is marked as non-dismissable by Android or could not be dismissed right now.")
                 color: Theme.mutedTextColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
@@ -338,7 +338,7 @@ Page {
             Row {
                 anchors.horizontalCenter: parent.horizontalCenter
                 ThemedButton {
-                    text: "OK"
+                    text: qsTr("OK")
                     width: 120
                     height: 40
                     onClicked: undismissableDialog.close()

@@ -253,7 +253,7 @@ void DeviceConnectionController::submitVerificationCode(const QString& code)
     const QString trimmedCode = code.trimmed();
     static const QRegularExpression sixDigitPattern(QStringLiteral("^\\d{6}$"));
     if (!sixDigitPattern.match(trimmedCode).hasMatch()) {
-        m_verificationError = QStringLiteral("Code must be exactly 6 digits.");
+        m_verificationError = tr("Code must be exactly 6 digits.");
         emit verificationErrorChanged();
         return;
     }
@@ -263,7 +263,7 @@ void DeviceConnectionController::submitVerificationCode(const QString& code)
         emit verificationErrorChanged();
     }
 
-    m_verificationStatus = QStringLiteral("Checking code...");
+    m_verificationStatus = tr("Checking code...");
     emit verificationStatusChanged();
 
     const std::string response = trimmedCode.toStdString();
@@ -377,7 +377,7 @@ bool DeviceConnectionController::event(QEvent* e)
     if (type == DeviceCooldownEvent::Type) {
         const auto* ev = static_cast<DeviceCooldownEvent*>(e);
         handleError(
-            QStringLiteral("Connection temporarily blocked by the remote device. Try again in about %1 seconds.")
+            tr("Connection temporarily blocked by the remote device. Try again in about %1 seconds.")
                 .arg(ev->LeftDuration(), 0, 'f', 1)
                 .toStdString(),
             type
@@ -428,7 +428,7 @@ void DeviceConnectionController::handleConnectedEvent(ConnectedEvent* ev)
         systemInfoModule->Enable(true);
     } else {
         setBatteryPercentage(-1);
-        handleError("Connection failed", ev->type());
+        handleError(tr("Connection failed").toStdString(), ev->type());
     }
 }
 
@@ -480,8 +480,7 @@ void DeviceConnectionController::handleDisconnectedEvent(DisconnectedEvent* ev)
     if (pendingChangedValue &&
         !connectedChangedValue &&
         IsPendingHandshakeClosureError(ev->GetErrorCode())) {
-        handleError(
-            "Connection was closed by the remote device. If this was a paired-mode connect, verify that both devices are still paired.",
+        handleError(tr("Connection was closed by the remote device. If this was a paired-mode connect, verify that both devices are still paired.").toStdString(),
             ev->type()
         );
         return;
@@ -535,8 +534,9 @@ void DeviceConnectionController::handleScannerErrorEvent(ScannerErrorEvent* ev)
         emit localNetworkPermissionGrantedChanged();
         emit localNetworkPermissionCheckFinished(false);
         handleError(
-            "Local network permission is required to discover devices. "
-            "Allow LibreConnect in System Settings > Privacy & Security > Local Network, then try again.",
+            tr("Local network permission is required to discover devices. "
+               "Allow LibreConnect in System Settings > Privacy & Security > Local Network, then try again.")
+                .toStdString(),
             ev->type()
         );
         return;
@@ -568,7 +568,7 @@ void DeviceConnectionController::handleConnectionFailedVerificationEvent(Connect
     m_verificationTriesLeft = std::max(0, ev->GetLeftTries());
     emit verificationTriesLeftChanged();
 
-    m_verificationError = QString("Verification failed (%1 tries left)").arg(m_verificationTriesLeft);
+    m_verificationError = tr("Verification failed (%1 tries left)").arg(m_verificationTriesLeft);
     emit verificationErrorChanged();
 
     if (!m_verificationStatus.isEmpty()) {
@@ -595,7 +595,7 @@ void DeviceConnectionController::handleConnectionVerificationEvent(ConnectionVer
 
     m_verificationEvent.reset(ev->clone());
 
-    m_verificationStatus = QStringLiteral("Enter the code shown on your phone.");
+    m_verificationStatus = tr("Enter the code shown on your phone.");
     emit verificationStatusChanged();
     setApprovalPending(false);
 
@@ -607,14 +607,14 @@ void DeviceConnectionController::handleConnectionVerificationEvent(ConnectionVer
 
 void DeviceConnectionController::handleConnectionApprovalRequestedEvent(ConnectionApprovalRequestedEvent* /*ev*/)
 {
-    m_verificationStatus = QStringLiteral("Code accepted. Waiting for approval on your phone...");
+    m_verificationStatus = tr("Code accepted. Waiting for approval on your phone...");
     emit verificationStatusChanged();
     setApprovalPending(true);
 }
 
 void DeviceConnectionController::handleConnectionApprovalDeniedEvent(ConnectionApprovalDeniedEvent* ev)
 {
-    m_verificationError = QStringLiteral("Connection denied on the mobile device.");
+    m_verificationError = tr("Connection denied on the mobile device.");
     emit verificationErrorChanged();
 
     if (m_verificationPending) {
@@ -630,7 +630,7 @@ void DeviceConnectionController::handleConnectionApprovalDeniedEvent(ConnectionA
         emit verificationStatusChanged();
     }
 
-    handleError("Connection denied on the mobile device.", ev->type());
+    handleError(tr("Connection denied on the mobile device.").toStdString(), ev->type());
 }
 
 void DeviceConnectionController::handleModuleErrorEvent(ModuleErrorEvent* ev)

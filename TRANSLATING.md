@@ -4,14 +4,18 @@ LibreConnect uses Qt's translation system. English is the source language. Trans
 
 ## Current coverage
 
-The desktop app currently has translation infrastructure and a small pilot surface:
+The desktop app UI is marked for translation, including:
 
-- `apps/desktop/qml/Initial.qml`
-- `apps/desktop/qml/SettingsPage.qml`
-- the desktop tray menu (`Show`, `Quit`)
-- `LanguageController`'s language picker labels
+- all desktop QML pages and dialogs;
+- desktop controller status and error messages;
+- file-manager type and filter labels;
+- the desktop tray menu (`Show`, `Quit`);
+- `LanguageController`'s language picker labels;
+- the virtual-camera unavailable reason from `SystemInfo`.
 
-The rest of the desktop UI, the mobile app, and Android-native strings are not marked yet. They will be added in follow-up changes.
+System-provided error text (for example, the message produced by `std::error_code::message()`) stays in the operating system's language. Module failure-reason labels can still appear in English inside module error messages.
+
+The mobile app and Android-native strings are not marked yet. They will be added in follow-up changes.
 
 ## Marking strings
 

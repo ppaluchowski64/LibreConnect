@@ -9,7 +9,7 @@ Page {
     required property var virtualMicrophoneController
     required property var permissionStateController
 
-    readonly property string windowTitleSuffix: "Virtual Microphone"
+    readonly property string windowTitleSuffix: qsTr("Virtual Microphone")
 
     background: Rectangle {
         color: "transparent"
@@ -26,7 +26,7 @@ Page {
             spacing: 16
 
             Text {
-                text: "Virtual Microphone"
+                text: qsTr("Virtual Microphone")
                 font.family: Theme.fontFamily
                 font.pixelSize: 30
                 font.bold: true
@@ -62,7 +62,7 @@ Page {
                     spacing: 14
 
                     Text {
-                        text: "Audio Device"
+                        text: qsTr("Audio Device")
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
                         color: Theme.textColor
@@ -87,7 +87,7 @@ Page {
                             anchors.fill: parent
                             leftPadding: 10
                             rightPadding: deviceCombo.indicator.width + deviceCombo.spacing
-                            text: deviceCombo.displayText.length > 0 ? deviceCombo.displayText : "No virtual audio devices detected"
+                            text: deviceCombo.displayText.length > 0 ? deviceCombo.displayText : qsTr("No virtual audio devices detected")
                             font: deviceCombo.font
                             color: deviceCombo.enabled ? Theme.textColor : Theme.mutedTextColor
                             verticalAlignment: Text.AlignVCenter
@@ -180,7 +180,7 @@ Page {
                         spacing: 10
 
                         ThemedButton {
-                            text: "Refresh Devices"
+                            text: qsTr("Refresh Devices")
                             Layout.preferredWidth: 160
                             height: 40
                             font.pixelSize: 14
@@ -195,7 +195,7 @@ Page {
                         visible: root.virtualMicrophoneController.createDeviceSupported
 
                         Text {
-                            text: "Create Device"
+                            text: qsTr("Create Device")
                             font.family: Theme.fontFamily
                             font.pixelSize: 14
                             color: Theme.textColor
@@ -212,7 +212,7 @@ Page {
                                 text: root.virtualMicrophoneController.newDeviceName
                                 enabled: !root.virtualMicrophoneController.enabled && !root.virtualMicrophoneController.busy
                                 color: Theme.textColor
-                                placeholderText: "Device name"
+                                placeholderText: qsTr("Device name")
                                 placeholderTextColor: Theme.mutedTextColor
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 14
@@ -228,7 +228,7 @@ Page {
                             }
 
                             ThemedButton {
-                                text: "Create"
+                                text: qsTr("Create")
                                 Layout.preferredWidth: 120
                                 height: 40
                                 font.pixelSize: 14
@@ -240,8 +240,8 @@ Page {
 
                     ThemedButton {
                         text: root.virtualMicrophoneController.enabled
-                              ? "Disable Virtual Microphone"
-                              : (root.virtualMicrophoneController.busy ? "Working..." : "Enable Virtual Microphone")
+                              ? qsTr("Disable Virtual Microphone")
+                              : (root.virtualMicrophoneController.busy ? qsTr("Working...") : qsTr("Enable Virtual Microphone"))
                         width: 250
                         height: 42
                         enabled: (!root.virtualMicrophoneController.busy

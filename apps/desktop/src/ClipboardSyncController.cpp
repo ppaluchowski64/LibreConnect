@@ -33,13 +33,13 @@ void ClipboardSyncController::setClipboardAutoSyncEnabled(const bool enabled)
 void ClipboardSyncController::syncClipboard()
 {
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a device to sync clipboard."));
+        setStatusMessage(tr("Connect to a device to sync clipboard."));
         return;
     }
 
     auto& module = ModulesManager::GetModuleReference<ClipboardSyncModule>();
     module->RequestSyncWithPeer();
-    setStatusMessage(QStringLiteral("Sync request sent. Clipboard will update when the peer responds."));
+    setStatusMessage(tr("Sync request sent. Clipboard will update when the peer responds."));
 }
 
 void ClipboardSyncController::refreshState()
@@ -52,22 +52,22 @@ void ClipboardSyncController::refreshState()
         setAutoSyncEnabledState(m_requestedAutoSync);
         setBusy(false);
         setStatusMessage(m_requestedAutoSync
-            ? QStringLiteral("Clipboard auto sync will start after connecting to the device.")
-            : QStringLiteral("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
+            ? tr("Clipboard auto sync will start after connecting to the device.")
+            : tr("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
         return;
     }
 
     if (state == ModuleState::Enabling) {
         setAutoSyncEnabledState(true);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Starting clipboard auto sync..."));
+        setStatusMessage(tr("Starting clipboard auto sync..."));
         return;
     }
 
     if (state == ModuleState::Disabling) {
         setAutoSyncEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping clipboard auto sync..."));
+        setStatusMessage(tr("Stopping clipboard auto sync..."));
         return;
     }
 
@@ -81,7 +81,7 @@ void ClipboardSyncController::refreshState()
         if (m_disableAttemptPending || !m_requestedAutoSync) {
             setAutoSyncEnabledState(false);
             setBusy(true);
-            setStatusMessage(QStringLiteral("Stopping clipboard auto sync..."));
+            setStatusMessage(tr("Stopping clipboard auto sync..."));
             m_disableAttemptPending = false;
             module->Disable(true);
             return;
@@ -89,7 +89,7 @@ void ClipboardSyncController::refreshState()
 
         setAutoSyncEnabledState(true);
         setBusy(false);
-        setStatusMessage(QStringLiteral("Clipboard auto sync is enabled on the connected device."));
+        setStatusMessage(tr("Clipboard auto sync is enabled on the connected device."));
         return;
     }
 
@@ -113,7 +113,7 @@ void ClipboardSyncController::refreshState()
         if (m_requestedAutoSync && m_enableAttemptPending) {
             setAutoSyncEnabledState(true);
             setBusy(true);
-            setStatusMessage(QStringLiteral("Starting clipboard auto sync..."));
+            setStatusMessage(tr("Starting clipboard auto sync..."));
             m_enableAttemptPending = false;
             module->Enable(true);
             return;
@@ -122,16 +122,16 @@ void ClipboardSyncController::refreshState()
         setAutoSyncEnabledState(m_requestedAutoSync);
         setBusy(false);
         setStatusMessage(m_requestedAutoSync
-            ? QStringLiteral("Clipboard auto sync is waiting for the connected device.")
-            : QStringLiteral("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
+            ? tr("Clipboard auto sync is waiting for the connected device.")
+            : tr("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
         return;
     }
 
     setAutoSyncEnabledState(m_requestedAutoSync);
     setBusy(false);
     setStatusMessage(m_requestedAutoSync
-        ? QStringLiteral("Clipboard auto sync is waiting for the connected device.")
-        : QStringLiteral("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
+        ? tr("Clipboard auto sync is waiting for the connected device.")
+        : tr("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
 }
 
 bool ClipboardSyncController::event(QEvent* event)

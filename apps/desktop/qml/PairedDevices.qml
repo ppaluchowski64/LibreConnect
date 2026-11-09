@@ -7,7 +7,7 @@ Page {
 
     required property var windowRef
     required property var connectionController
-    readonly property string windowTitleSuffix: "Paired Devices"
+    readonly property string windowTitleSuffix: qsTr("Paired Devices")
 
     property var pairedDevices: []
     property string selectedDeviceId: ""
@@ -112,7 +112,7 @@ Page {
             if (item.deviceId === selectedDeviceId)
                 return item.deviceName
         }
-        return "Connected Device"
+        return qsTr("Connected Device")
     }
 
     function connectSelectedDevice() {
@@ -120,13 +120,13 @@ Page {
             return
 
         if (!isDeviceOnline(selectedDeviceId)) {
-            statusMessage = "Selected device is currently offline. Open the mobile app and try again."
+            statusMessage = qsTr("Selected device is currently offline. Open the mobile app and try again.")
             return
         }
 
         const discoveredDevice = discovery.deviceById(selectedDeviceId)
         if (!discoveredDevice || !discoveredDevice.ipAddress || discoveredDevice.port <= 0) {
-            statusMessage = "Selected device is currently offline. Open the mobile app and try again."
+            statusMessage = qsTr("Selected device is currently offline. Open the mobile app and try again.")
             return
         }
 
@@ -147,7 +147,7 @@ Page {
         removingDevice = false
 
         if (!removed) {
-            statusMessage = "Could not remove the selected paired device."
+            statusMessage = qsTr("Could not remove the selected paired device.")
             return
         }
 
@@ -171,7 +171,7 @@ Page {
 
     Text {
         id: title
-        text: "Paired Devices"
+        text: qsTr("Paired Devices")
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.margins: 24
@@ -181,7 +181,7 @@ Page {
     }
 
     Text {
-        text: "Select a paired device to connect, or remove devices you no longer use."
+        text: qsTr("Select a paired device to connect, or remove devices you no longer use.")
         anchors.left: title.left
         anchors.right: logo.left
         anchors.top: title.bottom
@@ -259,7 +259,7 @@ Page {
                                 spacing: 4
 
                                 Text {
-                                    text: Theme.streamerMode ? "Paired Device" : rowItem.modelData.deviceName
+                                    text: Theme.streamerMode ? qsTr("Paired Device") : rowItem.modelData.deviceName
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 18
                                     font.bold: true
@@ -286,7 +286,7 @@ Page {
                                     }
 
                                     Text {
-                                        text: rowItem.online ? "Online" : "Offline"
+                                        text: rowItem.online ? qsTr("Online") : qsTr("Offline")
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 12
                                         color: rowItem.online ? Theme.successColor : Theme.subtleTextColor
@@ -315,7 +315,7 @@ Page {
                 anchors.bottom: pairedListContainer.bottom
 
                 ThemedButton {
-                    text: isConnecting || connectionController.pending ? "Connecting..." : "Connect"
+                    text: isConnecting || connectionController.pending ? qsTr("Connecting...") : qsTr("Connect")
                     width: parent.width
                     height: 48
                     enabled: root.selectedDeviceId.length > 0
@@ -327,7 +327,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: removingDevice ? "Removing..." : "Remove"
+                    text: removingDevice ? qsTr("Removing...") : qsTr("Remove")
                     width: parent.width
                     height: 48
                     enabled: root.selectedDeviceId.length > 0 && !removingDevice && !isConnecting
@@ -335,7 +335,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: "New Pairing"
+                    text: qsTr("New Pairing")
                     width: parent.width
                     height: 48
                     enabled: !isConnecting && !removingDevice
@@ -408,7 +408,7 @@ Page {
                 connectionController.disconnect()
                 root.isConnecting = false
                 root.connectionAttemptActive = false
-                root.statusMessage = "Connection timed out before handshake completed. Verify both devices are paired and try again."
+                root.statusMessage = qsTr("Connection timed out before handshake completed. Verify both devices are paired and try again.")
             }
         }
     }
@@ -468,7 +468,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Allow Local Network Access"
+                text: qsTr("Allow Local Network Access")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -478,7 +478,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "LibreConnect needs local network access before it can look for your paired phones on macOS."
+                text: qsTr("LibreConnect needs local network access before it can look for your paired phones on macOS.")
                 font.family: Theme.fontFamily
                 font.pixelSize: 16
                 color: Theme.textColor
@@ -487,7 +487,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "If macOS did not already show its Local Network permission prompt, continue to try again. Until it is granted, online status checks will stay paused."
+                text: qsTr("If macOS did not already show its Local Network permission prompt, continue to try again. Until it is granted, online status checks will stay paused.")
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
                 color: Theme.mutedTextColor
@@ -498,7 +498,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Not Now"
+                    text: qsTr("Not Now")
                     width: 140
                     height: 44
                     enabled: !connectionController.localNetworkPermissionCheckPending
@@ -506,7 +506,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: connectionController.localNetworkPermissionCheckPending ? "Checking..." : "Continue"
+                    text: connectionController.localNetworkPermissionCheckPending ? qsTr("Checking...") : qsTr("Continue")
                     width: 140
                     height: 44
                     enabled: !connectionController.localNetworkPermissionCheckPending
