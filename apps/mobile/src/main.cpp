@@ -17,6 +17,7 @@
 #include "MobileClipboardSyncController.h"
 #include "MobileRemoteInputController.h"
 #include "MobileMediaNotificationController.h"
+#include <LanguageController.h>
 
 extern void ConfigureStorage(const std::string& storageRootPath, const std::string& logRootPath);
 
@@ -112,6 +113,7 @@ int main(int argc, char *argv[])
     ConfigureStorage(storagePath.toStdString(), logPath.toStdString());
 
     Debug::Log("main: initializing theme and registering types");
+    LanguageController languageController(QStringLiteral("libreconnect_mobile_"));
     MobileThemeController themeController;
 
 
@@ -140,6 +142,7 @@ int main(int argc, char *argv[])
     );
 
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("Language"), &languageController);
     engine.rootContext()->setContextProperty(QStringLiteral("Theme"), &themeController);
     engine.load(QUrl(QStringLiteral("qrc:/LibreConnect/mobile/Main.qml")));
 

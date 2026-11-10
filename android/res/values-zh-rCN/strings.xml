@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LibreConnect</string>
+    <string name="fatal_error_msg">加载本机库时发生致命错误。</string>
+    <string name="share_receiver_label">发送到下载文件夹</string>
+    <string name="share_receiver_description">发送到下载文件夹</string>
+
+    <string name="notification_listener_label">LibreConnect 通知监听器</string>
+    <string name="main_service_label">LibreConnect 主服务</string>
+    <string name="send_clipboard_label">发送剪贴板</string>
+    <string name="notification_action_receiver_label">LibreConnect 通知操作接收器</string>
+    <string name="remote_input_receiver_label">LibreConnect 远程输入接收器</string>
+
+    <string name="find_my_phone_channel">查找手机</string>
+    <string name="find_my_phone_channel_description">查找手机功能的高优先级通知</string>
+    <string name="find_my_phone_title">查找手机</string>
+    <string name="find_my_phone_text">你的手机正在响铃！</string>
+    <string name="stop">停止</string>
+
+    <string name="service_channel">LibreConnect 服务</string>
+    <string name="service_running_title">LibreConnect 正在运行</string>
+    <string name="service_running_text">后台服务运行中</string>
+    <string name="active_modules_channel">活动模块</string>
+    <string name="virtual_camera_active_title">虚拟摄像头已启用</string>
+    <string name="virtual_camera_active_text">你的摄像头正在向电脑传输画面</string>
+    <string name="virtual_microphone_active_title">虚拟麦克风已启用</string>
+    <string name="virtual_microphone_active_text">你的麦克风正在向电脑传输声音</string>
+    <string name="disable">禁用</string>
+    <string name="quit">退出</string>
+
+    <string name="transfers_channel">LibreConnect 传输</string>
+    <string name="remote_input_channel">远程输入</string>
+    <string name="remote_input_title">LibreConnect 远程输入</string>
+    <string name="remote_input_text">控制桌面媒体</string>
+    <string name="unknown_track">未知曲目</string>
+    <string name="previous">上一个</string>
+    <string name="pause">暂停</string>
+    <string name="play">播放</string>
+    <string name="next">下一个</string>
+    <string name="volume_down">音量 -</string>
+    <string name="volume_up">音量 +</string>
+    <string name="android_system">Android 系统</string>
+    <string name="unknown_app">未知应用</string>
+
+    <string name="no_shared_files">未找到共享文件</string>
+    <string name="share_send_failed">无法将共享文件发送到桌面端</string>
+    <string name="share_sending_one">正在将共享文件发送到桌面端</string>
+    <string name="share_sending_many">正在将 %1$d 个共享文件发送到桌面端</string>
+    <string name="no_logs_found">未找到可导出的日志</string>
+    <string name="export_logs">导出日志</string>
+    <string name="mms_attachment">MMS 附件</string>
+    <string name="mms">MMS</string>
+</resources>

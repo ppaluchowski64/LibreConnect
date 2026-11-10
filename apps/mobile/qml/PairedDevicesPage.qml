@@ -33,7 +33,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Paired Devices"
+                text: qsTr("Paired Devices")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -91,7 +91,7 @@ Page {
                     }
 
                     Button {
-                        text: "Unpair"
+                        text: qsTr("Unpair")
                         onClicked: page.conn.removePairedDevice(modelData.deviceId)
                         contentItem: Text {
                             text: parent.text

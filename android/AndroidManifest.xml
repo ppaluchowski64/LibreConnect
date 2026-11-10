@@ -46,7 +46,7 @@
 
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
-    <application android:label="LibreConnect"
+    <application android:label="@string/app_name"
                  android:name="org.qtproject.qt.android.bindings.QtApplication"
                  android:icon="@mipmap/ic_launcher"
                  android:theme="@style/Theme.LibreConnect.Launch"
@@ -107,7 +107,7 @@
 
         <service android:name=".NotificationListener"
                  android:process=":backend"
-                 android:label="LibreConnect Notification Listener"
+                 android:label="@string/notification_listener_label"
                  android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
                  android:exported="true">
             <intent-filter>
@@ -117,7 +117,7 @@
 
         <service android:name=".MainService"
                  android:process=":backend"
-                 android:label="LibreConnect Main Service"
+                 android:label="@string/main_service_label"
                  android:exported="true"
                  android:stopWithTask="false"
                  android:foregroundServiceType="connectedDevice|camera|microphone"
@@ -126,7 +126,7 @@
         </service>
 
         <service android:name=".ClipboardTileService"
-                 android:label="Send Clipboard"
+                 android:label="@string/send_clipboard_label"
                  android:icon="@android:drawable/stat_notify_sync"
                  android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
                  android:exported="true">
@@ -137,7 +137,7 @@
 
         <receiver
                 android:name=".NotificationActionReceiver"
-                android:label="LibreConnect Notification Action Receiver"
+                android:label="@string/notification_action_receiver_label"
                 android:process=":backend"
                 android:exported="true"
         />
@@ -149,7 +149,7 @@
 
         <receiver
                 android:name=".RemoteInputMediaActionReceiver"
-                android:label="LibreConnect Remote Input Receiver"
+                android:label="@string/remote_input_receiver_label"
                 android:process=":backend"
                 android:exported="false"
         />

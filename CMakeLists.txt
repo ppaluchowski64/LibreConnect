@@ -169,6 +169,7 @@ BuildStaticLibrary(clipboard utilities/clipboard project_defaults system-compone
 BuildStaticLibrary(srtp-stream utilities/srtp-stream project_defaults asio::asio Debug-Log Boost::boost network-component-pc system-component-pc libsrtp::libsrtp)
 BuildStaticLibrary(permission-manager utilities/permission-manager project_defaults Debug-Log Qt6::Core asio::asio)
 BuildStaticLibrary(system-info utilities/system-info project_defaults Debug-Log Qt6::Core Qt6::Gui)
+BuildStaticLibrary(localization utilities/localization project_defaults Debug-Log Qt6::Core)
 
 if (ANDROID)
     BuildStaticLibrary(android-context utilities/android-context project_defaults Debug-Log Qt6::Core)

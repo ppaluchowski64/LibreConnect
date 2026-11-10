@@ -131,7 +131,7 @@ class NotificationBridge(private val context: Context) {
             }
 
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            createTransferChannel(manager)
+            createTransferChannel(context, manager)
 
             val progress = if (totalBytes > 0L) {
                 ((bytesTransferred.coerceIn(0L, totalBytes).toDouble() / totalBytes.toDouble()) * 100.0).roundToInt()
@@ -165,7 +165,7 @@ class NotificationBridge(private val context: Context) {
             }
 
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            createTransferChannel(manager)
+            createTransferChannel(context, manager)
 
             val notification = NotificationCompat.Builder(context, TRANSFER_CHANNEL_ID)
                 .setContentTitle(title)
@@ -185,11 +185,11 @@ class NotificationBridge(private val context: Context) {
                 context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         }
 
-        private fun createTransferChannel(manager: NotificationManager) {
+        private fun createTransferChannel(context: Context, manager: NotificationManager) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
                     TRANSFER_CHANNEL_ID,
-                    "LibreConnect Transfers",
+                    context.getString(R.string.transfers_channel),
                     NotificationManager.IMPORTANCE_HIGH
                 )
                 manager.createNotificationChannel(channel)

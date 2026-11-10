@@ -6,23 +6,21 @@
 #include <QLocale>
 #include <QSettings>
 #include <QStringList>
+#include <utility>
 #include <QVariantMap>
 
 #include <DebugLog.h>
 
 namespace
 {
-constexpr const char* kTranslationPrefix = "libreconnect_desktop_";
 constexpr const char* kTranslationRoot = ":/i18n";
 constexpr const char* kLanguageSetting = "ui/language";
 constexpr const char* kSourceLanguage = "en";
 
-QString TranslationPath(const QString& languageCode)
+QString TranslationPath(const QString& prefix, const QString& languageCode)
 {
     return QStringLiteral("%1/%2%3.qm")
-        .arg(QString::fromLatin1(kTranslationRoot),
-             QString::fromLatin1(kTranslationPrefix),
-             languageCode);
+        .arg(QString::fromLatin1(kTranslationRoot), prefix, languageCode);
 }
 
 QString NativeLanguageDisplayName(const QString& languageCode)
@@ -41,9 +39,14 @@ QString NativeLanguageDisplayName(const QString& languageCode)
 }
 }
 
-LanguageController::LanguageController(QObject* parent)
+LanguageController::LanguageController(QString translationPrefix, QObject* parent)
     : QObject(parent)
+    , m_translationPrefix(std::move(translationPrefix))
 {
+    if (m_translationPrefix.isEmpty()) {
+        m_translationPrefix = QStringLiteral("libreconnect_");
+    }
+
     m_currentLanguage = NormalizeLanguageCode(
         QSettings().value(QString::fromLatin1(kLanguageSetting)).toString());
     m_installedLanguage = ResolveEffectiveLanguage(m_currentLanguage);
@@ -97,7 +100,7 @@ QVariantList LanguageController::availableLanguages() const
     QStringList languageCodes;
     languageCodes.append(QString::fromLatin1(kSourceLanguage));
 
-    const QString prefix = QString::fromLatin1(kTranslationPrefix);
+    const QString& prefix = m_translationPrefix;
     const QDir translationDir(QString::fromLatin1(kTranslationRoot));
     const QStringList translationFiles = translationDir.entryList(
         QStringList() << (prefix + QStringLiteral("*.qm")),
@@ -184,7 +187,7 @@ QString LanguageController::SystemLanguageCode()
     return NormalizeLanguageCode(QLocale::system().name());
 }
 
-QString LanguageController::ResolveEffectiveLanguage(const QString& requestedCode)
+QString LanguageController::ResolveEffectiveLanguage(const QString& requestedCode) const
 {
     const QString requested = NormalizeLanguageCode(requestedCode);
     if (!requested.isEmpty() && IsTranslationAvailable(requested)) {
@@ -206,13 +209,13 @@ QString LanguageController::ResolveEffectiveLanguage(const QString& requestedCod
     return QString::fromLatin1(kSourceLanguage);
 }
 
-bool LanguageController::IsTranslationAvailable(const QString& languageCode)
+bool LanguageController::IsTranslationAvailable(const QString& languageCode) const
 {
     if (languageCode == QLatin1String(kSourceLanguage)) {
         return true;
     }
 
-    return QFile::exists(TranslationPath(languageCode));
+    return QFile::exists(TranslationPath(m_translationPrefix, languageCode));
 }
 
 void LanguageController::InstallTranslator(const QString& languageCode)
@@ -227,7 +230,7 @@ void LanguageController::InstallTranslator(const QString& languageCode)
         return;
     }
 
-    const QString translationPath = TranslationPath(languageCode);
+    const QString translationPath = TranslationPath(m_translationPrefix, languageCode);
     if (!m_translator.load(translationPath)) {
         Debug::LogWarning(
             "LanguageController: failed to load translation '{}'",

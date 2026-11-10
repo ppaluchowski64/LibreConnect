@@ -37,7 +37,7 @@
 #include "VirtualCameraController.h"
 #endif
 #include "ThemeController.h"
-#include "LanguageController.h"
+#include <LanguageController.h>
 #include "MediaNotificationController.h"
 
 namespace
@@ -303,7 +303,7 @@ int main(int argc, char *argv[])
     QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-Italic-VariableFont.ttf"));
     app.setFont(QFont(QStringLiteral("Inter")));
 
-    LanguageController languageController;
+    LanguageController languageController(QStringLiteral("libreconnect_desktop_"));
     ThemeController themeController;
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("Language"), &languageController);

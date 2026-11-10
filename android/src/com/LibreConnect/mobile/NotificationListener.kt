@@ -455,7 +455,7 @@ class NotificationListener : NotificationListenerService() {
     private fun resolveAppName(sbn: StatusBarNotification): String? {
         val packageName = sbn.packageName
         if (packageName == "android" || packageName == "com.android.systemui") {
-            return "Android System"
+            return getString(R.string.android_system)
         }
 
         val substituteName = firstMeaningfulText(
@@ -571,7 +571,7 @@ class NotificationListener : NotificationListenerService() {
 
     private fun humanizePackageName(packageName: String): String {
         if (packageName.isBlank()) {
-            return "Unknown app"
+            return getString(R.string.unknown_app)
         }
 
         val lastToken = packageName.substringAfterLast('.')

@@ -38,7 +38,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Permission Required"
+                text: qsTr("Permission Required")
                 color: Theme.textColor
                 font.pixelSize: 20
                 font.bold: true
@@ -55,7 +55,7 @@ Page {
 
             Button {
                 width: parent.width
-                text: "OK"
+                text: qsTr("OK")
                 onClicked: permissionDialog.close()
             }
         }
@@ -91,7 +91,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Presenter Mode"
+                text: qsTr("Presenter Mode")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -161,7 +161,7 @@ Page {
 
                                 Text {
                                     width: parent.width
-                                    text: "Previous"
+                                    text: qsTr("Previous")
                                     color: Theme.textColor
                                     font.pixelSize: 19
                                     font.bold: true
@@ -207,7 +207,7 @@ Page {
 
                                 Text {
                                     width: parent.width
-                                    text: "Next"
+                                    text: qsTr("Next")
                                     color: Theme.textColor
                                     font.pixelSize: 19
                                     font.bold: true
@@ -224,13 +224,13 @@ Page {
 
                     Button {
                         Layout.fillWidth: true
-                        text: "Start Slideshow"
+                        text: qsTr("Start Slideshow")
                         onClicked: remoteInputController.presenterStartSlideshow()
                     }
 
                     Button {
                         Layout.fillWidth: true
-                        text: "End Slideshow"
+                        text: qsTr("End Slideshow")
                         onClicked: remoteInputController.presenterEndSlideshow()
                     }
                 }

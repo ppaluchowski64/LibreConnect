@@ -14,7 +14,7 @@ class LanguageController final : public QObject {
     Q_PROPERTY(bool restartRequired READ restartRequired NOTIFY restartRequiredChanged)
 
 public:
-    explicit LanguageController(QObject* parent = nullptr);
+    explicit LanguageController(QString translationPrefix, QObject* parent = nullptr);
     ~LanguageController() override;
 
     QString currentLanguage() const;
@@ -25,7 +25,7 @@ public:
     Q_INVOKABLE void setLanguage(const QString& code);
 
     static QString NormalizeLanguageCode(const QString& code);
-    static QString ResolveEffectiveLanguage(const QString& requestedCode);
+    QString ResolveEffectiveLanguage(const QString& requestedCode) const;
     static QString SystemLanguageCode();
 
 signals:
@@ -34,9 +34,10 @@ signals:
 
 private:
     void InstallTranslator(const QString& languageCode);
-    static bool IsTranslationAvailable(const QString& languageCode);
+    bool IsTranslationAvailable(const QString& languageCode) const;
 
     QTranslator m_translator;
+    QString m_translationPrefix;
     QString m_currentLanguage;
     QString m_effectiveLanguage;
     QString m_installedLanguage;

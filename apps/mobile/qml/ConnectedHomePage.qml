@@ -209,7 +209,7 @@ Page {
         }
 
         MenuItem {
-            text: "Disconnect"
+            text: qsTr("Disconnect")
             contentItem: Text {
                 text: parent.text
                 color: Theme.destructiveColor
@@ -219,7 +219,7 @@ Page {
         }
 
         MenuItem {
-            text: "Unpair"
+            text: qsTr("Unpair")
             contentItem: Text {
                 text: parent.text
                 color: Theme.destructiveColor
@@ -252,7 +252,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Disconnect device?"
+                text: qsTr("Disconnect device?")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -261,7 +261,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "You will be returned to the connection screen."
+                text: qsTr("You will be returned to the connection screen.")
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -275,7 +275,7 @@ Page {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     Layout.minimumWidth: 0
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     onClicked: disconnectDialog.close()
                 }
 
@@ -283,7 +283,7 @@ Page {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     Layout.minimumWidth: 0
-                    text: "Disconnect"
+                    text: qsTr("Disconnect")
                     contentItem: Text {
                         text: parent.text
                         color: Theme.destructiveColor
@@ -323,7 +323,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Unpair this device?"
+                text: qsTr("Unpair this device?")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -332,7 +332,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "This removes the current desktop from paired devices and disconnects."
+                text: qsTr("This removes the current desktop from paired devices and disconnects.")
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -344,13 +344,13 @@ Page {
 
                 Button {
                     Layout.fillWidth: true
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     onClicked: unpairDialog.close()
                 }
 
                 Button {
                     Layout.fillWidth: true
-                    text: "Unpair"
+                    text: qsTr("Unpair")
                     contentItem: Text {
                         text: parent.text
                         color: Theme.destructiveColor
@@ -459,7 +459,7 @@ Page {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Connected"
+                        text: qsTr("Connected")
                         color: Theme.textColor
                         font.pixelSize: 52
                         font.bold: false
@@ -476,25 +476,25 @@ Page {
                     columnSpacing: 10
 
                     FeatureTile {
-                        labelText: "Media Remote"
+                        labelText: qsTr("Media Remote")
                         iconBase: "media"
                         onClicked: page.showRemoteInputCallback()
                     }
 
                     FeatureTile {
-                        labelText: "Remote Keyboard"
+                        labelText: qsTr("Remote Keyboard")
                         iconBase: "keyboard"
                         onClicked: page.showRemoteKeyboardCallback()
                     }
 
                     FeatureTile {
-                        labelText: "Presenter Mode"
+                        labelText: qsTr("Presenter Mode")
                         iconBase: "presenter"
                         onClicked: page.showPresenterModeCallback()
                     }
 
                     FeatureTile {
-                        labelText: page.clipboardSyncController.busy ? "Syncing Clipboard..." : "Sync Clipboard"
+                        labelText: page.clipboardSyncController.busy ? qsTr("Syncing Clipboard...") : qsTr("Sync Clipboard")
                         iconBase: "clipboard"
                         enabled: !page.clipboardSyncController.busy
                         onClicked: page.clipboardSyncController.syncClipboard()
@@ -525,13 +525,13 @@ Page {
                 spacing: 10
 
                 BottomNavButton {
-                    labelText: "Home"
+                    labelText: qsTr("Home")
                     iconBase: "home"
                     selected: true
                 }
 
                 BottomNavButton {
-                    labelText: "Settings"
+                    labelText: qsTr("Settings")
                     iconBase: "settings"
                     selected: false
                     onClicked: page.showSettingsCallback()

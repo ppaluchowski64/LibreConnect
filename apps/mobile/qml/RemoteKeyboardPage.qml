@@ -66,7 +66,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Permission Required"
+                text: qsTr("Permission Required")
                 color: Theme.textColor
                 font.pixelSize: 20
                 font.bold: true
@@ -83,7 +83,7 @@ Page {
 
             Button {
                 width: parent.width
-                text: "OK"
+                text: qsTr("OK")
                 onClicked: permissionDialog.close()
             }
         }
@@ -119,7 +119,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Remote Keyboard"
+                text: qsTr("Remote Keyboard")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -254,7 +254,7 @@ Page {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Use your phone keyboard to type on desktop."
+                        text: qsTr("Use your phone keyboard to type on desktop.")
                         color: Theme.textColor
                         font.pixelSize: 18
                         font.bold: true
@@ -264,7 +264,7 @@ Page {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Text is forwarded to desktop in real time."
+                        text: qsTr("Text is forwarded to desktop in real time.")
                         color: Theme.mutedTextColor
                         font.pixelSize: 14
                         horizontalAlignment: Text.AlignHCenter
@@ -337,7 +337,7 @@ Page {
                     Button {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 52
-                        text: Qt.inputMethod.visible ? "Hide Keyboard" : "Show Keyboard"
+                        text: Qt.inputMethod.visible ? qsTr("Hide Keyboard") : qsTr("Show Keyboard")
                         focusPolicy: Qt.NoFocus
                         onClicked: {
                             if (Qt.inputMethod.visible) {

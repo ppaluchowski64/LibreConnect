@@ -39,7 +39,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Permission Required"
+                text: qsTr("Permission Required")
                 color: Theme.textColor
                 font.pixelSize: 20
                 font.bold: true
@@ -56,7 +56,7 @@ Page {
 
             Button {
                 width: parent.width
-                text: "OK"
+                text: qsTr("OK")
                 onClicked: permissionDialog.close()
             }
         }
@@ -92,7 +92,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Media Remote"
+                text: qsTr("Media Remote")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -172,7 +172,7 @@ Page {
                     Text {
                         anchors.centerIn: parent
                         visible: coverImage.status !== Image.Ready
-                        text: "Cover"
+                        text: qsTr("Cover")
                         color: Theme.mutedTextColor
                         font.pixelSize: 15
                     }
@@ -182,7 +182,7 @@ Page {
                     Layout.fillWidth: true
                     text: remoteInputController.trackTitle.length > 0
                           ? remoteInputController.trackTitle
-                          : "No track info"
+                          : qsTr("No track info")
                     color: Theme.textColor
                     font.pixelSize: 22
                     font.bold: true
@@ -196,7 +196,7 @@ Page {
                     Layout.fillWidth: true
                     text: remoteInputController.trackArtist.length > 0
                           ? remoteInputController.trackArtist
-                          : "Start playback on desktop to show metadata"
+                          : qsTr("Start playback on desktop to show metadata")
                     color: Theme.mutedTextColor
                     font.pixelSize: 15
                     horizontalAlignment: Text.AlignHCenter

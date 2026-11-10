@@ -51,18 +51,18 @@ void MobileClipboardSyncController::syncClipboard()
 {
 #ifdef ANDROID_DEVICE
     BackendBridge::SendAction(BackendBridge::kActionSyncClipboard);
-    setStatusMessage(QStringLiteral("Sync request sent."));
+    setStatusMessage(tr("Sync request sent."));
     return;
 #endif
 
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a desktop device to sync clipboard."));
+        setStatusMessage(tr("Connect to a desktop device to sync clipboard."));
         return;
     }
 
     auto& module = ModulesManager::GetModuleReference<ClipboardSyncModule>();
     module->RequestSyncWithPeer();
-    setStatusMessage(QStringLiteral("Sync request sent. Clipboard will update when the desktop responds."));
+    setStatusMessage(tr("Sync request sent. Clipboard will update when the desktop responds."));
 }
 
 bool MobileClipboardSyncController::event(QEvent* event)
@@ -103,11 +103,11 @@ void MobileClipboardSyncController::refreshState()
     }
 
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a desktop device to sync clipboard."));
+        setStatusMessage(tr("Connect to a desktop device to sync clipboard."));
     } else {
         setStatusMessage(backendEnabled
-            ? QStringLiteral("Clipboard auto sync is enabled for the connected desktop device.")
-            : QStringLiteral("Clipboard auto sync is disabled."));
+            ? tr("Clipboard auto sync is enabled for the connected desktop device.")
+            : tr("Clipboard auto sync is disabled."));
 
         if (backendEnabled) {
             const QString remoteClipboard = snapshot.value(QStringLiteral("lastRemoteClipboard")).toString();
@@ -141,22 +141,22 @@ void MobileClipboardSyncController::refreshState()
         setAutoSyncEnabledState(m_requestedAutoSync);
         setBusy(false);
         setStatusMessage(m_requestedAutoSync
-            ? QStringLiteral("Clipboard auto sync will start after connecting to the desktop device.")
-            : QStringLiteral("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
+            ? tr("Clipboard auto sync will start after connecting to the desktop device.")
+            : tr("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
         return;
     }
 
     if (state == ModuleState::Enabling) {
         setAutoSyncEnabledState(true);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Starting clipboard auto sync..."));
+        setStatusMessage(tr("Starting clipboard auto sync..."));
         return;
     }
 
     if (state == ModuleState::Disabling) {
         setAutoSyncEnabledState(false);
         setBusy(true);
-        setStatusMessage(QStringLiteral("Stopping clipboard auto sync..."));
+        setStatusMessage(tr("Stopping clipboard auto sync..."));
         return;
     }
 
@@ -170,7 +170,7 @@ void MobileClipboardSyncController::refreshState()
         if (m_disableAttemptPending) {
             setAutoSyncEnabledState(false);
             setBusy(true);
-            setStatusMessage(QStringLiteral("Stopping clipboard auto sync..."));
+            setStatusMessage(tr("Stopping clipboard auto sync..."));
             m_disableAttemptPending = false;
             module->Disable(true);
             return;
@@ -178,7 +178,7 @@ void MobileClipboardSyncController::refreshState()
 
         setAutoSyncEnabledState(true);
         setBusy(false);
-        setStatusMessage(QStringLiteral("Clipboard auto sync is enabled for the connected desktop device."));
+        setStatusMessage(tr("Clipboard auto sync is enabled for the connected desktop device."));
         return;
     }
 
@@ -202,7 +202,7 @@ void MobileClipboardSyncController::refreshState()
         if (m_requestedAutoSync && m_enableAttemptPending) {
             setAutoSyncEnabledState(true);
             setBusy(true);
-            setStatusMessage(QStringLiteral("Starting clipboard auto sync..."));
+            setStatusMessage(tr("Starting clipboard auto sync..."));
             m_enableAttemptPending = false;
             module->Enable(true);
             return;
@@ -211,16 +211,16 @@ void MobileClipboardSyncController::refreshState()
         setAutoSyncEnabledState(m_requestedAutoSync);
         setBusy(false);
         setStatusMessage(m_requestedAutoSync
-            ? QStringLiteral("Clipboard auto sync is waiting for the connected desktop device.")
-            : QStringLiteral("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
+            ? tr("Clipboard auto sync is waiting for the connected desktop device.")
+            : tr("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
         return;
     }
 
     setAutoSyncEnabledState(m_requestedAutoSync);
     setBusy(false);
     setStatusMessage(m_requestedAutoSync
-        ? QStringLiteral("Clipboard auto sync is waiting for the connected desktop device.")
-        : QStringLiteral("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
+        ? tr("Clipboard auto sync is waiting for the connected desktop device.")
+        : tr("Clipboard auto sync is disabled. Use Sync Clipboard to sync manually."));
 }
 
 void MobileClipboardSyncController::setBusy(const bool busy)

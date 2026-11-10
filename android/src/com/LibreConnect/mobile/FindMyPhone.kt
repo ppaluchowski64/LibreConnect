@@ -45,10 +45,10 @@ object FindMyPhone {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Find My Phone",
+                context.getString(R.string.find_my_phone_channel),
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "High priority notification for Find My Phone feature"
+                description = context.getString(R.string.find_my_phone_channel_description)
                 enableLights(true)
                 lightColor = android.graphics.Color.RED
                 enableVibration(true)
@@ -84,8 +84,8 @@ object FindMyPhone {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Find My Phone")
-            .setContentText("Your phone is ringing!")
+            .setContentTitle(context.getString(R.string.find_my_phone_title))
+            .setContentText(context.getString(R.string.find_my_phone_text))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
@@ -93,7 +93,7 @@ object FindMyPhone {
             .setAutoCancel(false)
             .setContentIntent(contentPendingIntent)
             .setFullScreenIntent(contentPendingIntent, true)
-            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, context.getString(R.string.stop), stopPendingIntent)
 
         notificationManager.notify(NOTIFICATION_ID, builder.build())
     }

@@ -38,7 +38,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Allow Permissions"
+                text: qsTr("Allow Permissions")
                 color: Theme.textColor
                 font.pixelSize: 24
                 font.bold: true
@@ -47,7 +47,7 @@ Page {
 
             Text {
                 Layout.fillWidth: true
-                text: "Grant permissions for camera, microphone, notifications, all-files access, and SMS features. You can skip and grant them later."
+                text: qsTr("Grant permissions for camera, microphone, notifications, all-files access, and SMS features. You can skip and grant them later.")
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -64,12 +64,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "Camera"
+                            text: qsTr("Camera")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.cameraPermissionGranted ? "Granted" : "Grant"
+                            text: page.conn.cameraPermissionGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.conn.cameraPermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestCameraPermission()
@@ -80,12 +80,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "Microphone"
+                            text: qsTr("Microphone")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.microphonePermissionGranted ? "Granted" : "Grant"
+                            text: page.conn.microphonePermissionGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.conn.microphonePermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestMicrophonePermission()
@@ -96,12 +96,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "Notification Sending"
+                            text: qsTr("Notification Sending")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.notificationSendPermissionGranted ? "Granted" : "Grant"
+                            text: page.conn.notificationSendPermissionGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.conn.notificationSendPermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestNotificationSendPermission()
@@ -112,12 +112,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "Notification Listener"
+                            text: qsTr("Notification Listener")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.notificationListenerPermissionGranted ? "Granted" : "Grant"
+                            text: page.conn.notificationListenerPermissionGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.conn.notificationListenerPermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestNotificationListenerPermission()
@@ -128,12 +128,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "All Files Access"
+                            text: qsTr("All Files Access")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.allFilesPermissionGranted ? "Granted" : "Grant"
+                            text: page.conn.allFilesPermissionGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.conn.allFilesPermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestAllFilesPermission()
@@ -144,12 +144,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "Battery Optimization"
+                            text: qsTr("Battery Optimization")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.conn.batteryPermissionGranted ? "Granted" : "Grant"
+                            text: page.conn.batteryPermissionGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.conn.batteryPermissionGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestBatteryPermission()
@@ -160,12 +160,12 @@ Page {
                         Layout.fillWidth: true
                         Text {
                             Layout.fillWidth: true
-                            text: "SMS + Contacts"
+                            text: qsTr("SMS + Contacts")
                             color: Theme.textColor
                             font.pixelSize: 15
                         }
                         Button {
-                            text: page.smsAndContactsPermissionsGranted ? "Granted" : "Grant"
+                            text: page.smsAndContactsPermissionsGranted ? qsTr("Granted") : qsTr("Grant")
                             enabled: !page.smsAndContactsPermissionsGranted && !page.conn.permissionsBusy
                             Material.elevation: 1
                             onClicked: page.conn.requestSmsPermissions()
@@ -176,7 +176,7 @@ Page {
 
             Button {
                 Layout.fillWidth: true
-                text: page.conn.permissionsBusy ? "Requesting..." : "Grant All"
+                text: page.conn.permissionsBusy ? qsTr("Requesting...") : qsTr("Grant All")
                 visible: !page.allPermissionsGranted
                 enabled: !page.conn.permissionsBusy
                 Material.elevation: 1
@@ -185,7 +185,7 @@ Page {
 
             Button {
                 Layout.fillWidth: true
-                text: "Skip For Now"
+                text: qsTr("Skip For Now")
                 visible: !page.allPermissionsGranted
                 Material.elevation: 1
                 onClicked: {
@@ -196,7 +196,7 @@ Page {
 
             Button {
                 Layout.fillWidth: true
-                text: "Continue"
+                text: qsTr("Continue")
                 highlighted: true
                 Material.elevation: 2
                 enabled: page.allPermissionsGranted && !page.conn.permissionsBusy
