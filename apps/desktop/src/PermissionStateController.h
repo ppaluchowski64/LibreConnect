@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QEvent>
 #include <QPointer>
+#include <QSet>
 
 #include <BaseModule.h>
 
@@ -48,6 +49,8 @@ private:
     void clearPermissionState();
     void requestPermissionSyncSnapshot();
     void setPermissionState(PermissionType permissionType, bool granted);
+    QString permissionName(PermissionType permissionType) const;
+    void notify(const QString& title, const QString& message) const;
 
     bool m_connected = false;
     bool m_cameraGranted = false;
@@ -59,4 +62,7 @@ private:
     bool m_desktopNotificationsGranted = false;
     bool m_microphoneGranted = false;
     int m_syncRequestGeneration = 0;
+    QSet<int> m_knownPermissions;
+    QSet<int> m_requestedPermissions;
+    QString m_deviceName;
 };

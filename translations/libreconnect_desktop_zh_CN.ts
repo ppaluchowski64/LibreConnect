@@ -85,6 +85,23 @@ enable the relevant app permissions.</source>
     </message>
 </context>
 <context>
+    <name>PermissionStateController</name>
+    <message><source>Device</source><translation>设备</translation></message>
+    <message><source>Device connected</source><translation>设备已连接</translation></message>
+    <message><source>%1 is connected.</source><translation>%1 已连接。</translation></message>
+    <message><source>Device disconnected</source><translation>设备已断开连接</translation></message>
+    <message><source>%1 disconnected.</source><translation>%1 已断开连接。</translation></message>
+    <message><source>Permission granted</source><translation>已授予权限</translation></message>
+    <message><source>%1 granted %2 access.</source><translation>%1 已授予%2访问权限。</translation></message>
+    <message><source>camera</source><translation>摄像头</translation></message>
+    <message><source>notifications</source><translation>通知</translation></message>
+    <message><source>files</source><translation>文件</translation></message>
+    <message><source>battery information</source><translation>电池信息</translation></message>
+    <message><source>messages</source><translation>消息</translation></message>
+    <message><source>accessibility</source><translation>无障碍功能</translation></message>
+    <message><source>microphone</source><translation>麦克风</translation></message>
+</context>
+<context>
     <name>DeviceConnectionController</name>
     <message>
         <location filename="../apps/desktop/src/DeviceConnectionController.cpp" line="137" />

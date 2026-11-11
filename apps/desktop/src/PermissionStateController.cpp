@@ -5,9 +5,7 @@
 #include <ModulesManager.h>
 #include <QTimer>
 #include <array>
-#ifdef MACOS_DEVICE
 #include <NotificationEmitter.h>
-#endif
 
 PermissionStateController::PermissionStateController(QObject* parent)
     : QObject(parent)
@@ -15,6 +13,10 @@ PermissionStateController::PermissionStateController(QObject* parent)
     ConnectionManager::AddEventListener(QPointer<QObject>(this));
     m_connected = ConnectionManager::GetConnectionState() == ConnectionState::CONNECTED;
     if (m_connected) {
+        m_deviceName = QString::fromStdString(ConnectionManager::GetPeerDeviceName());
+        if (m_deviceName.isEmpty()) {
+            m_deviceName = tr("Device");
+        }
         ModulesManager::Initialize();
         requestPermissionSyncSnapshot();
     }
@@ -57,6 +59,7 @@ void PermissionStateController::requestPermission(const int permissionType)
     }
 
     ModulesManager::Initialize();
+    m_requestedPermissions.insert(permissionType);
     ConnectionManager::Send(PC_PackageType::PERMISSION_REQUEST, type);
     requestPermissionSyncSnapshot();
 }
@@ -78,6 +81,7 @@ bool PermissionStateController::event(QEvent* event)
     if (type == ConnectedEvent::Type) {
         auto* connectedEvent = static_cast<ConnectedEvent*>(event);
         const bool isConnected = connectedEvent->GetResult() == EventResult::SUCCESS;
+        const bool newlyConnected = isConnected && !m_connected;
         if (m_connected != isConnected) {
             m_connected = isConnected;
             emit connectedChanged();
@@ -85,6 +89,13 @@ bool PermissionStateController::event(QEvent* event)
 
         clearPermissionState();
         if (isConnected) {
+            m_deviceName = QString::fromStdString(ConnectionManager::GetPeerDeviceName());
+            if (m_deviceName.isEmpty()) {
+                m_deviceName = tr("Device");
+            }
+            if (newlyConnected) {
+                notify(tr("Device connected"), tr("%1 is connected.").arg(m_deviceName));
+            }
             ModulesManager::Initialize();
             requestPermissionSyncSnapshot();
         } else {
@@ -97,6 +108,7 @@ bool PermissionStateController::event(QEvent* event)
         if (m_connected) {
             m_connected = false;
             emit connectedChanged();
+            notify(tr("Device disconnected"), tr("%1 disconnected.").arg(m_deviceName));
         }
 
         clearPermissionState();
@@ -132,6 +144,8 @@ void PermissionStateController::clearPermissionState()
     m_accessibilityGranted = false;
     m_desktopNotificationsGranted = false;
     m_microphoneGranted = false;
+    m_knownPermissions.clear();
+    m_requestedPermissions.clear();
 
     if (changed) {
         emit permissionStateChanged();
@@ -159,6 +173,10 @@ void PermissionStateController::requestPermissionSyncSnapshot()
 
 void PermissionStateController::setPermissionState(const PermissionType permissionType, const bool granted)
 {
+    const int permissionId = static_cast<int>(permissionType);
+    const bool wasKnown = m_knownPermissions.contains(permissionId);
+    const bool wasGranted = isGranted(permissionId);
+    const bool requested = m_requestedPermissions.contains(permissionId);
     bool changed = false;
 
     switch (permissionType) {
@@ -218,4 +236,36 @@ void PermissionStateController::setPermissionState(const PermissionType permissi
     if (changed) {
         emit permissionStateChanged();
     }
+
+    if (permissionType != PermissionType::Unknown) {
+        m_knownPermissions.insert(permissionId);
+        if (granted && !wasGranted && (wasKnown || requested) && m_connected) {
+            const QString name = permissionName(permissionType);
+            if (!name.isEmpty()) {
+                notify(tr("Permission granted"), tr("%1 granted %2 access.").arg(m_deviceName, name));
+            }
+        }
+        if (granted) {
+            m_requestedPermissions.remove(permissionId);
+        }
+    }
+}
+
+QString PermissionStateController::permissionName(const PermissionType permissionType) const
+{
+    switch (permissionType) {
+    case PermissionType::Camera: return tr("camera");
+    case PermissionType::Notifications: return tr("notifications");
+    case PermissionType::FileSystem: return tr("files");
+    case PermissionType::Battery: return tr("battery information");
+    case PermissionType::Sms: return tr("messages");
+    case PermissionType::Accessibility: return tr("accessibility");
+    case PermissionType::Microphone: return tr("microphone");
+    default: return {};
+    }
+}
+
+void PermissionStateController::notify(const QString& title, const QString& message) const
+{
+    NotificationEmitter::Emit(title.toStdWString(), message.toStdWString(), std::nullopt, std::nullopt, {});
 }
