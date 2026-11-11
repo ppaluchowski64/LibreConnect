@@ -5,6 +5,9 @@
 #include <AsioCommon.h>
 #include <Packable.h>
 
+class QString;
+class QJsonArray;
+
 enum class DaemonPackage : PackageTypeInt {
     CONNECTED,
     REQUEST_CONNECTED_WINDOW,
@@ -14,9 +17,18 @@ enum class DaemonPackage : PackageTypeInt {
 
 class DaemonUtils {
 public:
-    static void AddDeviceToAutoConnectList(const std::string& uuid);
-    static void RemoveDeviceFromAutoConnectList(const std::string& uuid);
+    static bool SetAutoConnect(const std::string& uuid, bool enabled);
+    static bool IsAutoConnectEnabled(const std::string& uuid);
+    static bool RegisterApplication();
+    static QString ApplicationPath();
+    static bool StartApplication(const QString& address, uint16_t port, const QString& deviceId, QString* error);
+    static bool StartDaemon();
 
+private:
+    static QString listPath();
+    static QString daemonPath();
+    static QJsonArray readList(bool* valid = nullptr);
+    static bool configureStartup(bool enabled);
 };
 
 #endif //DAEMON_COMMON_H

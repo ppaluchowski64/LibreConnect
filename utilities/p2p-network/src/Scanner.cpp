@@ -138,13 +138,13 @@ std::vector<DeviceInfo> LanDeviceScanner::GetDiscoveredDevices() {
 asio::awaitable<void> LanDeviceScanner::Co_RestartScan() const {
     if (!m_isScanning.load()) {
         Debug::Log("LanDeviceScanner::Co_RestartScan scanner not active, starting new scan");
-        BeginScan();
+        BeginScan(m_options);
         co_return;
     }
 
     Debug::Log("LanDeviceScanner::Co_RestartScan restarting active scan");
     co_await s_instance->Co_LeaveMulticastGroup();
-    BeginScan();
+    BeginScan(m_options);
 }
 
 asio::awaitable<void> LanDeviceScanner::Co_JoinMulticastGroup() {

@@ -22,6 +22,14 @@ LibreConnect is built from the ground up with privacy as its foundational princi
 
 ## Key Features
 
+### Automatic Connection and Background Daemon
+Reconnect to paired devices automatically when they become available on your local network.
+
+- Enable auto-connect separately for each paired device.
+- The desktop daemon starts in the background after you sign in and launches LibreConnect when an enabled device is discovered.
+- Automatic connections start hidden in the system tray. Use the tray icon or **Show** to open the window.
+- Change auto-connect and connection-prompt preferences in **Settings**.
+
 ### Device Info
 Get an instant overview of your connected devices.
 - Monitor hostname and device identification.
@@ -190,6 +198,16 @@ sudo pacman -S --noconfirm libreconnect
 3. A 6-digit verification code will appear on the mobile device.
 4. Enter this code into the desktop application.
 5. Complete the second factor of authentication by confirming the pairing request on your mobile device.
+
+### Enabling Auto-connect
+After a successful connection, LibreConnect asks **Connect automatically?** Select **Enable** to automatically reconnect that paired device in the future, or **Not now** to leave auto-connect disabled. Select **Don't ask again** to stop showing this prompt.
+
+You can change these preferences while connected to the device in **Settings**:
+
+- **Auto-connect** enables or disables automatic connections for the current device.
+- **Ask when connecting devices** controls whether the auto-connect prompt appears.
+
+Keep LibreConnect running on your mobile device and connect both devices to the same local network. The desktop daemon checks for enabled devices in the background and retries connections when needed. You do not need to keep the desktop window open. Removing a device from paired devices also removes its auto-connect preference.
 
 ---
 

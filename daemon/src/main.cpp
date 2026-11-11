@@ -1,7 +1,9 @@
 #include <Scanner.h>
 #include <DaemonServer.h>
+#include <AddressResolver.h>
 
 #include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
 #include <nlohmann/json.hpp>
 
 #if defined(_WIN32)
@@ -20,6 +22,9 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QDir>
+#include <QLockFile>
+#include <map>
+#include <set>
 
 constexpr size_t SLEEP_DURATION = 10;
 
@@ -35,71 +40,25 @@ void LoadDevicesToAutoConnect(std::vector<uuid>& devices) {
         if (json.is_discarded() || !json.is_array()) return;
 
         for (const auto& item : json) {
-            devices.push_back(gen(item.get<std::string>()));
+            try {
+                devices.push_back(gen(item.get<std::string>()));
+            } catch (const std::exception&) {
+                continue;
+            }
         }
     } catch (...) {
         devices.clear();
     }
 }
 
-void StartInstance(const std::string& address, uint16_t port) {
-    std::string port_str = std::to_string(port);
-
-#if defined(_WIN32)
-    std::string cmd = fmt::format("LibreConnect.exe --port {} --address {} --hidden", port_str, address);
-
-    STARTUPINFOA si = { sizeof(si) };
-    PROCESS_INFORMATION pi;
-    std::vector<char> cmd_buffer(cmd.begin(), cmd.end());
-    cmd_buffer.push_back('\0');
-
-    const bool success = CreateProcessA(
-        nullptr,
-        cmd_buffer.data(),
-        nullptr,
-        nullptr,
-        false,
-        0,
-        nullptr,
-        nullptr,
-        &si,
-        &pi
-    );
-
-    if (success) {
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
+void StartInstance(const std::string& address, const uint16_t port, const uuid& deviceId) {
+    QString error;
+    if (!DaemonUtils::StartApplication(QString::fromStdString(address), port,
+            QString::fromStdString(boost::uuids::to_string(deviceId)), &error)) {
+        Debug::LogError("Failed to start LibreConnect for auto-connect: {}", error.toStdString());
     } else {
-        Debug::LogError("Windows failed to start instance. Error: {}", GetLastError());
+        Debug::Log("Started LibreConnect for auto-connect");
     }
-
-#else
-    pid_t pid = fork();
-
-    if (pid < 0) {
-        Debug::LogError("Fork failed!");
-        return;
-    }
-
-    if (pid == 0) {
-        const char* binary = "./LibreConnect";
-        char* args[] = {
-            const_cast<char*>(binary),
-            const_cast<char*>("--port"),
-            const_cast<char*>(port_str.c_str()),
-            const_cast<char*>("--address"),
-            const_cast<char*>(address.c_str()),
-            const_cast<char*>("--hidden"),
-            nullptr
-        };
-
-        execv(binary, args);
-        Debug::LogError("Failed to execute binary");
-        _exit(1);
-    } else {
-        signal(SIGCHLD, SIG_IGN);
-    }
-#endif
 }
 
 void LibreConnectLogHandler(const QtMsgType type, const QMessageLogContext& context, const QString& msg)
@@ -155,14 +114,32 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    LanDeviceScanner::BeginScan(LanDeviceScanner::Options{false, false});
+    QLockFile instanceLock(QDir::current().filePath(QStringLiteral("daemon.lock")));
+    if (!instanceLock.tryLock()) {
+        return 0;
+    }
+
     auto daemonServer = std::make_shared<DaemonServer>();
-    daemonServer->Start();
+    if (!daemonServer->Start()) {
+        return 1;
+    }
+    LanDeviceScanner::BeginScan(LanDeviceScanner::Options{false, false});
 
     std::vector<uuid> autoConnectDevices{};
+    std::map<uuid, std::chrono::steady_clock::time_point> lastAttempts;
+    std::set<std::string> networkAddresses;
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(SLEEP_DURATION));
+
+        std::set<std::string> currentAddresses;
+        for (const IPAddress& address : AddressResolver::GetAllPrivateIPv4()) {
+            currentAddresses.insert(address.to_string());
+        }
+        if (currentAddresses != networkAddresses) {
+            networkAddresses = std::move(currentAddresses);
+            LanDeviceScanner::RestartScan();
+        }
 
         std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
         std::vector<uuid> connectedDevices = daemonServer->GetConnectedDevices();
@@ -177,7 +154,13 @@ int main(int argc, char *argv[]) {
                 continue;
             }
 
-            StartInstance(device.deviceAddress, device.deviceAddressPort);
+            const auto now = std::chrono::steady_clock::now();
+            const auto attempt = lastAttempts.find(device.deviceID);
+            if (attempt != lastAttempts.end() && now - attempt->second < std::chrono::seconds(30)) {
+                continue;
+            }
+            lastAttempts[device.deviceID] = now;
+            StartInstance(device.deviceAddress, device.deviceAddressPort, device.deviceID);
         }
     }
 }

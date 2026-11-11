@@ -114,6 +114,8 @@ Page {
             } else {
                 pageUrl = "qrc:/LibreConnect/desktop/SettingsPage.qml"
                 pageProperties = {
+                    connectionController: root.connectionController,
+                    activeDeviceId: root.activeDeviceId,
                     notificationSyncController: root.notificationSyncController,
                     clipboardSyncController: root.clipboardSyncController,
                     permissionStateController: root.permissionStateController,

@@ -8,10 +8,18 @@
 
 DaemonServer::DaemonServer() {}
 
-void DaemonServer::Start() {
+bool DaemonServer::Start() {
     Debug::Log("DaemonServer: Starting...");
+    try {
+        m_acceptor = std::make_unique<TCPAcceptor>(ThreadPool::GetContext(),
+            TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), DAEMON_SIGNAL_PORT));
+    } catch (const std::system_error& error) {
+        Debug::LogError("DaemonServer: Could not listen: {}", error.what());
+        return false;
+    }
     auto instance = shared_from_this();
     asio::co_spawn(ThreadPool::GetContext(), [instance]() -> asio::awaitable<void> { co_await instance->SeekConnections(); }, asio::detached);
+    return true;
 }
 
 std::vector<uuid> DaemonServer::GetConnectedDevices() {
@@ -21,7 +29,9 @@ std::vector<uuid> DaemonServer::GetConnectedDevices() {
     devices.reserve(m_clients.size());
 
     for (const auto& client : m_clients) {
-        devices.emplace_back(client->m_uuid);
+        if (client->m_uuid != uuid{}) {
+            devices.emplace_back(client->m_uuid);
+        }
     }
 
     return devices;
@@ -32,23 +42,20 @@ asio::awaitable<void> DaemonServer::SeekConnections() {
 
     try {
         Debug::Log("DaemonServer: Listening on 127.0.0.1:{}", DAEMON_SIGNAL_PORT);
-        TCPAcceptor acceptor(ThreadPool::GetContext(), TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), DAEMON_SIGNAL_PORT));
-
         while (true) {
             auto clientData = std::make_shared<ClientData>(
-                TCPSocket(ThreadPool::GetContext()),
+                TCPSocket(asio::make_strand(ThreadPool::GetContext())),
                 uuid{}
             );
 
-            co_await acceptor.async_accept(clientData->m_socket, asio::use_awaitable);
+            co_await m_acceptor->async_accept(clientData->m_socket, asio::use_awaitable);
             Debug::Log("DaemonServer: New client accepted");
-
-            asio::co_spawn(ThreadPool::GetContext(), [instance, clientData]() -> asio::awaitable<void> { co_await instance->ProcessClient(clientData); }, asio::detached);
 
             {
                 std::lock_guard<std::mutex> lock(m_clientsMutex);
                 m_clients.emplace_back(clientData);
             }
+            asio::co_spawn(clientData->m_socket.get_executor(), [instance, clientData]() -> asio::awaitable<void> { co_await instance->ProcessClient(clientData); }, asio::detached);
         }
     } catch (const std::system_error& error) {
         Debug::LogError("DaemonServer: SeekConnections error: {}", error.what());
@@ -81,10 +88,13 @@ asio::awaitable<void> DaemonServer::ProcessClient(std::shared_ptr<ClientData> cl
 
             switch (type) {
             case DaemonPackage::CONNECTED:
+            {
+                std::lock_guard<std::mutex> lock(m_clientsMutex);
                 package->GetValue(client->m_uuid);
                 package->GetValue(client->m_pid);
                 Debug::Log("DaemonServer: Client connected (UUID: {}, PID: {})", boost::uuids::to_string(client->m_uuid), client->m_pid);
                 break;
+            }
             case DaemonPackage::REQUEST_CONNECTED_WINDOW:
             {
                 uuid id = package->GetValue<uuid>();
@@ -128,4 +138,18 @@ asio::awaitable<void> DaemonServer::ProcessClient(std::shared_ptr<ClientData> cl
         std::lock_guard<std::mutex> lock(m_clientsMutex);
         std::erase_if(m_clients, [&client](const auto& c) { return c == client; });
     }
+}
+
+void DaemonServer::WriteNext(const std::shared_ptr<ClientData>& client) {
+    asio::async_write(client->m_socket, asio::buffer(*client->m_writes.front()),
+        [client](const std::error_code& error, std::size_t) {
+            if (error) {
+                client->m_writes.clear();
+                return;
+            }
+            client->m_writes.pop_front();
+            if (!client->m_writes.empty()) {
+                WriteNext(client);
+            }
+        });
 }

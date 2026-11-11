@@ -19,7 +19,9 @@
 #include <memory>
 #include <boost/uuid/nil_generator.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/string_generator.hpp>
 #include <ConnectionManager.h>
+#include <DaemonCommon.h>
 #include <DebugLog.h>
 #include <Events.h>
 #include <SystemInfo.h>
@@ -257,15 +259,19 @@ int main(int argc, char *argv[])
     app.setApplicationName("LibreConnect");
     app.setApplicationVersion(QStringLiteral(LIBRECONNECT_APP_VERSION));
     app.setQuitOnLastWindowClosed(false);
+    DaemonUtils::RegisterApplication();
+    DaemonUtils::StartDaemon();
 
     QCommandLineParser parser;
     const QCommandLineOption portOption(QStringList() << "p" << "port", "The port number to connect to.", "port", "-1");
     const QCommandLineOption addressOption(QStringList() << "a" << "address", "The address to connect to.", "address", "-1");
     const QCommandLineOption hiddenOption("hidden", "Start the application hidden in the system tray.");
+    const QCommandLineOption deviceIdOption("device-id", "The paired device ID to connect to.", "id");
 
     parser.addOption(portOption);
     parser.addOption(addressOption);
     parser.addOption(hiddenOption);
+    parser.addOption(deviceIdOption);
     parser.process(app);
 
     const QString port = parser.value(portOption);
@@ -393,7 +399,16 @@ int main(int argc, char *argv[])
 
             if (startupConnectionRequested) {
                 startupConnectionListener->setMainWindow(rootObject);
-                ConnectionManager::Connect(address.toStdString(), port.toUInt(), InitialConnectionMode::CONNECT_WITH_PAIR);
+                uuid deviceId{};
+                if (parser.isSet(deviceIdOption)) {
+                    try {
+                        deviceId = boost::uuids::string_generator{}(parser.value(deviceIdOption).toStdString());
+                    } catch (const std::exception&) {
+                        Debug::LogError("Invalid startup device ID");
+                        return 1;
+                    }
+                }
+                ConnectionManager::Connect(address.toStdString(), port.toUInt(), InitialConnectionMode::CONNECT_WITH_PAIR, deviceId);
             }
 
             if (!shouldBeHidden) {

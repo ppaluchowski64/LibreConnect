@@ -342,14 +342,23 @@ Window {
 
         function onConnectedChanged() {
             if (connectionController.connected) {
+                if (connectionController.connectedDeviceId !== "")
+                    activeDeviceId = connectionController.connectedDeviceId
                 if (showConnectedAfterConnect) {
                     showConnectedAfterConnect = false
                     showConnected()
                 } else {
                     showHome()
                 }
+                if (window.visible && activeDeviceId !== "" && connectionController.autoConnectPromptEnabled
+                        && !connectionController.autoConnectEnabled(activeDeviceId)) {
+                    autoConnectDialog.deviceId = activeDeviceId
+                    autoConnectDialog.open()
+                }
                 return
             }
+
+            autoConnectDialog.close()
 
             if (stackView.depth > 0) {
                 activeDeviceName = ""
@@ -360,6 +369,144 @@ Window {
                 } else {
                     showInitial()
                 }
+            }
+        }
+    }
+
+    Dialog {
+        id: autoConnectDialog
+        property string deviceId: ""
+        title: ""
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        closePolicy: Popup.CloseOnEscape
+        padding: 22
+        onOpened: neverAskAgain.checked = false
+        onAccepted: {
+            if (neverAskAgain.checked)
+                connectionController.autoConnectPromptEnabled = false
+            if (!connectionController.setAutoConnectEnabled(deviceId, true))
+                autoConnectErrorDialog.open()
+        }
+        onRejected: {
+            if (neverAskAgain.checked)
+                connectionController.autoConnectPromptEnabled = false
+        }
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+            border.width: 1
+        }
+        contentItem: Column {
+            width: 360
+            spacing: 16
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                font.family: Theme.fontFamily
+                font.pixelSize: 24
+                font.bold: true
+                color: Theme.textColor
+                text: qsTr("Connect automatically?")
+            }
+            Text {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                color: Theme.mutedTextColor
+                text: qsTr("Connect this paired device automatically whenever it is available.")
+            }
+            CheckBox {
+                id: neverAskAgain
+                width: parent.width
+                spacing: 10
+                text: qsTr("Don't ask again")
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                indicator: Rectangle {
+                    implicitWidth: 20
+                    implicitHeight: 20
+                    x: neverAskAgain.leftPadding
+                    y: (neverAskAgain.height - height) / 2
+                    radius: 4
+                    color: neverAskAgain.checked ? Theme.selectedColor : Theme.buttonColor
+                    border.color: neverAskAgain.checked ? Theme.selectedBorderColor : Theme.panelBorderColor
+                    border.width: 1
+                    Text {
+                        anchors.centerIn: parent
+                        visible: neverAskAgain.checked
+                        text: "✓"
+                        font.pixelSize: 15
+                        font.bold: true
+                        color: Theme.textColor
+                    }
+                }
+                contentItem: Text {
+                    leftPadding: neverAskAgain.indicator.width + neverAskAgain.spacing
+                    text: neverAskAgain.text
+                    font: neverAskAgain.font
+                    color: Theme.textColor
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 10
+                ThemedButton {
+                    text: qsTr("Not now")
+                    width: 160
+                    height: 42
+                    font.pixelSize: 14
+                    onClicked: autoConnectDialog.reject()
+                }
+                ThemedButton {
+                    text: qsTr("Enable")
+                    width: 160
+                    height: 42
+                    font.pixelSize: 14
+                    onClicked: autoConnectDialog.accept()
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: autoConnectErrorDialog
+        title: ""
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        padding: 22
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+        }
+        contentItem: Column {
+            width: 340
+            spacing: 16
+            Text {
+                text: qsTr("Auto-connect unavailable")
+                font.family: Theme.fontFamily
+                font.pixelSize: 22
+                font.bold: true
+                color: Theme.textColor
+            }
+            Text {
+                width: parent.width
+                text: connectionController.lastError
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+            }
+            ThemedButton {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("OK")
+                width: 160
+                height: 42
+                onClicked: autoConnectErrorDialog.close()
             }
         }
     }

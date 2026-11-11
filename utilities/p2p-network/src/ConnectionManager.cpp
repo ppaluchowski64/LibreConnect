@@ -139,7 +139,7 @@ void ConnectionManager::StopAcceptingConnections() {
     s_instance->m_initialConnectionsIn.clear();
 }
 
-void ConnectionManager::Connect(const std::string& address, const uint16_t port, const InitialConnectionMode mode) {
+void ConnectionManager::Connect(const std::string& address, const uint16_t port, const InitialConnectionMode mode, uuid deviceID) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Connecting to {}:{} with mode {}", address, port, static_cast<int>(mode));
 
@@ -149,10 +149,8 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
     }
 
     const std::vector<DeviceInfo> devices = LanDeviceScanner::GetDiscoveredDevices();
-    uuid deviceID{};
-
     for (const auto& device : devices) {
-        if (device.deviceAddress == address && device.deviceAddressPort == port) {
+        if (deviceID == boost::uuids::nil_uuid() && device.deviceAddress == address && device.deviceAddressPort == port) {
             deviceID = device.deviceID;
         }
     }
@@ -172,12 +170,9 @@ void ConnectionManager::Connect(const std::string& address, const uint16_t port,
 
     asio::co_spawn(s_instance->m_context, [address, port, mode, deviceID]() -> asio::awaitable<void> {
         if (deviceID != boost::uuids::nil_uuid()) {
-            if (!s_instance->m_signalSender) {
-                s_instance->m_signalSender = DaemonClient::Create();
-            }
-
-            if (s_instance->m_signalSender) {
-                const bool alreadyConnected = co_await s_instance->m_signalSender->RequestConnectedWindow(deviceID);
+            const std::shared_ptr<DaemonClient> daemonClient = GetDaemonClient(true);
+            if (daemonClient) {
+                const bool alreadyConnected = co_await daemonClient->RequestConnectedWindow(deviceID);
                 if (alreadyConnected) {
                     Debug::Log("ConnectionManager: Window already exists for device {}, closing program", boost::uuids::to_string(deviceID));
                     exit(0);
@@ -289,14 +284,28 @@ bool ConnectionManager::RemovePairedDevice(const std::string& deviceId) {
     return true;
 }
 
+#if defined(DESKTOP_DEVICE)
+std::shared_ptr<DaemonClient> ConnectionManager::GetDaemonClient(const bool create) {
+    std::lock_guard<std::mutex> lock(s_mutex);
+    if (!s_instance->m_signalSender && create) {
+        s_instance->m_signalSender = DaemonClient::Create();
+    }
+    return s_instance->m_signalSender;
+}
+#endif
+
 void ConnectionManager::Disconnect(const std::error_code errorCode) {
     std::call_once(s_flag, Initialize);
     Debug::Log("ConnectionManager: Disconnecting primary connection. Reason: {}", errorCode.message());
 
 #if defined(DESKTOP_DEVICE)
-    if (s_instance->m_signalSender) {
-        DaemonClient::Destroy(s_instance->m_signalSender);
-        s_instance->m_signalSender.reset();
+    std::shared_ptr<DaemonClient> daemonClient;
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        daemonClient = std::move(s_instance->m_signalSender);
+    }
+    if (daemonClient) {
+        DaemonClient::Destroy(daemonClient);
     }
 #endif
 

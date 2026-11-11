@@ -42,6 +42,7 @@ if (APPLE AND NOT IOS)
     )
 endif()
 
+set_property(TARGET appLibreConnect_desktop APPEND PROPERTY LINK_DEPENDS $<TARGET_FILE:LibreConnect-daemon>)
 add_custom_command(TARGET appLibreConnect_desktop POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_FILE:LibreConnect-daemon>
@@ -49,6 +50,8 @@ add_custom_command(TARGET appLibreConnect_desktop POST_BUILD
         COMMENT "Copying LibreConnect-daemon to appLibreConnect_desktop output directory..."
         VERBATIM
 )
+
+DeployQT(appLibreConnect_desktop)
 
 BundleMediaRemoteAdapter(appLibreConnect_desktop)
 

@@ -174,10 +174,7 @@ asio::awaitable<void> PrimaryConnection::CoConnect(const std::shared_ptr<SSLCont
 
 
 #if defined(DESKTOP_DEVICE)
-        if (!ConnectionManager::s_instance->m_signalSender) {
-            ConnectionManager::s_instance->m_signalSender = DaemonClient::Create();
-        }
-        ConnectionManager::s_instance->m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
+        ConnectionManager::GetDaemonClient(true)->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
 
         asio::co_spawn(m_strand, CoSend(generation, socket), asio::detached);
@@ -257,10 +254,7 @@ asio::awaitable<void> PrimaryConnection::CoSeek(const std::shared_ptr<SSLContext
         m_connectionState.store(ConnectionState::CONNECTED);
         m_heartbeatReceived.store(false);
 #if defined(DESKTOP_DEVICE)
-        if (!ConnectionManager::s_instance->m_signalSender) {
-            ConnectionManager::s_instance->m_signalSender = DaemonClient::Create();
-        }
-        ConnectionManager::s_instance->m_signalSender->ConnectedSignal(data.deviceInfo.deviceID);
+        ConnectionManager::GetDaemonClient(true)->ConnectedSignal(data.deviceInfo.deviceID);
 #endif
         asio::co_spawn(m_strand, CoSend(generation, socket), asio::detached);
         asio::co_spawn(m_strand, CoReceive(generation, socket), asio::detached);
@@ -312,6 +306,13 @@ asio::awaitable<void> PrimaryConnection::CoDisconnect(const std::error_code erro
     ClearQueuedPackages();
     m_heartbeatReceived.store(false);
     m_connectionState.store(ConnectionState::DISCONNECTED);
+
+#if defined(DESKTOP_DEVICE)
+    const std::shared_ptr<DaemonClient> daemonClient = ConnectionManager::GetDaemonClient(false);
+    if (daemonClient) {
+        daemonClient->ConnectedSignal(uuid{});
+    }
+#endif
 
     {
         std::lock_guard<std::mutex> lock(m_peerDataMutex);

@@ -212,7 +212,10 @@ function(BuildQTExecutable ExecutableName RootPath ModuleURI)
         )
     endif()
 
-    DeployQT(${ExecutableName})
+    # The desktop target adds its daemon before deploying its dependencies.
+    if(NOT ExecutableName STREQUAL "appLibreConnect_desktop")
+        DeployQT(${ExecutableName})
+    endif()
 endfunction()
 
 function(DeployQT Target)
@@ -269,15 +272,20 @@ function(DeployQT Target)
             )
         endif()
 
+        set(DEPLOY_QML_ARGS)
+        if (Target STREQUAL "appLibreConnect_desktop")
+            list(APPEND DEPLOY_QML_ARGS --qmldir "${CMAKE_SOURCE_DIR}/apps/desktop/qml")
+        endif()
+
         if (EXISTS "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe")
             add_custom_command(TARGET ${Target} POST_BUILD
-                    COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
+                    COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt6.exe" ${DEPLOY_QML_ARGS} "$<TARGET_FILE:${Target}>"
                     COMMENT "Deploying Qt dependencies for ${Target}..."
                     VERBATIM
             )
         elseif (EXISTS "$ENV{QT_DIR_DESKTOP}/bin/windeployqt.exe")
             add_custom_command(TARGET ${Target} POST_BUILD
-                    COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt.exe" --qmldir "$ENV{QT_DIR_DESKTOP}/qml" "$<TARGET_FILE:${Target}>"
+                    COMMAND "$ENV{QT_DIR_DESKTOP}/bin/windeployqt.exe" ${DEPLOY_QML_ARGS} "$<TARGET_FILE:${Target}>"
                     COMMENT "Deploying Qt dependencies for ${Target}..."
                     VERBATIM
             )

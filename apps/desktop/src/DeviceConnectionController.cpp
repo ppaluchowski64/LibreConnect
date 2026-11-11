@@ -9,6 +9,8 @@
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <QRegularExpression>
+#include <QSettings>
+#include <DaemonCommon.h>
 #include <ModulesManager.h>
 #include <PermissionManager.h>
 #include <ThreadPool.h>
@@ -96,6 +98,52 @@ DeviceConnectionController::DeviceConnectionController(QObject* parent)
 DeviceConnectionController::~DeviceConnectionController()
 {
     ConnectionManager::RemoveResponseHandler(kFindMyPhoneStopPackage);
+}
+
+QString DeviceConnectionController::connectedDeviceId() const
+{
+    const uuid id = ConnectionManager::GetPeerUUID();
+    return m_connected && id != boost::uuids::nil_uuid()
+        ? QString::fromStdString(boost::uuids::to_string(id)) : QString{};
+}
+
+bool DeviceConnectionController::autoConnectPromptEnabled() const
+{
+    return QSettings().value(QStringLiteral("autoConnect/showPrompt"), true).toBool();
+}
+
+void DeviceConnectionController::setAutoConnectPromptEnabled(const bool enabled)
+{
+    if (autoConnectPromptEnabled() == enabled) {
+        return;
+    }
+    QSettings().setValue(QStringLiteral("autoConnect/showPrompt"), enabled);
+    emit autoConnectPromptEnabledChanged();
+}
+
+bool DeviceConnectionController::autoConnectEnabled(const QString& deviceId) const
+{
+    return !deviceId.isEmpty() && DaemonUtils::IsAutoConnectEnabled(deviceId.toStdString());
+}
+
+bool DeviceConnectionController::setAutoConnectEnabled(const QString& deviceId, const bool enabled)
+{
+    if (enabled) {
+        const std::vector<DeviceInfoLite> devices = ConnectionManager::GetPairedDevices();
+        const bool paired = std::ranges::any_of(devices, [&deviceId](const DeviceInfoLite& device) {
+            return QString::fromStdString(boost::uuids::to_string(device.deviceID)) == deviceId;
+        });
+        if (!paired) {
+            handleError(tr("Auto-connect requires a paired device.").toStdString());
+            return false;
+        }
+    }
+    if (!DaemonUtils::SetAutoConnect(deviceId.toStdString(), enabled)) {
+        handleError(tr("Could not save auto-connect settings or configure startup.").toStdString());
+        return false;
+    }
+    emit autoConnectChanged();
+    return true;
 }
 
 bool DeviceConnectionController::localNetworkPermissionGranted() const
@@ -208,6 +256,9 @@ QVariantList DeviceConnectionController::getPairedDevices()
 bool DeviceConnectionController::removePairedDevice(const QString& deviceId)
 {
     const bool removed = ConnectionManager::RemovePairedDevice(deviceId.toStdString());
+    if (removed && autoConnectEnabled(deviceId)) {
+        setAutoConnectEnabled(deviceId, false);
+    }
     refreshPairedDevices();
     return removed;
 }

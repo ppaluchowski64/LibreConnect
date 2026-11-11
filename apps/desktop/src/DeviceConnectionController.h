@@ -29,6 +29,8 @@ class DeviceConnectionController : public QObject
     Q_PROPERTY(bool approvalPending READ approvalPending NOTIFY approvalPendingChanged)
     Q_PROPERTY(bool findMyPhoneAlertActive READ findMyPhoneAlertActive NOTIFY findMyPhoneAlertActiveChanged)
     Q_PROPERTY(int batteryPercentage READ batteryPercentage NOTIFY batteryPercentageChanged)
+    Q_PROPERTY(QString connectedDeviceId READ connectedDeviceId NOTIFY connectedChanged)
+    Q_PROPERTY(bool autoConnectPromptEnabled READ autoConnectPromptEnabled WRITE setAutoConnectPromptEnabled NOTIFY autoConnectPromptEnabledChanged)
 
 public:
     explicit DeviceConnectionController(QObject* parent = nullptr);
@@ -47,6 +49,11 @@ public:
     bool approvalPending() const { return m_approvalPending; }
     bool findMyPhoneAlertActive() const { return m_findMyPhoneAlertActive; }
     int batteryPercentage() const { return m_batteryPercentage; }
+    QString connectedDeviceId() const;
+    bool autoConnectPromptEnabled() const;
+    void setAutoConnectPromptEnabled(bool enabled);
+    Q_INVOKABLE bool autoConnectEnabled(const QString& deviceId) const;
+    Q_INVOKABLE bool setAutoConnectEnabled(const QString& deviceId, bool enabled);
 
     Q_INVOKABLE void connectTo(const QString& ipAddress,
                                quint16 port,
@@ -77,6 +84,8 @@ public:
     void approvalPendingChanged();
     void findMyPhoneAlertActiveChanged();
     void batteryPercentageChanged();
+    void autoConnectChanged();
+    void autoConnectPromptEnabledChanged();
 
     void incomingConnectionRequested(QString deviceName);
     void verificationFailed(int triesLeft);

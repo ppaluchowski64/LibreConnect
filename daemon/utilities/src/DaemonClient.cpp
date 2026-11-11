@@ -13,13 +13,18 @@ static auto GetPid() {
 
 std::shared_ptr<DaemonClient> DaemonClient::Create() {
     auto instance = std::make_shared<DaemonClient>();
-    asio::co_spawn(ThreadPool::GetContext(), [instance]() -> asio::awaitable<void> { co_await instance->CoConnect(); }, asio::detached);
+    asio::co_spawn(instance->m_socket.get_executor(), [instance]() -> asio::awaitable<void> { co_await instance->CoConnect(); }, asio::detached);
     return instance;
 }
 
 void DaemonClient::Destroy(const std::shared_ptr<DaemonClient>& client) {
-    client->m_connected.store(false, std::memory_order_release);
-    try { client->m_socket.close(); } catch (...) {}
+    client->m_destroyed.store(true, std::memory_order_release);
+    asio::post(client->m_socket.get_executor(), [client]() {
+        client->m_connected.store(false, std::memory_order_release);
+        client->m_retryTimer.cancel();
+        std::error_code error;
+        client->m_socket.close(error);
+    });
 }
 
 bool DaemonClient::IsConnected() const {
@@ -48,22 +53,21 @@ asio::awaitable<bool> DaemonClient::WaitForConnectResult(const std::chrono::mill
 }
 
 void DaemonClient::ConnectedSignal(const uuid uuid) {
-    if (!IsConnected()) {
-        const std::shared_ptr<DaemonClient> self = shared_from_this();
-        asio::co_spawn(ThreadPool::GetContext(), [self, uuid]() -> asio::awaitable<void> {
-            const bool connected = co_await self->WaitForConnectResult(std::chrono::milliseconds(250));
-            if (connected) {
-                self->Send(DaemonPackage::CONNECTED, uuid, GetPid());
-            }
-            co_return;
-        }, asio::detached);
-        return;
-    }
-
-    Send(DaemonPackage::CONNECTED, uuid, GetPid());
+    const std::shared_ptr<DaemonClient> self = shared_from_this();
+    asio::post(m_socket.get_executor(), [self, uuid]() {
+        self->m_deviceId = uuid;
+        if (self->IsConnected()) {
+            self->Send(DaemonPackage::CONNECTED, uuid, GetPid());
+        }
+    });
 }
 
 asio::awaitable<bool> DaemonClient::RequestConnectedWindow(const uuid uuid) {
+    const std::shared_ptr<DaemonClient> self = shared_from_this();
+    co_return co_await asio::co_spawn(m_socket.get_executor(), self->CoRequestConnectedWindow(uuid), asio::use_awaitable);
+}
+
+asio::awaitable<bool> DaemonClient::CoRequestConnectedWindow(const uuid uuid) {
     if (!IsConnected()) {
         const bool connected = co_await WaitForConnectResult(std::chrono::milliseconds(250));
         if (!connected) {
@@ -91,23 +95,47 @@ asio::awaitable<bool> DaemonClient::RequestConnectedWindow(const uuid uuid) {
 }
 
 DaemonClient::DaemonClient()
-    : m_socket(ThreadPool::GetContext()),
+    : m_socket(asio::make_strand(ThreadPool::GetContext())),
+      m_retryTimer(m_socket.get_executor()),
       m_connectedFlag(m_socket.get_executor()) {}
 
 asio::awaitable<void> DaemonClient::CoConnect() {
-    try {
-        co_await m_socket.async_connect(TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), DAEMON_SIGNAL_PORT), asio::use_awaitable);
-        m_connected.store(true, std::memory_order_release);
-        m_connectAttemptFinished.store(true, std::memory_order_release);
-        m_connectedFlag.Signal();
-        co_await CoReceive();
-    } catch (...) {
+    while (!m_destroyed.load(std::memory_order_acquire)) {
+        try {
+            co_await m_socket.async_connect(TCPEndpoint(asio::ip::make_address_v4("127.0.0.1"), DAEMON_SIGNAL_PORT), asio::use_awaitable);
+            m_connected.store(true, std::memory_order_release);
+            m_connectAttemptFinished.store(true, std::memory_order_release);
+            m_connectedFlag.Signal();
+            if (m_deviceId != uuid{}) {
+                Send(DaemonPackage::CONNECTED, m_deviceId, GetPid());
+            }
+            co_await CoReceive();
+        } catch (const std::exception&) {}
+
         m_connected.store(false, std::memory_order_release);
         m_connectAttemptFinished.store(true, std::memory_order_release);
         m_connectedFlag.Signal();
+        std::error_code error;
+        m_socket.close(error);
+        if (!m_destroyed.load(std::memory_order_acquire)) {
+            m_retryTimer.expires_after(std::chrono::seconds(2));
+            co_await m_retryTimer.async_wait(asio::redirect_error(asio::use_awaitable, error));
+        }
     }
+}
 
-    m_connected.store(false, std::memory_order_release);
+void DaemonClient::WriteNext() {
+    const std::shared_ptr<DaemonClient> self = shared_from_this();
+    asio::async_write(m_socket, asio::buffer(*m_writes.front()), [self](const std::error_code& error, std::size_t) {
+        if (error) {
+            self->m_writes.clear();
+            return;
+        }
+        self->m_writes.pop_front();
+        if (!self->m_writes.empty()) {
+            self->WriteNext();
+        }
+    });
 }
 
 asio::awaitable<void> DaemonClient::CoReceive() {

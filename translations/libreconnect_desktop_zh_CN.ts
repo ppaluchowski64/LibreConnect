@@ -87,6 +87,16 @@ enable the relevant app permissions.</source>
 <context>
     <name>DeviceConnectionController</name>
     <message>
+        <location filename="../apps/desktop/src/DeviceConnectionController.cpp" line="137" />
+        <source>Auto-connect requires a paired device.</source>
+        <translation>自动连接需要已配对的设备。</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/src/DeviceConnectionController.cpp" line="142" />
+        <source>Could not save auto-connect settings or configure startup.</source>
+        <translation>无法保存自动连接设置或配置开机启动。</translation>
+    </message>
+    <message>
         <location filename="../apps/desktop/src/DeviceConnectionController.cpp" line="256" />
         <source>Code must be exactly 6 digits.</source>
         <translation>验证码必须正好为 6 位数字。</translation>
@@ -1303,6 +1313,41 @@ downloaded and open before you continue.)</source>
 <context>
     <name>MainWindow</name>
     <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="411" />
+        <source>Connect automatically?</source>
+        <translation>是否自动连接？</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="419" />
+        <source>Connect this paired device automatically whenever it is available.</source>
+        <translation>此已配对设备可用时自动连接。</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="425" />
+        <source>Don't ask again</source>
+        <translation>不再询问</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="458" />
+        <source>Not now</source>
+        <translation>暂不启用</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="465" />
+        <source>Enable</source>
+        <translation>启用</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="490" />
+        <source>Auto-connect unavailable</source>
+        <translation>自动连接不可用</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/MainWindow.qml" line="506" />
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
+    <message>
         <location filename="../apps/desktop/qml/MainWindow.qml" line="233" />
         <source>Connected Device</source>
         <translation>已连接设备</translation>
@@ -1690,6 +1735,31 @@ downloaded and open before you continue.)</source>
 </context>
 <context>
     <name>SettingsPage</name>
+    <message>
+        <location filename="../apps/desktop/qml/SettingsPage.qml" line="525" />
+        <source>Auto-connect</source>
+        <translation>自动连接</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/SettingsPage.qml" line="547" />
+        <source>Automatically connect this paired device when it is available. LibreConnect runs in the background after you sign in.</source>
+        <translation>此已配对设备可用时自动连接。登录系统后，LibreConnect 将在后台运行。</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/SettingsPage.qml" line="564" />
+        <source>Ask when connecting devices</source>
+        <translation>连接设备时询问</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/SettingsPage.qml" line="813" />
+        <source>Auto-connect unavailable</source>
+        <translation>自动连接不可用</translation>
+    </message>
+    <message>
+        <location filename="../apps/desktop/qml/SettingsPage.qml" line="829" />
+        <source>OK</source>
+        <translation>确定</translation>
+    </message>
     <message>
         <location filename="../apps/desktop/qml/SettingsPage.qml" line="9" />
         <location filename="../apps/desktop/qml/SettingsPage.qml" line="64" />

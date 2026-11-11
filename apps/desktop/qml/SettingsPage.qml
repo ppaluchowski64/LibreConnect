@@ -7,6 +7,8 @@ Page {
     id: root
 
     readonly property string windowTitleSuffix: qsTr("Settings")
+    required property var connectionController
+    required property string activeDeviceId
     required property var notificationSyncController
     required property var clipboardSyncController
     required property var permissionStateController
@@ -504,6 +506,75 @@ Page {
         }
 
         Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: autoConnectColumn.implicitHeight + 32
+            radius: 12
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+
+            ColumnLayout {
+                id: autoConnectColumn
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 12
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    Text {
+                        text: qsTr("Auto-connect")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 20
+                        font.bold: true
+                        color: Theme.textColor
+                        Layout.fillWidth: true
+                    }
+                    Switch {
+                        id: autoConnectToggle
+                        enabled: root.activeDeviceId !== ""
+                        checked: root.connectionController.autoConnectEnabled(root.activeDeviceId)
+                        onClicked: {
+                            if (!root.connectionController.setAutoConnectEnabled(root.activeDeviceId, checked)) {
+                                checked = root.connectionController.autoConnectEnabled(root.activeDeviceId)
+                                autoConnectErrorDialog.open()
+                            }
+                        }
+                    }
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: qsTr("Automatically connect this paired device when it is available. LibreConnect runs in the background after you sign in.")
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 15
+                    color: Theme.mutedTextColor
+                }
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    Layout.bottomMargin: 4
+                    height: 1
+                    color: Theme.panelBorderColor
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("Ask when connecting devices")
+                        font.family: Theme.fontFamily
+                        font.pixelSize: 15
+                        color: Theme.textColor
+                    }
+                    Switch {
+                        checked: root.connectionController.autoConnectPromptEnabled
+                        onClicked: root.connectionController.autoConnectPromptEnabled = checked
+                    }
+                }
+            }
+        }
+
+        Rectangle {
             id: streamerModeCard
             Layout.fillWidth: true
             implicitHeight: streamerModeColumn.implicitHeight + 32
@@ -721,6 +792,45 @@ Page {
             border.color: Theme.panelBorderColor
             border.width: 1
             visible: settingsFlickable.contentHeight > settingsFlickable.height + 1
+        }
+    }
+
+    Dialog {
+        id: autoConnectErrorDialog
+        title: ""
+        modal: true
+        anchors.centerIn: Overlay.overlay
+        padding: 22
+        background: Rectangle {
+            radius: 10
+            color: Theme.panelColor
+            border.color: Theme.panelBorderColor
+        }
+        contentItem: Column {
+            width: 340
+            spacing: 16
+            Text {
+                text: qsTr("Auto-connect unavailable")
+                font.family: Theme.fontFamily
+                font.pixelSize: 22
+                font.bold: true
+                color: Theme.textColor
+            }
+            Text {
+                width: parent.width
+                text: root.connectionController.lastError
+                font.family: Theme.fontFamily
+                font.pixelSize: 14
+                color: Theme.textColor
+                wrapMode: Text.WordWrap
+            }
+            ThemedButton {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("OK")
+                width: 160
+                height: 42
+                onClicked: autoConnectErrorDialog.close()
+            }
         }
     }
 

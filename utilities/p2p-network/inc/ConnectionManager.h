@@ -28,7 +28,7 @@ class ConnectionManager final {
 public:
     static void StartAcceptingConnections();
     static void StopAcceptingConnections();
-    static void Connect(const std::string& address, uint16_t port, InitialConnectionMode mode);
+    static void Connect(const std::string& address, uint16_t port, InitialConnectionMode mode, uuid deviceId = {});
     static void SendEvent(const std::unique_ptr<QEvent>& event);
 
     static std::vector<DeviceInfoLite> GetPairedDevices();
@@ -139,6 +139,7 @@ private:
     std::atomic<size_t> m_currentRequestID{0};
 
 #if defined(DESKTOP_DEVICE)
+    static std::shared_ptr<DaemonClient> GetDaemonClient(bool create);
     std::shared_ptr<DaemonClient> m_signalSender{nullptr};
 #endif
 
