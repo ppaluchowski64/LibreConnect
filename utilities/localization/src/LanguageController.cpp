@@ -52,7 +52,6 @@ LanguageController::LanguageController(QString translationPrefix, QObject* paren
     m_installedLanguage = ResolveEffectiveLanguage(m_currentLanguage);
     m_effectiveLanguage = m_installedLanguage;
 
-    QLocale::setDefault(QLocale(m_installedLanguage));
     InstallTranslator(m_installedLanguage);
 
     Debug::Log(

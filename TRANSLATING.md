@@ -67,6 +67,8 @@ The language is stored in `QSettings` under `ui/language`. An empty value means 
 
 Users select a language in **Settings > Language**. The change is applied after restarting the app; the settings page shows a reminder when a restart is pending. On startup, `LanguageController` picks the best available translation for the saved language or the system locale, and falls back to English when no translation exists.
 
+The language selection affects translated text only. Dates, numbers, and other regional formats continue to use the system locale.
+
 ## Testing
 
 - Start with the system locale set to the target language and verify the pilot pages.
