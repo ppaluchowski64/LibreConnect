@@ -1,6 +1,53 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_name">LibreConnect</string>
     <string name="fatal_error_msg">Fatal error while loading native libraries.</string>
     <string name="share_receiver_label">Send to download folder</string>
     <string name="share_receiver_description">Send to download folder</string>
+
+    <string name="notification_listener_label">LibreConnect Notification Listener</string>
+    <string name="main_service_label">LibreConnect Main Service</string>
+    <string name="send_clipboard_label">Send Clipboard</string>
+    <string name="notification_action_receiver_label">LibreConnect Notification Action Receiver</string>
+    <string name="remote_input_receiver_label">LibreConnect Remote Input Receiver</string>
+
+    <string name="find_my_phone_channel">Find My Phone</string>
+    <string name="find_my_phone_channel_description">High priority notification for Find My Phone feature</string>
+    <string name="find_my_phone_title">Find My Phone</string>
+    <string name="find_my_phone_text">Your phone is ringing!</string>
+    <string name="stop">Stop</string>
+
+    <string name="service_channel">LibreConnect Service</string>
+    <string name="service_running_title">LibreConnect running</string>
+    <string name="service_running_text">Background service active</string>
+    <string name="active_modules_channel">Active Modules</string>
+    <string name="virtual_camera_active_title">Virtual Camera Active</string>
+    <string name="virtual_camera_active_text">Your camera is being streamed to your PC</string>
+    <string name="virtual_microphone_active_title">Virtual Microphone Active</string>
+    <string name="virtual_microphone_active_text">Your microphone is being streamed to your PC</string>
+    <string name="disable">Disable</string>
+    <string name="quit">Quit</string>
+
+    <string name="transfers_channel">LibreConnect Transfers</string>
+    <string name="remote_input_channel">Remote Input</string>
+    <string name="remote_input_title">LibreConnect Remote Input</string>
+    <string name="remote_input_text">Control desktop media</string>
+    <string name="unknown_track">Unknown track</string>
+    <string name="previous">Previous</string>
+    <string name="pause">Pause</string>
+    <string name="play">Play</string>
+    <string name="next">Next</string>
+    <string name="volume_down">Volume -</string>
+    <string name="volume_up">Volume +</string>
+    <string name="android_system">Android System</string>
+    <string name="unknown_app">Unknown app</string>
+
+    <string name="no_shared_files">No shared files found</string>
+    <string name="share_send_failed">Could not send shared files to desktop</string>
+    <string name="share_sending_one">Sending shared file to desktop</string>
+    <string name="share_sending_many">Sending %1$d shared files to desktop</string>
+    <string name="no_logs_found">No logs found to export</string>
+    <string name="export_logs">Export Logs</string>
+    <string name="mms_attachment">MMS attachment</string>
+    <string name="mms">MMS</string>
 </resources>

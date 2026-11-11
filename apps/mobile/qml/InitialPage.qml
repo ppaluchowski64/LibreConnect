@@ -50,7 +50,7 @@ Page {
 
         Text {
             Layout.fillWidth: true
-            text: "Connect With LibreConnect Desktop"
+            text: qsTr("Connect With LibreConnect Desktop")
             color: Theme.textColor
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -60,7 +60,7 @@ Page {
 
         Text {
             Layout.fillWidth: true
-            text: "This phone is visible on your local network while the app is running."
+            text: qsTr("This phone is visible on your local network while the app is running.")
             color: Theme.mutedTextColor
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
@@ -82,14 +82,14 @@ Page {
                 spacing: 8
 
                 Text {
-                    text: "Device: " + (page.conn.localDeviceName.length > 0 ? page.conn.localDeviceName : "Unavailable")
+                    text: qsTr("Device: ") + (page.conn.localDeviceName.length > 0 ? page.conn.localDeviceName : qsTr("Unavailable"))
                     color: Theme.textColor
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
                 }
 
                 Text {
-                    text: "IP: " + (page.conn.localIpAddress.length > 0 ? page.conn.localIpAddress : "Unavailable")
+                    text: qsTr("IP: ") + (page.conn.localIpAddress.length > 0 ? page.conn.localIpAddress : qsTr("Unavailable"))
                     color: Theme.textColor
                     font.pixelSize: 15
                     wrapMode: Text.WordWrap
@@ -99,7 +99,7 @@ Page {
 
         Button {
             Layout.fillWidth: true
-            text: page.conn.hasPairedDevices ? "Paired Devices" : "No Paired Devices"
+            text: page.conn.hasPairedDevices ? qsTr("Paired Devices") : qsTr("No Paired Devices")
             enabled: page.conn.hasPairedDevices
             onClicked: page.showPairedDevicesCallback()
         }

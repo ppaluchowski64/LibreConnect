@@ -25,7 +25,7 @@ Page {
     property var sortedRemoteEntries: sortEntries(fileManagerController.remoteEntries)
     onSortedRemoteEntriesChanged: pruneSelectionToVisibleEntries()
     readonly property int selectedCount: selectedRemotePaths.length
-    readonly property string windowTitleSuffix: "File Manager"
+    readonly property string windowTitleSuffix: qsTr("File Manager")
 
     readonly property color destructiveFill: Theme.destructiveFillColor
     readonly property color destructiveFillHover: Theme.destructiveFillHoverColor
@@ -39,6 +39,21 @@ Page {
 
     function filterIcon(name) {
         return "qrc:/LibreConnect/desktop/" + name + (Theme.dark ? "_dark" : "") + ".svg"
+    }
+
+    function typeLabelText(label) {
+        switch (label) {
+        case "Folder": return qsTr("Folder")
+        case "Text": return qsTr("Text")
+        case "Image": return qsTr("Image")
+        case "Video": return qsTr("Video")
+        case "Audio": return qsTr("Audio")
+        case "Document": return qsTr("Document")
+        case "Archive": return qsTr("Archive")
+        case "Executable": return qsTr("Executable")
+        case "Unknown": return qsTr("Unknown")
+        default: return label
+        }
     }
 
     component FilterLabel: Label {
@@ -96,7 +111,14 @@ Page {
         }
 
         onOpened: {
-            mediaFilter.currentIndex = Math.max(0, mediaFilter.model.indexOf(root.filterMedia))
+            let mediaIndex = 0
+            for (let i = 0; i < mediaFilter.model.length; ++i) {
+                if (mediaFilter.model[i].value === root.filterMedia) {
+                    mediaIndex = i
+                    break
+                }
+            }
+            mediaFilter.currentIndex = mediaIndex
             extensionFilter.text = root.filterExtensions
             fromFilter.text = root.filterFrom
             toFilter.text = root.filterTo
@@ -116,23 +138,35 @@ Page {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 3
-                    FilterLabel { text: "Filter files"; font.pixelSize: 21 }
-                    Label { text: "Find exactly what you need"; color: Theme.mutedTextColor; font.family: Theme.fontFamily }
+                    FilterLabel { text: qsTr("Filter files"); font.pixelSize: 21 }
+                    Label { text: qsTr("Find exactly what you need"); color: Theme.mutedTextColor; font.family: Theme.fontFamily }
                 }
                 FilterButton {
                     text: "×"
                     implicitWidth: 36
-                    Accessible.name: "Close filters"
+                    Accessible.name: qsTr("Close filters")
                     onClicked: filterDialog.close()
                 }
             }
             Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.bottomMargin: 4; implicitHeight: 1; color: Theme.panelBorderColor }
-            FilterLabel { text: "Media type" }
+            FilterLabel { text: qsTr("Media type") }
             Basic.ComboBox {
                 id: mediaFilter
                 Layout.fillWidth: true
                 implicitHeight: 44
-                model: ["All types", "Image", "Video", "Audio", "Text", "Document", "Archive", "Executable", "Unknown"]
+                model: [
+                    { value: "All types", label: qsTr("All types") },
+                    { value: "Image", label: qsTr("Image") },
+                    { value: "Video", label: qsTr("Video") },
+                    { value: "Audio", label: qsTr("Audio") },
+                    { value: "Text", label: qsTr("Text") },
+                    { value: "Document", label: qsTr("Document") },
+                    { value: "Archive", label: qsTr("Archive") },
+                    { value: "Executable", label: qsTr("Executable") },
+                    { value: "Unknown", label: qsTr("Unknown") }
+                ]
+                textRole: "label"
+                valueRole: "value"
                 readonly property var iconNames: ["files", "image", "video", "audio", "text", "document", "archive", "executable", "unknown"]
                 leftPadding: 12
                 rightPadding: 32
@@ -146,14 +180,14 @@ Page {
                 delegate: Basic.ItemDelegate {
                     id: categoryDelegate
                     required property int index
-                    required property string modelData
+                    required property var modelData
                     width: mediaFilter.width - 12
                     height: 40
                     highlighted: mediaFilter.highlightedIndex === index
                     contentItem: RowLayout {
                         spacing: 10
                         Image { Layout.preferredWidth: 22; Layout.preferredHeight: 22; source: root.filterIcon(mediaFilter.iconNames[index]) }
-                        Label { Layout.fillWidth: true; text: modelData; color: Theme.textColor; font.family: Theme.fontFamily }
+                        Label { Layout.fillWidth: true; text: modelData.label; color: Theme.textColor; font.family: Theme.fontFamily }
                     }
                     background: Rectangle { radius: 8; color: categoryDelegate.highlighted ? Theme.selectedColor : "transparent" }
                 }
@@ -172,27 +206,27 @@ Page {
                     }
                 }
             }
-            FilterLabel { text: "File extensions"; Layout.topMargin: 4 }
-            FilterField { id: extensionFilter; Layout.fillWidth: true; placeholderText: "png, jpg, mp3…" }
-            Label { text: "Separate extensions with commas"; color: Theme.subtleTextColor; font.family: Theme.fontFamily; font.pixelSize: 12 }
-            FilterLabel { text: "Date modified"; Layout.topMargin: 4 }
+            FilterLabel { text: qsTr("File extensions"); Layout.topMargin: 4 }
+            FilterField { id: extensionFilter; Layout.fillWidth: true; placeholderText: qsTr("png, jpg, mp3…") }
+            Label { text: qsTr("Separate extensions with commas"); color: Theme.subtleTextColor; font.family: Theme.fontFamily; font.pixelSize: 12 }
+            FilterLabel { text: qsTr("Date modified"); Layout.topMargin: 4 }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Label { text: "From"; color: Theme.mutedTextColor; font.family: Theme.fontFamily }
+                    Label { text: qsTr("From"); color: Theme.mutedTextColor; font.family: Theme.fontFamily }
                     RowLayout {
                         FilterField { id: fromFilter; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD" }
-                        FilterButton { implicitWidth: 42; iconSource: root.filterIcon("calendar"); Accessible.name: "Choose start date"; onClicked: datePicker.openFor(fromFilter) }
+                        FilterButton { implicitWidth: 42; iconSource: root.filterIcon("calendar"); Accessible.name: qsTr("Choose start date"); onClicked: datePicker.openFor(fromFilter) }
                     }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
-                    Label { text: "Through"; color: Theme.mutedTextColor; font.family: Theme.fontFamily }
+                    Label { text: qsTr("Through"); color: Theme.mutedTextColor; font.family: Theme.fontFamily }
                     RowLayout {
                         FilterField { id: toFilter; Layout.fillWidth: true; placeholderText: "YYYY-MM-DD" }
-                        FilterButton { implicitWidth: 42; iconSource: root.filterIcon("calendar"); Accessible.name: "Choose end date"; onClicked: datePicker.openFor(toFilter) }
+                        FilterButton { implicitWidth: 42; iconSource: root.filterIcon("calendar"); Accessible.name: qsTr("Choose end date"); onClicked: datePicker.openFor(toFilter) }
                     }
                 }
             }
@@ -203,15 +237,15 @@ Page {
                 wrapMode: Text.WordWrap
                 color: Theme.dangerColor
                 font.family: Theme.fontFamily
-                text: "Enter valid dates in YYYY-MM-DD format; the start must be before the end."
+                text: qsTr("Enter valid dates in YYYY-MM-DD format; the start must be before the end.")
             }
-            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Folders stay visible so you can keep browsing."; color: Theme.subtleTextColor; font.family: Theme.fontFamily; font.pixelSize: 12 }
+            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Folders stay visible so you can keep browsing."); color: Theme.subtleTextColor; font.family: Theme.fontFamily; font.pixelSize: 12 }
             Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; implicitHeight: 1; color: Theme.panelBorderColor }
             RowLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 4
                 FilterButton {
-                    text: "Reset"
+                    text: qsTr("Reset")
                     onClicked: {
                         mediaFilter.currentIndex = 0
                         extensionFilter.clear()
@@ -221,10 +255,10 @@ Page {
                     }
                 }
                 Item { Layout.fillWidth: true }
-                FilterButton { text: "Cancel"; onClicked: filterDialog.close() }
+                FilterButton { text: qsTr("Cancel"); onClicked: filterDialog.close() }
                 FilterButton {
                     id: applyFiltersButton
-                    text: "Apply filters"
+                    text: qsTr("Apply filters")
                     iconSource: root.filterIcon("filter")
                     background: Rectangle { radius: 10; color: applyFiltersButton.down ? Qt.darker(Theme.selectedColor, 1.12) : Theme.selectedColor; border.color: Theme.selectedBorderColor }
                     onClicked: {
@@ -234,7 +268,7 @@ Page {
                             filterError.visible = true
                             return
                         }
-                        root.filterMedia = mediaFilter.currentText
+                        root.filterMedia = mediaFilter.currentValue
                         root.filterExtensions = extensionFilter.text.trim()
                         root.filterFrom = from
                         root.filterTo = to
@@ -276,13 +310,13 @@ Page {
             spacing: 12
             RowLayout {
                 Layout.fillWidth: true
-                FilterButton { text: "‹"; implicitWidth: 36; Accessible.name: "Previous month"; onClicked: datePicker.moveMonth(-1) }
+                FilterButton { text: "‹"; implicitWidth: 36; Accessible.name: qsTr("Previous month"); onClicked: datePicker.moveMonth(-1) }
                 FilterLabel {
                     Layout.fillWidth: true
                     horizontalAlignment: Text.AlignHCenter
                     text: Qt.formatDate(new Date(datePicker.displayedYear, datePicker.displayedMonth, 1), "MMMM yyyy")
                 }
-                FilterButton { text: "›"; implicitWidth: 36; Accessible.name: "Next month"; onClicked: datePicker.moveMonth(1) }
+                FilterButton { text: "›"; implicitWidth: 36; Accessible.name: qsTr("Next month"); onClicked: datePicker.moveMonth(1) }
             }
             DayOfWeekRow {
                 Layout.fillWidth: true
@@ -323,7 +357,7 @@ Page {
                     datePicker.close()
                 }
             }
-            FilterButton { Layout.alignment: Qt.AlignRight; text: "Cancel"; onClicked: datePicker.close() }
+            FilterButton { Layout.alignment: Qt.AlignRight; text: qsTr("Cancel"); onClicked: datePicker.close() }
         }
     }
 
@@ -600,7 +634,7 @@ Page {
 
     FolderDialog {
         id: folderDialog
-        title: "Choose download folder"
+        title: qsTr("Choose download folder")
         onAccepted: {
             if (selectedFolder)
                 fileManagerController.setLocalDownloadDirectory(selectedFolder)
@@ -609,14 +643,14 @@ Page {
 
     FileDialog {
         id: uploadDialog
-        title: "Select files to upload"
+        title: qsTr("Select files to upload")
         fileMode: FileDialog.OpenFiles
         onAccepted: root.uploadLocalUrls(selectedFiles)
     }
 
     FolderDialog {
         id: uploadFolderDialog
-        title: "Select folder to upload"
+        title: qsTr("Select folder to upload")
         onAccepted: {
             if (selectedFolder)
                 fileManagerController.uploadLocalEntry(selectedFolder)
@@ -643,8 +677,8 @@ Page {
 
             Text {
                 text: fileContextMenu.targetPaths.length > 1
-                      ? "Delete " + fileContextMenu.targetPaths.length + " entries?"
-                      : "Delete " + (root.entryByPath(fileContextMenu.targetPath) ? root.entryByPath(fileContextMenu.targetPath).name : "entry") + "?"
+                      ? qsTr("Delete ") + fileContextMenu.targetPaths.length + qsTr(" entries?")
+                      : qsTr("Delete ") + (root.entryByPath(fileContextMenu.targetPath) ? root.entryByPath(fileContextMenu.targetPath).name : qsTr("entry")) + qsTr("?")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -654,7 +688,7 @@ Page {
             }
 
             Text {
-                text: "This action cannot be undone. The selected files and folders will be permanently removed from the connected device."
+                text: qsTr("This action cannot be undone. The selected files and folders will be permanently removed from the connected device.")
                 color: Theme.textColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 15
@@ -667,7 +701,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 160
                     height: 42
                     font.pixelSize: 14
@@ -684,7 +718,7 @@ Page {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Delete"
+                        text: qsTr("Delete")
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
                         color: root.destructiveText
@@ -744,7 +778,7 @@ Page {
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
-                    text: fileContextMenu.singleTargetIsDirectory ? "Open Folder" : "Open"
+                    text: fileContextMenu.singleTargetIsDirectory ? qsTr("Open Folder") : qsTr("Open")
                     font.family: Theme.fontFamily
                     font.pixelSize: 14
                     color: openRow.enabledItem ? Theme.textColor : Theme.subtleTextColor
@@ -778,7 +812,7 @@ Page {
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
-                    text: fileContextMenu.targetPaths.length > 1 ? "Copy Selected" : "Copy"
+                    text: fileContextMenu.targetPaths.length > 1 ? qsTr("Copy Selected") : qsTr("Copy")
                     font.family: Theme.fontFamily
                     font.pixelSize: 14
                     color: copyRow.enabledItem ? Theme.textColor : Theme.subtleTextColor
@@ -809,7 +843,7 @@ Page {
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
-                    text: fileContextMenu.targetPaths.length > 1 ? "Download Selected" : "Download"
+                    text: fileContextMenu.targetPaths.length > 1 ? qsTr("Download Selected") : qsTr("Download")
                     font.family: Theme.fontFamily
                     font.pixelSize: 14
                     color: downloadRow.enabledItem ? Theme.textColor : Theme.subtleTextColor
@@ -840,7 +874,7 @@ Page {
                     anchors.fill: parent
                     anchors.leftMargin: 10
                     anchors.rightMargin: 10
-                    text: fileContextMenu.targetPaths.length > 1 ? "Delete Selected" : "Delete"
+                    text: fileContextMenu.targetPaths.length > 1 ? qsTr("Delete Selected") : qsTr("Delete")
                     font.family: Theme.fontFamily
                     font.pixelSize: 14
                     color: deleteRow.enabledItem ? root.destructiveText : Theme.subtleTextColor
@@ -871,7 +905,7 @@ Page {
             spacing: 16
 
             Text {
-                text: "File Manager"
+                text: qsTr("File Manager")
                 font.family: Theme.fontFamily
                 font.pixelSize: 30
                 font.bold: true
@@ -912,7 +946,7 @@ Page {
                             anchors.margins: 4
                             visible: root.pathEditMode
                             color: Theme.textColor
-                            placeholderText: "Remote path"
+                            placeholderText: qsTr("Remote path")
                             placeholderTextColor: Theme.subtleTextColor
                             selectedTextColor: Theme.textColor
                             selectionColor: Theme.selectedColor
@@ -986,13 +1020,13 @@ Page {
                     }
 
                     ThemedButton {
-                        text: "Up"
+                        text: qsTr("Up")
                         width: 90
                         onClicked: fileManagerController.goUp()
                     }
 
                     ThemedButton {
-                        text: "Refresh"
+                        text: qsTr("Refresh")
                         width: 130
                         onClicked: fileManagerController.refreshEntries()
                     }
@@ -1017,7 +1051,7 @@ Page {
                             anchors.margins: 4
                             visible: root.pathEditMode
                             color: Theme.textColor
-                            placeholderText: "Remote path"
+                            placeholderText: qsTr("Remote path")
                             placeholderTextColor: Theme.subtleTextColor
                             selectedTextColor: Theme.textColor
                             selectionColor: Theme.selectedColor
@@ -1090,14 +1124,14 @@ Page {
 
                     ThemedButton {
                         id: upButton
-                        text: "Up"
+                        text: qsTr("Up")
                         width: 90
                         onClicked: fileManagerController.goUp()
                     }
 
                     ThemedButton {
                         id: refreshButton
-                        text: "Refresh"
+                        text: qsTr("Refresh")
                         width: 130
                         onClicked: fileManagerController.refreshEntries()
                     }
@@ -1110,7 +1144,7 @@ Page {
 
                     ThemedButton {
                         id: chooseDownloadFolderButton
-                        text: "Choose Download Folder"
+                        text: qsTr("Choose Download Folder")
                         width: Math.min(220, parent.width)
                         onClicked: folderDialog.open()
                     }
@@ -1134,7 +1168,7 @@ Page {
 
                     ThemedButton {
                         id: chooseDownloadFolderButtonWide
-                        text: "Choose Download Folder"
+                        text: qsTr("Choose Download Folder")
                         width: 220
                         onClicked: folderDialog.open()
                     }
@@ -1157,34 +1191,34 @@ Page {
                     visible: root.compactControls
 
                     ThemedButton {
-                        text: "Copy"
+                        text: qsTr("Copy")
                         width: 110
                         enabled: root.selectedCount > 0
                         onClicked: fileManagerController.copyEntries(root.selectedRemotePaths)
                     }
 
                     ThemedButton {
-                        text: "Download"
+                        text: qsTr("Download")
                         width: 130
                         enabled: root.selectedCount > 0
                         onClicked: fileManagerController.downloadEntries(root.selectedRemotePaths)
                     }
 
                     ThemedButton {
-                        text: "Clear"
+                        text: qsTr("Clear")
                         width: 80
                         enabled: root.selectedCount > 0
                         onClicked: root.clearSelection()
                     }
 
                     ThemedButton {
-                        text: "Upload Files"
+                        text: qsTr("Upload Files")
                         width: 150
                         onClicked: uploadDialog.open()
                     }
 
                     ThemedButton {
-                        text: "Upload Folder"
+                        text: qsTr("Upload Folder")
                         width: 160
                         onClicked: uploadFolderDialog.open()
                     }
@@ -1196,21 +1230,21 @@ Page {
                     visible: !root.compactControls
 
                     ThemedButton {
-                        text: "Copy"
+                        text: qsTr("Copy")
                         width: 110
                         enabled: root.selectedCount > 0
                         onClicked: fileManagerController.copyEntries(root.selectedRemotePaths)
                     }
 
                     ThemedButton {
-                        text: "Download"
+                        text: qsTr("Download")
                         width: 130
                         enabled: root.selectedCount > 0
                         onClicked: fileManagerController.downloadEntries(root.selectedRemotePaths)
                     }
 
                     ThemedButton {
-                        text: "Clear"
+                        text: qsTr("Clear")
                         width: 80
                         enabled: root.selectedCount > 0
                         onClicked: root.clearSelection()
@@ -1222,13 +1256,13 @@ Page {
                     }
 
                     ThemedButton {
-                        text: "Upload Files"
+                        text: qsTr("Upload Files")
                         width: 150
                         onClicked: uploadDialog.open()
                     }
 
                     ThemedButton {
-                        text: "Upload Folder"
+                        text: qsTr("Upload Folder")
                         width: 160
                         onClicked: uploadFolderDialog.open()
                     }
@@ -1238,10 +1272,10 @@ Page {
 
         RowLayout {
             Layout.fillWidth: true
-            ThemedButton { text: "Filters…"; onClicked: filterDialog.open() }
+            ThemedButton { text: qsTr("Filters…"); onClicked: filterDialog.open() }
             Text {
                 Layout.fillWidth: true
-                text: root.filterMedia !== "All types" || root.filterExtensions || root.filterFrom || root.filterTo ? "Filters active" : "All files"
+                text: root.filterMedia !== "All types" || root.filterExtensions || root.filterFrom || root.filterTo ? qsTr("Filters active") : qsTr("All files")
                 color: Theme.subtleTextColor
             }
         }
@@ -1283,7 +1317,7 @@ Page {
                     Text {
                         width: root.nameColumnWidth(parent.width)
                         height: parent.height
-                        text: "Name" + root.sortIndicator("name")
+                        text: qsTr("Name") + root.sortIndicator("name")
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.bold: root.sortColumn === "name"
@@ -1302,7 +1336,7 @@ Page {
                         width: root.sizeColumnWidth(parent.width)
                         height: parent.height
                         visible: width > 0
-                        text: "Size" + root.sortIndicator("size")
+                        text: qsTr("Size") + root.sortIndicator("size")
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.bold: root.sortColumn === "size"
@@ -1321,7 +1355,7 @@ Page {
                     Text {
                         width: root.modifiedColumnWidth(parent.width)
                         height: parent.height
-                        text: "Modified" + root.sortIndicator("modified")
+                        text: qsTr("Modified") + root.sortIndicator("modified")
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.bold: root.sortColumn === "modified"
@@ -1428,7 +1462,7 @@ Page {
                             }
 
                             Text {
-                                text: modelData.typeLabel
+                                text: root.typeLabelText(modelData.typeLabel)
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 12
                                 color: Theme.subtleTextColor
@@ -1596,8 +1630,8 @@ Page {
                     color: Theme.subtleTextColor
                     font.family: Theme.fontFamily
                     text: fileManagerController.busy
-                          ? "Loading files from the connected device..."
-                          : (fileManagerController.remoteEntries.length > 0 ? "No files match these filters." : "No entries in this folder.")
+                          ? qsTr("Loading files from the connected device...")
+                          : (fileManagerController.remoteEntries.length > 0 ? qsTr("No files match these filters.") : qsTr("No entries in this folder."))
                 }
             }
         }
@@ -1606,7 +1640,7 @@ Page {
             Layout.fillWidth: true
             spacing: 6
             visible: fileManagerController.transferActive && fileManagerController.busy
-            Text { text: "Current file"; color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 13 }
+            Text { text: qsTr("Current file"); color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 13 }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -1637,7 +1671,7 @@ Page {
             Layout.fillWidth: true
             spacing: 6
             visible: fileManagerController.transferActive && fileManagerController.busy
-            Text { text: "Overall transfer"; color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 13 }
+            Text { text: qsTr("Overall transfer"); color: Theme.textColor; font.family: Theme.fontFamily; font.pixelSize: 13 }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
@@ -1679,8 +1713,8 @@ Page {
 
             Text {
                 text: root.selectedCount > 0
-                      ? ("Files selected: " + root.selectedCount)
-                      : "Files selected: 0"
+                      ? (qsTr("Files selected: ") + root.selectedCount)
+                      : qsTr("Files selected: 0")
                 color: Theme.mutedTextColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 15

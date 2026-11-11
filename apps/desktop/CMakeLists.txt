@@ -26,6 +26,7 @@ BuildQTExecutable(appLibreConnect_desktop
         Qt6::Multimedia
         Qt6::Widgets
         modules-manager
+        localization
 )
 
 if (APPLE AND NOT IOS)
@@ -55,3 +56,13 @@ LinkVirtualCameraLibs(appLibreConnect_desktop)
 if (WIN32)
     LinkFFMPEGLibs(appLibreConnect_desktop)
 endif()
+
+find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+
+qt_add_translations(appLibreConnect_desktop
+        TS_FILES
+            ${CMAKE_SOURCE_DIR}/translations/libreconnect_desktop_zh_CN.ts
+        RESOURCE_PREFIX "/i18n"
+        SOURCE_TARGETS appLibreConnect_desktop system-info localization
+        NO_GENERATE_PLURALS_TS_FILE
+)

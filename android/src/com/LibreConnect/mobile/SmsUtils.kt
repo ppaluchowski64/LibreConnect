@@ -162,9 +162,9 @@ object SmsUtils {
                                 lastPreviews[normalized] = if (textBody.isNotEmpty()) {
                                     textBody
                                 } else if (attachments.isNotEmpty()) {
-                                    "MMS attachment"
+                                    context.getString(R.string.mms_attachment)
                                 } else {
-                                    "MMS"
+                                    context.getString(R.string.mms)
                                 }
                             }
 

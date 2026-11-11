@@ -37,9 +37,9 @@ Page {
 
     FileDialog {
         id: customRingtoneDialog
-        title: "Choose ringtone"
+        title: qsTr("Choose ringtone")
         fileMode: FileDialog.OpenFile
-        nameFilters: [ "Audio files (*.mp3 *.m4a *.aac *.ogg *.wav *.flac)", "All files (*)" ]
+        nameFilters: [ qsTr("Audio files (*.mp3 *.m4a *.aac *.ogg *.wav *.flac)"), qsTr("All files (*)") ]
         onAccepted: {
             if (selectedFile)
                 page.conn.setFindMyPhoneRingtoneFile(selectedFile)
@@ -134,7 +134,63 @@ Page {
                         spacing: 8
 
                         Text {
-                            text: "Theme"
+                            text: qsTr("Language")
+                            color: Theme.textColor
+                            font.pixelSize: 16
+                            font.bold: true
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Choose the app language. Restart LibreConnect to apply changes.")
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 14
+                            wrapMode: Text.WordWrap
+                        }
+
+                        ComboBox {
+                            id: languageCombo
+                            Layout.fillWidth: true
+                            model: Language.availableLanguages
+                            textRole: "name"
+                            valueRole: "code"
+                            currentIndex: {
+                                const languages = Language.availableLanguages
+                                for (let i = 0; i < languages.length; ++i) {
+                                    if (languages[i].code === Language.currentLanguage)
+                                        return i
+                                }
+                                return 0
+                            }
+                            onActivated: Language.setLanguage(currentValue)
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: Language.restartRequired
+                            text: qsTr("Restart LibreConnect to apply the language change.")
+                            color: Theme.mutedTextColor
+                            font.pixelSize: 13
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                Frame {
+                    Layout.fillWidth: true
+                    background: Rectangle {
+                        radius: 14
+                        color: Theme.panelColor
+                        border.width: 1
+                        border.color: Theme.panelBorderColor
+                    }
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        spacing: 8
+
+                        Text {
+                            text: qsTr("Theme")
                             color: Theme.textColor
                             font.pixelSize: 16
                             font.bold: true
@@ -170,7 +226,7 @@ Page {
                         spacing: 8
 
                         Text {
-                            text: "Notification Sync"
+                            text: qsTr("Notification Sync")
                             color: Theme.textColor
                             font.pixelSize: 16
                             font.bold: true
@@ -181,7 +237,7 @@ Page {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Enable for connected desktop device"
+                                text: qsTr("Enable for connected desktop device")
                                 color: Theme.mutedTextColor
                                 font.pixelSize: 14
                                 wrapMode: Text.WordWrap
@@ -200,17 +256,17 @@ Page {
                         Button {
                             Layout.fillWidth: true
                             visible: !(page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
-                            text: "Grant Notification Permissions"
+                            text: qsTr("Grant Notification Permissions")
                             onClicked: page.conn.requestNotificationPermissions()
                         }
 
                         Text {
                             Layout.fillWidth: true
                             text: !(page.conn.notificationSendPermissionGranted && page.conn.notificationListenerPermissionGranted)
-                                  ? "Notification sync is disabled until notification permissions are granted."
+                                  ? qsTr("Notification sync is disabled until notification permissions are granted.")
                                   : (page.notificationSyncController.desktopPermissionGranted
                                       ? page.notificationSyncController.statusMessage
-                                      : "Notification sync is waiting for the connected desktop device to allow LibreConnect notifications.")
+                                      : qsTr("Notification sync is waiting for the connected desktop device to allow LibreConnect notifications."))
                             color: Theme.mutedTextColor
                             font.pixelSize: 13
                             wrapMode: Text.WordWrap
@@ -232,7 +288,7 @@ Page {
                         spacing: 8
 
                         Text {
-                            text: "Auto Clipboard Sync"
+                            text: qsTr("Auto Clipboard Sync")
                             color: Theme.textColor
                             font.pixelSize: 16
                             font.bold: true
@@ -243,7 +299,7 @@ Page {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: "Enable for connected desktop device"
+                                text: qsTr("Enable for connected desktop device")
                                 color: Theme.mutedTextColor
                                 font.pixelSize: 14
                                 wrapMode: Text.WordWrap
@@ -281,7 +337,7 @@ Page {
                         spacing: 8
 
                         Text {
-                            text: "Find My Phone"
+                            text: qsTr("Find My Phone")
                             color: Theme.textColor
                             font.pixelSize: 16
                             font.bold: true
@@ -289,7 +345,7 @@ Page {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Choose the ringtone used when this device is pinged."
+                            text: qsTr("Choose the ringtone used when this device is pinged.")
                             color: Theme.mutedTextColor
                             font.pixelSize: 14
                             wrapMode: Text.WordWrap
@@ -317,7 +373,7 @@ Page {
 
                         Button {
                             Layout.fillWidth: true
-                            text: "Choose Custom Ringtone"
+                            text: qsTr("Choose Custom Ringtone")
                             onClicked: customRingtoneDialog.open()
                         }
 
@@ -345,7 +401,7 @@ Page {
                         spacing: 8
 
                         Text {
-                            text: "Downloads"
+                            text: qsTr("Downloads")
                             color: Theme.textColor
                             font.pixelSize: 16
                             font.bold: true
@@ -353,7 +409,7 @@ Page {
 
                         Text {
                             Layout.fillWidth: true
-                            text: "Folder on the desktop used for files shared from Android."
+                            text: qsTr("Folder on the desktop used for files shared from Android.")
                             color: Theme.mutedTextColor
                             font.pixelSize: 14
                             wrapMode: Text.WordWrap
@@ -363,14 +419,14 @@ Page {
                             id: downloadPathField
                             Layout.fillWidth: true
                             text: page.downloadPathDraft
-                            placeholderText: "Desktop folder path"
+                            placeholderText: qsTr("Desktop folder path")
                             selectByMouse: true
                             onTextEdited: page.downloadPathDraft = text
                         }
 
                         Button {
                             Layout.fillWidth: true
-                            text: "Save Default Download Path"
+                            text: qsTr("Save Default Download Path")
                             enabled: page.downloadPathDraft.trim().length > 0
                             onClicked: page.conn.setDefaultDownloadPath(page.downloadPathDraft)
                         }
@@ -410,14 +466,14 @@ Page {
                 spacing: 10
 
                 BottomNavButton {
-                    labelText: "Home"
+                    labelText: qsTr("Home")
                     iconBase: "home"
                     selected: false
                     onClicked: page.showHomeCallback()
                 }
 
                 BottomNavButton {
-                    labelText: "Settings"
+                    labelText: qsTr("Settings")
                     iconBase: "settings"
                     selected: true
                 }

@@ -9,16 +9,16 @@ ApplicationWindow {
     width: 420
     height: 760
     visible: true
-    title: "LibreConnect Mobile"
+    title: qsTr("LibreConnect Mobile")
     color: Theme.backgroundColor
     Material.theme: Theme.dark ? Material.Dark : Material.Light
     Material.accent: Theme.accentColor
     Material.primary: Theme.panelColor
 
     property var themeModes: [
-        { label: "System", value: "system" },
-        { label: "Light", value: "light" },
-        { label: "Dark", value: "dark" }
+        { label: qsTr("System"), value: "system" },
+        { label: qsTr("Light"), value: "light" },
+        { label: qsTr("Dark"), value: "dark" }
     ]
     readonly property int navAnimationDuration: 220
     readonly property int homeMenuIndex: 0
@@ -364,14 +364,14 @@ ApplicationWindow {
                         spacing: parent.navSpacing
 
                         BottomNavButton {
-                            labelText: "Home"
+                            labelText: qsTr("Home")
                             iconBase: "home"
                             selected: mainMenusSwipeView.currentIndex === root.homeMenuIndex
                             onClicked: mainMenusSwipeView.currentIndex = root.homeMenuIndex
                         }
 
                         BottomNavButton {
-                            labelText: "Settings"
+                            labelText: qsTr("Settings")
                             iconBase: "settings"
                             selected: mainMenusSwipeView.currentIndex === root.settingsMenuIndex
                             onClicked: mainMenusSwipeView.currentIndex = root.settingsMenuIndex
@@ -492,7 +492,7 @@ ApplicationWindow {
 
             Text {
                 width: parent.width
-                text: "Verify Connection"
+                text: qsTr("Verify Connection")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -502,8 +502,8 @@ ApplicationWindow {
             Text {
                 width: parent.width
                 text: conn.pendingDeviceName.length > 0
-                      ? ("Connection request from " + conn.pendingDeviceName)
-                      : "Connection request"
+                      ? qsTr("Connection request from %1").arg(conn.pendingDeviceName)
+                      : qsTr("Connection request")
                 color: Theme.textColor
                 font.pixelSize: 16
                 font.bold: true
@@ -512,7 +512,7 @@ ApplicationWindow {
 
             Text {
                 width: parent.width
-                text: "Enter this code on the desktop app:"
+                text: qsTr("Enter this code on the desktop app:")
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -553,7 +553,7 @@ ApplicationWindow {
 
             Text {
                 width: parent.width
-                text: "Approve Connection"
+                text: qsTr("Approve Connection")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -563,8 +563,8 @@ ApplicationWindow {
             Text {
                 width: parent.width
                 text: conn.pendingDeviceName.length > 0
-                      ? ("Allow " + conn.pendingDeviceName + " to finish signing in?")
-                      : "Allow this device to finish signing in?"
+                      ? qsTr("Allow %1 to finish signing in?").arg(conn.pendingDeviceName)
+                      : qsTr("Allow this device to finish signing in?")
                 color: Theme.textColor
                 font.pixelSize: 16
                 font.bold: true
@@ -573,7 +573,7 @@ ApplicationWindow {
 
             Text {
                 width: parent.width
-                text: "Only accept if you just entered the code on your desktop."
+                text: qsTr("Only accept if you just entered the code on your desktop.")
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -586,7 +586,7 @@ ApplicationWindow {
                 Button {
                     id: denyApprovalButton
                     Layout.fillWidth: true
-                    text: "Deny"
+                    text: qsTr("Deny")
                     Material.elevation: 0
                     onClicked: conn.denyConnectionApproval()
                     contentItem: Text {
@@ -610,7 +610,7 @@ ApplicationWindow {
                 Button {
                     id: acceptApprovalButton
                     Layout.fillWidth: true
-                    text: "Accept"
+                    text: qsTr("Accept")
                     Material.elevation: 0
                     onClicked: conn.acceptConnectionApproval()
                     contentItem: Text {
@@ -658,7 +658,7 @@ ApplicationWindow {
 
             Text {
                 width: parent.width
-                text: "Find My Phone"
+                text: qsTr("Find My Phone")
                 color: Theme.textColor
                 font.pixelSize: 22
                 font.bold: true
@@ -667,7 +667,7 @@ ApplicationWindow {
 
             Text {
                 width: parent.width
-                text: "Your phone is ringing. Tap OK to stop."
+                text: qsTr("Your phone is ringing. Tap OK to stop.")
                 color: Theme.mutedTextColor
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
@@ -675,7 +675,7 @@ ApplicationWindow {
 
             Button {
                 width: parent.width
-                text: "OK"
+                text: qsTr("OK")
                 Material.elevation: 1
                 onClicked: conn.stopFindMyPhoneAlert()
             }

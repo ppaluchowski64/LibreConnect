@@ -1,3 +1,4 @@
+#include <QCoreApplication>
 #include <QtGlobal>
 #include <mutex>
 
@@ -233,11 +234,11 @@ bool SystemInfo::IsVirtualCameraSupported()
 QString SystemInfo::VirtualCameraUnavailableReason()
 {
 #if defined(Q_OS_WIN)
-    return QStringLiteral("Virtual cameras are only supported on Windows 11 or newer.");
+    return QCoreApplication::translate("SystemInfo", "Virtual cameras are only supported on Windows 11 or newer.");
 #elif defined(Q_OS_MAC)
-    return QStringLiteral("Virtual Camera is not supported on macOS.");
+    return QCoreApplication::translate("SystemInfo", "Virtual Camera is not supported on macOS.");
 #elif defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-    return QStringLiteral("Virtual Camera is only available in the desktop app.");
+    return QCoreApplication::translate("SystemInfo", "Virtual Camera is only available in the desktop app.");
 #else
     return QString();
 #endif

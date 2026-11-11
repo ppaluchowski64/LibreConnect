@@ -7,7 +7,7 @@ Page {
 
     required property var windowRef
     required property var connectionController
-    readonly property string windowTitleSuffix: "Setup"
+    readonly property string windowTitleSuffix: qsTr("Setup")
 
     background: Rectangle {
         color: Theme.backgroundColor
@@ -43,7 +43,7 @@ Page {
         spacing: 12
 
         Text {
-            text: "Thank you for downloading LibreConnect!\nLet\u2019s set up your phone now."
+            text: qsTr("Thank you for downloading LibreConnect!\nLet\u2019s set up your phone now.")
             font.family: Theme.fontFamily
             font.pixelSize: 20
             wrapMode: Text.WordWrap
@@ -51,7 +51,7 @@ Page {
         }
 
         Text {
-            text: "(Please ensure the app for your relevant OS is \ndownloaded and open before you continue.)"
+            text: qsTr("(Please ensure the app for your relevant OS is\ndownloaded and open before you continue.)")
             font.family: Theme.fontFamily
             font.pixelSize: 20
             font.italic: true
@@ -62,7 +62,7 @@ Page {
 
     ThemedButton {
         id: nextButton
-        text: connectionController.localNetworkPermissionCheckPending ? "Checking..." : "Next"
+        text: connectionController.localNetworkPermissionCheckPending ? qsTr("Checking...") : qsTr("Next")
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 24
@@ -114,7 +114,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "Allow Local Network Access"
+                text: qsTr("Allow Local Network Access")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -124,7 +124,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "LibreConnect needs macOS local network access before it can scan for nearby phones."
+                text: qsTr("LibreConnect needs macOS local network access before it can scan for nearby phones.")
                 font.family: Theme.fontFamily
                 font.pixelSize: 16
                 color: Theme.textColor
@@ -133,7 +133,7 @@ Page {
 
             Text {
                 width: parent.width
-                text: "If macOS did not already show its Local Network permission prompt, continue to try again."
+                text: qsTr("If macOS did not already show its Local Network permission prompt, continue to try again.")
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
                 color: Theme.mutedTextColor
@@ -144,7 +144,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Not Now"
+                    text: qsTr("Not Now")
                     width: 140
                     height: 44
                     enabled: !connectionController.localNetworkPermissionCheckPending
@@ -152,7 +152,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: connectionController.localNetworkPermissionCheckPending ? "Checking..." : "Continue"
+                    text: connectionController.localNetworkPermissionCheckPending ? qsTr("Checking...") : qsTr("Continue")
                     width: 140
                     height: 44
                     enabled: !connectionController.localNetworkPermissionCheckPending

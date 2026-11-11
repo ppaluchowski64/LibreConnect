@@ -8,7 +8,7 @@ Page {
     id: root
 
     required property var mediaNotificationController
-    readonly property string windowTitleSuffix: "Media Remote"
+    readonly property string windowTitleSuffix: qsTr("Media Remote")
 
     background: Rectangle {
         color: "transparent"
@@ -52,7 +52,7 @@ Page {
 
         Text {
             Layout.fillWidth: true
-            text: "Media Remote"
+            text: qsTr("Media Remote")
             font.family: Theme.fontFamily
             font.pixelSize: 30
             font.bold: true
@@ -125,7 +125,7 @@ Page {
                     Text {
                         anchors.centerIn: parent
                         visible: coverImage.status !== Image.Ready
-                        text: "Cover"
+                        text: qsTr("Cover")
                         color: Theme.mutedTextColor
                         font.family: Theme.fontFamily
                         font.pixelSize: 15
@@ -138,7 +138,7 @@ Page {
                     Layout.alignment: Qt.AlignHCenter
                     text: mediaNotificationController.trackTitle.length > 0
                           ? mediaNotificationController.trackTitle
-                          : "No track info"
+                          : qsTr("No track info")
                     color: Theme.textColor
                     font.family: Theme.fontFamily
                     font.pixelSize: 24
@@ -155,7 +155,7 @@ Page {
                     Layout.alignment: Qt.AlignHCenter
                     text: mediaNotificationController.trackArtist.length > 0
                           ? mediaNotificationController.trackArtist
-                          : "Start playback on your phone to show metadata"
+                          : qsTr("Start playback on your phone to show metadata")
                     color: Theme.mutedTextColor
                     font.family: Theme.fontFamily
                     font.pixelSize: 15

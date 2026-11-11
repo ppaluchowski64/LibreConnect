@@ -25,7 +25,7 @@ class MediaNotificationBridge {
         @JvmStatic
         fun show(context: Context) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            createChannel(manager)
+            createChannel(context, manager)
             getMediaSession(context.applicationContext)
         }
 
@@ -44,7 +44,7 @@ class MediaNotificationBridge {
             val cover = decodeCover(coverBytes)
 
             val metadata = MediaMetadata.Builder()
-                .putString(MediaMetadata.METADATA_KEY_TITLE, title.ifEmpty { "Unknown track" })
+                .putString(MediaMetadata.METADATA_KEY_TITLE, title.ifEmpty { context.getString(R.string.unknown_track) })
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, artist.ifEmpty { "LibreConnect" })
                 .putString(MediaMetadata.METADATA_KEY_ALBUM, album)
                 .putLong(MediaMetadata.METADATA_KEY_DURATION, durationMicros / 1000L)
@@ -89,7 +89,7 @@ class MediaNotificationBridge {
 
             val builder = Notification.Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
-                .setContentTitle(title.ifEmpty { "Unknown track" })
+                .setContentTitle(title.ifEmpty { context.getString(R.string.unknown_track) })
                 .setContentText(artist.ifEmpty { "LibreConnect" })
                 .setCategory(Notification.CATEGORY_TRANSPORT)
                 .setVisibility(Notification.VISIBILITY_PUBLIC)
@@ -103,21 +103,21 @@ class MediaNotificationBridge {
                 )
 
             builder.addAction(Notification.Action.Builder(
-                android.R.drawable.ic_media_previous, "Previous", buildPendingIntent(context, 88)
+                android.R.drawable.ic_media_previous, context.getString(R.string.previous), buildPendingIntent(context, 88)
             ).build())
 
             if (playing) {
                 builder.addAction(Notification.Action.Builder(
-                    android.R.drawable.ic_media_pause, "Pause", buildPendingIntent(context, 85)
+                    android.R.drawable.ic_media_pause, context.getString(R.string.pause), buildPendingIntent(context, 85)
                 ).build())
             } else {
                 builder.addAction(Notification.Action.Builder(
-                    android.R.drawable.ic_media_play, "Play", buildPendingIntent(context, 85)
+                    android.R.drawable.ic_media_play, context.getString(R.string.play), buildPendingIntent(context, 85)
                 ).build())
             }
 
             builder.addAction(Notification.Action.Builder(
-                android.R.drawable.ic_media_next, "Next", buildPendingIntent(context, 87)
+                android.R.drawable.ic_media_next, context.getString(R.string.next), buildPendingIntent(context, 87)
             ).build())
 
             if (cover != null)
@@ -182,9 +182,9 @@ class MediaNotificationBridge {
             return BitmapFactory.decodeByteArray(coverBytes, 0, coverBytes.size)
         }
 
-        private fun createChannel(manager: NotificationManager) {
+        private fun createChannel(context: Context, manager: NotificationManager) {
             if (manager.getNotificationChannel(CHANNEL_ID) == null) {
-                val channel = NotificationChannel(CHANNEL_ID, "Remote Input", NotificationManager.IMPORTANCE_LOW)
+                val channel = NotificationChannel(CHANNEL_ID, context.getString(R.string.remote_input_channel), NotificationManager.IMPORTANCE_LOW)
                 manager.createNotificationChannel(channel)
             }
         }

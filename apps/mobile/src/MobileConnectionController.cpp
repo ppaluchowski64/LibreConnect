@@ -1360,7 +1360,7 @@ bool MobileConnectionController::event(QEvent* e)
             stopFindMyPhoneAlertInternal(false);
             m_connectedPeerDeviceId.clear();
             setBatteryPercentage(-1);
-            setError(QStringLiteral("Connection failed"));
+            setError(tr("Connection failed"));
         }
 
         refreshPairedDevices();
@@ -1428,7 +1428,7 @@ bool MobileConnectionController::event(QEvent* e)
 
     if (type == ConnectionFailedVerificationEvent::Type) {
         auto* ev = static_cast<ConnectionFailedVerificationEvent*>(e);
-        setError(QStringLiteral("Verification failed (%1 tries left)").arg(ev->GetLeftTries()));
+        setError(tr("Verification failed (%1 tries left)").arg(ev->GetLeftTries()));
         return true;
     }
 
@@ -1453,7 +1453,7 @@ bool MobileConnectionController::event(QEvent* e)
     }
 
     if (type == ConnectionApprovalDeniedEvent::Type) {
-        setError(QStringLiteral("Connection denied on the remote device."));
+        setError(tr("Connection denied on the remote device."));
         clearApproval();
         return true;
     }
@@ -1466,14 +1466,14 @@ bool MobileConnectionController::event(QEvent* e)
         } else {
             refreshPairedDevices();
         }
-        setError(QStringLiteral("This device is no longer paired with the remote device. Pair the devices again and retry."));
+        setError(tr("This device is no longer paired with the remote device. Pair the devices again and retry."));
         return true;
     }
 
     if (type == DeviceCooldownEvent::Type) {
         const auto* ev = static_cast<DeviceCooldownEvent*>(e);
         setError(
-            QStringLiteral("Connection temporarily blocked by the remote device. Try again in about %1 seconds.")
+            tr("Connection temporarily blocked by the remote device. Try again in about %1 seconds.")
                 .arg(ev->LeftDuration(), 0, 'f', 1)
         );
         return true;

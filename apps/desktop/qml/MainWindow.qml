@@ -230,7 +230,7 @@ Window {
 
     function prepareConnection(deviceId, deviceName, firstPairing) {
         activeDeviceId = deviceId ? deviceId : ""
-        activeDeviceName = deviceName ? deviceName : "Connected Device"
+        activeDeviceName = deviceName ? deviceName : qsTr("Connected Device")
         showConnectedAfterConnect = firstPairing === true
     }
 
@@ -366,7 +366,7 @@ Window {
 
     Dialog {
         id: virtualCameraUnsupportedDialog
-        title: "Virtual Camera Unavailable"
+        title: qsTr("Virtual Camera Unavailable")
         modal: true
         standardButtons: Dialog.Ok
         anchors.centerIn: Overlay.overlay

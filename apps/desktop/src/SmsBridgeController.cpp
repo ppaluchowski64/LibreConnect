@@ -177,19 +177,19 @@ bool SmsBridgeController::canSend() const
 void SmsBridgeController::refreshConversations()
 {
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a mobile device to load messages."));
+        setStatusMessage(tr("Connect to a mobile device to load messages."));
         return;
     }
 
     if (m_contactsRefreshInFlight) {
-        setStatusMessage(QStringLiteral("Conversation refresh is already running."));
+        setStatusMessage(tr("Conversation refresh is already running."));
         return;
     }
 
     ensureModuleEnabled();
     m_contactsRefreshInFlight = true;
     updateBusyState();
-    setStatusMessage(QStringLiteral("Fetching conversations from phone..."));
+    setStatusMessage(tr("Fetching conversations from phone..."));
 
     auto& module = ModulesManager::GetModuleReference<SmsBridgeModule>();
     module->GetContactList();
@@ -230,13 +230,13 @@ void SmsBridgeController::sendMessage(const QString& text)
     }
 
     if (!canSend()) {
-        setStatusMessage(QStringLiteral("Select a conversation and ensure phone is connected."));
+        setStatusMessage(tr("Select a conversation and ensure phone is connected."));
         return;
     }
 
     ContactState* contact = findContact(m_selectedContactKey);
     if (contact == nullptr || contact->number.isEmpty()) {
-        setStatusMessage(QStringLiteral("Selected contact has no phone number."));
+        setStatusMessage(tr("Selected contact has no phone number."));
         return;
     }
 
@@ -263,7 +263,7 @@ void SmsBridgeController::sendMessage(const QString& text)
     sortContacts();
     emit contactsChanged();
     updateSelectedMessages();
-    setStatusMessage(QStringLiteral("Sending message..."));
+    setStatusMessage(tr("Sending message..."));
 }
 
 void SmsBridgeController::openAttachment(const QString& filePath) const
@@ -290,7 +290,7 @@ bool SmsBridgeController::event(QEvent* event)
         } else {
             clearConversationState();
             setReady(false);
-            setStatusMessage(QStringLiteral("Connect to a mobile device to load messages."));
+            setStatusMessage(tr("Connect to a mobile device to load messages."));
         }
 
         return true;
@@ -304,7 +304,7 @@ bool SmsBridgeController::event(QEvent* event)
         }
         clearConversationState();
         setReady(false);
-        setStatusMessage(QStringLiteral("Phone disconnected."));
+        setStatusMessage(tr("Phone disconnected."));
         return true;
     }
 
@@ -343,7 +343,7 @@ bool SmsBridgeController::event(QEvent* event)
 
         m_contactsRefreshInFlight = false;
         updateBusyState();
-        setStatusMessage(QStringLiteral("Conversations loaded. Fetching selected thread..."));
+        setStatusMessage(tr("Conversations loaded. Fetching selected thread..."));
         emit contactsChanged();
         updateSelectedMessages();
         requestSelectedConversationMessages(true);
@@ -385,11 +385,11 @@ bool SmsBridgeController::event(QEvent* event)
             if (!parsed.isEmpty()) {
                 const MessageState& latestMessage = parsed.front();
                 contact->preview = latestMessage.body.simplified().isEmpty() && !latestMessage.attachments.isEmpty()
-                    ? QStringLiteral("MMS attachment")
+                    ? tr("MMS attachment")
                     : buildPreview(latestMessage.body);
                 contact->lastTimestamp = latestMessage.timestamp;
             } else if (contact->preview.isEmpty()) {
-                contact->preview = QStringLiteral("No messages yet");
+                contact->preview = tr("No messages yet");
             }
 
             if (m_selectedContactKey == conversationKey) {
@@ -424,8 +424,8 @@ bool SmsBridgeController::event(QEvent* event)
         }
 
         setStatusMessage(sendResultEvent->Success()
-            ? QStringLiteral("Message sent.")
-            : QStringLiteral("Failed to send message."));
+            ? tr("Message sent.")
+            : tr("Failed to send message."));
         emit contactsChanged();
         updateSelectedMessages();
         return true;
@@ -467,7 +467,7 @@ bool SmsBridgeController::event(QEvent* event)
         sortContacts();
         emit contactsChanged();
         updateSelectedMessages();
-        setStatusMessage(QStringLiteral("New message received."));
+        setStatusMessage(tr("New message received."));
         return true;
     }
 
@@ -811,7 +811,7 @@ QString SmsBridgeController::buildPreview(const QString& body)
 {
     const QString simplified = body.simplified();
     if (simplified.isEmpty()) {
-        return QStringLiteral("Empty message");
+        return tr("Empty message");
     }
 
     if (simplified.size() <= 80) {
@@ -1003,7 +1003,7 @@ void SmsBridgeController::ensureContactExists(const QString& key, const QString&
     created.key = key;
     created.name = displayName.trimmed().isEmpty() ? dialNumber.trimmed() : displayName.trimmed();
     created.number = dialNumber.trimmed();
-    created.preview = QStringLiteral("No messages yet");
+    created.preview = tr("No messages yet");
     created.lastTimestamp = 0;
     created.unread = 0;
     created.loading = false;

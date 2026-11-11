@@ -159,16 +159,16 @@ void MobileRemoteInputController::sendMediaSignal(const int signal) {
         m_optimisticPlaybackTimer.start(1500);
         emit playbackChanged();
     }
-    setStatusMessage(QStringLiteral("Media command sent to desktop."));
+    setStatusMessage(tr("Media command sent to desktop."));
     return;
 #else
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
+        setStatusMessage(tr("Connect to a desktop device to use remote input."));
         return;
     }
 
     if (!m_ready) {
-        setStatusMessage(QStringLiteral("Remote input is starting. Try again in a moment."));
+        setStatusMessage(tr("Remote input is starting. Try again in a moment."));
         auto& module = ModulesManager::GetModuleReference<RemoteInputModule>();
         module->Enable(true);
         return;
@@ -176,7 +176,7 @@ void MobileRemoteInputController::sendMediaSignal(const int signal) {
 
     if (!m_accessibilityGranted) {
         const QString message = AccessibilityPermissionMessage();
-        setStatusMessage(QStringLiteral("Desktop accessibility permission is required for remote input."));
+        setStatusMessage(tr("Desktop accessibility permission is required for remote input."));
         emit accessibilityPermissionRequired(message);
         return;
     }
@@ -194,7 +194,7 @@ void MobileRemoteInputController::sendMediaSignal(const int signal) {
         emit playbackChanged();
     }
 
-    setStatusMessage(QStringLiteral("Media command sent to desktop."));
+    setStatusMessage(tr("Media command sent to desktop."));
     m_mediaInfoTimer.start(250);
     updateAndroidMediaNotification();
 #endif
@@ -265,16 +265,16 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
         BackendBridge::kExtraText, text,
         BackendBridge::kExtraModifiers, modifiers
     );
-    setStatusMessage(QStringLiteral("Keyboard input sent to desktop."));
+    setStatusMessage(tr("Keyboard input sent to desktop."));
     return;
 #else
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a desktop device to use remote keyboard."));
+        setStatusMessage(tr("Connect to a desktop device to use remote keyboard."));
         return;
     }
 
     if (!m_ready) {
-        setStatusMessage(QStringLiteral("Remote input is starting. Try again in a moment."));
+        setStatusMessage(tr("Remote input is starting. Try again in a moment."));
         auto& module = ModulesManager::GetModuleReference<RemoteInputModule>();
         module->Enable(true);
         return;
@@ -282,7 +282,7 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
 
     if (!m_accessibilityGranted) {
         const QString message = AccessibilityPermissionMessage();
-        setStatusMessage(QStringLiteral("Desktop accessibility permission is required for remote input."));
+        setStatusMessage(tr("Desktop accessibility permission is required for remote input."));
         emit accessibilityPermissionRequired(message);
         return;
     }
@@ -291,7 +291,7 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     if (special.key != INVALID_KEY) {
         const bool shifted = special.requiresShift || (modifiers & Qt::ShiftModifier);
         if (sendMappedKey(special.key, shifted, modifiers)) {
-            setStatusMessage(QStringLiteral("Keyboard input sent to desktop."));
+            setStatusMessage(tr("Keyboard input sent to desktop."));
         }
         return;
     }
@@ -308,7 +308,7 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
     }
 
     if (anySent) {
-        setStatusMessage(QStringLiteral("Keyboard input sent to desktop."));
+        setStatusMessage(tr("Keyboard input sent to desktop."));
     }
 #endif
 }
@@ -316,28 +316,28 @@ void MobileRemoteInputController::sendQtKeyEvent(const int qtKey, const QString&
 void MobileRemoteInputController::presenterPreviousSlide() {
     sendQtKeyEvent(Qt::Key_PageUp, QString(), 0);
     if (m_connected && m_ready) {
-        setStatusMessage(QStringLiteral("Previous slide command sent."));
+        setStatusMessage(tr("Previous slide command sent."));
     }
 }
 
 void MobileRemoteInputController::presenterNextSlide() {
     sendQtKeyEvent(Qt::Key_PageDown, QString(), 0);
     if (m_connected && m_ready) {
-        setStatusMessage(QStringLiteral("Next slide command sent."));
+        setStatusMessage(tr("Next slide command sent."));
     }
 }
 
 void MobileRemoteInputController::presenterStartSlideshow() {
     sendQtKeyEvent(Qt::Key_F5, QString(), 0);
     if (m_connected && m_ready) {
-        setStatusMessage(QStringLiteral("Start slideshow command sent."));
+        setStatusMessage(tr("Start slideshow command sent."));
     }
 }
 
 void MobileRemoteInputController::presenterEndSlideshow() {
     sendQtKeyEvent(Qt::Key_Escape, QString(), 0);
     if (m_connected && m_ready) {
-        setStatusMessage(QStringLiteral("End slideshow command sent."));
+        setStatusMessage(tr("End slideshow command sent."));
     }
 }
 
@@ -492,7 +492,7 @@ bool MobileRemoteInputController::event(QEvent* event) {
 
         m_accessibilityGranted = true;
         setReadyState(false);
-        setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
+        setStatusMessage(tr("Connect to a desktop device to use remote input."));
         setNowPlayingInfo(QString(), QString(), QString(), QString(), false);
         hideAndroidMediaNotification();
         return true;
@@ -518,7 +518,7 @@ bool MobileRemoteInputController::event(QEvent* event) {
         const auto* grantedEvent = static_cast<ModuleRequestedPermissionGranted*>(event);
         if (grantedEvent->GetPermissionType() == PermissionType::Accessibility) {
             m_accessibilityGranted = true;
-            setStatusMessage(QStringLiteral("Desktop accessibility permission granted."));
+            setStatusMessage(tr("Desktop accessibility permission granted."));
         }
         return true;
     }
@@ -527,7 +527,7 @@ bool MobileRemoteInputController::event(QEvent* event) {
         const auto* rejectedEvent = static_cast<ModuleRequestedPermissionRejected*>(event);
         if (rejectedEvent->GetPermissionType() == PermissionType::Accessibility) {
             m_accessibilityGranted = false;
-            setStatusMessage(QStringLiteral("Desktop accessibility permission is required for remote input."));
+            setStatusMessage(tr("Desktop accessibility permission is required for remote input."));
             emit accessibilityPermissionRequired(AccessibilityPermissionMessage());
         }
         return true;
@@ -650,11 +650,11 @@ void MobileRemoteInputController::refreshState() {
     m_durationTime = duration;
 
     if (!m_connected) {
-        setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
+        setStatusMessage(tr("Connect to a desktop device to use remote input."));
     } else {
         setStatusMessage(m_ready
-            ? QStringLiteral("Remote input is ready.")
-            : QStringLiteral("Remote input is starting."));
+            ? tr("Remote input is ready.")
+            : tr("Remote input is starting."));
     }
 
     if (nowPlayingChangedVal) {
@@ -670,33 +670,33 @@ void MobileRemoteInputController::refreshState() {
 
     if (!m_connected) {
         setReadyState(false);
-        setStatusMessage(QStringLiteral("Connect to a desktop device to use remote input."));
+        setStatusMessage(tr("Connect to a desktop device to use remote input."));
         return;
     }
 
     if (state == ModuleState::Disabled) {
         setReadyState(false);
-        setStatusMessage(QStringLiteral("Starting remote input module..."));
+        setStatusMessage(tr("Starting remote input module..."));
         module->Enable(true);
         return;
     }
 
     if (state == ModuleState::Disabling) {
         setReadyState(false);
-        setStatusMessage(QStringLiteral("Stopping remote input module..."));
+        setStatusMessage(tr("Stopping remote input module..."));
         return;
     }
 
     if (state == ModuleState::Enabling || state == ModuleState::Enabled) {
         setReadyState(m_accessibilityGranted);
         setStatusMessage(m_accessibilityGranted
-            ? QStringLiteral("Remote input is ready.")
-            : QStringLiteral("Desktop accessibility permission is required for remote input."));
+            ? tr("Remote input is ready.")
+            : tr("Desktop accessibility permission is required for remote input."));
         return;
     }
 
     setReadyState(false);
-    setStatusMessage(QStringLiteral("Remote input is unavailable."));
+    setStatusMessage(tr("Remote input is unavailable."));
 #endif
 }
 

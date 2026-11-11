@@ -37,6 +37,7 @@
 #include "VirtualCameraController.h"
 #endif
 #include "ThemeController.h"
+#include <LanguageController.h>
 #include "MediaNotificationController.h"
 
 namespace
@@ -302,8 +303,10 @@ int main(int argc, char *argv[])
     QFontDatabase::addApplicationFont(QStringLiteral(":/LibreConnect/desktop/Inter-Italic-VariableFont.ttf"));
     app.setFont(QFont(QStringLiteral("Inter")));
 
+    LanguageController languageController(QStringLiteral("libreconnect_desktop_"));
     ThemeController themeController;
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("Language"), &languageController);
     engine.rootContext()->setContextProperty(QStringLiteral("Theme"), &themeController);
     engine.rootContext()->setContextProperty(QStringLiteral("VirtualCameraAvailable"), SystemInfo::IsVirtualCameraSupported());
     engine.rootContext()->setContextProperty(QStringLiteral("VirtualCameraUnavailableReason"), SystemInfo::VirtualCameraUnavailableReason());
@@ -353,8 +356,8 @@ int main(int argc, char *argv[])
         if (window) {
             QSystemTrayIcon* trayIcon = new QSystemTrayIcon(QIcon(":/LibreConnect/desktop/libreconnect_logo.png"), &app);
             QMenu* trayMenu = new QMenu();
-            QAction* showAction = trayMenu->addAction("Show");
-            QAction* quitAction = trayMenu->addAction("Quit");
+            QAction* showAction = trayMenu->addAction(QCoreApplication::translate("Main", "Show"));
+            QAction* quitAction = trayMenu->addAction(QCoreApplication::translate("Main", "Quit"));
 
             trayIcon->setContextMenu(trayMenu);
             trayIcon->show();

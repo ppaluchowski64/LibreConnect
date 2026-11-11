@@ -30,7 +30,7 @@ object FileSystemUtils {
             .toList()
 
         if (logFiles.isNullOrEmpty()) {
-            Toast.makeText(context, "No logs found to export", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.no_logs_found), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -49,7 +49,7 @@ object FileSystemUtils {
         }
 
         if (uris.isEmpty()) {
-            Toast.makeText(context, "No logs found to export", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.no_logs_found), Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -59,7 +59,7 @@ object FileSystemUtils {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
 
-        val chooser = Intent.createChooser(intent, "Export Logs")
+        val chooser = Intent.createChooser(intent, context.getString(R.string.export_logs))
         chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(chooser)
     }

@@ -358,14 +358,14 @@ class MainService : Service() {
         notificationManager = manager
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "LibreConnect Service",
+            getString(R.string.service_channel),
             NotificationManager.IMPORTANCE_LOW
         )
         manager.createNotificationChannel(channel)
 
         val notification = buildNotification(
-            title = "LibreConnect running",
-            text = "Background service active"
+            title = getString(R.string.service_running_title),
+            text = getString(R.string.service_running_text)
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -404,7 +404,7 @@ class MainService : Service() {
 
         val modulesChannel = NotificationChannel(
             MODULES_CHANNEL_ID,
-            "Active Modules",
+            getString(R.string.active_modules_channel),
             NotificationManager.IMPORTANCE_DEFAULT
         )
         manager.createNotificationChannel(modulesChannel)
@@ -420,13 +420,13 @@ class MainService : Service() {
             )
             val builder = Notification.Builder(this, MODULES_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
-                .setContentTitle("Virtual Camera Active")
-                .setContentText("Your camera is being streamed to your PC")
+                .setContentTitle(getString(R.string.virtual_camera_active_title))
+                .setContentText(getString(R.string.virtual_camera_active_text))
                 .setOngoing(true)
                 .addAction(
                     Notification.Action.Builder(
                         Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-                        "Disable",
+                        getString(R.string.disable),
                         pendingIntent
                     ).build()
                 )
@@ -446,13 +446,13 @@ class MainService : Service() {
             )
             val builder = Notification.Builder(this, MODULES_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .setContentTitle("Virtual Microphone Active")
-                .setContentText("Your microphone is being streamed to your PC")
+                .setContentTitle(getString(R.string.virtual_microphone_active_title))
+                .setContentText(getString(R.string.virtual_microphone_active_text))
                 .setOngoing(true)
                 .addAction(
                     Notification.Action.Builder(
                         Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-                        "Disable",
+                        getString(R.string.disable),
                         pendingIntent
                     ).build()
                 )
@@ -498,14 +498,14 @@ class MainService : Service() {
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.stat_notify_sync),
-                    "Send Clipboard",
+                    getString(R.string.send_clipboard_label),
                     clipboardPendingIntent
                 ).build()
             )
             .addAction(
                 Notification.Action.Builder(
                     Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
-                    "Quit",
+                    getString(R.string.quit),
                     stopPendingIntent
                 ).build()
             )

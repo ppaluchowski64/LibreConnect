@@ -331,12 +331,12 @@ void FileManagerController::downloadEntry(const QString& remotePath)
 void FileManagerController::downloadEntries(const QStringList& remotePaths)
 {
     if (remotePaths.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select one or more files or folders first."));
+        setStatusMessage(tr("Select one or more files or folders first."));
         return;
     }
 
     if (m_localDownloadDirectory.isEmpty()) {
-        setStatusMessage(QStringLiteral("Choose a local download folder first."));
+        setStatusMessage(tr("Choose a local download folder first."));
         return;
     }
 
@@ -359,7 +359,7 @@ void FileManagerController::downloadEntries(const QStringList& remotePaths)
     }
 
     if (queue.isEmpty()) {
-        setStatusMessage(QStringLiteral("The selected entries are no longer available in the current folder."));
+        setStatusMessage(tr("The selected entries are no longer available in the current folder."));
         return;
     }
 
@@ -376,7 +376,7 @@ void FileManagerController::downloadEntries(const QStringList& remotePaths)
         }
 
         if (queuedCount == 0) {
-            setStatusMessage(QStringLiteral("Those entries are already queued or currently downloading."));
+            setStatusMessage(tr("Those entries are already queued or currently downloading."));
             return;
         }
 
@@ -390,8 +390,8 @@ void FileManagerController::downloadEntries(const QStringList& remotePaths)
         }
 
         setStatusMessage(queuedCount == 1
-            ? QStringLiteral("Queued 1 entry for download.")
-            : QStringLiteral("Queued %1 entries for download.").arg(queuedCount));
+            ? tr("Queued 1 entry for download.")
+            : tr("Queued %1 entries for download.").arg(queuedCount));
         return;
     }
 
@@ -417,18 +417,18 @@ void FileManagerController::openEntry(const QString& remotePath)
 {
     const QString normalizedPath = normalizeRemotePath(remotePath);
     if (normalizedPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select a file first."));
+        setStatusMessage(tr("Select a file first."));
         return;
     }
 
     auto lookup = m_entryLookup.find(normalizedPath.toStdString());
     if (lookup == m_entryLookup.end()) {
-        setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+        setStatusMessage(tr("That entry is no longer available in the current folder."));
         return;
     }
 
     if (lookup->second.GetType().has_value() && lookup->second.GetType().value() == FileType::Directory) {
-        setStatusMessage(QStringLiteral("Folders cannot be opened directly."));
+        setStatusMessage(tr("Folders cannot be opened directly."));
         return;
     }
 
@@ -436,13 +436,13 @@ void FileManagerController::openEntry(const QString& remotePath)
         if (normalizedPath == m_pendingEntryPath
             || normalizedPath == m_activeEntryPath
             || m_pendingOpenQueue.contains(normalizedPath)) {
-            setStatusMessage(QStringLiteral("That entry is already queued or currently being opened."));
+            setStatusMessage(tr("That entry is already queued or currently being opened."));
             return;
         }
 
         m_pendingOpenQueue.push_back(normalizedPath);
         const QString entryName = QString::fromStdString(lookup->second.GetName().value_or(std::string()));
-        setStatusMessage(QStringLiteral("Queued %1 to open.").arg(entryName.isEmpty() ? normalizedPath : entryName));
+        setStatusMessage(tr("Queued %1 to open.").arg(entryName.isEmpty() ? normalizedPath : entryName));
         return;
     }
 
@@ -457,7 +457,7 @@ void FileManagerController::openEntry(const QString& remotePath)
     if (module->GetModuleState() != ModuleState::Enabled) {
         m_waitingForModule = true;
         setBusy(true);
-        setStatusMessage(QStringLiteral("Preparing file channels..."));
+        setStatusMessage(tr("Preparing file channels..."));
         module->Enable(true);
         return;
     }
@@ -473,7 +473,7 @@ void FileManagerController::copyEntry(const QString& remotePath)
 void FileManagerController::copyEntries(const QStringList& remotePaths)
 {
     if (remotePaths.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select one or more files or folders first."));
+        setStatusMessage(tr("Select one or more files or folders first."));
         return;
     }
 
@@ -497,7 +497,7 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
     }
 
     if (entries.empty()) {
-        setStatusMessage(QStringLiteral("The selected entries are no longer available in the current folder."));
+        setStatusMessage(tr("The selected entries are no longer available in the current folder."));
         return;
     }
 
@@ -513,14 +513,14 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
         }
 
         if (duplicateQueueRequest) {
-            setStatusMessage(QStringLiteral("Those entries are already queued for copy."));
+            setStatusMessage(tr("Those entries are already queued for copy."));
             return;
         }
 
         m_pendingCopyQueue.push_back(uniquePaths);
         setStatusMessage(uniquePaths.size() == 1
-            ? QStringLiteral("Queued 1 entry for copy.")
-            : QStringLiteral("Queued %1 entries for copy.").arg(uniquePaths.size()));
+            ? tr("Queued 1 entry for copy.")
+            : tr("Queued %1 entries for copy.").arg(uniquePaths.size()));
         return;
     }
 
@@ -540,7 +540,7 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
     if (module->GetModuleState() != ModuleState::Enabled) {
         m_waitingForModule = true;
         setBusy(true);
-        setStatusMessage(QStringLiteral("Preparing clipboard transfer..."));
+        setStatusMessage(tr("Preparing clipboard transfer..."));
         module->Enable(true);
         return;
     }
@@ -548,20 +548,20 @@ void FileManagerController::copyEntries(const QStringList& remotePaths)
     m_waitingForModule = false;
     setBusy(true);
     setStatusMessage(uniquePaths.size() == 1
-        ? QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName)
-        : QStringLiteral("Copying %1 entries to clipboard...").arg(uniquePaths.size()));
+        ? tr("Copying %1 to clipboard...").arg(m_activeEntryName)
+        : tr("Copying %1 entries to clipboard...").arg(uniquePaths.size()));
     module->CopyEntriesToClipboard(std::move(entries));
 }
 
 void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
 {
     if (remotePaths.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select one or more files or folders first."));
+        setStatusMessage(tr("Select one or more files or folders first."));
         return;
     }
 
     if (m_pendingAction != PendingAction::None || m_waitingForModule) {
-        setStatusMessage(QStringLiteral("Finish the current transfer before starting a drag export."));
+        setStatusMessage(tr("Finish the current transfer before starting a drag export."));
         return;
     }
 
@@ -585,7 +585,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     }
 
     if (entries.empty()) {
-        setStatusMessage(QStringLiteral("The selected entries are no longer available in the current folder."));
+        setStatusMessage(tr("The selected entries are no longer available in the current folder."));
         return;
     }
 
@@ -605,16 +605,16 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
 
 #ifdef __APPLE__
     setStatusMessage(uniquePaths.size() == 1
-        ? QStringLiteral("Preparing file for Finder drag...")
-        : QStringLiteral("Preparing %1 entries for Finder drag...").arg(uniquePaths.size()));
+        ? tr("Preparing file for Finder drag...")
+        : tr("Preparing %1 entries for Finder drag...").arg(uniquePaths.size()));
 #elif defined(_WIN32)
     setStatusMessage(uniquePaths.size() == 1
-        ? QStringLiteral("Drag started. Drop into Explorer to begin export.")
-        : QStringLiteral("Drag started. Drop into Explorer to begin export."));
+        ? tr("Drag started. Drop into Explorer to begin export.")
+        : tr("Drag started. Drop into Explorer to begin export."));
 #else
     setStatusMessage(uniquePaths.size() == 1
-        ? QStringLiteral("Drag started. Drop into the file manager to begin export.")
-        : QStringLiteral("Drag started. Drop into the file manager to begin export."));
+        ? tr("Drag started. Drop into the file manager to begin export.")
+        : tr("Drag started. Drop into the file manager to begin export."));
 #endif
 
     QObject* dragSource = QGuiApplication::focusObject();
@@ -635,7 +635,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
                 guard->m_exportBatchTotal = 0; // Streamed export reports byte-weighted progress directly.
                 guard->setBusy(true);
                 emit guard->transferProgressChanged();
-                guard->setStatusMessage(QStringLiteral("Transferring %1 to the drop destination…").arg(QString::fromStdString(name)));
+                guard->setStatusMessage(tr("Transferring %1 to the drop destination…").arg(QString::fromStdString(name)));
             }, Qt::QueuedConnection);
         });
     // Native drag loops process Qt events; navigation/disconnect may delete this controller.
@@ -647,9 +647,9 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     m_activeEntryPath.clear();
     setTransferProgress(result == WindowsVirtualFileDrag::Result::Completed ? 1.0 : 0.0);
     setStatusMessage(result == WindowsVirtualFileDrag::Result::Completed
-        ? QStringLiteral("Files transferred to the drop destination.")
-        : result == WindowsVirtualFileDrag::Result::Cancelled ? QStringLiteral("Drag cancelled.")
-        : QStringLiteral("Transfer stopped. Check the connection and retry."));
+        ? tr("Files transferred to the drop destination.")
+        : result == WindowsVirtualFileDrag::Result::Cancelled ? tr("Drag cancelled.")
+        : tr("Transfer stopped. Check the connection and retry."));
     return;
 #elif defined(__APPLE__)
     std::vector<PlatformVirtualFileDrag::PromisedFile> promisedFiles;
@@ -695,7 +695,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
         m_activeEntryName.clear();
         m_activeEntryPath.clear();
         setTransferProgress(0.0);
-        setStatusMessage(QStringLiteral("Unable to prepare files for external drag."));
+        setStatusMessage(tr("Unable to prepare files for external drag."));
         return;
     }
 
@@ -723,8 +723,8 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
                 self->m_activeEntryPath.clear();
                 self->setTransferProgress(success ? 1.0 : 0.0);
                 self->setStatusMessage(success
-                    ? QStringLiteral("Exported files to Finder.")
-                    : QStringLiteral("Drag cancelled."));
+                    ? tr("Exported files to Finder.")
+                    : tr("Drag cancelled."));
             }, Qt::QueuedConnection);
         });
 
@@ -735,7 +735,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
         m_activeEntryName.clear();
         m_activeEntryPath.clear();
         setTransferProgress(0.0);
-        setStatusMessage(QStringLiteral("Unable to start Finder drag."));
+        setStatusMessage(tr("Unable to start Finder drag."));
     }
     return;
 #else
@@ -769,7 +769,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
         m_activeEntryName.clear();
         m_activeEntryPath.clear();
         setTransferProgress(0.0);
-        setStatusMessage(QStringLiteral("Drag cancelled."));
+        setStatusMessage(tr("Drag cancelled."));
         return;
     }
 
@@ -780,7 +780,7 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
         m_activeEntryName.clear();
         m_activeEntryPath.clear();
         setTransferProgress(0.0);
-        setStatusMessage(QStringLiteral("Unable to prepare files for external drag."));
+        setStatusMessage(tr("Unable to prepare files for external drag."));
         return;
     }
 
@@ -792,8 +792,8 @@ void FileManagerController::beginExternalDrag(const QStringList& remotePaths)
     m_activeEntryPath.clear();
     setTransferProgress(1.0);
     setStatusMessage(*exportedCount == 1
-        ? QStringLiteral("Exported 1 entry. Temporary files will be cleaned automatically.")
-        : QStringLiteral("Exported %1 entries. Temporary files will be cleaned automatically.").arg(*exportedCount));
+        ? tr("Exported 1 entry. Temporary files will be cleaned automatically.")
+        : tr("Exported %1 entries. Temporary files will be cleaned automatically.").arg(*exportedCount));
 #endif
 }
 
@@ -801,13 +801,13 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
 {
     const QString localPath = localPathUrl.toLocalFile().trimmed();
     if (localPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Choose a local file or folder first."));
+        setStatusMessage(tr("Choose a local file or folder first."));
         return;
     }
 
     const std::filesystem::path sourcePath = localPath.toStdString();
     if (!std::filesystem::exists(sourcePath)) {
-        setStatusMessage(QStringLiteral("The selected local file or folder does not exist anymore."));
+        setStatusMessage(tr("The selected local file or folder does not exist anymore."));
         return;
     }
 
@@ -826,7 +826,7 @@ void FileManagerController::uploadLocalEntry(const QUrl& localPathUrl)
     ++m_uploadBatchTotal;
 
     if (m_pendingAction != PendingAction::None || m_waitingForModule) {
-        setStatusMessage(QStringLiteral("Queued %1 for upload.").arg(QString::fromStdString(sourcePath.filename().string())));
+        setStatusMessage(tr("Queued %1 for upload.").arg(QString::fromStdString(sourcePath.filename().string())));
         return;
     }
 
@@ -841,7 +841,7 @@ void FileManagerController::deleteEntry(const QString& remotePath)
 void FileManagerController::deleteEntries(const QStringList& remotePaths)
 {
     if (remotePaths.isEmpty()) {
-        setStatusMessage(QStringLiteral("Select one or more files or folders to delete."));
+        setStatusMessage(tr("Select one or more files or folders to delete."));
         return;
     }
 
@@ -865,12 +865,12 @@ void FileManagerController::deleteEntries(const QStringList& remotePaths)
     }
 
     if (entries.empty()) {
-        setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+        setStatusMessage(tr("The selected entries are no longer available."));
         return;
     }
 
     if (m_pendingAction != PendingAction::None || m_waitingForModule) {
-        setStatusMessage(QStringLiteral("Finish the current transfer before deleting files."));
+        setStatusMessage(tr("Finish the current transfer before deleting files."));
         return;
     }
 
@@ -882,8 +882,8 @@ void FileManagerController::deleteEntries(const QStringList& remotePaths)
         : QStringLiteral("%1 entries").arg(uniquePaths.size());
     setBusy(true);
     setStatusMessage(uniquePaths.size() == 1
-        ? QStringLiteral("Deleting %1...").arg(m_activeEntryName)
-        : QStringLiteral("Deleting %1 entries...").arg(uniquePaths.size()));
+        ? tr("Deleting %1...").arg(m_activeEntryName)
+        : tr("Deleting %1 entries...").arg(uniquePaths.size()));
 
     auto& module = ModulesManager::GetModuleReference<FileShareModule>();
     if (module->GetModuleState() != ModuleState::Enabled) {
@@ -935,13 +935,13 @@ bool FileManagerController::event(QEvent* event)
         setBusy(false);
         setRemoteEntries({});
         m_entryLookup.clear();
-        setStatusMessage(QStringLiteral("Connection lost. Reconnect to browse files."));
+        setStatusMessage(tr("Connection lost. Reconnect to browse files."));
         return true;
     }
 
     if (event->type() == ModuleErrorEvent::Type) {
         auto* moduleErrorEvent = static_cast<ModuleErrorEvent*>(event);
-        const QString message = QStringLiteral("%1 module error: %2.")
+        const QString message = tr("%1 module error: %2.")
             .arg(QString::fromLatin1(ModuleTypeToString(moduleErrorEvent->GetModuleType())))
             .arg(QString::fromLatin1(ModuleFailReasonToString(moduleErrorEvent->GetError())));
 
@@ -992,8 +992,8 @@ bool FileManagerController::event(QEvent* event)
         setRemoteEntries(remoteEntries);
         setBusy(false);
         setStatusMessage(remoteEntries.isEmpty()
-            ? QStringLiteral("This folder is empty.")
-            : QStringLiteral("Loaded %1 entries.").arg(remoteEntries.size()));
+            ? tr("This folder is empty.")
+            : tr("Loaded %1 entries.").arg(remoteEntries.size()));
         startNextQueuedAction();
         return true;
     }
@@ -1041,12 +1041,12 @@ bool FileManagerController::event(QEvent* event)
         setTransferProgress(progress);
         setBusy(true);
         if (m_pendingAction == PendingAction::DragExport) {
-            setStatusMessage(QStringLiteral("Preparing %1 for drag export (%2%)").arg(
+            setStatusMessage(tr("Preparing %1 for drag export (%2%)").arg(
                 m_activeEntryName,
                 QString::number(progress * 100.0, 'f', 0)));
         } else {
-            setStatusMessage(QStringLiteral("%1 %2 (%3%)").arg(
-                operation == TransferOperation::Post ? QStringLiteral("Uploading") : QStringLiteral("Transferring"),
+            setStatusMessage(tr("%1 %2 (%3%)").arg(
+                operation == TransferOperation::Post ? tr("Uploading") : tr("Transferring"),
                 m_activeEntryName,
                 QString::number(progress * 100.0, 'f', 0)));
         }
@@ -1090,12 +1090,12 @@ bool FileManagerController::event(QEvent* event)
             setBusy(false);
             if (m_uploadBatchTotal <= 1) {
                 setStatusMessage(resultEvent->Success()
-                    ? QStringLiteral("Uploaded %1 to %2.").arg(m_activeEntryName, m_currentRemotePath)
-                    : QStringLiteral("Failed to upload %1.").arg(m_activeEntryName));
+                    ? tr("Uploaded %1 to %2.").arg(m_activeEntryName, m_currentRemotePath)
+                    : tr("Failed to upload %1.").arg(m_activeEntryName));
             } else {
                 setStatusMessage(m_uploadBatchFailed == 0
-                    ? QStringLiteral("Uploaded %1 files to %2.").arg(m_uploadBatchCompleted).arg(m_currentRemotePath)
-                    : QStringLiteral("Uploaded %1 of %2 files (%3 failed).")
+                    ? tr("Uploaded %1 files to %2.").arg(m_uploadBatchCompleted).arg(m_currentRemotePath)
+                    : tr("Uploaded %1 of %2 files (%3 failed).")
                         .arg(m_uploadBatchCompleted - m_uploadBatchFailed)
                         .arg(m_uploadBatchTotal)
                         .arg(m_uploadBatchFailed));
@@ -1104,8 +1104,8 @@ bool FileManagerController::event(QEvent* event)
             setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
             setBusy(false);
             setStatusMessage(resultEvent->Success()
-                ? QStringLiteral("Opened %1.").arg(m_activeEntryName)
-                : QStringLiteral("Failed to open %1.").arg(m_activeEntryName));
+                ? tr("Opened %1.").arg(m_activeEntryName)
+                : tr("Failed to open %1.").arg(m_activeEntryName));
         } else {
             if (m_downloadBatchActive) {
                 ++m_downloadBatchCompleted;
@@ -1121,8 +1121,8 @@ bool FileManagerController::event(QEvent* event)
 
                 setBusy(false);
                 setStatusMessage(m_downloadBatchFailed == 0
-                    ? QStringLiteral("Downloaded %1 entries to %2.").arg(m_downloadBatchCompleted).arg(m_localDownloadDirectory)
-                    : QStringLiteral("Downloaded %1 of %2 entries (%3 failed).")
+                    ? tr("Downloaded %1 entries to %2.").arg(m_downloadBatchCompleted).arg(m_localDownloadDirectory)
+                    : tr("Downloaded %1 of %2 entries (%3 failed).")
                         .arg(m_downloadBatchCompleted - m_downloadBatchFailed)
                         .arg(m_downloadBatchTotal)
                         .arg(m_downloadBatchFailed));
@@ -1130,8 +1130,8 @@ bool FileManagerController::event(QEvent* event)
                 setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
                 setBusy(false);
                 setStatusMessage(resultEvent->Success()
-                    ? QStringLiteral("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
-                    : QStringLiteral("Failed to download %1.").arg(m_activeEntryName));
+                    ? tr("Downloaded %1 to %2.").arg(m_activeEntryName, m_localDownloadDirectory)
+                    : tr("Failed to download %1.").arg(m_activeEntryName));
             }
         }
 
@@ -1170,8 +1170,8 @@ bool FileManagerController::event(QEvent* event)
         setBusy(false);
         setTransferProgress(resultEvent->Success() ? 1.0 : 0.0);
         setStatusMessage(resultEvent->Success()
-            ? QStringLiteral("Copied %1 to clipboard.").arg(m_activeEntryName)
-            : QStringLiteral("Failed to copy %1 to clipboard.").arg(m_activeEntryName));
+            ? tr("Copied %1 to clipboard.").arg(m_activeEntryName)
+            : tr("Failed to copy %1 to clipboard.").arg(m_activeEntryName));
 
         m_pendingEntryPath.clear();
         m_pendingLocalPath.clear();
@@ -1192,10 +1192,10 @@ bool FileManagerController::event(QEvent* event)
 
         setBusy(false);
         if (resultEvent->Success()) {
-            setStatusMessage(QStringLiteral("Deleted %1.").arg(m_activeEntryName));
+            setStatusMessage(tr("Deleted %1.").arg(m_activeEntryName));
             refreshEntries();
         } else {
-            setStatusMessage(QStringLiteral("Failed to delete %1.").arg(m_activeEntryName));
+            setStatusMessage(tr("Failed to delete %1.").arg(m_activeEntryName));
         }
 
         m_pendingEntryPath.clear();
@@ -1295,7 +1295,7 @@ void FileManagerController::startPendingActionIfReady()
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("No local file or folder selected for upload."));
+            setStatusMessage(tr("No local file or folder selected for upload."));
             m_uploadBatchActive = false;
             m_uploadBatchTotal = 0;
             m_uploadBatchCompleted = 0;
@@ -1309,7 +1309,7 @@ void FileManagerController::startPendingActionIfReady()
             ++m_uploadBatchCompleted;
             ++m_uploadBatchFailed;
             if (!m_pendingUploadQueue.isEmpty()) {
-                setStatusMessage(QStringLiteral("Skipped a file that no longer exists. Continuing queued uploads."));
+                setStatusMessage(tr("Skipped a file that no longer exists. Continuing queued uploads."));
                 startNextQueuedUpload();
                 return;
             }
@@ -1317,7 +1317,7 @@ void FileManagerController::startPendingActionIfReady()
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("The selected local file or folder no longer exists."));
+            setStatusMessage(tr("The selected local file or folder no longer exists."));
             m_uploadBatchActive = false;
             m_uploadBatchTotal = 0;
             m_uploadBatchCompleted = 0;
@@ -1328,7 +1328,7 @@ void FileManagerController::startPendingActionIfReady()
 
         m_waitingForModule = false;
         setBusy(true);
-        setStatusMessage(QStringLiteral("Uploading %1...").arg(m_activeEntryName));
+        setStatusMessage(tr("Uploading %1...").arg(m_activeEntryName));
         module->PostEntry(localPath, m_currentRemotePath.toStdString());
         return;
     }
@@ -1347,7 +1347,7 @@ void FileManagerController::startPendingActionIfReady()
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+            setStatusMessage(tr("The selected entries are no longer available."));
             startNextQueuedAction();
             return;
         }
@@ -1355,8 +1355,8 @@ void FileManagerController::startPendingActionIfReady()
         m_waitingForModule = false;
         setBusy(true);
         setStatusMessage(entries.size() == 1
-            ? QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName)
-            : QStringLiteral("Copying %1 entries to clipboard...").arg(entries.size()));
+            ? tr("Copying %1 to clipboard...").arg(m_activeEntryName)
+            : tr("Copying %1 entries to clipboard...").arg(entries.size()));
         module->CopyEntriesToClipboard(std::move(entries));
         return;
     }
@@ -1375,7 +1375,7 @@ void FileManagerController::startPendingActionIfReady()
             m_waitingForModule = false;
             m_pendingAction = PendingAction::None;
             setBusy(false);
-            setStatusMessage(QStringLiteral("The selected entries are no longer available."));
+            setStatusMessage(tr("The selected entries are no longer available."));
             startNextQueuedAction();
             return;
         }
@@ -1383,8 +1383,8 @@ void FileManagerController::startPendingActionIfReady()
         m_waitingForModule = false;
         setBusy(true);
         setStatusMessage(entries.size() == 1
-            ? QStringLiteral("Deleting %1...").arg(m_activeEntryName)
-            : QStringLiteral("Deleting %1 entries...").arg(entries.size()));
+            ? tr("Deleting %1...").arg(m_activeEntryName)
+            : tr("Deleting %1 entries...").arg(entries.size()));
         m_pendingDeletePaths.clear();
         module->DeleteEntries(std::move(entries));
         return;
@@ -1399,7 +1399,7 @@ void FileManagerController::startPendingActionIfReady()
         m_waitingForModule = false;
         m_pendingAction = PendingAction::None;
         setBusy(false);
-        setStatusMessage(QStringLiteral("The selected entry is no longer available."));
+        setStatusMessage(tr("The selected entry is no longer available."));
         startNextQueuedAction();
         return;
     }
@@ -1407,15 +1407,15 @@ void FileManagerController::startPendingActionIfReady()
     m_waitingForModule = false;
     setBusy(true);
     if (m_pendingAction == PendingAction::Open) {
-        setStatusMessage(QStringLiteral("Opening %1...").arg(m_activeEntryName));
+        setStatusMessage(tr("Opening %1...").arg(m_activeEntryName));
         module->OpenEntry(lookup->second);
     } else if (m_pendingAction == PendingAction::Copy) {
-        setStatusMessage(QStringLiteral("Copying %1 to clipboard...").arg(m_activeEntryName));
+        setStatusMessage(tr("Copying %1 to clipboard...").arg(m_activeEntryName));
         std::vector<FileEntry> entries;
         entries.push_back(lookup->second);
         module->CopyEntriesToClipboard(std::move(entries));
     } else {
-        setStatusMessage(QStringLiteral("Downloading %1...").arg(m_activeEntryName));
+        setStatusMessage(tr("Downloading %1...").arg(m_activeEntryName));
         module->FetchEntry(lookup->second, m_localDownloadDirectory.toStdString());
     }
 }
@@ -1431,7 +1431,7 @@ void FileManagerController::beginDownloadForPath(const QString& normalizedPath, 
                 startNextQueuedDownload();
             } else {
                 setBusy(false);
-                setStatusMessage(QStringLiteral("Downloaded %1 of %2 entries (%3 failed).")
+                setStatusMessage(tr("Downloaded %1 of %2 entries (%3 failed).")
                     .arg(m_downloadBatchCompleted - m_downloadBatchFailed)
                     .arg(m_downloadBatchTotal)
                     .arg(m_downloadBatchFailed));
@@ -1449,7 +1449,7 @@ void FileManagerController::beginDownloadForPath(const QString& normalizedPath, 
                 startNextQueuedAction();
             }
         } else {
-            setStatusMessage(QStringLiteral("That entry is no longer available in the current folder."));
+            setStatusMessage(tr("That entry is no longer available in the current folder."));
         }
         return;
     }
@@ -1466,7 +1466,7 @@ void FileManagerController::beginDownloadForPath(const QString& normalizedPath, 
     if (module->GetModuleState() != ModuleState::Enabled) {
         m_waitingForModule = true;
         setBusy(true);
-        setStatusMessage(QStringLiteral("Preparing download channels..."));
+        setStatusMessage(tr("Preparing download channels..."));
         module->Enable(true);
         return;
     }
@@ -1510,8 +1510,8 @@ void FileManagerController::beginUploadForLocalPath(const QString& localPath)
 
         setBusy(false);
         setStatusMessage(m_uploadBatchTotal <= 1
-            ? QStringLiteral("The selected local file or folder does not exist anymore.")
-            : QStringLiteral("Uploaded %1 of %2 files (%3 failed).")
+            ? tr("The selected local file or folder does not exist anymore.")
+            : tr("Uploaded %1 of %2 files (%3 failed).")
                 .arg(m_uploadBatchCompleted - m_uploadBatchFailed)
                 .arg(m_uploadBatchTotal)
                 .arg(m_uploadBatchFailed));
@@ -1539,7 +1539,7 @@ void FileManagerController::beginUploadForLocalPath(const QString& localPath)
     if (module->GetModuleState() != ModuleState::Enabled) {
         m_waitingForModule = true;
         setBusy(true);
-        setStatusMessage(QStringLiteral("Preparing upload channels..."));
+        setStatusMessage(tr("Preparing upload channels..."));
         module->Enable(true);
         return;
     }
@@ -1551,13 +1551,13 @@ void FileManagerController::loadDirectory(const QString& remotePath)
 {
     const QString normalizedPath = normalizeRemotePath(remotePath);
     if (normalizedPath.isEmpty()) {
-        setStatusMessage(QStringLiteral("Enter a valid path on the connected device."));
+        setStatusMessage(tr("Enter a valid path on the connected device."));
         return;
     }
 
     setCurrentRemotePath(normalizedPath);
     setBusy(true);
-    setStatusMessage(QStringLiteral("Loading %1...").arg(normalizedPath));
+    setStatusMessage(tr("Loading %1...").arg(normalizedPath));
 
     auto& module = ModulesManager::GetModuleReference<FileShareModule>();
     if (module->GetModuleState() != ModuleState::Enabled) {

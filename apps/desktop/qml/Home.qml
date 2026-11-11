@@ -16,7 +16,7 @@ Page {
     required property var temporaryStorageController
     required property bool virtualCameraAvailable
     required property string virtualCameraUnavailableReason
-    property string activeDeviceName: "Connected Device"
+    property string activeDeviceName: qsTr("Connected Device")
     property string activeDeviceId: ""
     property string initialFeature: ""
     property string selectedFeature: ""
@@ -27,19 +27,19 @@ Page {
     readonly property int microphonePermissionType: 8
     readonly property string windowTitleSuffix: {
         if (selectedFeature === "fileManager")
-            return "File Manager"
+            return qsTr("File Manager")
         if (selectedFeature === "cameras")
-            return "Virtual Camera"
+            return qsTr("Virtual Camera")
         if (selectedFeature === "microphone")
-            return "Virtual Microphone"
+            return qsTr("Virtual Microphone")
         if (selectedFeature === "messages")
-            return "Messages"
+            return qsTr("Messages")
         if (selectedFeature === "mediaRemote")
-            return "Media Remote"
+            return qsTr("Media Remote")
         if (selectedFeature === "notificationHistory")
-            return "Notifications"
+            return qsTr("Notifications")
         if (selectedFeature === "settings")
-            return "Settings"
+            return qsTr("Settings")
         return ""
     }
 
@@ -48,8 +48,8 @@ Page {
 
         if (nextFeature === "messages" && !root.permissionStateController.smsGranted) {
             permissionPromptDialog.permissionType = root.smsPermissionType
-            permissionPromptDialog.permissionTitle = "Messages Permission Required"
-            permissionPromptDialog.permissionMessage = "SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages."
+            permissionPromptDialog.permissionTitle = qsTr("Messages Permission Required")
+            permissionPromptDialog.permissionMessage = qsTr("SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages.")
             permissionPromptDialog.open()
             return
         }
@@ -158,7 +158,7 @@ Page {
             width: 360
 
             Text {
-                text: "Disconnect device?"
+                text: qsTr("Disconnect device?")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -166,7 +166,7 @@ Page {
             }
 
             Text {
-                text: "You will be returned to the pairing screen."
+                text: qsTr("You will be returned to the pairing screen.")
                 color: Theme.textColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 15
@@ -179,7 +179,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 160
                     height: 42
                     font.pixelSize: 14
@@ -196,7 +196,7 @@ Page {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Disconnect"
+                        text: qsTr("Disconnect")
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
                         color: root.destructiveText
@@ -235,7 +235,7 @@ Page {
             width: 360
 
             Text {
-                text: "Unpair this device?"
+                text: qsTr("Unpair this device?")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -244,8 +244,8 @@ Page {
 
             Text {
                 text: root.activeDeviceId.length > 0
-                      ? "This removes the current device from paired devices and disconnects."
-                      : "No paired device ID found for this session."
+                      ? qsTr("This removes the current device from paired devices and disconnects.")
+                      : qsTr("No paired device ID found for this session.")
                 color: Theme.textColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 15
@@ -258,7 +258,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 160
                     height: 42
                     font.pixelSize: 14
@@ -275,7 +275,7 @@ Page {
 
                     Text {
                         anchors.centerIn: parent
-                        text: "Unpair"
+                        text: qsTr("Unpair")
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
                         color: root.destructiveText
@@ -319,7 +319,7 @@ Page {
             width: 340
 
             Text {
-                text: "Ringing your phone..."
+                text: qsTr("Ringing your phone...")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -329,7 +329,7 @@ Page {
             }
 
             Text {
-                text: "Tap Stop Ringing here or OK on your phone to stop the alert."
+                text: qsTr("Tap Stop Ringing here or OK on your phone to stop the alert.")
                 color: Theme.textColor
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
@@ -338,7 +338,7 @@ Page {
             }
 
             ThemedButton {
-                text: "Stop Ringing"
+                text: qsTr("Stop Ringing")
                 width: 160
                 height: 42
                 font.pixelSize: 14
@@ -394,7 +394,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 120
                     height: 40
                     font.pixelSize: 14
@@ -402,7 +402,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: permissionPromptDialog.permissionType >= 0 ? "Prompt on Phone" : "Allow on Mac"
+                    text: permissionPromptDialog.permissionType >= 0 ? qsTr("Prompt on Phone") : qsTr("Allow on Mac")
                     width: 170
                     height: 40
                     font.pixelSize: 14
@@ -438,7 +438,7 @@ Page {
             width: microphonePermissionDialog.contentWidth
 
             Text {
-                text: "Microphone Permission Required"
+                text: qsTr("Microphone Permission Required")
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -448,7 +448,7 @@ Page {
             }
 
             Text {
-                text: "Microphone access is disabled on the mobile app. Grant microphone permission to use Virtual Microphone."
+                text: qsTr("Microphone access is disabled on the mobile app. Grant microphone permission to use Virtual Microphone.")
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -461,7 +461,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 120
                     height: 40
                     font.pixelSize: 14
@@ -469,7 +469,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: "Prompt on Phone"
+                    text: qsTr("Prompt on Phone")
                     width: 170
                     height: 40
                     font.pixelSize: 14
@@ -502,7 +502,7 @@ Page {
             width: virtualAudioCableDialog.contentWidth
 
             Text {
-                text: "Virtual Audio Cable Required"
+                text: qsTr("Virtual Audio Cable Required")
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -512,7 +512,7 @@ Page {
             }
 
             Text {
-                text: "No virtual audio cable device was detected. Install VB-Audio Virtual Cable, then refresh devices."
+                text: qsTr("No virtual audio cable device was detected. Install VB-Audio Virtual Cable, then refresh devices.")
                 width: parent.width
                 color: Theme.textColor
                 font.family: Theme.fontFamily
@@ -525,7 +525,7 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     width: 120
                     height: 40
                     font.pixelSize: 14
@@ -533,7 +533,7 @@ Page {
                 }
 
                 ThemedButton {
-                    text: "Download"
+                    text: qsTr("Download")
                     width: 150
                     height: 40
                     font.pixelSize: 14
@@ -596,10 +596,10 @@ Page {
 
                             Text {
                                 text: Theme.streamerMode
-                                      ? "Connected Device"
+                                      ? qsTr("Connected Device")
                                       : (root.activeDeviceName && root.activeDeviceName.length > 0
                                          ? root.activeDeviceName
-                                         : "Connected Device")
+                                         : qsTr("Connected Device"))
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 18
                                 wrapMode: Text.WordWrap
@@ -614,7 +614,7 @@ Page {
 
                                 Text {
                                     id: connectedStatusLabel
-                                    text: "Connected"
+                                    text: qsTr("Connected")
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 15
                                     color: Theme.mutedTextColor
@@ -739,7 +739,7 @@ Page {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Find My Phone"
+                                text: qsTr("Find My Phone")
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 14
                                 color: Theme.textColor
@@ -766,7 +766,7 @@ Page {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Disconnect"
+                                text: qsTr("Disconnect")
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 14
                                 color: root.destructiveText
@@ -793,7 +793,7 @@ Page {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: "Unpair"
+                                text: qsTr("Unpair")
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 14
                                 color: root.destructiveText
@@ -823,7 +823,7 @@ Page {
                                                                   && root.virtualCameraAvailable
 
                         FeatureListButton {
-                            text: "Cameras"
+                            text: qsTr("Cameras")
                             iconSource: "camera.svg"
                             darkIconSource: "camera_dark.svg"
                             anchors.fill: parent
@@ -836,9 +836,9 @@ Page {
                             visible: !parent.cameraFeatureEnabled
                             onClicked: {
                                 permissionPromptDialog.permissionType = 1
-                                permissionPromptDialog.permissionTitle = "Camera Permission Required"
+                                permissionPromptDialog.permissionTitle = qsTr("Camera Permission Required")
                                 if (!root.permissionStateController.cameraGranted) {
-                                    permissionPromptDialog.permissionMessage = "Camera access is disabled on the mobile app. Grant camera permission to use the Cameras feature."
+                                    permissionPromptDialog.permissionMessage = qsTr("Camera access is disabled on the mobile app. Grant camera permission to use the Cameras feature.")
                                     permissionPromptDialog.open()
                                     return
                                 }
@@ -857,7 +857,7 @@ Page {
                                                                          && !virtualMicrophoneController.driverDownloadRecommended
 
                         FeatureListButton {
-                            text: "Microphone"
+                            text: qsTr("Microphone")
                             iconSource: "mic.svg"
                             darkIconSource: "mic_dark.svg"
                             anchors.fill: parent
@@ -884,7 +884,7 @@ Page {
                         height: 58
 
                         FeatureListButton {
-                            text: "File Manager"
+                            text: qsTr("File Manager")
                             iconSource: "files.svg"
                             darkIconSource: "files_dark.svg"
                             anchors.fill: parent
@@ -897,8 +897,8 @@ Page {
                             visible: !root.permissionStateController.fileSystemGranted
                             onClicked: {
                                 permissionPromptDialog.permissionType = 3
-                                permissionPromptDialog.permissionTitle = "File Access Required"
-                                permissionPromptDialog.permissionMessage = "File access is disabled on the mobile app. Grant file permissions to use File Manager."
+                                permissionPromptDialog.permissionTitle = qsTr("File Access Required")
+                                permissionPromptDialog.permissionMessage = qsTr("File access is disabled on the mobile app. Grant file permissions to use File Manager.")
                                 permissionPromptDialog.open()
                             }
                         }
@@ -909,7 +909,7 @@ Page {
                         height: 58
 
                         FeatureListButton {
-                            text: "Messages"
+                            text: qsTr("Messages")
                             iconSource: "messages.svg"
                             darkIconSource: "messages_dark.svg"
                             anchors.fill: parent
@@ -922,8 +922,8 @@ Page {
                             visible: !root.permissionStateController.smsGranted
                             onClicked: {
                                 permissionPromptDialog.permissionType = root.smsPermissionType
-                                permissionPromptDialog.permissionTitle = "Messages Permission Required"
-                                permissionPromptDialog.permissionMessage = "SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages."
+                                permissionPromptDialog.permissionTitle = qsTr("Messages Permission Required")
+                                permissionPromptDialog.permissionMessage = qsTr("SMS and contacts access is disabled on the mobile app. Grant SMS permissions to use Messages.")
                                 permissionPromptDialog.open()
                             }
                         }
@@ -934,7 +934,7 @@ Page {
                         height: 58
 
                         FeatureListButton {
-                            text: "Media Remote"
+                            text: qsTr("Media Remote")
                             iconSource: "media.svg"
                             darkIconSource: "media_dark.svg"
                             anchors.fill: parent
@@ -950,7 +950,7 @@ Page {
                                                                      && root.notificationSyncController.enabled
 
                         FeatureListButton {
-                            text: "Notifications"
+                            text: qsTr("Notifications")
                             iconSource: "notifications.svg"
                             darkIconSource: "notifications_dark.svg"
                             anchors.fill: parent
@@ -964,16 +964,16 @@ Page {
                             onClicked: {
                                 if (!root.notificationSyncController.remotePermissionGranted) {
                                     permissionPromptDialog.permissionType = 2
-                                    permissionPromptDialog.permissionTitle = "Phone Notification Permission Required"
-                                    permissionPromptDialog.permissionMessage = "Notification access is disabled on the mobile app. Grant notification permissions to view notifications."
+                                    permissionPromptDialog.permissionTitle = qsTr("Phone Notification Permission Required")
+                                    permissionPromptDialog.permissionMessage = qsTr("Notification access is disabled on the mobile app. Grant notification permissions to view notifications.")
                                     permissionPromptDialog.open()
                                     return
                                 }
 
                                 if (!root.notificationSyncController.localPermissionGranted) {
                                     permissionPromptDialog.permissionType = -1
-                                    permissionPromptDialog.permissionTitle = "macOS Notification Permission Required"
-                                    permissionPromptDialog.permissionMessage = "Allow LibreConnect in System Settings > Notifications to view synced notifications on this Mac."
+                                    permissionPromptDialog.permissionTitle = qsTr("macOS Notification Permission Required")
+                                    permissionPromptDialog.permissionMessage = qsTr("Allow LibreConnect in System Settings > Notifications to view synced notifications on this Mac.")
                                     permissionPromptDialog.open()
                                     return
                                 }
@@ -988,7 +988,7 @@ Page {
                         height: 58
 
                         FeatureListButton {
-                            text: "Sync Clipboard"
+                            text: qsTr("Sync Clipboard")
                             iconSource: "clipboard.svg"
                             darkIconSource: "clipboard_dark.svg"
                             anchors.fill: parent
@@ -1091,7 +1091,7 @@ Page {
                 visible: featureStack.depth === 0
 
                 Text {
-                    text: "No feature selected"
+                    text: qsTr("No feature selected")
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontFamily
@@ -1101,7 +1101,7 @@ Page {
                 }
 
                 Text {
-                    text: "Select a feature on the left"
+                    text: qsTr("Select a feature on the left")
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     font.family: Theme.fontFamily

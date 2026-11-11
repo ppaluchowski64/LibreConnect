@@ -29,7 +29,7 @@ object RemoteInputNotification {
         playing: Boolean
     ) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createChannel(manager)
+        createChannel(context, manager)
 
         val subtitle = buildString {
             if (artist.isNotEmpty()) {
@@ -57,26 +57,26 @@ object RemoteInputNotification {
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(if (title.isNotEmpty()) title else "LibreConnect Remote Input")
-            .setContentText(if (subtitle.isNotEmpty()) subtitle else "Control desktop media")
+            .setContentTitle(if (title.isNotEmpty()) title else context.getString(R.string.remote_input_title))
+            .setContentText(if (subtitle.isNotEmpty()) subtitle else context.getString(R.string.remote_input_text))
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(false)
             .setOnlyAlertOnce(true)
-            .addAction(buildAction(context, ACTION_PREVIOUS, "Previous", android.R.drawable.ic_media_previous, 0))
+            .addAction(buildAction(context, ACTION_PREVIOUS, context.getString(R.string.previous), android.R.drawable.ic_media_previous, 0))
             .addAction(
                 buildAction(
                     context,
                     ACTION_PLAY_PAUSE,
-                    if (playing) "Pause" else "Play",
+                    if (playing) context.getString(R.string.pause) else context.getString(R.string.play),
                     if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                     1
                 )
             )
-            .addAction(buildAction(context, ACTION_NEXT, "Next", android.R.drawable.ic_media_next, 2))
-            .addAction(buildAction(context, ACTION_VOLUME_DOWN, "Volume -", android.R.drawable.ic_lock_silent_mode, 3))
-            .addAction(buildAction(context, ACTION_VOLUME_UP, "Volume +", android.R.drawable.ic_lock_silent_mode_off, 4))
+            .addAction(buildAction(context, ACTION_NEXT, context.getString(R.string.next), android.R.drawable.ic_media_next, 2))
+            .addAction(buildAction(context, ACTION_VOLUME_DOWN, context.getString(R.string.volume_down), android.R.drawable.ic_lock_silent_mode, 3))
+            .addAction(buildAction(context, ACTION_VOLUME_UP, context.getString(R.string.volume_up), android.R.drawable.ic_lock_silent_mode_off, 4))
 
         if (contentPendingIntent != null) {
             builder.setContentIntent(contentPendingIntent)
@@ -91,11 +91,11 @@ object RemoteInputNotification {
         manager.cancel(NOTIFICATION_ID)
     }
 
-    private fun createChannel(manager: NotificationManager) {
+    private fun createChannel(context: Context, manager: NotificationManager) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Remote Input",
+                context.getString(R.string.remote_input_channel),
                 NotificationManager.IMPORTANCE_LOW
             )
             manager.createNotificationChannel(channel)

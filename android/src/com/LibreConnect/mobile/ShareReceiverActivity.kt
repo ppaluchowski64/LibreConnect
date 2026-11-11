@@ -28,7 +28,7 @@ class ShareReceiverActivity : Activity() {
         Thread {
             val sharedFiles = copySharedFiles(intent)
             if (sharedFiles.isEmpty()) {
-                showToast("No shared files found")
+                showToast(getString(R.string.no_shared_files))
                 finishShareActivity()
                 return@Thread
             }
@@ -141,9 +141,9 @@ class ShareReceiverActivity : Activity() {
 
     private fun shareResultMessage(queuedCount: Int): String {
         return when (queuedCount) {
-            0 -> "Could not send shared files to desktop"
-            1 -> "Sending shared file to desktop"
-            else -> "Sending $queuedCount shared files to desktop"
+            0 -> getString(R.string.share_send_failed)
+            1 -> getString(R.string.share_sending_one)
+            else -> getString(R.string.share_sending_many, queuedCount)
         }
     }
 

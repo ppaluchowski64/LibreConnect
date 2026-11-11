@@ -6,7 +6,7 @@ Page {
     id: root
 
     required property var windowRef
-    property string activeDeviceName: "Connected Device"
+    property string activeDeviceName: qsTr("Connected Device")
     readonly property string windowTitleSuffix: ""
 
     background: Rectangle {
@@ -43,7 +43,7 @@ Page {
         spacing: 12
 
         Text {
-            text: "Connected!"
+            text: qsTr("Connected!")
             font.family: Theme.fontFamily
             font.pixelSize: 20
             font.bold: true
@@ -52,8 +52,8 @@ Page {
 
         Text {
             text: root.activeDeviceName && root.activeDeviceName.length > 0
-                  ? ("Device: " + root.activeDeviceName)
-                  : "Device connected successfully."
+                  ? (qsTr("Device: ") + root.activeDeviceName)
+                  : qsTr("Device connected successfully.")
             font.family: Theme.fontFamily
             font.pixelSize: 16
             color: Theme.mutedTextColor
@@ -61,7 +61,7 @@ Page {
         }
 
         Text {
-            text: "Follow the instructions on your mobile device to\nenable the relevant app permissions."
+            text: qsTr("Follow the instructions on your mobile device to\nenable the relevant app permissions.")
             font.family: Theme.fontFamily
             font.pixelSize: 20
             color: Theme.textColor
@@ -70,7 +70,7 @@ Page {
 
     ThemedButton {
         id: continueButton
-        text: "Continue"
+        text: qsTr("Continue")
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 24

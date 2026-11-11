@@ -7,7 +7,7 @@ Page {
     id: root
 
     required property var smsBridgeController
-    readonly property string windowTitleSuffix: "Messages"
+    readonly property string windowTitleSuffix: qsTr("Messages")
     property bool restoringContactsScroll: false
     property real preservedContactsContentY: 0
 
@@ -57,9 +57,9 @@ Page {
         }
 
         if (isSameDay(t, now.getTime())) {
-            return "Today"
+            return qsTr("Today")
         } else if (isSameDay(t, yesterday.getTime())) {
-            return "Yesterday"
+            return qsTr("Yesterday")
         } else {
             return Qt.formatDateTime(d, "MMMM d, yyyy")
         }
@@ -125,7 +125,7 @@ Page {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Conversations"
+                        text: qsTr("Conversations")
                         color: Theme.textColor
                         font.family: Theme.fontFamily
                         font.pixelSize: 20
@@ -133,7 +133,7 @@ Page {
                     }
 
                     ThemedButton {
-                        text: "Refresh"
+                        text: qsTr("Refresh")
                         width: 92
                         height: 36
                         font.pixelSize: 13
@@ -145,8 +145,8 @@ Page {
                 Text {
                     Layout.fillWidth: true
                     text: smsBridgeController.connected
-                          ? (smsBridgeController.ready ? (smsBridgeController.busy ? "Syncing..." : "Synced") : "Connecting SMS bridge...")
-                          : "Phone disconnected"
+                          ? (smsBridgeController.ready ? (smsBridgeController.busy ? qsTr("Syncing...") : qsTr("Synced")) : qsTr("Connecting SMS bridge..."))
+                          : qsTr("Phone disconnected")
                     color: smsBridgeController.connected ? Theme.successColor : Theme.mutedTextColor
                     font.family: Theme.fontFamily
                     font.pixelSize: 13
@@ -188,8 +188,8 @@ Page {
                                 Text {
                                     width: parent.width - unreadBadge.width - 8
                                     text: {
-                                        if (modelData.name.length === 0) return "Unknown contact"
-                                        if (Theme.streamerMode && modelData.name === modelData.number) return "Unknown contact"
+                                        if (modelData.name.length === 0) return qsTr("Unknown contact")
+                                        if (Theme.streamerMode && modelData.name === modelData.number) return qsTr("Unknown contact")
                                         return modelData.name
                                     }
                                     color: modelData.selected ? Theme.selectedTextColor : Theme.textColor
@@ -221,7 +221,7 @@ Page {
 
                             Text {
                                 width: parent.width
-                                text: modelData.loading ? "Loading..." : modelData.preview
+                                text: modelData.loading ? qsTr("Loading...") : modelData.preview
                                 color: modelData.selected ? Theme.selectedTextColor : Theme.mutedTextColor
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 12
@@ -249,9 +249,9 @@ Page {
                 Text {
                     Layout.fillWidth: true
                     text: {
-                        if (smsBridgeController.selectedContactName.length === 0) return "Select a conversation"
+                        if (smsBridgeController.selectedContactName.length === 0) return qsTr("Select a conversation")
                         if (Theme.streamerMode && smsBridgeController.selectedContactName === smsBridgeController.selectedContactNumber)
-                            return "Unknown contact"
+                            return qsTr("Unknown contact")
                         return smsBridgeController.selectedContactName
                     }
                     color: Theme.textColor
@@ -433,8 +433,8 @@ Page {
                                                         Text {
                                                             anchors.centerIn: parent
                                                             text: modelData.loading
-                                                                  ? "Loading attachment..."
-                                                                  : (modelData.failed ? "Attachment unavailable" : "Open attachment")
+                                                                  ? qsTr("Loading attachment...")
+                                                                  : (modelData.failed ? qsTr("Attachment unavailable") : qsTr("Open attachment"))
                                                             visible: !attachmentDelegate.showImage
                                                             color: Theme.mutedTextColor
                                                             font.family: Theme.fontFamily
@@ -469,7 +469,7 @@ Page {
 
                                                 Text {
                                                     id: statusText
-                                                    text: modelData.failed ? "Failed to send" : (modelData.pending ? "Sending..." : "")
+                                                    text: modelData.failed ? qsTr("Failed to send") : (modelData.pending ? qsTr("Sending...") : "")
                                                     color: modelData.failed ? Theme.dangerColor : Theme.mutedTextColor
                                                     font.family: Theme.fontFamily
                                                     font.pixelSize: 11
@@ -506,7 +506,7 @@ Page {
                     TextField {
                         id: composerField
                         Layout.fillWidth: true
-                        placeholderText: smsBridgeController.canSend ? "Type a message" : "Select a conversation to send"
+                        placeholderText: smsBridgeController.canSend ? qsTr("Type a message") : qsTr("Select a conversation to send")
                         enabled: smsBridgeController.canSend
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
@@ -523,7 +523,7 @@ Page {
                     }
 
                     ThemedButton {
-                        text: "Send"
+                        text: qsTr("Send")
                         width: 96
                         height: 40
                         enabled: smsBridgeController.canSend && composerField.text.trim().length > 0

@@ -8,7 +8,7 @@ Page {
     required property var windowRef
     required property var connectionController
     property bool allowBackToPairedDevices: false
-    readonly property string windowTitleSuffix: "Setup"
+    readonly property string windowTitleSuffix: qsTr("Setup")
     property string statusMessage: ""
 
     DeviceDiscovery {
@@ -113,7 +113,7 @@ Page {
                         spacing: 4
 
                         Text {
-                            text: Theme.streamerMode ? "Nearby Device" : deviceName
+                            text: Theme.streamerMode ? qsTr("Nearby Device") : deviceName
                             font.family: Theme.fontFamily
                             font.pixelSize: 18
                             font.bold: true
@@ -121,14 +121,14 @@ Page {
                         }
 
                         Text {
-                            text: "IP: " + ipAddress + ", " + osName + " " + osVersion
+                            text: qsTr("IP: ") + ipAddress + ", " + osName + " " + osVersion
                             font.family: Theme.fontFamily
                             font.pixelSize: 14
                             color: Theme.mutedTextColor
                         }
 
                         Text {
-                            text: "App version " + appVersion
+                            text: qsTr("App version ") + appVersion
                             font.family: Theme.fontFamily
                             font.pixelSize: 14
                             color: Theme.mutedTextColor
@@ -155,7 +155,7 @@ Page {
                 font.pixelSize: 16
                 color: Theme.subtleTextColor
                 visible: deviceListView.count === 0
-                text: discovery.searching ? "Searching for devices..." : "No devices found"
+                text: discovery.searching ? qsTr("Searching for devices...") : qsTr("No devices found")
             }
 
             Keys.onReturnPressed: devicePicker.connectToCurrent()
@@ -174,7 +174,7 @@ Page {
 
         ThemedButton {
             id: backButton
-            text: "Back"
+            text: qsTr("Back")
             width: 120
             height: 48
             font.pixelSize: 16
@@ -185,7 +185,7 @@ Page {
 
         ThemedButton {
             id: connectButton
-            text: isConnecting ? "Connecting..." : "Connect"
+            text: isConnecting ? qsTr("Connecting...") : qsTr("Connect")
             width: 120
             height: 48
             font.pixelSize: 16
@@ -198,7 +198,7 @@ Page {
 
         ThemedButton {
             id: refreshButton
-            text: "Refresh"
+            text: qsTr("Refresh")
             width: 120
             height: 48
             font.pixelSize: 16
@@ -236,7 +236,7 @@ Page {
         width: 280
 
         Text {
-            text: "If your phone isn't appearing:"
+            text: qsTr("If your phone isn't appearing:")
             font.family: Theme.fontFamily
             font.pixelSize: 16
             font.bold: true
@@ -248,7 +248,7 @@ Page {
             width: parent.width
 
             Text {
-                text: "\u2022 Make sure both of your devices are on the same network"
+                text: qsTr("\u2022 Make sure both of your devices are on the same network")
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
                 color: Theme.mutedTextColor
@@ -257,7 +257,7 @@ Page {
             }
 
             Text {
-                text: "\u2022 Make sure the app is in the foreground"
+                text: qsTr("\u2022 Make sure the app is in the foreground")
                 font.family: Theme.fontFamily
                 font.pixelSize: 14
                 color: Theme.mutedTextColor
@@ -328,7 +328,7 @@ Page {
             width: 360
 
             Text {
-                text: "Verify connection"
+                text: qsTr("Verify connection")
                 font.family: Theme.fontFamily
                 font.pixelSize: 26
                 font.bold: true
@@ -336,7 +336,7 @@ Page {
             }
 
             Text {
-                text: "Enter the pairing code shown on your phone to approve this connection."
+                text: qsTr("Enter the pairing code shown on your phone to approve this connection.")
                 font.family: Theme.fontFamily
                 color: Theme.textColor
                 wrapMode: Text.WordWrap
@@ -345,7 +345,7 @@ Page {
 
             TextField {
                 id: verificationCodeField
-                placeholderText: "6-digit code"
+                placeholderText: qsTr("6-digit code")
                 enabled: !connectionController.approvalPending
                 inputMethodHints: Qt.ImhDigitsOnly
                 maximumLength: 6
@@ -368,7 +368,7 @@ Page {
 
             Text {
                 visible: connectionController.verificationTriesLeft > 0
-                text: "Tries left: " + connectionController.verificationTriesLeft
+                text: qsTr("Tries left: ") + connectionController.verificationTriesLeft
                 font.family: Theme.fontFamily
                 color: Theme.subtleTextColor
             }
@@ -395,13 +395,13 @@ Page {
                 spacing: 10
 
                 ThemedButton {
-                    text: "Submit"
+                    text: qsTr("Submit")
                     enabled: verificationCodeField.text.length === 6 && !connectionController.approvalPending
                     onClicked: connectionController.submitVerificationCode(verificationCodeField.text)
                 }
 
                 ThemedButton {
-                    text: "Cancel"
+                    text: qsTr("Cancel")
                     onClicked: connectionController.cancelVerification()
                 }
             }
