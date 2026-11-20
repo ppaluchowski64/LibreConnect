@@ -33,6 +33,14 @@ Testing/
 CMakeUserPresets.json
 compile_commands.json
 
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+
 # === Build Artifacts ===
 *.o
 *.obj
